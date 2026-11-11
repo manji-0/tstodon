@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-dynamic-delete */
 import { createReducer } from '@reduxjs/toolkit';
 import type { Draft, UnknownAction } from '@reduxjs/toolkit';
-import type { List as ImmutableList } from 'immutable';
 
 import { timelineDelete } from 'mastodon/actions/timelines_typed';
 import type { AsyncRefreshHeader } from 'mastodon/api';
@@ -10,7 +9,7 @@ import type {
   ApiStatusJSON,
   ApiContextJSON,
 } from 'mastodon/api_types/statuses';
-import type { Status } from 'mastodon/models/status';
+import type { StatusesState } from 'mastodon/reducers/statuses';
 
 import { blockAccountSuccess, muteAccountSuccess } from '../actions/accounts';
 import {
@@ -142,11 +141,13 @@ const deleteFromContexts = (state: Draft<State>, ids: string[]): void => {
 const filterContexts = (
   state: Draft<State>,
   relationship: ApiRelationshipJSON,
-  statuses: ImmutableList<Status>,
+  statuses: StatusesState,
 ): void => {
+  // The ids, not the `[key, id]` entries a keyed collection's `toArray` gives.
   const ownedStatusIds = statuses
-    .filter((status) => (status.get('account') as string) === relationship.id)
-    .map((status) => status.get('id') as string);
+    .filter((status) => status.get('account') === relationship.id)
+    .map((status) => status.get('id') as string)
+    .valueSeq();
 
   deleteFromContexts(state, ownedStatusIds.toArray());
 };
@@ -202,14 +203,14 @@ export const contextsReducer = createReducer(initialState, (builder) => {
       filterContexts(
         state,
         action.payload.relationship,
-        action.payload.statuses as ImmutableList<Status>,
+        action.payload.statuses,
       );
     })
     .addCase(muteAccountSuccess, (state, action) => {
       filterContexts(
         state,
         action.payload.relationship,
-        action.payload.statuses as ImmutableList<Status>,
+        action.payload.statuses,
       );
     })
     .addCase(timelineDelete, (state, action) => {

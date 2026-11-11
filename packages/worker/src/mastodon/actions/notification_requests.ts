@@ -111,12 +111,9 @@ export const expandNotificationRequests = createDataLoadingThunk(
 export const fetchNotificationsForRequest = createDataLoadingThunk(
   'notificationRequest/fetchNotifications',
   async ({ accountId }: { accountId: string }, { getState }) => {
-    const sinceId =
-      // @ts-expect-error current.notifications.items is not yet typed
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-      getState().notificationRequests.current.notifications.items[0]?.get(
-        'id',
-      ) as string | undefined;
+    const newestId =
+      getState().notificationRequests.current.notifications.items[0]?.get('id');
+    const sinceId = typeof newestId === 'string' ? newestId : undefined;
 
     return apiFetchNotifications({
       since_id: sinceId,

@@ -19,9 +19,10 @@ import type { NotificationRequest } from 'mastodon/models/notification_request';
 import { createNotificationRequestFromJSON } from 'mastodon/models/notification_request';
 
 import { notificationToMap } from './notifications';
+import type { NotificationMap } from './notifications';
 
 interface NotificationsListState {
-  items: unknown[]; // TODO
+  items: NotificationMap[];
   isLoading: boolean;
   next: string | null;
 }

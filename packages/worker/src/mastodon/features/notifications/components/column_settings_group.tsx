@@ -22,7 +22,7 @@ const selectNotificationSettings = createAppSelector(
         string,
         Immutable.Map<string, unknown> | boolean
       >,
-    (state) => state.notifications.get('browserPermission') as string,
+    (state) => state.notifications.get('browserPermission'),
     (state) => state.push_notifications,
   ],
   (settings, browserPermission, pushSettings) => ({

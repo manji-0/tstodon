@@ -2,7 +2,7 @@ import { useEffect, useCallback } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { List as ImmutableList, isList } from 'immutable';
+import { List as ImmutableList } from 'immutable';
 
 import { openModal } from '@/mastodon/actions/modal';
 import { expandAccountMediaTimeline } from '@/mastodon/actions/timelines';
@@ -16,6 +16,7 @@ import Column from '@/mastodon/features/ui/components/column';
 import { useAccountId } from '@/mastodon/hooks/useAccountId';
 import { useAccountVisibility } from '@/mastodon/hooks/useAccountVisibility';
 import type { MediaAttachment } from '@/mastodon/models/media_attachment';
+import { getTimelineItems } from '@/mastodon/models/timeline';
 import {
   useAppSelector,
   useAppDispatch,
@@ -68,14 +69,14 @@ const selectGalleryTimeline = createAppSelector(
     const timeline = timelines.get(
       `account:${accountId}:media${withReplies ? ':with_replies' : ''}`,
     );
-    const statusIds = timeline?.get('items');
 
-    if (isList(statusIds)) {
-      for (const statusId of statusIds) {
-        const status = statuses.get(statusId);
+    for (const statusId of getTimelineItems(timeline)) {
+      // A gap, or a status no longer in the store, has no media.
+      const status = statusId === null ? undefined : statuses.get(statusId);
+      if (status) {
         items = items.concat(
           (
-            status?.get('media_attachments') as ImmutableList<MediaAttachment>
+            status.get('media_attachments') as ImmutableList<MediaAttachment>
           ).map((media) => media.set('status', status)),
         );
       }
