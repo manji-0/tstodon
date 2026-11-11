@@ -14,8 +14,9 @@ import {
 import type { ApiAccountJSON } from 'mastodon/api_types/accounts';
 import type { ApiStatusJSON } from 'mastodon/api_types/statuses';
 import { boostModal } from 'mastodon/initial_state';
-import type { Status, StatusVisibility } from 'mastodon/models/status';
+import type { AnyStatus, StatusVisibility } from 'mastodon/models/status';
 import type { AppDispatch, GetState } from 'mastodon/store';
+import { immutableMapWith } from 'mastodon/utils/immutable_map_of';
 
 import { fetchRelationships } from './accounts';
 import { importFetchedAccounts, importFetchedStatus } from './importer';
@@ -68,11 +69,11 @@ export const UNBOOKMARK_FAIL    = 'UNBOOKMARKED_FAIL' as const;
 
 export * from './interactions_typed';
 
-export function favourite(status: Status) {
+export function favourite(status: AnyStatus) {
   return function (dispatch: AppDispatch) {
     dispatch(favouriteRequest(status));
 
-    apiFavourite(status.get('id') as string).then(function (data) {
+    apiFavourite(status.get('id')).then(function (data) {
       dispatch(importFetchedStatus(data));
       dispatch(favouriteSuccess(status));
     }).catch(function (error: unknown) {
@@ -81,11 +82,11 @@ export function favourite(status: Status) {
   };
 }
 
-export function unfavourite(status: Status) {
+export function unfavourite(status: AnyStatus) {
   return (dispatch: AppDispatch) => {
     dispatch(unfavouriteRequest(status));
 
-    apiUnfavourite(status.get('id') as string).then(data => {
+    apiUnfavourite(status.get('id')).then(data => {
       dispatch(importFetchedStatus(data));
       dispatch(unfavouriteSuccess(status));
     }).catch((error: unknown) => {
@@ -94,7 +95,7 @@ export function unfavourite(status: Status) {
   };
 }
 
-export function favouriteRequest(status: Status) {
+export function favouriteRequest(status: AnyStatus) {
   return {
     type: FAVOURITE_REQUEST,
     status: status,
@@ -102,7 +103,7 @@ export function favouriteRequest(status: Status) {
   };
 }
 
-export function favouriteSuccess(status: Status) {
+export function favouriteSuccess(status: AnyStatus) {
   return {
     type: FAVOURITE_SUCCESS,
     status: status,
@@ -110,7 +111,7 @@ export function favouriteSuccess(status: Status) {
   };
 }
 
-export function favouriteFail(status: Status, error: unknown) {
+export function favouriteFail(status: AnyStatus, error: unknown) {
   return {
     type: FAVOURITE_FAIL,
     status: status,
@@ -119,7 +120,7 @@ export function favouriteFail(status: Status, error: unknown) {
   };
 }
 
-export function unfavouriteRequest(status: Status) {
+export function unfavouriteRequest(status: AnyStatus) {
   return {
     type: UNFAVOURITE_REQUEST,
     status: status,
@@ -127,7 +128,7 @@ export function unfavouriteRequest(status: Status) {
   };
 }
 
-export function unfavouriteSuccess(status: Status) {
+export function unfavouriteSuccess(status: AnyStatus) {
   return {
     type: UNFAVOURITE_SUCCESS,
     status: status,
@@ -135,7 +136,7 @@ export function unfavouriteSuccess(status: Status) {
   };
 }
 
-export function unfavouriteFail(status: Status, error: unknown) {
+export function unfavouriteFail(status: AnyStatus, error: unknown) {
   return {
     type: UNFAVOURITE_FAIL,
     status: status,
@@ -144,11 +145,11 @@ export function unfavouriteFail(status: Status, error: unknown) {
   };
 }
 
-export function bookmark(status: Status) {
+export function bookmark(status: AnyStatus) {
   return function (dispatch: AppDispatch) {
     dispatch(bookmarkRequest(status));
 
-    apiBookmark(status.get('id') as string).then(function (data) {
+    apiBookmark(status.get('id')).then(function (data) {
       dispatch(importFetchedStatus(data));
       dispatch(bookmarkSuccess(status, data));
     }).catch(function (error: unknown) {
@@ -157,11 +158,11 @@ export function bookmark(status: Status) {
   };
 }
 
-export function unbookmark(status: Status) {
+export function unbookmark(status: AnyStatus) {
   return (dispatch: AppDispatch) => {
     dispatch(unbookmarkRequest(status));
 
-    apiUnbookmark(status.get('id') as string).then(data => {
+    apiUnbookmark(status.get('id')).then(data => {
       dispatch(importFetchedStatus(data));
       dispatch(unbookmarkSuccess(status, data));
     }).catch((error: unknown) => {
@@ -170,14 +171,14 @@ export function unbookmark(status: Status) {
   };
 }
 
-export function bookmarkRequest(status: Status) {
+export function bookmarkRequest(status: AnyStatus) {
   return {
     type: BOOKMARK_REQUEST,
     status: status,
   };
 }
 
-export function bookmarkSuccess(status: Status, response: ApiStatusJSON) {
+export function bookmarkSuccess(status: AnyStatus, response: ApiStatusJSON) {
   return {
     type: BOOKMARK_SUCCESS,
     status: status,
@@ -185,7 +186,7 @@ export function bookmarkSuccess(status: Status, response: ApiStatusJSON) {
   };
 }
 
-export function bookmarkFail(status: Status, error: unknown) {
+export function bookmarkFail(status: AnyStatus, error: unknown) {
   return {
     type: BOOKMARK_FAIL,
     status: status,
@@ -193,14 +194,14 @@ export function bookmarkFail(status: Status, error: unknown) {
   };
 }
 
-export function unbookmarkRequest(status: Status) {
+export function unbookmarkRequest(status: AnyStatus) {
   return {
     type: UNBOOKMARK_REQUEST,
     status: status,
   };
 }
 
-export function unbookmarkSuccess(status: Status, response: ApiStatusJSON) {
+export function unbookmarkSuccess(status: AnyStatus, response: ApiStatusJSON) {
   return {
     type: UNBOOKMARK_SUCCESS,
     status: status,
@@ -208,7 +209,7 @@ export function unbookmarkSuccess(status: Status, response: ApiStatusJSON) {
   };
 }
 
-export function unbookmarkFail(status: Status, error: unknown) {
+export function unbookmarkFail(status: AnyStatus, error: unknown) {
   return {
     type: UNBOOKMARK_FAIL,
     status: status,
@@ -374,11 +375,11 @@ export function expandFavouritesFail(id: string, error: unknown) {
   };
 }
 
-export function pin(status: Status) {
+export function pin(status: AnyStatus) {
   return (dispatch: AppDispatch) => {
     dispatch(pinRequest(status));
 
-    apiPin(status.get('id') as string).then(data => {
+    apiPin(status.get('id')).then(data => {
       dispatch(importFetchedStatus(data));
       dispatch(pinSuccess(status));
       dispatch(insertPinnedStatusIntoTimelines(status));
@@ -388,7 +389,7 @@ export function pin(status: Status) {
   };
 }
 
-export function pinRequest(status: Status) {
+export function pinRequest(status: AnyStatus) {
   return {
     type: PIN_REQUEST,
     status,
@@ -396,7 +397,7 @@ export function pinRequest(status: Status) {
   };
 }
 
-export function pinSuccess(status: Status) {
+export function pinSuccess(status: AnyStatus) {
   return {
     type: PIN_SUCCESS,
     status,
@@ -404,7 +405,7 @@ export function pinSuccess(status: Status) {
   };
 }
 
-export function pinFail(status: Status, error: unknown) {
+export function pinFail(status: AnyStatus, error: unknown) {
   return {
     type: PIN_FAIL,
     status,
@@ -413,11 +414,11 @@ export function pinFail(status: Status, error: unknown) {
   };
 }
 
-export function unpin (status: Status) {
+export function unpin (status: AnyStatus) {
   return (dispatch: AppDispatch) => {
     dispatch(unpinRequest(status));
 
-    apiUnpin(status.get('id') as string).then(data => {
+    apiUnpin(status.get('id')).then(data => {
       dispatch(importFetchedStatus(data));
       dispatch(unpinSuccess(status));
       dispatch(removePinnedStatusFromTimelines(status));
@@ -427,7 +428,7 @@ export function unpin (status: Status) {
   };
 }
 
-export function unpinRequest(status: Status) {
+export function unpinRequest(status: AnyStatus) {
   return {
     type: UNPIN_REQUEST,
     status,
@@ -435,7 +436,7 @@ export function unpinRequest(status: Status) {
   };
 }
 
-export function unpinSuccess(status: Status) {
+export function unpinSuccess(status: AnyStatus) {
   return {
     type: UNPIN_SUCCESS,
     status,
@@ -443,7 +444,7 @@ export function unpinSuccess(status: Status) {
   };
 }
 
-export function unpinFail(status: Status, error: unknown) {
+export function unpinFail(status: AnyStatus, error: unknown) {
   return {
     type: UNPIN_FAIL,
     status,
@@ -452,9 +453,9 @@ export function unpinFail(status: Status, error: unknown) {
   };
 }
 
-function toggleReblogWithoutConfirmation(status: Status, visibility?: StatusVisibility) {
+function toggleReblogWithoutConfirmation(status: AnyStatus, visibility?: StatusVisibility) {
   return (dispatch: AppDispatch) => {
-    const statusId = status.get('id') as string;
+    const statusId = status.get('id');
 
     if (status.get('reblogged')) {
       void dispatch(unreblog({ statusId }));
@@ -467,17 +468,17 @@ function toggleReblogWithoutConfirmation(status: Status, visibility?: StatusVisi
 export function toggleReblog(statusId: string, skipModal = false) {
   return (dispatch: AppDispatch, getState: GetState) => {
     const state = getState();
-    let status = state.statuses.get(statusId);
+    const storedStatus = state.statuses.get(statusId);
 
-    if (!status)
+    if (!storedStatus)
       return;
 
     // The reblog modal expects a pre-filled account in status
     // TODO: fix this by having the reblog modal get a statusId and do the work itself
-    status = status.set('account', state.accounts.get(status.get('account') as string));
+    const status = immutableMapWith(storedStatus, 'account', state.accounts.get(storedStatus.get('account')));
 
     if (boostModal && !skipModal) {
-      dispatch(openModal({ modalType: 'BOOST', modalProps: { status, onReblog: (status: Status, privacy: StatusVisibility) => { dispatch(toggleReblogWithoutConfirmation(status, privacy)); } } }));
+      dispatch(openModal({ modalType: 'BOOST', modalProps: { status, onReblog: (status: AnyStatus, privacy: StatusVisibility) => { dispatch(toggleReblogWithoutConfirmation(status, privacy)); } } }));
     } else {
       dispatch(toggleReblogWithoutConfirmation(status));
     }

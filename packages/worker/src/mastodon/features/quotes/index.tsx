@@ -38,9 +38,8 @@ export const Quotes: React.FC<{
   const isCorrectStatusId: boolean = useAppSelector(
     (state) => state.status_lists.getIn(['quotes', 'statusId']) === statusId,
   );
-  const quotedAccountId = useAppSelector(
-    (state) =>
-      state.statuses.getIn([statusId, 'account']) as string | undefined,
+  const quotedAccountId = useAppSelector((state) =>
+    statusId ? state.statuses.get(statusId)?.get('account') : undefined,
   );
   const quotedAccount = useAppSelector((state) =>
     quotedAccountId ? state.accounts.get(quotedAccountId) : undefined,

@@ -7,7 +7,7 @@ import { apiGetSearch } from '@/mastodon/api/search';
 import type { ApiMediaAttachmentJSON } from '@/mastodon/api_types/media_attachments';
 import type { ApiQuotePolicy } from '@/mastodon/api_types/quotes';
 import type { MediaAttachment } from '@/mastodon/models/media_attachment';
-import type { Status, StatusVisibility } from '@/mastodon/models/status';
+import type { AnyStatus, StatusVisibility } from '@/mastodon/models/status';
 import type { RootState } from '@/mastodon/store';
 import {
   createDataLoadingThunk,
@@ -95,13 +95,13 @@ export const changeComposeVisibility = createAppThunk(
 
     // Remove the quoted status
     dispatch(quoteComposeCancel());
-    const quotedStatus = state.statuses.get(quotedStatusId) as Status | null;
+    const quotedStatus = state.statuses.get(quotedStatusId);
     if (!quotedStatus) {
       return visibility;
     }
 
     // Append the quoted status URL to the compose text
-    const url = quotedStatus.get('url') as string;
+    const url = quotedStatus.get('url');
     const text = state.compose.get('text');
     if (!text.includes(url)) {
       const newText = text.trim() ? `${text}\n\n${url}` : url;
@@ -151,14 +151,14 @@ export const changeUploadCompose = createDataLoadingThunk(
 
 export const quoteCompose = createAppThunk(
   'compose/quoteComposeStatus',
-  (status: Status, { dispatch }) => {
+  (status: AnyStatus, { dispatch }) => {
     dispatch(focusCompose());
     return status;
   },
 );
 
 export const quoteComposeByStatus = createAppThunk(
-  (status: Status, { dispatch, getState }) => {
+  (status: AnyStatus, { dispatch, getState }) => {
     const state = getState();
     const composeState = state.compose;
     const mediaAttachments = composeState.get('media_attachments');
@@ -182,8 +182,8 @@ export const quoteComposeByStatus = createAppThunk(
     } else if (composeState.get('quoted_status_id')) {
       dispatch(showAlert({ message: messages.quoteErrorQuote }));
     } else if (
-      status.getIn(['quote_approval', 'current_user']) !== 'automatic' &&
-      status.getIn(['quote_approval', 'current_user']) !== 'manual'
+      status.get('quote_approval')?.get('current_user') !== 'automatic' &&
+      status.get('quote_approval')?.get('current_user') !== 'manual'
     ) {
       dispatch(showAlert({ message: messages.quoteErrorUnauthorized }));
     } else if (

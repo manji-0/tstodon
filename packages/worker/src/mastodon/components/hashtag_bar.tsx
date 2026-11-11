@@ -4,30 +4,30 @@ import { FormattedMessage } from 'react-intl';
 
 import { Link } from 'react-router-dom';
 
-import type { List, Record } from 'immutable';
-
 import { groupBy, minBy } from 'lodash';
 
-import type { ApiTagJSON } from '../api_types/statuses';
-import type {
-  MediaAttachmentShape,
-  StatusShape,
-  StatusTranslation,
-} from '../models/status';
+import type { Account } from '../models/account';
+import type { StatusFields, StatusShape } from '../models/status';
+import type { ImmutableMapReaderOf } from '../utils/immutable_map_of';
+import { immutableToJS } from '../utils/immutable_map_of';
 
 // Fit on a single line on desktop
 const VISIBLE_HASHTAGS = 3;
 
-// Those types are not correct, they need to be replaced once this part of the state is typed
-export type TagLike = Record<{ name: string }>;
-export type StatusLike = Record<{
-  tags: List<TagLike>;
-  contentHtml: string;
-  media_attachments: List<unknown>;
-  spoiler_text?: string;
-  account: Record<{ id: string }>;
-  translation?: Record<{ contentHtml: string }>;
-}>;
+/**
+ * A status with its account in place of the id: an `ExpandedStatus`, or its
+ * `reblog`.
+ */
+export type StatusLike = ImmutableMapReaderOf<
+  Pick<
+    StatusFields,
+    | 'tags'
+    | 'contentHtml'
+    | 'media_attachments'
+    | 'spoiler_text'
+    | 'translation'
+  > & { account: Account }
+>;
 
 function normalizeHashtag(hashtag: string) {
   return (
@@ -97,12 +97,11 @@ function localeAwareInclude(collection: string[], value: string) {
 export function computeHashtagBarForStatus(
   status: Pick<
     StatusShape,
-    | 'tags'
-    | 'media_attachments'
-    | 'spoiler_text'
-    | 'translation'
-    | 'contentHtml'
-  >,
+    'tags' | 'spoiler_text' | 'translation' | 'contentHtml'
+  > & {
+    // Only counted.
+    media_attachments: readonly unknown[];
+  },
 ) {
   let statusContent = status.translation?.contentHtml ?? status.contentHtml;
 
@@ -200,16 +199,13 @@ export function computeHashtagBarForStatus(
  * @returns Props to be passed to the <StatusContent> component, and the hashtagBar to render
  */
 export function getHashtagBarForStatus(status: StatusLike) {
+  const translation = status.get('translation');
   const { statusContent, hashtagsInBar } = computeHashtagBarForStatus({
-    tags: status.get('tags').toJS() as ApiTagJSON[],
-    media_attachments: status
-      .get('media_attachments')
-      .toJS() as MediaAttachmentShape[],
+    tags: immutableToJS(status.get('tags')),
+    media_attachments: status.get('media_attachments').toArray(),
     spoiler_text: status.get('spoiler_text'),
-    translation: status
-      .get('translation')
-      ?.toJSON() as unknown as StatusTranslation,
-    contentHtml: status.get('contentHtml'),
+    translation: translation && immutableToJS(translation),
+    contentHtml: status.get('contentHtml', ''),
   });
 
   return {
@@ -217,7 +213,7 @@ export function getHashtagBarForStatus(status: StatusLike) {
     hashtagBar: (
       <HashtagBar
         hashtags={hashtagsInBar}
-        accountId={status.getIn(['account', 'id']) as string}
+        accountId={status.get('account').id}
       />
     ),
   };

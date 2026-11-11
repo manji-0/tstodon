@@ -1,7 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return,
-                  @typescript-eslint/no-explicit-any,
-                  @typescript-eslint/no-unsafe-assignment */
-
 import { useEffect, useCallback } from 'react';
 
 import { Provider } from 'react-redux';
@@ -17,11 +13,8 @@ import { IntlProvider } from 'mastodon/locales';
 import { makeGetStatus, makeGetPictureInPicture } from 'mastodon/selectors';
 import { store, useAppSelector, useAppDispatch } from 'mastodon/store';
 
-const getStatus = makeGetStatus() as unknown as (arg0: any, arg1: any) => any;
-const getPictureInPicture = makeGetPictureInPicture() as unknown as (
-  arg0: any,
-  arg1: any,
-) => any;
+const getStatus = makeGetStatus();
+const getPictureInPicture = makeGetPictureInPicture();
 
 const Embed: React.FC<{ id: string }> = ({ id }) => {
   const status = useAppSelector((state) => getStatus(state, { id }));
@@ -45,8 +38,7 @@ const Embed: React.FC<{ id: string }> = ({ id }) => {
     dispatchRenderSignal();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-  const permalink = status?.get('url') as string;
+  const permalink = status?.get('url');
 
   return (
     <div className='embed'>

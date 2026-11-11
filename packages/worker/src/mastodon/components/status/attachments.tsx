@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback } from 'react';
 
+import { List as ImmutableList } from 'immutable';
+
 import { openModal } from '@/mastodon/actions/modal';
 import type { DeployPictureInPictureCallback } from '@/mastodon/actions/picture_in_picture';
 import { deployPictureInPicture } from '@/mastodon/actions/picture_in_picture';
@@ -97,6 +99,8 @@ const MediaGallery = lazy<TMediaGallery>(
 const Audio = lazy(() => import('@/mastodon/features/audio'));
 const Video = lazy(() => import('@/mastodon/features/video'));
 
+const noAttachments = ImmutableList<MediaAttachment>();
+
 const MediaAttachments: React.FC<{
   statusId: string;
   accountId: string;
@@ -118,12 +122,11 @@ const MediaAttachments: React.FC<{
   const description =
     attachment.translation?.description ?? attachment.description ?? undefined;
 
-  const immutableAttachments = useAppSelector((state) => {
-    return state.statuses.getIn([
-      statusId,
-      'media_attachments',
-    ]) as Immutable.List<MediaAttachment>;
-  });
+  const immutableAttachments = useAppSelector(
+    (state) =>
+      state.statuses.get(statusId)?.get('media_attachments') ??
+      noAttachments,
+  );
   const mediaFilters = useAppSelector((state) =>
     selectMediaFilters(state, { statusId, contextType }),
   );

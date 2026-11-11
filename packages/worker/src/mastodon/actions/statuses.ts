@@ -12,7 +12,8 @@ import {
   apiUnmuteStatus,
 } from 'mastodon/api/statuses';
 import { browserHistory } from 'mastodon/components/router';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
+import { immutableMapWith } from 'mastodon/utils/immutable_map_of';
 import type { AppDispatch, GetState } from 'mastodon/store';
 
 import { showAlert } from './alerts';
@@ -64,12 +65,15 @@ const messages = defineMessages({
 });
 
 /** The status, with its poll (an id in the store) replaced by the poll. */
-const statusWithPoll = (getState: GetState, id: string) => {
+const statusWithPoll = (
+  getState: GetState,
+  id: string,
+): AnyStatus | undefined => {
   const status = getState().statuses.get(id);
   const pollId = status?.get('poll');
 
-  if (status && typeof pollId === 'string' && pollId) {
-    return status.set('poll', getState().polls[pollId]);
+  if (status && pollId) {
+    return immutableMapWith(status, 'poll', getState().polls[pollId]);
   }
 
   return status;
@@ -146,7 +150,7 @@ export function fetchStatusFail(
 
 export type RedraftAction = {
   type: typeof REDRAFT;
-  status: Status;
+  status: AnyStatus;
   raw_text: string | null | undefined;
   quoted_status_id: string | null;
   /** The server's `configuration.polls.max_options`, when known. */
@@ -154,7 +158,7 @@ export type RedraftAction = {
 };
 
 export function redraft(
-  status: Status,
+  status: AnyStatus,
   raw_text: string | null | undefined,
   quoted_status_id: string | null = null,
 ) {

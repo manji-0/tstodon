@@ -24,7 +24,8 @@ import { browserHistory } from 'mastodon/components/router';
 import { countableText } from 'mastodon/features/compose/util/counter';
 import type { Account } from 'mastodon/models/account';
 import type { MediaAttachment } from 'mastodon/models/media_attachment';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
+import { immutableMapWith } from 'mastodon/utils/immutable_map_of';
 import type { ComposePoll } from 'mastodon/reducers/compose';
 import { tagHistory } from 'mastodon/settings';
 import type { AppDispatch, GetState } from 'mastodon/store';
@@ -146,7 +147,7 @@ export type ComposeSuggestionPath =
 
 export type ComposeReplyAction = {
   type: typeof COMPOSE_REPLY;
-  status: Status;
+  status: AnyStatus;
 };
 
 export type ComposeMentionAction = {
@@ -162,7 +163,7 @@ export type ComposeFocusAction = {
 
 export type ComposeSetStatusAction = {
   type: typeof COMPOSE_SET_STATUS;
-  status: Status;
+  status: AnyStatus;
   text: string;
   spoiler_text: string;
   /** The server's `configuration.polls.max_options`, when known. */
@@ -220,7 +221,7 @@ export const ensureComposeIsVisible = (getState: GetState) => {
 };
 
 export function setComposeToStatus(
-  status: Status,
+  status: AnyStatus,
   text: string,
   spoiler_text: string,
 ) {
@@ -245,7 +246,7 @@ export function changeCompose(text: string) {
   };
 }
 
-export function replyCompose(status: Status) {
+export function replyCompose(status: AnyStatus) {
   return (dispatch: AppDispatch, getState: GetState) => {
     dispatch({
       type: COMPOSE_REPLY,
@@ -262,12 +263,8 @@ export function replyComposeById(statusId: string) {
     const status = state.statuses.get(statusId);
 
     if (status) {
-      const accountId = status.get('account');
-      const account =
-        typeof accountId === 'string'
-          ? state.accounts.get(accountId)
-          : undefined;
-      dispatch(replyCompose(status.set('account', account)));
+      const account = state.accounts.get(status.get('account'));
+      dispatch(replyCompose(immutableMapWith(status, 'account', account)));
     }
   };
 }

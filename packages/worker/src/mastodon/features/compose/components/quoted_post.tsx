@@ -1,11 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import type { FC } from 'react';
 
-import { Map } from 'immutable';
-
 import { quoteComposeCancel } from '@/mastodon/actions/compose_typed';
 import { QuotedStatus } from '@/mastodon/components/status_quoted';
 import { useAppDispatch, useAppSelector } from '@/mastodon/store';
+import { immutableMapOf } from '@/mastodon/utils/immutable_map_of';
 
 import { QuotePlaceholder } from './quote_placeholder';
 
@@ -23,10 +22,10 @@ export const ComposeQuotedStatus: FC = () => {
   const quote = useMemo(
     () =>
       quotedStatusId
-        ? Map<'state' | 'quoted_status', string>([
-            ['state', 'accepted'],
-            ['quoted_status', quotedStatusId],
-          ])
+        ? immutableMapOf({
+            state: 'accepted' as const,
+            quoted_status: quotedStatusId,
+          })
         : null,
     [quotedStatusId],
   );

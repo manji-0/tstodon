@@ -10,7 +10,6 @@ import { Column } from 'mastodon/components/column';
 import type { ColumnRef } from 'mastodon/components/column';
 import { ColumnHeader } from 'mastodon/components/column_header';
 import StatusListContainer from 'mastodon/features/ui/containers/status_list_container';
-import type { Card } from 'mastodon/models/status';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
 
 export const LinkTimeline: React.FC<{
@@ -25,9 +24,11 @@ export const LinkTimeline: React.FC<{
       ? state.timelines.get(`link:${decodedUrl}`)?.get('items').first()
       : undefined,
   );
-  const story = useAppSelector((state) =>
+  // The card is an Immutable Map in the store (not a `Card` record): its
+  // title is read with `get`.
+  const title = useAppSelector((state) =>
     firstStatusId
-      ? (state.statuses.getIn([firstStatusId, 'card']) as Card)
+      ? state.statuses.get(firstStatusId)?.get('card')?.get('title')
       : undefined,
   );
 
@@ -51,11 +52,11 @@ export const LinkTimeline: React.FC<{
   }, [dispatch, decodedUrl]);
 
   return (
-    <Column bindToDocument={!multiColumn} ref={columnRef} label={story?.title}>
+    <Column bindToDocument={!multiColumn} ref={columnRef} label={title}>
       <ColumnHeader
         icon='explore'
         iconComponent={TrendingUpIcon}
-        title={story?.title}
+        title={title}
         onClick={handleHeaderClick}
         multiColumn={multiColumn}
         showBackButton
@@ -70,7 +71,7 @@ export const LinkTimeline: React.FC<{
       />
 
       <Helmet>
-        <title>{story?.title}</title>
+        <title>{title}</title>
         <meta name='robots' content='noindex' />
       </Helmet>
     </Column>

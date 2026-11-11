@@ -2,7 +2,7 @@ import type { ApiCreateReportParams } from '@tstodon/api';
 import { apiSubmitReport } from 'mastodon/api/reports';
 import type { ApiReportJSON } from 'mastodon/api_types/reports';
 import type { Account } from 'mastodon/models/account';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
 import type { AppDispatch } from 'mastodon/store';
 
 import { openModal } from './modal';
@@ -11,7 +11,7 @@ export const REPORT_SUBMIT_REQUEST = 'REPORT_SUBMIT_REQUEST';
 export const REPORT_SUBMIT_SUCCESS = 'REPORT_SUBMIT_SUCCESS';
 export const REPORT_SUBMIT_FAIL    = 'REPORT_SUBMIT_FAIL';
 
-export const initReport = (account: Account, status?: Status) => (dispatch: AppDispatch) =>
+export const initReport = (account: Account, status?: AnyStatus) => (dispatch: AppDispatch) =>
   dispatch(openModal({
     modalType: 'REPORT',
     modalProps: {

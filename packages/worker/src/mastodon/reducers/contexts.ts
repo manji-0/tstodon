@@ -146,7 +146,7 @@ const filterContexts = (
   // The ids, not the `[key, id]` entries a keyed collection's `toArray` gives.
   const ownedStatusIds = statuses
     .filter((status) => status.get('account') === relationship.id)
-    .map((status) => status.get('id') as string)
+    .map((status) => status.get('id'))
     .valueSeq();
 
   deleteFromContexts(state, ownedStatusIds.toArray());

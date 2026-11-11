@@ -4,14 +4,11 @@ import {
   List as ImmutableList,
   OrderedSet as ImmutableOrderedSet,
   fromJS,
-  isList,
   isMap,
 } from 'immutable';
 
 import type { ApiQuotePolicy, StatusVisibility } from '@tstodon/api';
 import {
-  QUOTE_APPROVAL_AUDIENCES,
-  QUOTE_POLICIES,
   STATUS_VISIBILITIES,
   isQuotePolicyName,
   isStatusVisibility,
@@ -31,7 +28,7 @@ import { timelineDelete } from 'mastodon/actions/timelines_typed';
 import type { ApiHashtagJSON } from 'mastodon/api_types/tags';
 import type { MediaAttachment } from 'mastodon/models/media_attachment';
 import type { Poll } from 'mastodon/models/poll';
-import type { Status } from 'mastodon/models/status';
+import type { AnyStatus } from 'mastodon/models/status';
 import { immutableMapOf } from 'mastodon/utils/immutable_map_of';
 import type { ImmutableMapOf } from 'mastodon/utils/immutable_map_of';
 
@@ -327,70 +324,30 @@ const isComposeAction = matchAction<ComposeAction>(
   REDRAFT,
 );
 
-// A status and an attachment are untyped Immutable maps
-// (`models/status.ts`, `models/media_attachment.ts`); these read them.
+// A status is read in any of its forms (`AnyStatus`): a reply carries its
+// account, a redraft or an edit its poll, in place of the id.
 
-const stringOrNull = (value: unknown) =>
-  typeof value === 'string' ? value : null;
+const statusVisibility = (status: AnyStatus) => status.get('visibility');
 
-const QUOTE_POLICY_VALUES: readonly string[] = [
-  ...QUOTE_APPROVAL_AUDIENCES,
-  ...QUOTE_POLICIES,
-];
+const statusSpoilerText = (status: AnyStatus) => status.get('spoiler_text');
 
-const isApiQuotePolicy = (value: unknown): value is ApiQuotePolicy =>
-  typeof value === 'string' && QUOTE_POLICY_VALUES.includes(value);
+/** The status's attachments, as the form keeps them. */
+const statusMediaAttachments = (
+  status: AnyStatus,
+): ImmutableList<MediaAttachment> => status.get('media_attachments');
 
-const statusVisibility = (status: Status) => {
-  const visibility = status.get('visibility');
-  return typeof visibility === 'string' && isStatusVisibility(visibility)
-    ? visibility
-    : null;
-};
-
-const statusSpoilerText = (status: Status) =>
-  stringOrNull(status.get('spoiler_text')) ?? '';
-
-const isMediaAttachmentList = (
-  value: unknown,
-): value is ImmutableList<MediaAttachment> =>
-  isList(value) && value.every((item) => isMap(item));
-
-const statusMediaAttachments = (status: Status) => {
-  const media = status.get('media_attachments');
-  return isMediaAttachmentList(media)
-    ? media
-    : ImmutableList<MediaAttachment>();
-};
-
-const statusMentions = (status: Status) => {
-  const mentions = status.get('mentions');
-  return isList(mentions)
-    ? mentions.filter((mention) => isMap(mention))
-    : ImmutableList<ImmutableMap<unknown, unknown>>();
-};
-
-/** The poll `statusWithPoll` (`actions/statuses.ts`) put into the status. */
-const isPoll = (value: unknown): value is Poll =>
-  typeof value === 'object' &&
-  value !== null &&
-  'options' in value &&
-  Array.isArray(value.options) &&
-  'multiple' in value &&
-  typeof value.multiple === 'boolean';
+const statusMentions = (status: AnyStatus) => status.get('mentions');
 
 /** The status's first automatic quote approval policy, else `nobody`. */
-const statusQuotePolicy = (status: Status): ApiQuotePolicy => {
+const statusQuotePolicy = (status: AnyStatus): ApiQuotePolicy =>
   // Mastodon-authored posts can be expected to have at most one automatic approval policy
-  const policy = status.getIn(['quote_approval', 'automatic', 0]);
-  return isApiQuotePolicy(policy) ? policy : 'nobody';
-};
+  status.get('quote_approval')?.get('automatic').first() ?? 'nobody';
 
 /** An attachment as `fromJS` converts it (a `Map` with string keys). */
 const mediaAttachmentFromJSON = (media: object): MediaAttachment =>
   ImmutableMap<string, unknown>(fromJS(media));
 
-function statusToTextMentions(status: Status) {
+function statusToTextMentions(status: AnyStatus) {
   let set = ImmutableOrderedSet<string>([]);
 
   if (status.getIn(['account', 'id']) !== me) {
@@ -643,9 +600,9 @@ const hydrate = (
 
 const domParser = new DOMParser();
 
-const expandMentions = (status: Status) => {
+const expandMentions = (status: AnyStatus) => {
   const fragment = domParser.parseFromString(
-    stringOrNull(status.get('content')) ?? '',
+    status.get('content'),
     'text/html',
   ).documentElement;
 
@@ -800,17 +757,17 @@ const calculateProgress = (loaded: number, total: number) =>
 /** Sets the form (in `withMutations`) to a status, to redraft or edit it. */
 const setToStatus = (
   map: ComposeState,
-  status: Status,
+  status: AnyStatus,
   spoilerText: string,
   maxOptions: number | undefined,
 ) => {
-  map.set('in_reply_to', stringOrNull(status.get('in_reply_to_id')));
+  map.set('in_reply_to', status.get('in_reply_to_id'));
   map.set('privacy', statusVisibility(status));
   map.set('focusDate', new Date());
   map.set('caretPosition', null);
   map.set('idempotencyKey', uuid());
   map.set('sensitive', status.get('sensitive') === true);
-  map.set('language', stringOrNull(status.get('language')));
+  map.set('language', status.get('language'));
   map.set('quote_policy', statusQuotePolicy(status));
 
   if (spoilerText.length > 0) {
@@ -825,8 +782,9 @@ const setToStatus = (
     map.set('spoiler_text', '');
   }
 
+  // The poll `statusWithPoll` (`actions/statuses.ts`) put into the status.
   const poll = status.get('poll');
-  if (isPoll(poll)) {
+  if (poll && typeof poll !== 'string') {
     map.set('poll', composePollOf(poll, maxOptions));
   }
 };
@@ -860,7 +818,7 @@ export const composeReducer: Reducer<ComposeState> = (
     const status = action.payload;
     const isDirect = state.get('privacy') === 'direct';
     return state
-      .set('quoted_status_id', isDirect ? null : stringOrNull(status.get('id')))
+      .set('quoted_status_id', isDirect ? null : status.get('id'))
       .update('spoiler', (spoiler) => spoiler || !!status.get('spoiler_text'))
       .update(
         'spoiler_text',
@@ -958,7 +916,7 @@ export const composeReducer: Reducer<ComposeState> = (
         const spoilerText = statusSpoilerText(status);
 
         map.set('id', null);
-        map.set('in_reply_to', stringOrNull(status.get('id')));
+        map.set('in_reply_to', status.get('id'));
         map.set('text', statusToTextMentions(status));
         map.set(
           'privacy',
@@ -977,11 +935,7 @@ export const composeReducer: Reducer<ComposeState> = (
           list.filter((media) => media.get('unattached')),
         );
 
-        if (
-          typeof language === 'string' &&
-          language &&
-          !status.has('translation')
-        ) {
+        if (language && !status.has('translation')) {
           map.set('language', language);
         } else {
           map.set('language', state.get('default_language'));
@@ -1136,12 +1090,12 @@ export const composeReducer: Reducer<ComposeState> = (
       return state.withMutations((map) => {
         const status = action.status;
 
-        map.set('id', stringOrNull(status.get('id')));
+        map.set('id', status.get('id'));
         map.set('text', action.text);
         map.set('media_attachments', statusMediaAttachments(status));
         map.set(
           'quoted_status_id',
-          stringOrNull(status.getIn(['quote', 'quoted_status'], null)),
+          status.get('quote')?.get('quoted_status') ?? null,
         );
         setToStatus(map, status, action.spoiler_text, action.maxOptions);
       });

@@ -150,7 +150,7 @@ export const MediaModal = forwardRef<HTMLDivElement, MediaModalProps>(
     }, [handleKeyDown]);
 
     useEffect(() => {
-      const blurhash = currentMedia?.get('blurhash') as string | undefined;
+      const blurhash = currentMedia?.get('blurhash');
       if (blurhash) {
         const backgroundColor = getAverageFromBlurhash(blurhash);
         if (backgroundColor) {
@@ -202,17 +202,17 @@ export const MediaModal = forwardRef<HTMLDivElement, MediaModalProps>(
     const content = useMemo(
       () =>
         media.map((item, idx) => {
-          const url = item.get('url') as string;
-          const blurhash = item.get('blurhash') as string;
+          const url = item.get('url');
+          const blurhash = item.get('blurhash') ?? undefined;
           const width = item.getIn(['meta', 'original', 'width'], 0) as number;
           const height = item.getIn(
             ['meta', 'original', 'height'],
             0,
           ) as number;
-          const description = item.getIn(
-            ['translation', 'description'],
-            item.get('description'),
-          ) as string;
+          const description =
+            item.get('translation')?.get('description') ??
+            item.get('description') ??
+            undefined;
           if (item.get('type') === 'image') {
             return (
               <ZoomableImage
@@ -233,7 +233,7 @@ export const MediaModal = forwardRef<HTMLDivElement, MediaModalProps>(
           } else if (item.get('type') === 'video') {
             return (
               <Video
-                preview={item.get('preview_url') as string | undefined}
+                preview={item.get('preview_url') ?? undefined}
                 blurhash={blurhash}
                 src={url}
                 frameRate={

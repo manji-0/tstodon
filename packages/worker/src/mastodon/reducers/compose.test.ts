@@ -2,7 +2,17 @@ import { fromJS, List as ImmutableList, Map as ImmutableMap } from 'immutable';
 
 import type { ApiMediaAttachmentJSON } from 'mastodon/api_types/media_attachments';
 import type { ApiHashtagJSON } from 'mastodon/api_types/tags';
-import type { Status } from 'mastodon/models/status';
+import {
+  accountFactoryImmutable,
+  pollFactoryImmutable,
+  statusFactoryAPI,
+} from '@/testing/factories';
+import { normalizeStatus } from 'mastodon/actions/importer/normalizer';
+import type { StatusJSON } from 'mastodon/models/status';
+import {
+  immutableFromJS,
+  immutableMapWith,
+} from 'mastodon/utils/immutable_map_of';
 
 import {
   COMPOSE_CHANGE,
@@ -98,12 +108,14 @@ const tag = (name: string): ApiHashtagJSON => ({
   history: [{ day: '1700000000', accounts: '1', uses: '2' }],
 });
 
-const statusOf = (fields: Record<string, unknown>): Status =>
-  ImmutableMap<string, unknown>(
-    fromJS({
-      id: '10',
-      account: { id: '1', acct: 'alice' },
-      mentions: [{ id: '2', acct: 'bob', url: 'https://example.com/@bob' }],
+/** A stored status with its account in place of the id, as replies carry it. */
+const statusOf = (fields: Partial<StatusJSON>) =>
+  immutableMapWith(
+    immutableFromJS<StatusJSON>({
+      ...normalizeStatus(statusFactoryAPI({ id: '10' }), undefined, {}),
+      mentions: [
+        { id: '2', username: 'bob', acct: 'bob', url: 'https://example.com/@bob' },
+      ],
       visibility: 'public',
       language: 'de',
       spoiler_text: '',
@@ -115,6 +127,8 @@ const statusOf = (fields: Record<string, unknown>): Status =>
       quote_approval: { automatic: ['followers'], manual: [], current_user: 'automatic' },
       ...fields,
     }),
+    'account',
+    accountFactoryImmutable({ id: '1', acct: 'alice' }),
   );
 
 describe('composeReducer', () => {
@@ -285,7 +299,14 @@ describe('composeReducer', () => {
       status: statusOf({
         visibility: 'public',
         language: null,
-        translation: {},
+        translation: immutableFromJS({
+          detected_source_language: 'de',
+          language: 'en',
+          provider: 'test',
+          contentHtml: '',
+          spoilerHtml: '',
+          spoiler_text: '',
+        }),
       }),
     });
 
@@ -600,20 +621,27 @@ describe('composeReducer', () => {
   });
 
   test('redrafts a status', () => {
-    const poll = {
+    const poll = pollFactoryImmutable({
       id: 'p',
-      options: [{ title: 'yes' }, { title: 'no' }],
+      options: [
+        { title: 'yes', votes_count: 0 },
+        { title: 'no', votes_count: 0 },
+      ],
       multiple: true,
       expires_at: null,
-    };
+    });
     const state = reduce(init(), {
       type: REDRAFT,
-      status: statusOf({
-        in_reply_to_id: '5',
-        visibility: 'unlisted',
-        sensitive: true,
-        media_attachments: [media('m1')],
-      }).set('poll', poll),
+      status: immutableMapWith(
+        statusOf({
+          in_reply_to_id: '5',
+          visibility: 'unlisted',
+          sensitive: true,
+          media_attachments: [media('m1')],
+        }),
+        'poll',
+        poll,
+      ),
       raw_text: null,
       quoted_status_id: '7',
       maxOptions: 4,
@@ -666,15 +694,22 @@ describe('composeReducer', () => {
     const expiresAt = new Date(Date.now() + 3000 * 1000).toISOString();
     const state = reduce(init(), {
       type: COMPOSE_SET_STATUS,
-      status: statusOf({
-        quote: { state: 'accepted', quoted_status: '9' },
-        media_attachments: [media('m1')],
-      }).set('poll', {
-        id: 'p',
-        options: [{ title: 'a' }, { title: 'b' }],
-        multiple: false,
-        expires_at: expiresAt,
-      }),
+      status: immutableMapWith(
+        statusOf({
+          quote: { state: 'accepted', quoted_status: '9' },
+          media_attachments: [media('m1')],
+        }),
+        'poll',
+        pollFactoryImmutable({
+          id: 'p',
+          options: [
+            { title: 'a', votes_count: 0 },
+            { title: 'b', votes_count: 0 },
+          ],
+          multiple: false,
+          expires_at: expiresAt,
+        }),
+      ),
       text: 'source',
       spoiler_text: '',
       maxOptions: 2,

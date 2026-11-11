@@ -1,7 +1,7 @@
 import LinkHeader from 'http-link-header';
-import { Map as ImmutableMap } from 'immutable';
 
 import { relationshipsFactoryAPI, statusFactoryAPI } from '@/testing/factories';
+import { immutableFromJS } from 'mastodon/utils/immutable_map_of';
 
 import { muteAccountSuccess } from '../actions/accounts';
 import {
@@ -26,7 +26,8 @@ const apiStatuses = (...ids: string[]) =>
 const items = (state: StatusListsState, list: StatusListKey) =>
   state.get(list).get('items').toArray();
 
-const status = (id: string) => ImmutableMap<string, unknown>({ id });
+const status = (id: string) =>
+  immutableFromJS(normalizeStatus(statusFactoryAPI({ id }), undefined, {}));
 
 describe('status_lists reducer', () => {
   test('starts with the empty lists', () => {

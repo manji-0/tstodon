@@ -1,10 +1,9 @@
 import { createAction } from '@reduxjs/toolkit';
-import type { List as ImmutableList, Map as ImmutableMap } from 'immutable';
 
 import { usePendingItems as preferPendingItems } from 'mastodon/initial_state';
 
 import type { ApiStatusJSON } from '../api_types/statuses';
-import type { Status } from '../models/status';
+import type { AnyStatus } from '../models/status';
 import { createAppThunk } from '../store/typed_functions';
 
 import {
@@ -239,20 +238,16 @@ export const insertStatusIntoAccountTimelines = createAppThunk(
 );
 
 export const insertPinnedStatusIntoTimelines = createAppThunk(
-  (status: Status, { dispatch, getState }) => {
+  (status: AnyStatus, { dispatch, getState }) => {
     const currentAccountId = getState().meta.get('me', null) as string | null;
     if (!currentAccountId) {
       return;
     }
 
-    const tags =
-      (
-        status.get('tags') as
-          | ImmutableList<ImmutableMap<'name', string>> // We only care about the tag name.
-          | undefined
-      )
-        ?.map((tag) => tag.get('name') as string)
-        .toArray() ?? [];
+    const tags = status
+      .get('tags')
+      .map((tag) => tag.get('name'))
+      .toArray();
 
     const timelines = getState().timelines;
     const accountTimelines = timelines.filter((_, key) => {
@@ -269,19 +264,19 @@ export const insertPinnedStatusIntoTimelines = createAppThunk(
     });
 
     accountTimelines.forEach((_, key) => {
-      dispatch(insertIntoTimeline(key, status.get('id') as string, 0));
+      dispatch(insertIntoTimeline(key, status.get('id'), 0));
     });
   },
 );
 
 export const removePinnedStatusFromTimelines = createAppThunk(
-  (status: Status, { dispatch, getState }) => {
+  (status: AnyStatus, { dispatch, getState }) => {
     const currentAccountId = getState().meta.get('me', null) as string | null;
     if (!currentAccountId) {
       return;
     }
 
-    const statusId = status.get('id') as string;
+    const statusId = status.get('id');
     const timelines = getState().timelines;
 
     timelines.forEach((timeline, key) => {
