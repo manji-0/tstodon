@@ -30,7 +30,10 @@ export const cursorFragment = idCursorFragment;
 /** Media-only timelines keep statuses with an attachment, as `only_media` asks. */
 export const WITH_MEDIA_SQL = `AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)`;
 
-/** Public local statuses, without the authors `viewerId` must not see. */
+/**
+ * Public local notes, without the authors `viewerId` must not see. Boosts stay
+ * off, as Mastodon's `PublicFeed` is `without_reblogs`.
+ */
 export const listPublicStatuses = async (
   db: D1Database,
   viewerId: string | undefined,
@@ -43,7 +46,7 @@ export const listPublicStatuses = async (
     const media = onlyMedia ? WITH_MEDIA_SQL : "";
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
          AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL} ${media} ${where} ${order} LIMIT ?`,
       )
       .bind(...suppressedBinds(viewerId), ...binds, limit)

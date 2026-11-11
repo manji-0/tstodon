@@ -212,3 +212,49 @@ describe("a remote actor that blocks the viewer", () => {
     expect(await statusOf(`/api/v1/statuses/${boostId}`)).toBe(200);
   });
 });
+
+/** Mastodon's `PublicFeed` is `without_reblogs`, so a boost never carries its target there. */
+describe("boosts on the public timelines", () => {
+  it("are left out, local and remote, whoever asks", async () => {
+    const booster = "pbt-booster@example.com";
+    const viewer = "pbt-viewer@example.com";
+    const { id: viewerId } = await signedInAccount(viewer);
+    const blockerPost = await posted("pbt-blocker@example.com", { status: "by a blocker" });
+    const plainPost = await posted("pbt-plain@example.com", { status: "by anyone" });
+    await post("pbt-blocker@example.com", `/api/v1/accounts/${viewerId}/block`);
+    const localBoosts = [
+      await reblogged(booster, blockerPost),
+      await reblogged(booster, plainPost),
+    ];
+
+    const author = await remoteActor("pbt-remote-author");
+    const remoteBooster = await remoteActor("pbt-remote-booster");
+    const remotePost = await remoteNote(author, "pbt-1");
+    const announceId = `${remoteBooster.actorUri}/statuses/pbt-boost/activity`;
+    expect(
+      await remoteBooster.send({
+        id: announceId,
+        type: "Announce",
+        object: `${author.actorUri}/statuses/pbt-1`,
+        published: new Date().toISOString(),
+        to: [PUBLIC],
+        cc: [`${remoteBooster.actorUri}/followers`],
+      }),
+    ).toBe(202);
+    const remoteBoost = await rowId(
+      "SELECT id FROM remote_boosts WHERE activity_id = ?",
+      announceId,
+    );
+
+    for (const email of [viewer, undefined]) {
+      const local = await idsAt("/api/v1/timelines/public?local=true&limit=40", email);
+      const remote = await idsAt("/api/v1/timelines/public?remote=true&limit=40", email);
+      const all = await idsAt("/api/v1/timelines/public?limit=40", email);
+      for (const boost of [...localBoosts, remoteBoost]) {
+        expect([...local, ...remote, ...all]).not.toContain(boost);
+      }
+      expect(local).toContain(plainPost);
+      expect(remote).toContain(remotePost);
+    }
+  });
+});

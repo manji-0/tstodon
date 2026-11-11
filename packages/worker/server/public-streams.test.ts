@@ -192,6 +192,37 @@ describe("public streams", () => {
     }
   });
 
+  it("never carry a boost, even when a fan-out names one", async () => {
+    const author = "ps-boost-author@example.com";
+    const booster = "ps-boost-booster@example.com";
+    const viewer = await openStream({
+      email: "ps-boost-viewer@example.com",
+      query: "?stream=public:local",
+    });
+    const noteId = await post(author, "boosted in public");
+    expect(statusOf(await viewer.next()).id).toBe(noteId);
+    const boosted = await json(booster, `/api/v1/statuses/${noteId}/reblog`, {
+      method: "POST",
+      body: "{}",
+    });
+    expect(boosted.status).toBe(200);
+    const boostId = statusOf({ payload: JSON.stringify(boosted.body) }).id;
+
+    const job = OutboxJob.parse({
+      kind: "FanOutPublic",
+      event: "status.update",
+      entryId: boostId,
+      afterHub: "",
+    });
+    if (job.isErr()) {
+      throw new Error("fan-out job rejected");
+    }
+    expect(await processOutboxJob(env, job.value)).toBe("ok");
+
+    expect(await viewer.heardNothing(LOCAL)).toBe(true);
+    viewer.close();
+  });
+
   it("carry a hashtag's posts to its subscribers, as they spelled the tag", async () => {
     const author = "ps-tag-author@example.com";
     const cats = await openStream({ email: "ps-tag-viewer@example.com" });
