@@ -83,8 +83,11 @@ describe("an account's statuses as each viewer sees them", () => {
     expect(await ids(path, stranger)).toEqual(open);
     expect(await ids(path, follower)).toEqual([privateMentionId, privateId, ...open]);
     expect(await ids(path, mentioned)).toEqual([directId, privateMentionId, ...open]);
-    expect(await ids(`${path}?exclude_direct=true`, mentioned)).toEqual([
+    // `exclude_direct` drops the mention branch, so a non-follower sees only open statuses.
+    expect(await ids(`${path}?exclude_direct=true`, mentioned)).toEqual(open);
+    expect(await ids(`${path}?exclude_direct=true`, follower)).toEqual([
       privateMentionId,
+      privateId,
       ...open,
     ]);
     expect(await ids(path, blocked)).toEqual([]);
