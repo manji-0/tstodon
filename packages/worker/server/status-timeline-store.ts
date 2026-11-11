@@ -114,8 +114,8 @@ export type AccountStatusFilters = Readonly<{
  * An account's statuses as `viewerId` may see them, kept in SQL (Mastodon's
  * `AccountStatusesFilter`) so a page holds `limit` visible statuses: the
  * author sees all; an account the author blocks sees none; anyone else sees
- * public and unlisted ones, followers-only ones when following, and the ones
- * that mention them.
+ * public and unlisted ones, followers-only ones when following, and, unless
+ * `excludeDirect`, the ones that mention them.
  */
 export const listAccountStatusesFiltered = async (
   db: D1Database,
@@ -139,7 +139,7 @@ export const listAccountStatusesFiltered = async (
                  SELECT 1 FROM follows
                  WHERE follower_account_id = ? AND target_account_id = ? AND kind = 'Accepted'
                ))
-               OR id IN (SELECT status_id FROM status_mentions WHERE account_id = ?)
+               OR (? = 0 AND id IN (SELECT status_id FROM status_mentions WHERE account_id = ?))
              )
            ))
            AND (? = 0 OR in_reply_to_id IS NULL)
@@ -158,6 +158,7 @@ export const listAccountStatusesFiltered = async (
         viewer,
         viewer,
         accountId,
+        filters.excludeDirect ? 1 : 0,
         viewer,
         filters.excludeReplies ? 1 : 0,
         filters.excludeReblogs ? 1 : 0,
