@@ -90,9 +90,8 @@ const reducers = {
 const initialRootState = Object.fromEntries(
   Object.entries(reducers).map(([name, reducer]) => [
     name,
-    reducer(undefined, {
-      // empty action
-    }),
+    // An action no reducer handles, so each returns its initial state.
+    reducer(undefined, { type: '@@tstodon/INITIAL_ROOT_STATE' }),
   ]),
 );
 
