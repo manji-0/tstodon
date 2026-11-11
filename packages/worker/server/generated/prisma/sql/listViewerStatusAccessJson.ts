@@ -13,7 +13,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param mentionedRemoteStatusIdsJson
  */
 export const listViewerStatusAccessJson = $runtime.makeTypedQueryFactory(
-  "WITH RECURSIVE direct_chain(id) AS (\nSELECT value FROM json_each($5)\nUNION\nSELECT parent.id\nFROM direct_chain\nJOIN statuses AS child ON child.id = direct_chain.id\nJOIN statuses AS parent ON parent.id = child.in_reply_to_id\nWHERE parent.kind = 'LocalNote' AND parent.visibility = 'direct'\n)\nSELECT 'Follow' AS grant_kind, target_account_id AS grant_key, NULL AS parent_id FROM follows\nWHERE follower_account_id = $1 AND kind = 'Accepted'\nAND target_account_id IN (SELECT value FROM json_each($2))\nUNION ALL\nSELECT 'OutboundFollow' AS grant_kind, actor_uri AS grant_key, NULL AS parent_id\nFROM outbound_follows\nWHERE account_id = $1 AND state = 'Accepted'\nAND actor_uri IN (SELECT value FROM json_each($3))\nUNION ALL\nSELECT 'Status' AS grant_kind, status_id AS grant_key, NULL AS parent_id FROM status_mentions\nWHERE account_id = $1 AND status_id IN (SELECT value FROM json_each($4))\nUNION ALL\nSELECT\nCASE\nWHEN node.account_id = $1\nOR EXISTS (SELECT 1 FROM status_mentions WHERE status_id = node.id AND account_id = $1)\nTHEN 'DirectGrant'\nELSE 'DirectReply'\nEND AS grant_kind,\nnode.id AS grant_key,\nparent.id AS parent_id\nFROM direct_chain\nJOIN statuses AS node ON node.id = direct_chain.id\nLEFT JOIN statuses AS parent ON parent.id = node.in_reply_to_id\nAND parent.kind = 'LocalNote' AND parent.visibility = 'direct'\nUNION ALL\nSELECT 'RemoteStatus' AS grant_kind, status_id AS grant_key, NULL AS parent_id\nFROM remote_status_mentions\nWHERE account_id = $1 AND status_id IN (SELECT value FROM json_each($6))",
+  "WITH RECURSIVE direct_chain(id) AS (\nSELECT value FROM json_each($5)\nUNION\nSELECT parent.id\nFROM direct_chain\nCROSS JOIN statuses AS child ON child.id = direct_chain.id\nCROSS JOIN statuses AS parent ON parent.id = child.in_reply_to_id\nWHERE parent.kind = 'LocalNote' AND parent.visibility = 'direct'\n)\nSELECT 'Follow' AS grant_kind, target_account_id AS grant_key, NULL AS parent_id FROM follows\nWHERE follower_account_id = $1 AND kind = 'Accepted'\nAND target_account_id IN (SELECT value FROM json_each($2))\nUNION ALL\nSELECT 'OutboundFollow' AS grant_kind, actor_uri AS grant_key, NULL AS parent_id\nFROM outbound_follows\nWHERE account_id = $1 AND state = 'Accepted'\nAND actor_uri IN (SELECT value FROM json_each($3))\nUNION ALL\nSELECT 'Status' AS grant_kind, status_id AS grant_key, NULL AS parent_id FROM status_mentions\nWHERE account_id = $1 AND status_id IN (SELECT value FROM json_each($4))\nUNION ALL\nSELECT\nCASE\nWHEN node.account_id = $1\nOR EXISTS (SELECT 1 FROM status_mentions WHERE status_id = node.id AND account_id = $1)\nTHEN 'DirectGrant'\nELSE 'DirectReply'\nEND AS grant_kind,\nnode.id AS grant_key,\nparent.id AS parent_id\nFROM direct_chain\nCROSS JOIN statuses AS node ON node.id = direct_chain.id\nLEFT JOIN statuses AS parent ON parent.id = node.in_reply_to_id\nAND parent.kind = 'LocalNote' AND parent.visibility = 'direct'\nUNION ALL\nSELECT 'RemoteStatus' AS grant_kind, status_id AS grant_key, NULL AS parent_id\nFROM remote_status_mentions\nWHERE account_id = $1 AND status_id IN (SELECT value FROM json_each($6))",
 ) as (
   viewerId: string,
   followedAuthorIdsJson: string,
@@ -33,8 +33,8 @@ export namespace listViewerStatusAccessJson {
     mentionedRemoteStatusIdsJson: string,
   ];
   export type Result = {
-    grant_kind: string;
-    grant_key: string | null;
-    parent_id: string | null;
+    grant_kind: null | null;
+    grant_key: string;
+    parent_id: null | null;
   };
 }
