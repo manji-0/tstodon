@@ -1,3 +1,5 @@
+import { extractHashtags } from "@tstodon/core";
+import { tagUrl } from "./tag-documents";
 import {
   InstanceIdentity,
   type LocalAccount,
@@ -369,6 +371,7 @@ export const noteDocument = (
   }>,
 ): ApStatusDocumentJSON => {
   const { quote, mentions = [], reply, poll, quotePolicy } = extras;
+  const hashtags = extractHashtags(note.text);
   const { attachments, authorSensitized } = extras.media;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
@@ -427,6 +430,7 @@ export const noteDocument = (
           focalPoint: { "@container": "@list", "@id": "toot:focalPoint" },
         }
       : {}),
+    ...(hashtags.length > 0 ? { Hashtag: "as:Hashtag" } : {}),
     gts: "https://gotosocial.org/ns#",
     interactionPolicy: { "@id": "gts:interactionPolicy", "@type": "@id" },
     canQuote: { "@id": "gts:canQuote", "@type": "@id" },
@@ -459,11 +463,18 @@ export const noteDocument = (
         ? { width: media.dimensions.width, height: media.dimensions.height }
         : {}),
     })),
-    tag: mentions.map((mention) => ({
-      type: "Mention" as const,
-      href: mention.href,
-      name: mention.name,
-    })),
+    tag: [
+      ...mentions.map((mention) => ({
+        type: "Mention" as const,
+        href: mention.href,
+        name: mention.name,
+      })),
+      ...hashtags.map((name) => ({
+        type: "Hashtag" as const,
+        href: tagUrl(identity, name),
+        name: `#${name}`,
+      })),
+    ],
     interactionPolicy: { canQuote: { automaticApproval } },
   };
   return poll
