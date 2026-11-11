@@ -1,12 +1,6 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { AccessEmail, type AccessEmail as AccessEmailValue } from "@tstodon/domain";
-import {
-  createLocalJWKSet,
-  createRemoteJWKSet,
-  jwtVerify,
-  type JWK,
-  type JWTVerifyGetKey,
-} from "jose";
+import { createLocalJWKSet, jwtVerify, type JWK, type JWTVerifyGetKey } from "jose";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { optionalEnvString } from "./runtime-config";
@@ -132,14 +126,54 @@ export const accessAssertion = (request: Request): string | undefined => {
   return assertion && assertion.length > 0 ? assertion : undefined;
 };
 
-const jwksByKey = new Map<string, JWTVerifyGetKey>();
+/** Key sets from `CF_ACCESS_JWKS_JSON`, by its text. Built once, never fetched. */
+const inlineJwksByKey = new Map<string, JWTVerifyGetKey>();
 
-const authErrorFromJose = (cause: unknown): AccessJwtError => {
+/**
+ * Fetched key sets (`CF_ACCESS_JWKS_URL` or the team's
+ * `/cdn-cgi/access/certs`), by URL, with jose's defaults for `createRemoteJWKSet`:
+ * kept {@link REMOTE_JWKS_MAX_AGE_MS}, refetched for an unknown `kid` at most
+ * once per {@link REMOTE_JWKS_COOLDOWN_MS}, and a fetch gives up after
+ * {@link REMOTE_JWKS_TIMEOUT_MS}.
+ *
+ * Only a parsed key set is shared between requests, never a fetch in flight.
+ * A fetch belongs to the request that started it: when that request ends
+ * first, workerd cancels it, and another request awaiting the same promise
+ * would hang until the runtime cancelled it, or fail with "Cannot perform I/O
+ * on behalf of a different request" (see `server/ip-access.ts`). jose's remote
+ * set shares its pending reload and only stops doing so when it detects
+ * Cloudflare Workers by its globals; this cache does not depend on that. A
+ * request that finds the keys missing or stale fetches them itself.
+ */
+const REMOTE_JWKS_MAX_AGE_MS = 10 * 60_000;
+const REMOTE_JWKS_COOLDOWN_MS = 30_000;
+const REMOTE_JWKS_TIMEOUT_MS = 5_000;
+
+type RemoteJwks = Readonly<{
+  getKey: JWTVerifyGetKey;
+  loadedAt: number;
+  /** Order the fetch started in, so an older fetch cannot replace a newer set. */
+  sequence: number;
+}>;
+
+const remoteJwksByUrl = new Map<string, RemoteJwks>();
+/** When a refetch for an unknown `kid` last started, by URL. */
+const unknownKidRefetchAt = new Map<string, number>();
+let fetchSequence = 0;
+/** Sequence at the last {@link forgetAccessJwks}; fetches started before it are not kept. */
+let forgottenAtSequence = 0;
+
+/** Drop this isolate's Access key sets (tests). */
+export const forgetAccessJwks = (): void => {
+  inlineJwksByKey.clear();
+  remoteJwksByUrl.clear();
+  unknownKidRefetchAt.clear();
+  forgottenAtSequence = fetchSequence;
+};
+
+const isNoMatchingKey = (cause: unknown): boolean => {
   const parsed = parseJoseErrorCode(cause);
-  if (parsed.isOk() && parsed.value.code === "ERR_JWKS_TIMEOUT") {
-    return { kind: "VerificationUnavailable" };
-  }
-  return { kind: "InvalidToken" };
+  return parsed.isOk() && parsed.value.code === "ERR_JWKS_NO_MATCHING_KEY";
 };
 
 const groupsFromClaims = (claims: z.infer<typeof AccessJwtClaimsSchema>): ReadonlyArray<string> => {
@@ -150,38 +184,91 @@ const groupsFromClaims = (claims: z.infer<typeof AccessJwtClaimsSchema>): Readon
   return [...(claims.groups ?? []), ...fromCustom];
 };
 
-const accessJwks = (env: Env): Result<JWTVerifyGetKey, AccessJwtError> => {
+/** The usable keys of a JWKS document, as a jose key lookup. */
+const localJwks = (raw: unknown): Result<JWTVerifyGetKey, AccessJwtError> => {
+  const parsed = parseAccessJwks(raw);
+  if (parsed.isErr()) {
+    return err({ kind: "VerificationUnavailable" });
+  }
+  const keys = parsed.value.keys.flatMap((key) => {
+    const jwk = accessJwk(key);
+    return jwk === undefined ? [] : [jwk];
+  });
+  if (keys.length === 0) {
+    return err({ kind: "VerificationUnavailable" });
+  }
+  try {
+    return ok(createLocalJWKSet({ keys }));
+  } catch {
+    return err({ kind: "VerificationUnavailable" });
+  }
+};
+
+const inlineJwks = (inline: string): Result<JWTVerifyGetKey, AccessJwtError> => {
+  const cacheKey = `json:${inline}`;
+  const cached = inlineJwksByKey.get(cacheKey);
+  if (cached) {
+    return ok(cached);
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(inline);
+  } catch {
+    return err({ kind: "VerificationUnavailable" });
+  }
+  const jwks = localJwks(raw);
+  if (jwks.isOk()) {
+    inlineJwksByKey.set(cacheKey, jwks.value);
+  }
+  return jwks;
+};
+
+/**
+ * Fetch the key set at `url` for this request and keep it for the isolate.
+ * A failed, slow (over {@link REMOTE_JWKS_TIMEOUT_MS}), non-200, or unusable
+ * answer is `VerificationUnavailable`.
+ */
+const fetchRemoteJwks = async (
+  url: string,
+  nowMs: number,
+): Promise<Result<RemoteJwks, AccessJwtError>> => {
+  fetchSequence += 1;
+  const sequence = fetchSequence;
+  let raw: unknown;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "manual",
+      headers: { accept: "application/json, application/jwk-set+json" },
+      signal: AbortSignal.timeout(REMOTE_JWKS_TIMEOUT_MS),
+    });
+    if (response.status !== 200) {
+      return err({ kind: "VerificationUnavailable" });
+    }
+    raw = await response.json();
+  } catch {
+    return err({ kind: "VerificationUnavailable" });
+  }
+  const getKey = localJwks(raw);
+  if (getKey.isErr()) {
+    return err(getKey.error);
+  }
+  const loaded: RemoteJwks = { getKey: getKey.value, loadedAt: nowMs, sequence };
+  const current = remoteJwksByUrl.get(url);
+  if (sequence > (current?.sequence ?? forgottenAtSequence)) {
+    remoteJwksByUrl.set(url, loaded);
+  }
+  return ok(loaded);
+};
+
+type AccessKeys =
+  | Readonly<{ kind: "Inline"; getKey: JWTVerifyGetKey }>
+  | Readonly<{ kind: "Remote"; url: string; jwks: RemoteJwks; fetched: boolean }>;
+
+const accessKeys = async (env: Env, nowMs: number): Promise<Result<AccessKeys, AccessJwtError>> => {
   const inline = optionalEnvString(env, "CF_ACCESS_JWKS_JSON").trim();
   if (inline.length > 0) {
-    const cacheKey = `json:${inline}`;
-    const cached = jwksByKey.get(cacheKey);
-    if (cached) {
-      return ok(cached);
-    }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(inline);
-    } catch {
-      return err({ kind: "VerificationUnavailable" });
-    }
-    const parsed = parseAccessJwks(raw);
-    if (parsed.isErr()) {
-      return err({ kind: "VerificationUnavailable" });
-    }
-    const keys = parsed.value.keys.flatMap((key) => {
-      const jwk = accessJwk(key);
-      return jwk === undefined ? [] : [jwk];
-    });
-    if (keys.length === 0) {
-      return err({ kind: "VerificationUnavailable" });
-    }
-    try {
-      const jwks = createLocalJWKSet({ keys });
-      jwksByKey.set(cacheKey, jwks);
-      return ok(jwks);
-    } catch {
-      return err({ kind: "VerificationUnavailable" });
-    }
+    return inlineJwks(inline).map((getKey) => ({ kind: "Inline", getKey }) as const);
   }
 
   const override = optionalEnvString(env, "CF_ACCESS_JWKS_URL").trim();
@@ -195,13 +282,33 @@ const accessJwks = (env: Env): Result<JWTVerifyGetKey, AccessJwtError> => {
   if (url.length === 0) {
     return err({ kind: "NotConfigured" });
   }
-  const cached = jwksByKey.get(url);
-  if (cached) {
-    return ok(cached);
+  const cached = remoteJwksByUrl.get(url);
+  if (cached && nowMs - cached.loadedAt < REMOTE_JWKS_MAX_AGE_MS) {
+    return ok({ kind: "Remote", url, jwks: cached, fetched: false });
   }
-  const jwks = createRemoteJWKSet(new URL(url));
-  jwksByKey.set(url, jwks);
-  return ok(jwks);
+  const fetched = await fetchRemoteJwks(url, nowMs);
+  return fetched.map((jwks) => ({ kind: "Remote", url, jwks, fetched: true }) as const);
+};
+
+/**
+ * Whether a token whose `kid` is not in `keys` may refetch them: not if this
+ * request just fetched them, and at most once per
+ * {@link REMOTE_JWKS_COOLDOWN_MS} per URL, counted from the last load and the
+ * last such refetch, so made-up `kid`s cannot drive a fetch per request.
+ */
+const mayRefetchForUnknownKid = (
+  keys: Extract<AccessKeys, { kind: "Remote" }>,
+  nowMs: number,
+): boolean => {
+  if (keys.fetched) {
+    return false;
+  }
+  const current = remoteJwksByUrl.get(keys.url);
+  const loadedAt = Math.max(keys.jwks.loadedAt, current?.loadedAt ?? Number.NEGATIVE_INFINITY);
+  const refetchedAt = unknownKidRefetchAt.get(keys.url) ?? Number.NEGATIVE_INFINITY;
+  return (
+    nowMs - loadedAt >= REMOTE_JWKS_COOLDOWN_MS && nowMs - refetchedAt >= REMOTE_JWKS_COOLDOWN_MS
+  );
 };
 
 /** Whether this Worker has the issuer and audience it needs to trust Access. */
@@ -218,44 +325,67 @@ export const accessIdentity = async (
   token: string,
   env: Env,
   hostname: string,
+  nowMs: number = Date.now(),
 ): Promise<Result<AccessIdentity, AccessJwtError>> => {
   const teamDomain = accessTeamDomain(env);
   const audience = optionalEnvString(env, "CF_ACCESS_AUD").trim();
   if (teamDomain.length === 0 || audience.length === 0) {
     return err({ kind: "NotConfigured" });
   }
-  const jwks = accessJwks(env);
-  if (jwks.isErr()) {
-    return err(jwks.error);
+  const keys = await accessKeys(env, nowMs);
+  if (keys.isErr()) {
+    return err(keys.error);
   }
-  try {
-    const verified = await jwtVerify(token, jwks.value, {
+  const verify = (getKey: JWTVerifyGetKey) =>
+    jwtVerify(token, getKey, {
       issuer: teamDomain,
       audience,
       algorithms: ["RS256"],
       clockTolerance: 5,
     });
-    if (verified.protectedHeader.kid === LOCAL_ACCESS_KID && !isLocalAccessHost(hostname)) {
-      return err({ kind: "InvalidToken" });
-    }
-    const claims = parseAccessJwtClaims(verified.payload);
-    if (claims.isErr() || claims.value.email === undefined) {
-      return err({ kind: "InvalidToken" });
-    }
-    const email = AccessEmail.parse(claims.value.email);
-    if (email.isErr()) {
-      return err({ kind: "InvalidToken" });
-    }
-    return ok({
-      email: email.value,
-      sub: claims.value.sub,
-      issuedAtMs: claims.value.iat * 1000,
-      expiresAtMs: claims.value.exp * 1000,
-      groups: groupsFromClaims(claims.value),
-    });
+  let verified: Awaited<ReturnType<typeof verify>>;
+  try {
+    verified = await verify(
+      keys.value.kind === "Inline" ? keys.value.getKey : keys.value.jwks.getKey,
+    );
   } catch (cause) {
-    return err(authErrorFromJose(cause));
+    if (
+      keys.value.kind !== "Remote" ||
+      !isNoMatchingKey(cause) ||
+      !mayRefetchForUnknownKid(keys.value, nowMs)
+    ) {
+      return err({ kind: "InvalidToken" });
+    }
+    // A `kid` the cached set lacks: Access may have rotated its keys.
+    unknownKidRefetchAt.set(keys.value.url, nowMs);
+    const refetched = await fetchRemoteJwks(keys.value.url, nowMs);
+    if (refetched.isErr()) {
+      return err(refetched.error);
+    }
+    try {
+      verified = await verify(refetched.value.getKey);
+    } catch {
+      return err({ kind: "InvalidToken" });
+    }
   }
+  if (verified.protectedHeader.kid === LOCAL_ACCESS_KID && !isLocalAccessHost(hostname)) {
+    return err({ kind: "InvalidToken" });
+  }
+  const claims = parseAccessJwtClaims(verified.payload);
+  if (claims.isErr() || claims.value.email === undefined) {
+    return err({ kind: "InvalidToken" });
+  }
+  const email = AccessEmail.parse(claims.value.email);
+  if (email.isErr()) {
+    return err({ kind: "InvalidToken" });
+  }
+  return ok({
+    email: email.value,
+    sub: claims.value.sub,
+    issuedAtMs: claims.value.iat * 1000,
+    expiresAtMs: claims.value.exp * 1000,
+    groups: groupsFromClaims(claims.value),
+  });
 };
 
 /** Group names from `CF_ACCESS_ADMIN_GROUPS` that make the Access identity an admin. */
