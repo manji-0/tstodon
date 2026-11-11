@@ -19,6 +19,14 @@ import { listIpBlocks } from "./ip-block-store";
  * an isolate that changes a block forgets its copy at once, and the others
  * pick the change up within the TTL. Each request then only compares
  * integers against the compiled ranges.
+ *
+ * Only the compiled list is shared between requests, never a read in flight.
+ * A D1 read belongs to the request that started it: when that request ends
+ * first (its client went away), workerd cancels the read, and a promise other
+ * requests awaited on it would never settle, so every request that joined it
+ * hung until the runtime cancelled it ("your Worker's code had hung") or
+ * failed with "Cannot perform I/O on behalf of a different request". Requests
+ * that find the copy stale each read the list themselves.
  */
 
 const CACHE_TTL_MS = 60_000;
@@ -26,7 +34,8 @@ const CACHE_TTL_MS = 60_000;
 type CachedList = Readonly<{ list: IpBlockList; loadedAt: number }>;
 
 let cached: CachedList | undefined;
-let loading: Promise<IpBlockList> | undefined;
+/** Bumped by {@link forgetIpBlocks}, so a read that started before it is not kept. */
+let generation = 0;
 
 /** The request's client address, or `undefined` when Cloudflare named none. */
 export const clientIp = (request: Request): string | undefined => {
@@ -37,7 +46,7 @@ export const clientIp = (request: Request): string | undefined => {
 /** Drop this isolate's copy of the block list (after a block changes). */
 export const forgetIpBlocks = (): void => {
   cached = undefined;
-  loading = undefined;
+  generation += 1;
 };
 
 /**
@@ -52,16 +61,16 @@ export const currentIpBlocks = async (
   if (cached && nowMs - cached.loadedAt < CACHE_TTL_MS) {
     return cached.list;
   }
-  loading ??= list().then((blocks) => {
-    loading = undefined;
-    if (blocks.isErr()) {
-      return [];
-    }
-    const compiled = IpBlock.compile(blocks.value);
+  const started = generation;
+  const blocks = await list();
+  if (blocks.isErr()) {
+    return [];
+  }
+  const compiled = IpBlock.compile(blocks.value);
+  if (started === generation) {
     cached = { list: compiled, loadedAt: nowMs };
-    return compiled;
-  });
-  return loading;
+  }
+  return compiled;
 };
 
 /** What a sign-up from this request's address may do. */
