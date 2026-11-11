@@ -17,7 +17,7 @@ import { errorPage } from "../auth-pages";
 import { type BrowserSession, browserSession, isSameOriginPost } from "../browser-session";
 import { readOptionalBody } from "../http";
 import { parseInstanceIdentity } from "../runtime-config";
-import { aliasesPage, migrationPage, type PageMessage } from "../settings-pages";
+import { aliasesPage, migrationPage, minute, type PageMessage } from "../settings-pages";
 import { signInRedirect } from "../page-redirect";
 import { signInIsStale } from "../recent-sign-in";
 
@@ -166,7 +166,7 @@ const moveErrorMessage = (error: MoveAccountError): string => {
     case "MissingAlias":
       return 'The new account does not list this account as an alias yet. Add it there under "Moving from a different account" first.';
     case "OnCooldown":
-      return `You moved recently. You can move again after ${error.until.toISOString()}.`;
+      return `You moved recently. You can move again after ${minute(error.until)}.`;
     case "RepositoryError":
     case "InvalidActivityId":
     case "QueueSendFailed":

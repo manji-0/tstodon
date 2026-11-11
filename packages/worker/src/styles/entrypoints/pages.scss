@@ -213,6 +213,7 @@ nav {
 
 nav a {
   padding: var(--space-2xs) var(--space-xs);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   font-weight: 500;
@@ -224,9 +225,13 @@ nav a:hover {
   text-decoration: none;
 }
 
-nav a[aria-current='page'] {
+// The section the page belongs to. The border and weight mark it where the
+// colours do not show (forced colours, greyscale).
+nav a[aria-current] {
   background: var(--color-bg-brand-softest);
+  border-color: var(--color-border-brand);
   color: var(--color-text-brand);
+  font-weight: 600;
 }
 
 nav.sections {

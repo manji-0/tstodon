@@ -35,7 +35,7 @@ const ADMIN_LINKS = [
 export type AdminSection = (typeof ADMIN_LINKS)[number][0];
 
 const adminNav = (section: AdminSection | undefined): string => `${nav}
-      <nav class="sections" aria-label="Administration">${ADMIN_LINKS.map(([href, label]) => `<a href="${href}"${href === section ? ` aria-current="page"` : ""}>${label}</a>`).join("")}</nav>`;
+      <nav class="sections" aria-label="Administration">${ADMIN_LINKS.map(([href, label]) => `<a href="${href}"${href === section ? ` aria-current="true"` : ""}>${label}</a>`).join("")}</nav>`;
 
 export const adminPage = (
   instanceName: string,
