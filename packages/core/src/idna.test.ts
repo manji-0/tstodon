@@ -4,6 +4,7 @@ import { toAscii } from "./idna";
 import { IDNA_TABLES } from "./idna-tables";
 import { composeIdnaTables } from "./idna-tables.compose";
 import { libidnHosts } from "./post-text.fixture";
+import { statusLength } from "./post-text";
 
 describe("toAscii", () => {
   it.each([
@@ -58,6 +59,17 @@ describe("toAscii", () => {
   it("has the tables packed from RFC 3454 (else run scripts/generate-idna-tables.mjs)", () => {
     const rfc = readFileSync(new URL("./idna-tables.rfc3454.txt", import.meta.url), "utf8");
     expect(IDNA_TABLES).toEqual(composeIdnaTables(rfc));
+  });
+
+  it("refuses a long label before normalizing it", () => {
+    for (const run of ["\u0f71\u0f72", "\ufdfa", "e\u0301"]) {
+      expect(toAscii(`a${run.repeat(4083)}.com`), run).toBeUndefined();
+      const text = `https://a${run.repeat(4083)}.com `.repeat(12);
+      statusLength("", text.slice(0, 100));
+      const started = performance.now();
+      statusLength("", text);
+      expect(performance.now() - started, run).toBeLessThan(100);
+    }
   });
 
   it("takes linear time on a long host", () => {

@@ -132,9 +132,13 @@ const tables = (): Tables =>
  * allowed, or `undefined` where stringprep fails: a code point Unicode 3.2
  * does not assign, a prohibited one, or text in both directions.
  */
+/** The most code points one canonical composition replaces (U+1F82's decomposition). */
+const MAX_COMPOSITION = 4;
+
 const nameprep = (label: string): number[] | undefined => {
   const { mappedToNothing, fold, prohibited, randAL, l, unassigned } = tables();
   let mapped = "";
+  let mappedLength = 0;
   for (const character of label) {
     const codePoint = character.codePointAt(0) ?? 0;
     // libidn looks for unassigned code points last, after an NFKC that
@@ -145,11 +149,21 @@ const nameprep = (label: string): number[] | undefined => {
     }
     if (!includes(mappedToNothing, codePoint)) {
       const corrected = NFKC_OF_UNICODE_3_2.get(codePoint);
-      mapped +=
+      const replacement =
         corrected === undefined
           ? (fold.get(codePoint) ?? character)
           : String.fromCodePoint(corrected);
+      mapped += replacement;
+      mappedLength += Array.from(replacement).length;
     }
+  }
+  // NFKC only decomposes (never shrinking) and composes at most four code
+  // points into one (U+1F82 is the longest canonical decomposition), so a
+  // label longer than this cannot come out within 63 code points. Refusing
+  // it here keeps a long label from paying for an NFKC that is quadratic on
+  // runs of marks.
+  if (mappedLength > MAX_LABEL_LENGTH * MAX_COMPOSITION) {
+    return undefined;
   }
   const prepared = Array.from(
     composedAcrossMarks(mapped.normalize("NFKC")),
