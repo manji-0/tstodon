@@ -24,7 +24,7 @@ import { loadNoteReply } from "./reply-target";
 import { noteDocument, quoteRequestActivity } from "./activitypub";
 import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll, loadNotePoll } from "./poll-store";
-import { enqueueLinkCard } from "./link-card";
+import { startLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowerIds } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
@@ -32,8 +32,8 @@ import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
-import { enqueueHomeFanOut } from "./home-fan-out";
-import { enqueuePublicFanOut } from "./public-fan-out";
+import { startHomeFanOut } from "./home-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
 import { publishConversationUpdate } from "./conversation-stream";
 import { publishToAccount } from "./stream-publish";
 
@@ -235,7 +235,7 @@ export const publishLocalNote = async (
       return err(poll.error);
     }
   }
-  await enqueueLinkCard(env, "Status", note.id, note.text);
+  startLinkCard(env, "Status", note.id, note.text);
   const attributeError = await applyMediaAttributes(env, user.id, note.id, input.mediaAttributes);
   if (attributeError !== undefined) {
     return err({ kind: "RepositoryError", message: attributeError });
@@ -370,13 +370,13 @@ export const publishLocalNote = async (
         note.id,
       );
     }
-    await enqueueHomeFanOut(env, {
+    startHomeFanOut(env, {
       event: "update",
       entryId: note.id,
       author: { kind: "LocalAccount", accountId: user.id },
     });
     if (note.visibility.kind === "Public") {
-      await enqueuePublicFanOut(env, { event: "update", entryId: note.id });
+      startPublicFanOut(env, { event: "update", entryId: note.id });
     }
   });
   return ok({ note, document });

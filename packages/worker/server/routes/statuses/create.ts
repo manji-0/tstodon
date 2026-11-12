@@ -44,7 +44,6 @@ import { InstanceLimits } from "@tstodon/core";
 import type { MediaAttribute } from "../../status-body-schema";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
-import { enqueueLinkCard } from "../../link-card";
 import { findUnattachableMediaIds, mediaNotFoundMessage } from "../../media-store";
 import { scheduledStatusMedia } from "../scheduled-statuses";
 import { type PublishPoll, publishLocalNote } from "../../local-status-publish";
@@ -60,12 +59,6 @@ import {
   MIN_SCHEDULE_OFFSET_MS,
   scheduledStatusDocument,
 } from "../../scheduled-status-store";
-
-/** Queue the link preview for a status; the request never waits on it. */
-export const queueLinkCard = async (env: Env, statusId: string, text: string): Promise<void> => {
-  const queued = await enqueueLinkCard(env, "Status", statusId, text);
-  queued;
-};
 
 type CreateStatusBody = z.output<typeof ApiCreateStatusParamsSchema>;
 

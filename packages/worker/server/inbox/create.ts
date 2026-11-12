@@ -1,8 +1,8 @@
 import { RealtimeWindow } from "@tstodon/domain";
 import { err, ok } from "neverthrow";
 import { nowInstant } from "../clock";
-import { enqueueHomeFanOut } from "../home-fan-out";
-import { enqueuePublicFanOut } from "../public-fan-out";
+import { startHomeFanOut } from "../home-fan-out";
+import { startPublicFanOut } from "../public-fan-out";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { persistRemoteObject } from "../remote-status-persist";
 import { findRemoteStatusByObjectUri } from "../remote-status-store";
@@ -44,13 +44,13 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
     created.value?.actorUri === signer.actorUri &&
     RealtimeWindow.contains(created.value.publishedAt, nowInstant())
   ) {
-    await enqueueHomeFanOut(env, {
+    startHomeFanOut(env, {
       event: "update",
       entryId: created.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },
     });
     if (created.value.visibility.kind === "Public") {
-      await enqueuePublicFanOut(env, { event: "update", entryId: created.value.id });
+      startPublicFanOut(env, { event: "update", entryId: created.value.id });
     }
   }
   return ok(undefined);

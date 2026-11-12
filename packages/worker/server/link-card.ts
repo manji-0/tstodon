@@ -2,6 +2,7 @@ import { type ApiPreviewCardJSON, isPreviewCardType, type PreviewCardType } from
 import type { Hostname, InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { afterResponse } from "./after-response";
 import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import { checkFederatedHost } from "./federated-fetch";
@@ -19,6 +20,7 @@ import { setRemoteStatusCard } from "./status-card-store";
 import { setStatusCard } from "./status-card-store";
 import { queryTyped, runTyped } from "./typed-sql";
 import { parseJsonColumn } from "./json-column";
+import { runOrQueue } from "./inline-job";
 
 const CardJsonFetchedAtRow = z.object({ card_json: z.string(), fetched_at: z.string() });
 const UrlRow = z.object({ url: z.string() });
@@ -247,7 +249,7 @@ export type LinkCardOutcome =
  * Preview card for a link, from the cache when possible. Fetching is bounded
  * (3 s, 200 kB) and refused for hosts the federation rules already reject, so a
  * slow or hostile host cannot make a request fail or reach into the network.
- * Called from the queue, never from a request path.
+ * Called after the response or from the queue, never on a request path.
  */
 export const resolveLinkCard = async (
   env: Env,
@@ -391,24 +393,29 @@ export const refreshStaleLinkCards = async (env: Env): Promise<void> => {
   }
 };
 
-/** Queue the unfurl for a stored status (or remote status); never blocks a request. */
-export const enqueueLinkCard = async (
+/**
+ * Unfurl the first link of a stored status (or remote status) once the
+ * response is ready, never on the request path; the queue retries it only
+ * after a transient failure.
+ */
+export const startLinkCard = (
   env: Env,
   target: "Status" | "RemoteStatus",
   id: string,
   text: string,
-): Promise<void> => {
+): void => {
   const url = extractFirstUrl(text);
   if (!url) {
     return;
   }
-  await env.OUTBOX_PROCESS_QUEUE.send({ kind: "ProcessLinkCard", target, id, url });
+  const job = { kind: "ProcessLinkCard", target, id, url } as const satisfies OutboxJob;
+  afterResponse(job.kind, () => runOrQueue(env, job, processLinkCardJob));
 };
 
 /**
- * Queue handler: unfurl and store the card for one status. Returns `"retry"`
- * for transient failures (timeouts, 5xx, storage errors) so the queue can try
- * again; a refused or non-HTML link is settled and never retried.
+ * Unfurl and store the card for one status. Returns `"retry"` for transient
+ * failures (timeouts, 5xx, storage errors) so the queue can try again; a
+ * refused or non-HTML link is settled and never retried.
  */
 export const processLinkCardJob = async (
   env: Env,

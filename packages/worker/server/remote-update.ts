@@ -12,9 +12,9 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
-import { enqueueHomeFanOut } from "./home-fan-out";
-import { enqueuePublicFanOut } from "./public-fan-out";
-import { enqueueLinkCard } from "./link-card";
+import { startHomeFanOut } from "./home-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
+import { startLinkCard } from "./link-card";
 import {
   isActiveRemoteStatusMention,
   recordRemoteStatusMentions,
@@ -191,7 +191,7 @@ const applyNoteUpdate = async (
       );
     }
   }
-  await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
+  startLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   if (edited) {
     // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
     // Quotes are skipped: a local account cannot yet quote a remote status.
@@ -204,13 +204,13 @@ const applyNoteUpdate = async (
         statusId: stored.value.id,
       });
     }
-    await enqueueHomeFanOut(env, {
+    startHomeFanOut(env, {
       event: "status.update",
       entryId: stored.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },
     });
     if (stored.value.visibility.kind === "Public") {
-      await enqueuePublicFanOut(env, { event: "status.update", entryId: stored.value.id });
+      startPublicFanOut(env, { event: "status.update", entryId: stored.value.id });
     }
   }
   return ok(undefined);

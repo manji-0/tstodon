@@ -9,7 +9,7 @@ import {
 import { err, ok } from "neverthrow";
 import { parseLocalStatusId } from "../activitypub";
 import { nowInstant } from "../clock";
-import { enqueueHomeFanOut } from "../home-fan-out";
+import { startHomeFanOut } from "../home-fan-out";
 import { newEntityId } from "../ids";
 import { recordRemoteBoost } from "../remote-boost";
 import { upsertRemoteAnnounce } from "../remote-interaction-store";
@@ -60,7 +60,7 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   // As for a `Create`, a boost published more than the real-time window ago
   // is stored but not streamed.
   if (boosted.value && RealtimeWindow.contains(boosted.value.publishedAt, nowInstant())) {
-    await enqueueHomeFanOut(env, {
+    startHomeFanOut(env, {
       event: "update",
       entryId: boosted.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },

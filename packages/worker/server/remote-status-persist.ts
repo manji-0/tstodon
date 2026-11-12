@@ -22,7 +22,7 @@ import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
-import { enqueueLinkCard } from "./link-card";
+import { startLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemote } from "./notify";
 import { findThreadParent } from "./thread-context";
 import {
@@ -590,6 +590,6 @@ const storeRemoteNote = async (
     return err(quote.error);
   }
   // Preview cards are built off the request path like for local posts.
-  await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
+  startLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   return stored;
 };

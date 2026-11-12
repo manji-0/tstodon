@@ -6,9 +6,9 @@ import type {
 } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { announceRemovedBoosts, enqueueHomeFanOut } from "./home-fan-out";
+import { announceRemovedBoosts, startHomeFanOut } from "./home-fan-out";
 import { deleteRemoteNotifications } from "./notification-store";
-import { enqueuePublicFanOut } from "./public-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
 import { deleteRemoteStatusById, deleteRemoteStatusByObjectUri } from "./remote-status-store";
 
 /** What removing a cached remote status writes and announces. */
@@ -47,13 +47,13 @@ const remoteStatusRemovalContracts = (env: Env): RemoteStatusRemovalContracts =>
       : deleteRemoteStatusById(env.DB, match.id, actorUri),
   publishRemoval: async (actorUri, removed) => {
     await announceRemovedBoosts(env, removed.boosts);
-    await enqueueHomeFanOut(env, {
+    startHomeFanOut(env, {
       event: "delete",
       entryId: removed.id,
       author: { kind: "RemoteActor", actorUri },
     });
     if (removed.public) {
-      await enqueuePublicFanOut(env, { event: "delete", entryId: removed.id });
+      startPublicFanOut(env, { event: "delete", entryId: removed.id });
     }
   },
   withdrawRemoteNotifications: (withdrawal) => deleteRemoteNotifications(env.DB, withdrawal),

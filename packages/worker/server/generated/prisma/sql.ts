@@ -382,6 +382,8 @@ export * from "./sql/findStatusIdempotency";
 
 export * from "./sql/findStatusUpdatedAt";
 
+export * from "./sql/findStreamListeners";
+
 export * from "./sql/findTagModeration";
 
 export * from "./sql/findTokenPushSubscription";

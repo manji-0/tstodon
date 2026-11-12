@@ -5,6 +5,7 @@ import { z } from "zod";
 import { type RepositoryError, runD1 } from "./d1";
 import {
   deleteStreamSubscription,
+  findStreamListeners,
   insertStreamSubscription,
   listHubStreamSubscriptions as listHubStreamSubscriptionsSql,
   listPublicStreamSubscriptions as listPublicStreamSubscriptionsSql,
@@ -42,25 +43,77 @@ const channelOfRow = (row: SubscriptionRow): StreamChannelValue | undefined => {
   return channel.isOk() ? channel.value : undefined;
 };
 
+/** Whether any hub holds a stream that a home or a public fan-out could reach. */
+export type StreamListeners = Readonly<{ home: boolean; public: boolean }>;
+
+/**
+ * How long an isolate reuses what {@link streamListeners} read. A stream
+ * opened through another isolate misses the events of that long at most; a
+ * row written or deleted through this one is seen at once.
+ */
+export const STREAM_LISTENERS_TTL_MS = 5_000;
+
+let cachedListeners: Readonly<{ readAt: number; listeners: StreamListeners }> | undefined;
+
+/** Bumped on every row change here, so a read that overlapped one is not kept. */
+let rowChanges = 0;
+
+const forgetListeners = (): void => {
+  cachedListeners = undefined;
+  rowChanges += 1;
+};
+
 /** Record that `hub` holds `channel`, which must have a row. */
 export const insertSubscriptionRow = async (
   db: D1Database,
   hub: string,
   row: SubscriptionRow,
-): Promise<Result<void, RepositoryError>> =>
-  (await runD1(() => runTyped(db, insertStreamSubscription(hub, row.stream, row.param)))).map(
-    () => undefined,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(() =>
+    runTyped(db, insertStreamSubscription(hub, row.stream, row.param)),
   );
+  forgetListeners();
+  return written.map(() => undefined);
+};
 
 /** Record that `hub` no longer holds the channel `row` stands for. */
 export const deleteSubscriptionRow = async (
   db: D1Database,
   hub: string,
   row: SubscriptionRow,
-): Promise<Result<void, RepositoryError>> =>
-  (await runD1(() => runTyped(db, deleteStreamSubscription(hub, row.stream, row.param)))).map(
-    () => undefined,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1(() =>
+    runTyped(db, deleteStreamSubscription(hub, row.stream, row.param)),
   );
+  forgetListeners();
+  return written.map(() => undefined);
+};
+
+const ListenersRow = z.object({ home: z.number(), public: z.number() });
+
+/**
+ * Which fan-outs could reach anyone, read once per {@link STREAM_LISTENERS_TTL_MS}
+ * per isolate, so a fan-out with nobody to tell costs no queue message. Rows
+ * left behind by an evicted hub only make it answer yes, and the fan-out that
+ * finds nobody behind them deletes them. A failed read answers yes.
+ */
+export const streamListeners = async (db: D1Database): Promise<StreamListeners> => {
+  const now = Date.now();
+  if (cachedListeners && now - cachedListeners.readAt < STREAM_LISTENERS_TTL_MS) {
+    return cachedListeners.listeners;
+  }
+  const changes = rowChanges;
+  const rows = await runD1(() => queryTyped(db, findStreamListeners(), ListenersRow));
+  if (rows.isErr()) {
+    return { home: true, public: true };
+  }
+  const row = rows.value[0];
+  const listeners = { home: row?.home === 1, public: row?.public === 1 };
+  if (changes === rowChanges) {
+    cachedListeners = { readAt: now, listeners };
+  }
+  return listeners;
+};
 
 const HubRowSchema = z.object({ hub: z.string(), stream: z.string(), param: z.string() });
 
