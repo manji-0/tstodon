@@ -66,13 +66,17 @@ export default defineConfig({
                 // sets on the user row.
                 // Tests share accounts and send many requests; the rate-limit
                 // tests turn the limits on for the app they build.
-                RATE_LIMITS_ENABLED: "false",
+                // The query-count report (`QUERY_COUNT=1`) turns them on: their
+                // Durable Object calls are part of what a request costs.
+                RATE_LIMITS_ENABLED: process.env.QUERY_COUNT === "1" ? "true" : "false",
                 // `QUERY_COUNT=1` runs the D1 query-count report
                 // (`query-count.bench.test.ts`); it is skipped otherwise.
                 QUERY_COUNT: process.env.QUERY_COUNT ?? "",
                 // With `QUERY_COUNT_SQL=<label part>`, the report also lists
                 // the matching requests' statements (`+` starts a serial round).
                 QUERY_COUNT_SQL: process.env.QUERY_COUNT_SQL ?? "",
+                // `QUERY_COUNT_NOISE=<n>` seeds n unrelated statuses first (see the report).
+                QUERY_COUNT_NOISE: process.env.QUERY_COUNT_NOISE ?? "",
               },
             },
           }),
