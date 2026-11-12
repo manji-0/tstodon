@@ -33,3 +33,21 @@ export const mastodonPostTexts = (): ReadonlyArray<MastodonPostText> => {
   }
   return fixture;
 };
+
+/**
+ * `[host, ASCII]` as libidn's `IDN::Idna.toASCII` has it, `null` where it
+ * raises: written by the same script.
+ */
+export const libidnHosts = (): ReadonlyArray<readonly [string, string | null]> => {
+  const fixture: unknown = JSON.parse(
+    readFileSync(new URL("./idna.fixture.json", import.meta.url), "utf8"),
+  );
+  const isRow = (value: unknown): value is readonly [string, string | null] =>
+    Array.isArray(value) &&
+    typeof value[0] === "string" &&
+    (value[1] === null || typeof value[1] === "string");
+  if (!Array.isArray(fixture) || !fixture.every(isRow)) {
+    throw new TypeError("idna.fixture.json is not a list of rows");
+  }
+  return fixture;
+};

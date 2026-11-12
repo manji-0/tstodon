@@ -141,6 +141,8 @@ describe("status limits", () => {
     ["a gemini URL", "", "gemini://example.com/a/long/capsule/path", 23],
     ["a URL inside a match that has no scheme", "", "example.com/https://example.org/a/path", 38],
     ["an xmpp: and a magnet: link", "", "xmpp:alice@example.com magnet:?xt=urn:btih:abc", 46],
+    ["a URL whose host IDNA2003 refuses, as written", "", "https://👍.com/", 14],
+    ["a URL whose host IDNA2003 takes", "", "https://☃.com/", 23],
   ])("counts %s as the web UI's counter does", async (_, spoilerText, text, length) => {
     const email = "limits-shared-count@example.com";
     const padded = (n: number) => ({
@@ -150,6 +152,18 @@ describe("status limits", () => {
     const max = InstanceLimits.status.maxCharacters;
     expect((await createStatus(email, padded(max))).status).toBe(200);
     expectKind(await createStatus(email, padded(max + 1)), "TooLong");
+  });
+
+  it("links a URL only if libidn can convert its host, as Mastodon", async () => {
+    const created = await createStatus("limits-idna@example.com", {
+      status: "https://👍.com/ https://☃.com/ https://aמ.com/",
+    });
+    expect(created.status).toBe(200);
+    const { content } = read(z.object({ content: z.string() }), created.body);
+    expect([...content.matchAll(/href="([^"]*)"/g)].map((match) => match[1])).toEqual([
+      "https://☃.com/",
+    ]);
+    expect(content).toContain("<p>https://👍.com/ <a ");
   });
 
   it("refuses an edit over the limit", async () => {

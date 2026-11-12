@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-// Writes packages/core/src/post-text.fixture.json: what Mastodon's server
-// finds in a corpus of post texts, for packages/core/src/post-text.fixture.test.ts
-// to hold `@tstodon/core/post-text` to. Run once per Mastodon release; the
-// test needs no Ruby. It runs scripts/post-text-reference.rb, which says
-// what it needs:
+// Writes packages/core/src/post-text.fixture.json and idna.fixture.json:
+// what Mastodon's server finds in a corpus of post texts, and what libidn
+// makes of a corpus of hosts, for packages/core/src/post-text.fixture.test.ts
+// and idna.test.ts to hold `@tstodon/core/post-text` to. Run once per
+// Mastodon release; the tests need no Ruby. It runs
+// scripts/post-text-reference.rb, which says what it needs:
 //
 //   MASTODON_SRC=../mastodon node scripts/generate-post-text-fixture.mjs
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const path = (relative) => fileURLToPath(new URL(relative, import.meta.url));
@@ -43,6 +45,10 @@ const pinned = [
   "https://example.com/Primer_(film)",
   "https://ja.wikipedia.org/wiki/東京_(曖昧さ回避)",
   "xmpp:alice@example.com magnet:?xt=urn:btih:abc",
+  "https://👍.com/",
+  "https://☃.com/",
+  "https://aמ.com/",
+  "https://example.ﬁ/",
   // And its entity table's URLs.
   "https://例え.jp/パス。 ",
   "https://example.com/パス!",
@@ -245,6 +251,186 @@ const tokens = [
   "@example.com",
 ];
 
+// Hosts for IDNA2003's ToASCII (SHR-7), which Mastodon asks of a URL's host
+// and not of an `xmpp:` address's or a mention's.
+const idnCases = [
+  // A character Unicode 3.2 does not have, such as most emoji.
+  "https://👍.com/",
+  "https://👍.com",
+  "see https://a👍b.example.com/x.",
+  "https://☃.com/",
+  "https://♥.example.com",
+  "https://👍.example.com https://example.org",
+  "https://👍.com/https://example.com/a",
+  "https://example.com/https://👍.com/a",
+  "xmpp:a@👍.com",
+  "@alice@👍.com https://👍.com",
+  "gemini://👍.com/x",
+  "https://ẞ.com",
+  "https://ꙮ.com/",
+  "https://ǅ.com/ https://ȡ.com/",
+  // Right-to-left hosts, and both directions in one label.
+  "https://مثال.com/",
+  "https://مثال.مصر/صفحة",
+  "https://דוגמה.com",
+  "https://abc.דוגמה.קום/x",
+  "https://aמ.com",
+  "https://מa.com",
+  "https://מ1.com",
+  "https://1מ.com",
+  "https://מ1מ.com",
+  "https://מ-מ.com",
+  "https://م٣م.com",
+  "https://م٣.com",
+  "https://例מ.jp",
+  "https://sub.مثال.example.com/a",
+  "https://مثالa.example.com/a",
+  "https://\u05d0\u0301.com",
+  "https://\u0301\u05d0.com",
+  // Other scripts.
+  "https://例え.jp/",
+  "https://한국.kr/x",
+  "https://한.kr/x",
+  "https://ᄀ\u0301ᅡ.kr/x",
+  "https://ไทย.com",
+  "https://ලංකා.com",
+  "https://भारत.भारत",
+  // Zero-width joiners and the soft hyphen, which nameprep takes out.
+  "https://a\u200db.com/",
+  "https://a\u200cb.com/",
+  "https://\u200d.com/",
+  "https://नम\u200dस्ते.com",
+  "https://exam\u00adple.com/",
+  "https://\u00ad.com/",
+  "https://a.\u00ad.com",
+  "https://a\u00ad\u1806\u180b\u2060\ufe0f.com",
+  "https://例\u00ad.jp",
+  // The dots IDNA separates labels at.
+  "https://example。com/",
+  "https://例え。jp/",
+  "https://例え｡jp",
+  "https://例え．jp/x",
+  "https://例え.jp。",
+  "https://sub．例え.jp/x",
+  "https://ｅｘａｍｐｌｅ.com/",
+  "https://example.ｃｏｍ/",
+  // Upper case, folded by nameprep.
+  "https://ÉCOLE.fr/",
+  "https://ПРИМЕР.рф",
+  "https://ПРИМЕР.РФ",
+  "https://ΣΊΣΥΦΟΣ.gr",
+  "HTTPS://ÄÖÜ.DE/X",
+  "https://İstanbul.com",
+  "https://STRASSE.de https://Straße.de https://STRAẞE.de",
+  // ACE labels.
+  "https://xn--例え.jp",
+  "https://XN--例.jp",
+  "https://ｘｎ--例.jp",
+  "https://xn--a.com",
+  "https://xn--.com",
+  "https://xn--80akhbyknj4f.xn--p1ai/x",
+  "https://例.xn--zckzah/x",
+  "https://example.xn--例",
+  // Characters Ruby's case-insensitive matching reads as two letters.
+  "https://example.ﬁ",
+  "https://example.ﬁ/x",
+  "https://example.ﬁx",
+  "https://example.ﬁﬁ",
+  "https://exampleﬁ.ﬁ/",
+  "https://ﬁ.ﬁ",
+  "https://example.swiß/x",
+  "https://example.SWIẞ",
+  "https://example.swiẞ/https://example.com",
+  "https://example.oﬃce",
+  "https://example.oﬀice",
+  "https://example.ofﬁce",
+  "https://example.ﬀ",
+  "https://example.ſwiss",
+  "https://example.buſineſs",
+  "https://example.ſt https://example.ﬅ https://example.ﬆ",
+  "xmpp:a@example.ﬁ",
+  "@alice@example.ﬁ",
+  "ßb://example.com/x",
+  "ẞb://example.com",
+  "sſb://example.com",
+  "ipfſ://example.com",
+  "HTTPſ://example.com",
+  "https://t.co/aßb",
+];
+
+// Labels near 63 octets, as written and in punycode.
+for (const unit of ["a", "é", "例", "ß", "aé", "\u00ad", "ｘ"]) {
+  for (let length = 1; length <= 66; length += unit === "a" || unit === "\u00ad" ? 31 : 1) {
+    idnCases.push(`https://${unit.repeat(length)}.com/`);
+  }
+}
+idnCases.push(
+  `https://${"a".repeat(63)}.com`,
+  `https://${"a".repeat(64)}.com`,
+  `https://${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(63)}.com/x`,
+  `https://${"\u00ad".repeat(300)}é.com/`,
+  `https://é${"\u200d".repeat(300)}.com/`,
+);
+
+// twitter-text's 4096 characters, counted in code points, with what
+// punycode adds to the host (`例え` is 9 longer as `xn--r8jz45g`).
+for (const [start, unit, most] of [
+  ["https://例え.jp/", "a", 4087],
+  ["https://例え.jp/", "👍", 4087],
+  ["https://example.com/", "👍", 4096],
+  ["https://exam\u00adple.com/", "a", 4096],
+  ["https://ｅｘａｍｐｌｅ.com/", "a", 4096],
+]) {
+  for (const length of [most, most + 1]) {
+    idnCases.push(start + unit.repeat(length - Array.from(start).length));
+  }
+}
+
+// Each top-level domain with letters Ruby also reads from one character
+// (`ﬁ` for `fi`), spelled with it.
+const coreRequire = createRequire(path("../packages/core/package.json"));
+const lettersAsOne = [
+  ["ffi", "ﬃ"],
+  ["ffl", "ﬄ"],
+  ["ff", "ﬀ"],
+  ["fi", "ﬁ"],
+  ["fl", "ﬂ"],
+  ["ss", "ß"],
+  ["ss", "ẞ"],
+  ["st", "ﬅ"],
+  ["st", "ﬆ"],
+];
+for (const list of ["validGTLD", "validCCTLD"]) {
+  const module = coreRequire(`twitter-text/dist/regexp/${list}`);
+  for (const tld of (module.default ?? module).source.match(/[a-z]{2,}/g)) {
+    for (const [letters, character] of lettersAsOne) {
+      for (let at = tld.indexOf(letters); at !== -1; at = tld.indexOf(letters, at + 1)) {
+        const spelled = tld.slice(0, at) + character + tld.slice(at + letters.length);
+        idnCases.push(`https://example.${spelled}/x`);
+      }
+      if (tld.includes(letters)) {
+        idnCases.push(`https://例.${tld.replaceAll(letters, character).replace("ss", "ß")}`);
+      }
+    }
+  }
+}
+
+const idnTokens = [
+  ...Array.from("abZ19-_éÉßẞﬁﬆſİǅ例えم٣ثלד가가👍☃ａＢ𝐀㍿㎏ª²½ℂⅫ"),
+  "\u200d",
+  "\u200c",
+  "\u00ad",
+  "\u0301",
+  "\u05b0",
+  "\u3099",
+  "xn--",
+  "a",
+  "a",
+  "example",
+];
+const idnDots = [".", ".", ".", ".", "。", "．", "｡"];
+const idnTlds = ["com", "com", "jp", "рф", "みんな", "مصر", "קום", "ﬁ", "swiß", "st", "COM", "c"];
+
 // mulberry32, so the corpus is the same on every run.
 let seed = 6;
 const random = (n) => {
@@ -272,9 +458,34 @@ const generated = Array.from({ length: 6000 }, (_, index) =>
     : `${noise(2)}${pick(starts)}${pick(hosts)}${pick(["", "", "/", "/", "?", ":80/"])}${noise(8)}`,
 );
 
-const texts = [...new Set([...pinned, ...cases, ...generated])];
+const idnLabel = () => Array.from({ length: 1 + random(4) }, () => pick(idnTokens)).join("");
+const idnHost = () =>
+  `${Array.from({ length: 1 + random(3) }, () => idnLabel() + pick(idnDots)).join("")}${pick(idnTlds)}`;
+const idnHosts = Array.from({ length: 3000 }, idnHost);
+const idnGenerated = idnHosts.map(
+  (host) => `${noise(1)}${pick(starts)}${host}${pick(["", "", "/", "/x", "?", ":80/"])}${noise(3)}`,
+);
+
+const texts = [...new Set([...pinned, ...cases, ...idnCases, ...generated, ...idnGenerated])];
+// The hosts above, and what a URL's host cannot be: no label, an empty one.
+const domains = [
+  ...new Set([
+    ...idnCases.flatMap((text) => /^https:\/\/([^/ :?]+)/u.exec(text)?.[1] ?? []),
+    ...idnHosts,
+    "",
+    ".",
+    "。",
+    "a.",
+    ".a",
+    "a..b",
+    "a.b.",
+    "a.b..",
+    "é",
+    "é.",
+  ]),
+];
 const ruby = spawnSync("ruby", [path("./post-text-reference.rb")], {
-  input: JSON.stringify(texts),
+  input: JSON.stringify({ texts, domains }),
   encoding: "utf8",
   maxBuffer: 2 ** 28,
   stdio: ["pipe", "pipe", "inherit"],
@@ -284,26 +495,28 @@ if (ruby.status !== 0) {
 }
 const results = JSON.parse(ruby.stdout);
 
-// tstodon differs from Mastodon by design in three ways, and such a text is
-// left out: a host libidn refuses (the reference prints `null`), a mention
-// whose domain carries a port, which tstodon keeps, and a hashtag without a
-// letter before `http://` (`#1http://`), which Mastodon links though no tag
-// can have the name.
+// tstodon differs from Mastodon by design in two ways, and such a text is
+// left out: a mention whose domain carries a port, which tstodon keeps, and
+// a hashtag without a letter before `http://` (`#1http://`), which Mastodon
+// links though no tag can have the name.
 const byDesign = [
   /@[\w.-]+@[\p{L}\p{M}\p{Nd}\p{Pc}.-]+:\d/u,
   /[#＃][\p{M}\p{Nd}\p{Pc}]+https?:\/\//u,
 ];
-const rows = texts.flatMap((text, index) => {
-  const result = results[index];
-  return result === null || byDesign.some((pattern) => pattern.test(text))
-    ? []
-    : [[text, ...result]];
-});
+const rows = texts.flatMap((text, index) =>
+  byDesign.some((pattern) => pattern.test(text)) ? [] : [[text, ...results.texts[index]]],
+);
 
-writeFileSync(
-  path("../packages/core/src/post-text.fixture.json"),
-  `[\n${rows.map((row) => JSON.stringify(row)).join(",\n")}\n]\n`,
+const write = (file, list) =>
+  writeFileSync(
+    path(`../packages/core/src/${file}`),
+    `[\n${list.map((row) => JSON.stringify(row)).join(",\n")}\n]\n`,
+  );
+write("post-text.fixture.json", rows);
+write(
+  "idna.fixture.json",
+  domains.map((domain, index) => [domain, results.domains[index]]),
 );
 console.log(
-  `wrote ${rows.length} texts (${texts.length - rows.length} left out: ${results.filter((result) => result === null).length} for libidn)`,
+  `wrote ${rows.length} texts (${texts.length - rows.length} left out) and ${domains.length} hosts (${results.domains.filter((ascii) => ascii === null).length} refused)`,
 );

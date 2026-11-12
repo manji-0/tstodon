@@ -1,3 +1,4 @@
+import { toAscii } from "./idna";
 import { InstanceLimits } from "./instance-limits";
 import { POST_TEXT_PATTERNS } from "./post-text-url-pattern";
 
@@ -240,6 +241,34 @@ const urlAttempts = (text: string): Uint8Array => {
   return attempts;
 };
 
+const codePointLength = (text: string): number => {
+  let length = text.length;
+  for (let index = 1; index < text.length; index += 1) {
+    if (isLowSurrogate(text, index)) {
+      length -= 1;
+    }
+  }
+  return length;
+};
+
+/**
+ * twitter-text's `is_valid_domain`: the host converts to ASCII (IDNA2003, as
+ * libidn's `IDN::Idna.toASCII`), and the URL is at most `MAX_URL_LENGTH`
+ * characters with what the conversion adds to the host. So
+ * `https://👍.com`, whose host Unicode 3.2 does not have, is no URL.
+ */
+const isValidDomain = (url: string, domain: string): boolean => {
+  const length = codePointLength(url);
+  if (length > MAX_URL_LENGTH) {
+    return false;
+  }
+  const ascii = toAscii(domain);
+  return (
+    ascii !== undefined &&
+    length + Math.max(0, ascii.length - codePointLength(domain)) <= MAX_URL_LENGTH
+  );
+};
+
 /**
  * The URLs Mastodon counts as `charactersReservedPerUrl` characters
  * (`Extractor.extract_urls_with_indices` without the URLs that have no
@@ -270,7 +299,7 @@ const urlEntities = (text: string): EntityOf<"Url">[] => {
     const url = tco?.[0] ?? matched;
     if (
       (tco?.[1] ?? "").length <= MAX_TCO_SLUG_LENGTH &&
-      (url.length <= MAX_URL_LENGTH || Array.from(url).length <= MAX_URL_LENGTH)
+      isValidDomain(url, match.groups["domain"] ?? "")
     ) {
       urls.push({ kind: "Url", start, end: start + url.length, url });
     }

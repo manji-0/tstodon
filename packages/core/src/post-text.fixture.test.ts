@@ -5,8 +5,8 @@ import { mastodonPostTexts } from "./post-text.fixture";
 describe("post text against Mastodon's server", () => {
   const rows = mastodonPostTexts();
 
-  it("links what Mastodon links and counts what it counts, on its corpus of over 5,000 texts", () => {
-    expect(rows.length).toBeGreaterThan(5000);
+  it("links what Mastodon links and counts what it counts, on its corpus of over 9,000 texts", () => {
+    expect(rows.length).toBeGreaterThan(9000);
     const mismatches = rows.flatMap(([text, entities, countable, length]) => {
       const found = {
         entities: extractEntities(text).map((entity) => [
