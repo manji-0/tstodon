@@ -258,3 +258,95 @@ describe("a remote note whose stored row has a shape that does not parse", () =>
     expect(await status(target.id)).toMatchObject({ content: "<p>sent again</p>" });
   });
 });
+
+describe("the author's delivery of a note whose stored row does not read, replacing the row", () => {
+  const update = (
+    author: Remote,
+    object: Readonly<{ id: string; updated: string } & Record<string, unknown>>,
+  ) => author.send({ id: `${object.id}/update/${object.updated}`, type: "Update", object });
+
+  const storedRow = async (id: string) =>
+    (
+      await rows(
+        z.object({ content_html: z.string(), visibility: z.string() }),
+        "SELECT content_html, visibility FROM remote_statuses WHERE id = ?",
+        id,
+      )
+    )[0];
+
+  it("keeps the row when the document is older than the edit it still dates", async () => {
+    const author = await remoteActor("unreadable-replayed");
+    const original = note(author, "unreadable-replayed", { content: "<p>original</p>" });
+    const edit = (content: string, updated: string) => ({ ...original, content, updated });
+    expect(await create(author, original)).toBe(202);
+    expect(await update(author, edit("<p>second edit</p>", "2026-10-22T00:00:00.000Z"))).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare(`UPDATE remote_statuses SET ${FAULTS.value} WHERE id = ?`).bind(id).run();
+    const kept = { content_html: "<p>second edit</p>", visibility: "unreadable" };
+
+    expect(await update(author, edit("<p>first edit</p>", "2026-10-21T00:00:00.000Z"))).toBe(202);
+    expect(await storedRow(id)).toEqual(kept);
+    expect(
+      await author.send({ id: `${original.id}/create-again`, type: "Create", object: original }),
+    ).toBe(202);
+    expect(await storedRow(id)).toEqual(kept);
+
+    expect(await update(author, edit("<p>third edit</p>", "2026-10-23T00:00:00.000Z"))).toBe(202);
+    expect(await status(id)).toMatchObject({
+      content: "<p>third edit</p>",
+      edited_at: "2026-10-23T00:00:00.000Z",
+    });
+  });
+
+  it("replaces the row with a document that changes nothing, although it is no newer", async () => {
+    const author = await remoteActor("unreadable-refreshed");
+    const original = note(author, "unreadable-refreshed", { content: "<p>original</p>" });
+    const edited = { ...original, content: "<p>edited</p>", updated: "2026-10-22T00:00:00.000Z" };
+    expect(await create(author, original)).toBe(202);
+    expect(await update(author, edited)).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare(`UPDATE remote_statuses SET ${FAULTS.value} WHERE id = ?`).bind(id).run();
+
+    expect(
+      await author.send({ id: `${edited.id}/update-again`, type: "Update", object: edited }),
+    ).toBe(202);
+
+    expect(await status(id)).toMatchObject({
+      content: "<p>edited</p>",
+      visibility: "public",
+      edited_at: "2026-10-22T00:00:00.000Z",
+    });
+  });
+
+  it("keeps the visibility and the publication date an Update finds readable in the row", async () => {
+    const author = await remoteActor("unreadable-kept-columns");
+    const original = note(author, "unreadable-kept-columns", {
+      to: [`${author.actorUri}/followers`],
+      cc: [PUBLIC],
+    });
+    expect(await create(author, original)).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare("UPDATE remote_statuses SET edited_at = 'unreadable' WHERE id = ?")
+      .bind(id)
+      .run();
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+
+    expect(
+      await update(author, {
+        ...original,
+        content: "<p>edited</p>",
+        to: [PUBLIC],
+        cc: [],
+        published: "2026-10-25T00:00:00.000Z",
+        updated: "2026-10-26T00:00:00.000Z",
+      }),
+    ).toBe(202);
+
+    expect(await status(id)).toMatchObject({
+      content: "<p>edited</p>",
+      visibility: "unlisted",
+      created_at: "2026-10-20T00:00:00.000Z",
+      edited_at: "2026-10-26T00:00:00.000Z",
+    });
+  });
+});

@@ -383,37 +383,135 @@ const remoteStatusTagStatements = (
   ...recordTagNames(db, searchableTagNames(visibility, tags)),
 ];
 
+/** The row `status` is stored as, without a card: what {@link remoteStatusFromRow} reads back. */
+const remoteStatusRowOf = (status: RemoteStatus): RemoteStatusRow => ({
+  id: status.id,
+  actor_uri: status.actorUri,
+  object_uri: status.objectUri,
+  url: status.url ?? null,
+  content_html: status.contentHtml,
+  spoiler_text: status.spoilerText,
+  visibility: visibilitySql(status.visibility),
+  sensitive: status.sensitive ? 1 : 0,
+  language: status.language.kind === "Present" ? status.language.value : null,
+  published_at: status.publishedAt,
+  edited_at: status.editedAt.kind === "Edited" ? status.editedAt.at : null,
+  media_json: JSON.stringify(status.media),
+  card_json: null,
+  poll_json: status.poll.kind === "NoPoll" ? null : JSON.stringify(status.poll),
+  emojis_json: JSON.stringify(status.emojis),
+  quote_policy_json:
+    status.quotePolicy.automatic.length === 0 && status.quotePolicy.manual.length === 0
+      ? null
+      : JSON.stringify(status.quotePolicy),
+});
+
 /** The statement that inserts a remote status row, or updates the row its object URI already holds. */
 const remoteStatusRowStatement = (
   db: D1Database,
-  row: RemoteStatus,
+  status: RemoteStatus,
   inReplyToUri: string | undefined,
-): D1PreparedStatement =>
-  d1PrepareTyped(
+): D1PreparedStatement => {
+  const row = remoteStatusRowOf(status);
+  return d1PrepareTyped(
     db,
     upsertRemoteStatusSql(
       row.id,
-      row.actorUri,
-      row.objectUri,
-      row.url ?? null,
-      row.contentHtml,
-      row.spoilerText,
-      visibilitySql(row.visibility),
-      row.sensitive ? 1 : 0,
-      row.language.kind === "Present" ? row.language.value : null,
-      row.publishedAt,
-      JSON.stringify(row.media),
+      row.actor_uri,
+      row.object_uri,
+      row.url,
+      row.content_html,
+      row.spoiler_text,
+      row.visibility,
+      row.sensitive,
+      row.language,
+      row.published_at,
+      row.media_json,
       nowIso(),
       nowIso(),
       inReplyToUri ?? null,
-      row.editedAt.kind === "Edited" ? row.editedAt.at : null,
-      row.poll.kind === "NoPoll" ? null : JSON.stringify(row.poll),
-      JSON.stringify(row.emojis),
-      row.quotePolicy.automatic.length === 0 && row.quotePolicy.manual.length === 0
-        ? null
-        : JSON.stringify(row.quotePolicy),
+      row.edited_at,
+      row.poll_json,
+      row.emojis_json,
+      row.quote_policy_json,
     ),
   );
+};
+
+const reads =
+  (parse: (value: string) => Result<unknown, unknown>) =>
+  (value: string): boolean =>
+    parse(value).isOk();
+
+/**
+ * The shape of a row that does not read as a status, with each column a
+ * rewrite replaces falling back to `fill`'s when it does not read on its
+ * own. A rewrite keeps the id, the author and the object URI, so they are
+ * read as they are.
+ */
+const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> => {
+  const column = RemoteStatusRowSchema.shape;
+  return z.object({
+    id: column.id,
+    actor_uri: column.actor_uri,
+    object_uri: column.object_uri,
+    url: z
+      .union([z.url(), z.literal("")])
+      .nullable()
+      .catch(fill.url),
+    content_html: column.content_html.catch(fill.content_html),
+    spoiler_text: column.spoiler_text.catch(fill.spoiler_text),
+    visibility: z.string().refine(reads(Visibility.fromMastodon)).catch(fill.visibility),
+    sensitive: column.sensitive.catch(fill.sensitive),
+    language: column.language.catch(fill.language),
+    published_at: z.string().refine(reads(IsoInstant.parse)).catch(fill.published_at),
+    // An unreadable date of the last edit is no edit: nothing orders against it.
+    edited_at: z
+      .union([z.literal(""), z.string().refine(reads(IsoInstant.parse))])
+      .nullable()
+      .catch(null),
+    media_json: column.media_json.catch(fill.media_json),
+    card_json: column.card_json.catch(null),
+    poll_json: column.poll_json.catch(fill.poll_json),
+    emojis_json: column.emojis_json.catch(fill.emojis_json),
+    quote_policy_json: column.quote_policy_json.catch(fill.quote_policy_json),
+  });
+};
+
+/**
+ * The status the row of `id` holds once the columns that do not read are
+ * taken from `fill`, the note as its author delivers it: what a rewrite of
+ * the row starts from, where every column that reads on its own is still the
+ * stored one. `undefined` when the row is gone, or does not read even so:
+ * the fault is then in a column a rewrite keeps.
+ */
+export const salvageRemoteStatus = async (
+  db: D1Database,
+  id: string,
+  fill: RemoteStatus,
+): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
+  const queried = await findRow(db, findRemoteStatusByIdSql(id));
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  const row = schemaResult(salvagedRowSchema(remoteStatusRowOf(fill)))(queried.value);
+  return ok(row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined);
+};
+
+/**
+ * The statement that settles the local votes on a remote poll when `after`
+ * carries a tally `before` did not: a changed tally is the author's count of
+ * every vote it has seen, ours included. It runs with the write of the row,
+ * as a retry reads the new tally as stored.
+ */
+const pollSettlement = (
+  db: D1Database,
+  before: RemoteStatus,
+  after: RemoteStatus,
+): D1PreparedStatement[] =>
+  after.poll.kind !== "NoPoll" && JSON.stringify(before.poll) !== JSON.stringify(after.poll)
+    ? [settleRemotePollVotesStatement(db, before.id)]
+    : [];
 
 /** Retries for a new remote status whose generated id is already taken. */
 const ID_COLLISION_RETRIES = 4;
@@ -463,14 +561,7 @@ export const upsertRemoteStatus = async (
   let persisted = existing.value
     ? { ...status, id: existing.value.id, kind: "RemoteNote" as const }
     : status;
-  // A changed tally is the author's count of every vote it has seen, ours
-  // included. Settled with the row: a retry reads the new tally as stored.
-  const settled =
-    existing.value &&
-    persisted.poll.kind !== "NoPoll" &&
-    JSON.stringify(existing.value.poll) !== JSON.stringify(persisted.poll)
-      ? [settleRemotePollVotesStatement(db, existing.value.id)]
-      : [];
+  const settled = existing.value ? pollSettlement(db, existing.value, persisted) : [];
   // A row replaced since it was read (another `Update` was applied meanwhile)
   // fails the batch: this write was computed from a version that is gone, and
   // would undo the other. The sender's redelivery reads the row again.
@@ -522,12 +613,14 @@ export const upsertRemoteStatus = async (
 };
 
 /**
- * Replace the row of `status.id`, which did not read as a status
- * (`StoredRowInvalid`), with `status` and its tags, in one batch. The upsert
- * keeps a stored `edited_at` when the status has none, so it is cleared first.
+ * Replace the row of `status.id`, which did not read as a status, with
+ * `status` and its tags, in one batch. `before` is what the row still held
+ * ({@link salvageRemoteStatus}). The upsert keeps a stored `edited_at` when
+ * the status has none, so it is cleared first.
  */
 export const overwriteRemoteStatus = async (
   db: D1Database,
+  before: RemoteStatus,
   status: RemoteStatus,
   tags: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> => {
@@ -537,6 +630,7 @@ export const overwriteRemoteStatus = async (
       .bind(status.id, status.actorUri),
     remoteStatusRowStatement(db, status, undefined),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
+    ...pollSettlement(db, before, status),
   ]);
   return written.map(() => undefined);
 };

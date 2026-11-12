@@ -39,8 +39,6 @@ import { findThreadParent } from "./thread-context";
 import {
   findDeliveredRemoteStatus,
   type KnownRemoteStatus,
-  overwriteRemoteStatus,
-  type InvalidRemoteStatusRow,
   readableRemoteStatus,
   upsertRemoteStatus,
 } from "./remote-status-store";
@@ -530,35 +528,6 @@ export const applyMediaPolicy = async (
 ): Promise<RemoteStatusValue> => {
   const rejected = await mediaRejectedDomains(env.DB);
   return RemoteActor.onAnyHost(actor, rejected) ? { ...status, media: [] } : status;
-};
-
-/**
- * Settle a `Create` or `Update` of a note whose stored row does not read as a
- * status. Delivering it again would find the same row, so the row is never a
- * reason to answer with an error. When `signer` wrote the note and `raw` is
- * its document, the row is replaced with the note as delivered, under the id
- * it holds: no history version, notification or stream event, as the row was
- * shown to nobody. Any other delivery is dropped, as Mastodon drops a
- * `RecordInvalid`. Only a failed write is an `Err`.
- */
-export const settleInvalidRemoteStatus = async (
-  env: Env,
-  signer: RemoteActor,
-  invalid: InvalidRemoteStatusRow,
-  raw: unknown,
-): Promise<Result<void, RepositoryError>> => {
-  const id = StatusId.parse(invalid.id);
-  const parsed = noteFromUnknown(raw, signer);
-  if (invalid.actorUri !== signer.actorUri || id.isErr() || parsed.isErr()) {
-    console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowKept", statusId: invalid.id }));
-    return ok(undefined);
-  }
-  const status = await applyMediaPolicy(env, signer, { ...parsed.value, id: id.value });
-  const replaced = await overwriteRemoteStatus(env.DB, status, noteHashtags(raw));
-  if (replaced.isOk()) {
-    console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowReplaced", statusId: invalid.id }));
-  }
-  return replaced;
 };
 
 type PersistOptions = FederatedFetchOptions &

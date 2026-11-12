@@ -1,6 +1,7 @@
 import { err, ok } from "neverthrow";
 import { handleRemotePollVote } from "../remote-poll-vote";
-import { persistRemoteObject, settleInvalidRemoteStatus } from "../remote-status-persist";
+import { settleInvalidRemoteStatus } from "../remote-status-heal";
+import { persistRemoteObject } from "../remote-status-persist";
 import { findDeliveredRemoteStatus } from "../remote-status-store";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
@@ -25,7 +26,10 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   const known = await findDeliveredRemoteStatus(env.DB, objectUri);
   if (known.isErr()) {
     return known.error.kind === "StoredRowInvalid"
-      ? settleInvalidRemoteStatus(env, signer, known.error, received.object)
+      ? settleInvalidRemoteStatus(env, signer, known.error, {
+          activity: "Create",
+          raw: received.object,
+        })
       : err(known.error);
   }
   const created = await persistRemoteObject(

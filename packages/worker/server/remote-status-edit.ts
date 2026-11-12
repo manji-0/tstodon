@@ -3,6 +3,7 @@ import {
   IsoInstant,
   RemoteAttachmentSchema,
   RemoteEmojiSchema,
+  RemotePoll,
   RemotePollSchema,
   type RemoteStatusValue,
 } from "@tstodon/domain";
@@ -12,6 +13,21 @@ import type { RepositoryError } from "./d1";
 import { parseJsonColumn } from "./json-column";
 import { mastodonRemoteStatus } from "./remote-status-document";
 import { listRemoteStatusEdits, remoteStatusEditStatement } from "./remote-status-edit-store";
+
+/**
+ * Whether the author changed what the post says. Vote counts, which a
+ * `Question` refreshes as people vote, are not an edit, as on Mastodon.
+ */
+export const contentChanged = (before: RemoteStatusValue, after: RemoteStatusValue): boolean =>
+  before.contentHtml !== after.contentHtml ||
+  before.spoilerText !== after.spoilerText ||
+  before.sensitive !== after.sensitive ||
+  JSON.stringify(before.media) !== JSON.stringify(after.media) ||
+  !RemotePoll.sameQuestion(before.poll, after.poll);
+
+/** Whether the instant `candidate` is later than `than`: an edit dated so replaces the one stored. */
+export const isNewer = (candidate: string, than: string): boolean =>
+  Date.parse(candidate) > Date.parse(than);
 
 /** One version of a remote note: what its author had published as of `at`. */
 const RemoteRevisionSchema = z.object({
