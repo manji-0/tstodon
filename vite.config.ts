@@ -67,6 +67,9 @@ export default defineConfig({
                 // Tests share accounts and send many requests; the rate-limit
                 // tests turn the limits on for the app they build.
                 RATE_LIMITS_ENABLED: "false",
+                // `QUERY_COUNT=1` runs the D1 query-count report
+                // (`query-count.bench.test.ts`); it is skipped otherwise.
+                QUERY_COUNT: process.env.QUERY_COUNT ?? "",
               },
             },
           }),
