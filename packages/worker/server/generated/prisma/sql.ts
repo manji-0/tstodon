@@ -4,7 +4,7 @@
 // @ts-nocheck
 export * from "./sql/acceptOutboundFollow";
 
-export * from "./sql/accountCounts";
+export * from "./sql/accountStatsByIdsJson";
 
 export * from "./sql/advanceBackfillCursor";
 
@@ -60,25 +60,15 @@ export * from "./sql/countActiveAccountsSince";
 
 export * from "./sql/countFeaturedTags";
 
-export * from "./sql/countFollowersByAccountIdsJson";
-
-export * from "./sql/countFollowingByAccountIdsJson";
-
 export * from "./sql/countNotificationRequests";
 
 export * from "./sql/countPinnedStatuses";
 
 export * from "./sql/countPollVotes";
 
-export * from "./sql/countRemoteAnnounces";
-
-export * from "./sql/countRemoteFavourites";
-
 export * from "./sql/countSearchAccounts";
 
 export * from "./sql/countStatuses";
-
-export * from "./sql/countStatusesByAccountIdsJson";
 
 export * from "./sql/countUnreadNotifications";
 
@@ -869,6 +859,8 @@ export * from "./sql/setRemoteStatusCard";
 export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
+
+export * from "./sql/statusStatsByIdsJson";
 
 export * from "./sql/sumAccountMediaBytes";
 

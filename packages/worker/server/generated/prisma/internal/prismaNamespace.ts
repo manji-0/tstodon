@@ -476,6 +476,8 @@ export const ModelName = {
   outbound_follows: "outbound_follows",
   remote_boosts: "remote_boosts",
   statuses_cleanup_policies: "statuses_cleanup_policies",
+  account_stats: "account_stats",
+  status_stats: "status_stats",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -580,7 +582,9 @@ export type TypeMap<
       | "remote_poll_own_votes"
       | "outbound_follows"
       | "remote_boosts"
-      | "statuses_cleanup_policies";
+      | "statuses_cleanup_policies"
+      | "account_stats"
+      | "status_stats";
     txIsolationLevel: TransactionIsolationLevel;
   };
   model: {
@@ -7010,6 +7014,158 @@ export type TypeMap<
         };
       };
     };
+    account_stats: {
+      payload: Prisma.$account_statsPayload<ExtArgs>;
+      fields: Prisma.account_statsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.account_statsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.account_statsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>;
+        };
+        findFirst: {
+          args: Prisma.account_statsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.account_statsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>;
+        };
+        findMany: {
+          args: Prisma.account_statsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>[];
+        };
+        create: {
+          args: Prisma.account_statsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>;
+        };
+        createMany: {
+          args: Prisma.account_statsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.account_statsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>[];
+        };
+        delete: {
+          args: Prisma.account_statsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>;
+        };
+        update: {
+          args: Prisma.account_statsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.account_statsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.account_statsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.account_statsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>[];
+        };
+        upsert: {
+          args: Prisma.account_statsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$account_statsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Account_statsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccount_stats>;
+        };
+        groupBy: {
+          args: Prisma.account_statsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Account_statsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.account_statsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Account_statsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    status_stats: {
+      payload: Prisma.$status_statsPayload<ExtArgs>;
+      fields: Prisma.status_statsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.status_statsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.status_statsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>;
+        };
+        findFirst: {
+          args: Prisma.status_statsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.status_statsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>;
+        };
+        findMany: {
+          args: Prisma.status_statsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>[];
+        };
+        create: {
+          args: Prisma.status_statsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>;
+        };
+        createMany: {
+          args: Prisma.status_statsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.status_statsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>[];
+        };
+        delete: {
+          args: Prisma.status_statsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>;
+        };
+        update: {
+          args: Prisma.status_statsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.status_statsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.status_statsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.status_statsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>[];
+        };
+        upsert: {
+          args: Prisma.status_statsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$status_statsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Status_statsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStatus_stats>;
+        };
+        groupBy: {
+          args: Prisma.status_statsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Status_statsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.status_statsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Status_statsCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
   };
 } & {
   other: {
@@ -8071,6 +8227,27 @@ export const Statuses_cleanup_policiesScalarFieldEnum = {
 export type Statuses_cleanup_policiesScalarFieldEnum =
   (typeof Statuses_cleanup_policiesScalarFieldEnum)[keyof typeof Statuses_cleanup_policiesScalarFieldEnum];
 
+export const Account_statsScalarFieldEnum = {
+  account_id: "account_id",
+  statuses_count: "statuses_count",
+  followers_count: "followers_count",
+  following_count: "following_count",
+} as const;
+
+export type Account_statsScalarFieldEnum =
+  (typeof Account_statsScalarFieldEnum)[keyof typeof Account_statsScalarFieldEnum];
+
+export const Status_statsScalarFieldEnum = {
+  status_id: "status_id",
+  favourites_count: "favourites_count",
+  reblogs_count: "reblogs_count",
+  quotes_count: "quotes_count",
+  replies_count: "replies_count",
+} as const;
+
+export type Status_statsScalarFieldEnum =
+  (typeof Status_statsScalarFieldEnum)[keyof typeof Status_statsScalarFieldEnum];
+
 export const SortOrder = {
   asc: "asc",
   desc: "desc",
@@ -8347,6 +8524,8 @@ export type GlobalOmitConfig = {
   outbound_follows?: Prisma.outbound_followsOmit;
   remote_boosts?: Prisma.remote_boostsOmit;
   statuses_cleanup_policies?: Prisma.statuses_cleanup_policiesOmit;
+  account_stats?: Prisma.account_statsOmit;
+  status_stats?: Prisma.status_statsOmit;
 };
 
 /* Types for Logging */

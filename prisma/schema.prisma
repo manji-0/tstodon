@@ -1116,3 +1116,20 @@ model statuses_cleanup_policies {
 
   @@index([account_id], map: "idx_statuses_cleanup_policies_enabled")
 }
+
+/// Kept by triggers (migration 0140_counters.sql); WITHOUT ROWID.
+model account_stats {
+  account_id      String @id
+  statuses_count  Int    @default(0)
+  followers_count Int    @default(0)
+  following_count Int    @default(0)
+}
+
+/// Kept by triggers (migration 0140_counters.sql); WITHOUT ROWID. A local or remote status id.
+model status_stats {
+  status_id        String @id
+  favourites_count Int    @default(0)
+  reblogs_count    Int    @default(0)
+  quotes_count     Int    @default(0)
+  replies_count    Int    @default(0)
+}

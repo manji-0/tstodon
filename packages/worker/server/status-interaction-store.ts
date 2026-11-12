@@ -13,12 +13,13 @@ import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { statusTargetColumns } from "./status-store";
-import { queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
   deleteBookmark as deleteBookmarkSql,
   deleteFavourite as deleteFavouriteSql,
   insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
+  statusStatsByIdsJson as statusStatsByIdsJsonSql,
 } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
@@ -141,6 +142,8 @@ export const listBookmarkedTargets = (
 export type StatusInteractionCounts = Readonly<{
   favourites: number;
   reblogs: number;
+  quotes: number;
+  replies: number;
   favourited: boolean;
   reblogged: boolean;
   bookmarked: boolean;
@@ -149,23 +152,26 @@ export type StatusInteractionCounts = Readonly<{
 export const NO_STATUS_INTERACTIONS: StatusInteractionCounts = {
   favourites: 0,
   reblogs: 0,
+  quotes: 0,
+  replies: 0,
   favourited: false,
   reblogged: false,
   bookmarked: false,
 };
 
-export const statusInteractionCounts = async (
-  db: D1Database,
-  statusId: string,
-  viewerId: string | undefined,
-): Promise<Result<StatusInteractionCounts, RepositoryError>> => {
-  const bulk = await statusInteractionCountsByIds(db, [statusId], viewerId);
-  if (bulk.isErr()) {
-    return err(bulk.error);
-  }
-  return ok(bulk.value.get(statusId) ?? NO_STATUS_INTERACTIONS);
-};
+const StatusStatsRow = z.object({
+  status_id: z.string(),
+  favourites_count: z.number(),
+  reblogs_count: z.number(),
+  quotes_count: z.number(),
+  replies_count: z.number(),
+});
 
+/**
+ * The counters triggers keep in `status_stats` (migration 0140) for local and
+ * remote statuses alike, and with a viewer whether they favourited, boosted
+ * or bookmarked each.
+ */
 export const statusInteractionCountsByIds = async (
   db: D1Database,
   statusIds: ReadonlyArray<string>,
@@ -178,38 +184,7 @@ export const statusInteractionCountsByIds = async (
 
   const idsJson = jsonStringArray(unique);
   const inList = sqlInJsonEach();
-  // Ids are shared by local and remote statuses, so each list matches either column.
-  const targetOf = `COALESCE(local_status_id, remote_status_id)`;
-  const targetIn = `(local_status_id ${inList} OR remote_status_id ${inList})`;
-  const reblogOf = `COALESCE(reblog_of_id, reblog_of_remote_id)`;
-  const reblogIn = `(reblog_of_id ${inList} OR reblog_of_remote_id ${inList})`;
-  const statements: D1PreparedStatement[] = [
-    db
-      .prepare(
-        `SELECT ${targetOf} AS status_id, COUNT(*) AS count FROM favourites
-         WHERE ${targetIn} GROUP BY ${targetOf}`,
-      )
-      .bind(idsJson, idsJson),
-    db
-      .prepare(
-        `SELECT ${reblogOf} AS status_id, COUNT(*) AS count FROM statuses
-         WHERE kind = 'LocalReblog' AND ${reblogIn}
-         GROUP BY ${reblogOf}`,
-      )
-      .bind(idsJson, idsJson),
-    db
-      .prepare(
-        `SELECT status_id, COUNT(*) AS count FROM remote_favourites
-         WHERE status_id ${inList} GROUP BY status_id`,
-      )
-      .bind(idsJson),
-    db
-      .prepare(
-        `SELECT status_id, COUNT(*) AS count FROM remote_announces
-         WHERE status_id ${inList} GROUP BY status_id`,
-      )
-      .bind(idsJson),
-  ];
+  const statements: D1PreparedStatement[] = [d1PrepareTyped(db, statusStatsByIdsJsonSql(idsJson))];
   if (viewerId) {
     // One equality branch per target column, so each reads the viewer's
     // (account, status) index entries instead of every row the viewer has.
@@ -241,36 +216,29 @@ export const statusInteractionCountsByIds = async (
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const countRows = (index: number) =>
-    parseRows(
-      z.object({ status_id: z.string(), count: z.number() }),
-      batched.value[index]?.results,
-    );
-  const idRows = (index: number) =>
-    parseRows(z.object({ status_id: z.string() }), batched.value[index]?.results);
-
-  // Local and remote targets are counted by separate statements; their counts add up.
-  const totals = (...indexes: number[]): ReadonlyMap<string, number> =>
-    indexes
-      .flatMap(countRows)
-      .reduce(
-        (sums, row) => sums.set(row.status_id, (sums.get(row.status_id) ?? 0) + row.count),
-        new Map<string, number>(),
-      );
+  const stats = new Map(
+    parseRows(StatusStatsRow, batched.value[0]?.results).map((row) => [row.status_id, row]),
+  );
   const viewerSet = (index: number): ReadonlySet<string> =>
-    new Set(viewerId ? idRows(index).map((row) => row.status_id) : []);
-  const favourites = totals(0, 2);
-  const reblogs = totals(1, 3);
-  const favourited = viewerSet(4);
-  const reblogged = viewerSet(5);
-  const bookmarked = viewerSet(6);
+    new Set(
+      viewerId
+        ? parseRows(z.object({ status_id: z.string() }), batched.value[index]?.results).map(
+            (row) => row.status_id,
+          )
+        : [],
+    );
+  const favourited = viewerSet(1);
+  const reblogged = viewerSet(2);
+  const bookmarked = viewerSet(3);
   return ok(
     new Map(
       unique.map((id): [string, StatusInteractionCounts] => [
         id,
         {
-          favourites: favourites.get(id) ?? 0,
-          reblogs: reblogs.get(id) ?? 0,
+          favourites: stats.get(id)?.favourites_count ?? 0,
+          reblogs: stats.get(id)?.reblogs_count ?? 0,
+          quotes: stats.get(id)?.quotes_count ?? 0,
+          replies: stats.get(id)?.replies_count ?? 0,
           favourited: favourited.has(id),
           reblogged: reblogged.has(id),
           bookmarked: bookmarked.has(id),

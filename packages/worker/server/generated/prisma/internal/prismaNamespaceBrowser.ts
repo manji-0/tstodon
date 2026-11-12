@@ -133,6 +133,8 @@ export const ModelName = {
   outbound_follows: "outbound_follows",
   remote_boosts: "remote_boosts",
   statuses_cleanup_policies: "statuses_cleanup_policies",
+  account_stats: "account_stats",
+  status_stats: "status_stats",
 } as const;
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName];
@@ -1168,6 +1170,27 @@ export const Statuses_cleanup_policiesScalarFieldEnum = {
 
 export type Statuses_cleanup_policiesScalarFieldEnum =
   (typeof Statuses_cleanup_policiesScalarFieldEnum)[keyof typeof Statuses_cleanup_policiesScalarFieldEnum];
+
+export const Account_statsScalarFieldEnum = {
+  account_id: "account_id",
+  statuses_count: "statuses_count",
+  followers_count: "followers_count",
+  following_count: "following_count",
+} as const;
+
+export type Account_statsScalarFieldEnum =
+  (typeof Account_statsScalarFieldEnum)[keyof typeof Account_statsScalarFieldEnum];
+
+export const Status_statsScalarFieldEnum = {
+  status_id: "status_id",
+  favourites_count: "favourites_count",
+  reblogs_count: "reblogs_count",
+  quotes_count: "quotes_count",
+  replies_count: "replies_count",
+} as const;
+
+export type Status_statsScalarFieldEnum =
+  (typeof Status_statsScalarFieldEnum)[keyof typeof Status_statsScalarFieldEnum];
 
 export const SortOrder = {
   asc: "asc",

@@ -85,7 +85,6 @@ Both repositories now include the same scenario and row format. Run either one b
 
 | Area                                                | Cheaper server | Why                                                                                                                                                                                                                        |
 | --------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Interaction counts                                  | cfwdon         | Triggers maintain `status_counts` and `account_stats`. tstodon runs `COUNT(*)` on every render (7 statements for interactions, 3 for account counts), and its `replies_count` is always 0.                                 |
 | Single status, tag, account statuses, conversations | cfwdon         | cfwdon renders through one two-wave preload. tstodon's `renderLocalStatuses` is still 7 to 8 serial rounds: reply and boost passes, then quotes, then two waves, then `presentedAccounts`, then move targets.              |
 | Write paths                                         | cfwdon         | tstodon still screens and inserts a notification inline, and runs about 10 serial checks before the insert in `POST /statuses`. cfwdon builds notifications on read.                                                       |
 | Auth                                                | tstodon        | One statement joins token, account, role and moderation, and the result is memoized per request. cfwdon also needs one statement but resolves the token again in the rate limiter (an isolate cache absorbs most of that). |
@@ -93,8 +92,7 @@ Both repositories now include the same scenario and row format. Run either one b
 
 Next steps, in order of expected payoff:
 
-1. tstodon: add trigger-maintained counter tables, which is the cfwdon design, and fill in `replies_count`.
-2. tstodon: flatten `renderLocalStatuses` into the two-wave shape cfwdon uses.
-3. tstodon: move notification screening and insertion for favourites, boosts and follows after the response, as Mastodon does with its workers. Tests that read notifications right after the request would then need to wait for `waitUntil`.
-4. cfwdon: fill the boost-target embed preloads in `notifications/status_preload.rs` and `streaming_home_batch.rs`, which still look up local targets one by one.
-5. cfwdon: record deferred work's D1 time in its own bucket. It is currently charged to the next request on the isolate, which feeds the load-shed heuristic (see `api-latency.md`, Caveats).
+1. tstodon: flatten `renderLocalStatuses` into the two-wave shape cfwdon uses.
+2. tstodon: move notification screening and insertion for favourites, boosts and follows after the response, as Mastodon does with its workers. Tests that read notifications right after the request would then need to wait for `waitUntil`.
+3. cfwdon: fill the boost-target embed preloads in `notifications/status_preload.rs` and `streaming_home_batch.rs`, which still look up local targets one by one.
+4. cfwdon: record deferred work's D1 time in its own bucket. It is currently charged to the next request on the isolate, which feeds the load-shed heuristic (see `api-latency.md`, Caveats).
