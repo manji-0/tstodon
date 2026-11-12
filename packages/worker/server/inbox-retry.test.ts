@@ -212,6 +212,70 @@ describe("an inbox activity whose write failed", () => {
     ]);
   });
 
+  it("keeps an edit that was stored while an Update with the replaced content was being applied", async () => {
+    const author = await remoteActor("retry-stale-refresh");
+    const original = note(author, "retry-stale-refresh", { content: "<p>original</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edit = note(author, "retry-stale-refresh", {
+      content: "<p>edit</p>",
+      updated: "2026-10-22T00:00:00.000Z",
+    });
+    // The content the note had before the edit, as a refresh sent before it carries.
+    const refresh = { ...original, updated: "2026-10-21T00:00:00.000Z" };
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("update fixture rejected");
+    }
+
+    let interleaved = false;
+    const db = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key !== "batch") {
+          const value: unknown = Reflect.get(target, key, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return async (statements: D1PreparedStatement[]) => {
+          if (!interleaved) {
+            interleaved = true;
+            expect(
+              await author.send({ id: `${edit.id}/update-edit`, type: "Update", object: edit }),
+            ).toBe(202);
+          }
+          return target.batch(statements);
+        };
+      },
+    });
+    const stale = await applyRemoteUpdate(
+      new Proxy(env, { get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)) }),
+      identity.value,
+      signer,
+      refresh,
+      { fetchSigner: unsignedFetch },
+    );
+
+    expect(interleaved).toBe(true);
+    expect(stale.isErr()).toBe(true);
+    expect(
+      await author.send({ id: `${refresh.id}/update-refresh`, type: "Update", object: refresh }),
+    ).toBe(202);
+
+    expect(await status(id)).toMatchObject({
+      content: "<p>edit</p>",
+      edited_at: "2026-10-22T00:00:00.000Z",
+    });
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual(["<p>original</p>", "<p>edit</p>"]);
+  });
+
   it("notifies a newly mentioned account once when an Update that failed after its mention was recorded is redelivered", async () => {
     const headers = await authHeaders("inbox-retry-mention@example.com");
     const account = expectContract(

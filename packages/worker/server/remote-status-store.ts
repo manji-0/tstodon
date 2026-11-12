@@ -47,6 +47,7 @@ import {
   markRemoteStatusesTagsIndexed as markRemoteStatusesTagsIndexedSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
+  refuseReplacedRemoteStatus as refuseReplacedRemoteStatusSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
 import { settleRemotePollVotesStatement } from "./remote-poll-vote-store";
@@ -445,6 +446,20 @@ export const upsertRemoteStatus = async (
     JSON.stringify(existing.value.poll) !== JSON.stringify(persisted.poll)
       ? [settleRemotePollVotesStatement(db, existing.value.id)]
       : [];
+  // A row replaced since it was read (another `Update` was applied meanwhile)
+  // fails the batch: this write was computed from a version that is gone, and
+  // would undo the other. The sender's redelivery reads the row again.
+  const unreplaced = existing.value
+    ? [
+        d1PrepareTyped(
+          db,
+          refuseReplacedRemoteStatusSql(
+            existing.value.id,
+            existing.value.editedAt.kind === "Edited" ? existing.value.editedAt.at : null,
+          ),
+        ),
+      ]
+    : [];
   const written = await runD1(async () => {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -452,6 +467,7 @@ export const upsertRemoteStatus = async (
         // delivery that failed here is processed again as if it never ran.
         // The row comes first (the tag index holds a foreign key to it).
         await db.batch([
+          ...unreplaced,
           ...alongside,
           remoteStatusRowStatement(db, persisted, inReplyToUri),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),

@@ -9,25 +9,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  * @param snapshotJson
  * @param createdAt
- * @param expectedEditedAt
  */
 export const insertRemoteStatusEdit = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_status_edits (id, status_id, snapshot_json, created_at)\nSELECT $1, CASE WHEN NULLIF(edited_at, '') IS $5 THEN id END, $3, $4\nFROM remote_statuses\nWHERE id = $2",
+  "INSERT INTO remote_status_edits (id, status_id, snapshot_json, created_at)\nVALUES ($1, $2, $3, $4)",
 ) as (
   id: string,
   statusId: string,
   snapshotJson: string,
   createdAt: string,
-  expectedEditedAt: string | null,
 ) => $runtime.TypedSql<insertRemoteStatusEdit.Parameters, insertRemoteStatusEdit.Result>;
 
 export namespace insertRemoteStatusEdit {
-  export type Parameters = [
-    id: string,
-    statusId: string,
-    snapshotJson: string,
-    createdAt: string,
-    expectedEditedAt: string | null,
-  ];
+  export type Parameters = [id: string, statusId: string, snapshotJson: string, createdAt: string];
   export type Result = {};
 }

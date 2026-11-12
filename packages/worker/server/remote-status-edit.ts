@@ -42,21 +42,13 @@ export const revisionOf = (status: RemoteStatusValue): RemoteRevision => ({
 /**
  * The statement that keeps the version `status` holds now. It runs in the
  * batch that replaces the row (`upsertRemoteStatus`), so an `Update` whose
- * write fails keeps no version, and its redelivery keeps it once. It fails
- * that batch when the row no longer holds `status`'s version: another
- * `Update` replaced it since `status` was read, so this one was computed from
- * a stale base. Its redelivery reads the row again.
+ * write fails keeps no version, and its redelivery keeps it once.
  */
 export const remoteRevisionStatement = (
   db: D1Database,
   status: RemoteStatusValue,
 ): D1PreparedStatement =>
-  remoteStatusEditStatement(
-    db,
-    status.id,
-    JSON.stringify(revisionOf(status)),
-    status.editedAt.kind === "Edited" ? status.editedAt.at : null,
-  );
+  remoteStatusEditStatement(db, status.id, JSON.stringify(revisionOf(status)));
 
 /** The `StatusEdit` entity of one version of `status`. */
 const statusEditJson = (

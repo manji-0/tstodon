@@ -11,22 +11,13 @@ import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 const SnapshotJsonRow = z.object({ snapshot_json: z.string() });
 
-/**
- * The statement that keeps the version of a remote note an `Update` is about
- * to replace. `editedAt` is that version's (`null`: never edited). When the
- * row holds another version by then, the statement fails, and so does the
- * batch it runs in.
- */
+/** The statement that keeps the version of a remote note an `Update` is about to replace. */
 export const remoteStatusEditStatement = (
   db: D1Database,
   statusId: string,
   snapshotJson: string,
-  editedAt: string | null,
 ): D1PreparedStatement =>
-  d1PrepareTyped(
-    db,
-    insertRemoteStatusEditSql(newEntityId(), statusId, snapshotJson, nowIso(), editedAt),
-  );
+  d1PrepareTyped(db, insertRemoteStatusEditSql(newEntityId(), statusId, snapshotJson, nowIso()));
 
 /** Replaced versions as stored JSON text, newest first. */
 export const listRemoteStatusEdits = async (
