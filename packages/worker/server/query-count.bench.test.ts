@@ -368,6 +368,22 @@ const idOf = (value: unknown): string => {
   return id;
 };
 
+/**
+ * The response body with entity ids numbered by first appearance and
+ * timestamps blanked, so two runs (or two branches) print the same line
+ * exactly when they return the same body.
+ */
+const normalizedBody = (value: unknown): string => {
+  const ids = new Map<string, string>();
+  return JSON.stringify(value)
+    .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z/g, "<time>")
+    .replace(/(?<!\d)\d{18}(?!\d)/g, (id) => {
+      const known = ids.get(id) ?? `<id${ids.size + 1}>`;
+      ids.set(id, known);
+      return known;
+    });
+};
+
 const measure = async (
   label: string,
   token: string,
@@ -386,6 +402,7 @@ const measure = async (
   console.log(
     `QUERY_COUNT_ROW|${label}|${result.status}|${size}|${before.statements}|${before.rounds}|${before.batches}|${deferred}|${tally.rowsRead}|${tally.rowsWritten}|${tally.doRequests}|${tally.queueMessages}|${tally.kvReads}|${tally.kvWrites}|${tally.workflowCreates}`,
   );
+  console.log(`QUERY_SHAPE|${label}|${normalizedBody(result.json)}`);
   const detail = Reflect.get(env, "QUERY_COUNT_SQL");
   if (typeof detail === "string" && detail !== "" && label.includes(detail)) {
     console.log(before.sql.map((line) => `QUERY_SQL ${line}`).join("\n"));
