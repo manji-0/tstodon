@@ -1,9 +1,4 @@
-import {
-  createExecutionContext,
-  env,
-  runDurableObjectAlarm,
-  runInDurableObject,
-} from "cloudflare:test";
+import { createExecutionContext, env, runInDurableObject } from "cloudflare:test";
 import { Hono } from "hono";
 import { err, ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
@@ -21,6 +16,7 @@ import { remoteActor } from "../test/remote-actor-fixture";
 import { generateAccountKeys } from "./keys";
 import { signInboxRequest } from "./http-signature";
 import { createRateLimiter, rateLimitMiddleware, rateLimitPolicy } from "./rate-limit";
+import type { RateLimitCounter } from "./rate-limit-counter";
 import { postInbox } from "./routes/activitypub";
 
 /**
@@ -307,9 +303,11 @@ describe("RateLimitCounter (Durable Object)", () => {
   it("deletes its storage once the last window has ended", async () => {
     const namespace = env.RATE_LIMIT_COUNTER;
     const stub = namespace.get(namespace.idFromName("test:do-expiry"));
-    // A window that ended an hour ago: the alarm finds nothing left.
+    // A window that ended an hour ago: the alarm finds nothing left. The
+    // alarm it sets is already due, so workerd may start it on its own; run
+    // the handler directly rather than race that run for the schedule.
     await stub.hit([hit], Date.now() - 3_600_000);
-    await runDurableObjectAlarm(stub);
+    await runInDurableObject(stub, (instance: RateLimitCounter) => instance.alarm());
     const stored = await runInDurableObject(stub, (_instance, state) =>
       state.storage.kv.get("counters"),
     );
