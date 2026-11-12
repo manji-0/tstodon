@@ -39,6 +39,7 @@ const note = async (author: Remote, slug: string, tag?: string): Promise<string>
         type: "Note",
         attributedTo: author.actorUri,
         content: `<p>${slug} ${tag ? hashtagHtml(tag) : ""}</p>`,
+        tag: tag ? [{ type: "Hashtag", name: `#${tag}` }] : [],
         published: "2026-10-20T00:00:00.000Z",
         to: [PUBLIC],
         cc: [`${author.actorUri}/followers`],

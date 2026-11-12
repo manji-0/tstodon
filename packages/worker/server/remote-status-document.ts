@@ -2,6 +2,7 @@ import type {
   ApiAccountJSON,
   ApiOriginalStatusJSON,
   ApiPreviewCardJSON,
+  ApiTagJSON,
   MediaAttachmentType,
 } from "@tstodon/api";
 import {
@@ -18,6 +19,8 @@ import { NO_STATUS_INTERACTIONS, type StatusInteractionCounts } from "./status-i
 /** What a remote status shows beside its own fields: its card, and the viewer's and this instance's engagement. */
 export type RemoteStatusExtras = Readonly<{
   card?: ApiPreviewCardJSON | null | undefined;
+  /** Its hashtags; none when unset. */
+  tags?: ReadonlyArray<ApiTagJSON> | undefined;
   pollVotes?: RemotePollVotes | undefined;
   /** Local accounts' favourites and boosts only; remote totals are not kept. */
   interactions?: StatusInteractionCounts | undefined;
@@ -78,7 +81,7 @@ export const mastodonRemoteStatus = (
           ],
     ),
     mentions: [],
-    tags: [],
+    tags: [...(extras.tags ?? [])],
     emojis: remoteEmojisJson(status.emojis),
     card,
     poll:

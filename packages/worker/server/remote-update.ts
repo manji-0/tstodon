@@ -31,6 +31,7 @@ import {
   mentionedRemoteActorUris,
   remoteMentionedPost,
   noteFromUnknown,
+  noteHashtags,
   parseNoteDocument,
   remoteQuoteContext,
 } from "./remote-status-persist";
@@ -144,7 +145,12 @@ const applyNoteUpdate = async (
   const status: RemoteStatusValue = edited
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
     : refreshed;
-  const stored = await upsertRemoteStatus(env.DB, status, note.value.inReplyTo ?? undefined);
+  const stored = await upsertRemoteStatus(
+    env.DB,
+    status,
+    noteHashtags(target.raw),
+    note.value.inReplyTo ?? undefined,
+  );
   if (stored.isErr()) {
     return err(stored.error);
   }

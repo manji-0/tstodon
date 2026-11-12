@@ -334,7 +334,7 @@ Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` t
 | `stream.render`   | `[renders, delivered, errors, totalMs, maxMs, p50Ms, p95Ms]` | `[home or list or public, ok or error]`                                            | `errors`; `p95Ms` growth                                                    |
 | `metrics.dropped` | `[droppedPoints, writtenPoints]`                             | `[fetch or queue or scheduled or workflow, indexThatLostMost]`                     | Any point: an invocation hit the data point budget                          |
 
-`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillLocalNoteTags`, `FoldTagNames`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
+`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `FanOutRemovedStatuses`, `BackfillRemoteTags`, `BackfillLocalNoteTags`, `FoldTagNames`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
 
 Query with the SQL API (an API token with Account Analytics Read):
 
@@ -741,6 +741,24 @@ The steps, queries and cache purges are in the deploy checklist: [Moving attachm
 3. `pnpm run ci`, then `pnpm run deploy`. Void validates the bindings and the migrations, applies pending migrations to remote D1, verifies none remain, then runs `wrangler deploy`, which also uploads the cron triggers and the queue consumer settings.
 4. If Terraform manages the queue consumer, keep `queue_consumer_max_concurrency` equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; both write the same setting.
 5. Watch for 30 minutes: exceptions in Workers Logs, `OutboxJobRejected` (producer and consumer disagree on a job shape; it settles once the new version is everywhere), `outbox.enqueue` volume, the next cron run.
+
+### Remote tag reindex (migration 0136)
+
+Migration 0136 marks the stored remote statuses whose HTML has a non-ASCII character and a `#` (`tags_indexed = 0`), and the hourly `BackfillRemoteTags` job then indexes them again from that HTML, 100 a pass, one pass after another while passes are full. Until a status's pass has run, it keeps the tags it had.
+
+The migration is one `UPDATE` that reads every remote status. On local SQLite it took 6 to 10 seconds for 1,000,000 statuses (1.1 GB), and D1 ends a statement at 30 seconds; D1 itself was not measured. Count the rows before deploying:
+
+```sh
+wrangler d1 execute <database> --remote --command "SELECT COUNT(*) FROM remote_statuses"
+```
+
+If the migration times out, it changes nothing and the deploy stops before the new code. Run its statement in `id` ranges, so that each run writes fewer rows, then deploy again: the migration then only reads (about a second per 1,000,000 statuses locally).
+
+```sh
+wrangler d1 execute <database> --remote --command "UPDATE remote_statuses SET tags_indexed = 0 WHERE tags_indexed = 1 AND id >= '<from>' AND id < '<to>' AND length(content_html) <> length(CAST(content_html AS BLOB)) AND (instr(content_html, '#') > 0 OR instr(content_html, '＃') > 0)"
+```
+
+Progress of the job: `SELECT COUNT(*) FROM remote_statuses WHERE tags_indexed = 0` falls to 0, and `outbox.job.page` has a `BackfillRemoteTags` point per pass.
 
 ### A newer Mastodon web UI
 

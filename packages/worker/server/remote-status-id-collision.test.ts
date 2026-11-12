@@ -35,8 +35,8 @@ describe("remote status ids", () => {
     const first = `${author.actorUri}/statuses/first`;
     const second = `${author.actorUri}/statuses/second`;
 
-    const stored = await upsertRemoteStatus(env.DB, note(author.actorUri, first, id));
-    const collided = await upsertRemoteStatus(env.DB, note(author.actorUri, second, id));
+    const stored = await upsertRemoteStatus(env.DB, note(author.actorUri, first, id), []);
+    const collided = await upsertRemoteStatus(env.DB, note(author.actorUri, second, id), []);
 
     expect(stored.isOk() && collided.isOk()).toBe(true);
     const a = await findRemoteStatusByObjectUri(env.DB, first);
