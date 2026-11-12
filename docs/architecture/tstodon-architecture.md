@@ -127,7 +127,7 @@ The HTTP surface is classified in [Local Core](../planning/local-core.md): imple
 
 Queue, cron, Workflow, and Durable Object traffic stay on the Worker entrypoint that Void generates. HTTP routes only match HTTP.
 
-Queue `OUTBOX_PROCESS_QUEUE` owns `ExpandFollowers` fan-out and `ProcessExpiredPolls`. What it gives up on goes to the dead-letter queue `tstodon-outbox-dlq` (`OUTBOX_DLQ`), whose consumer stores it in `outbox_dead_jobs` for an operator to requeue. Workflow `OUTBOX_DELIVERY_WORKFLOW` owns per-inbox POST retries. `DeliverTarget` on the queue only starts that workflow (legacy or replay). `StreamHub` receives write-time `update` / `notification` / `status.update` events per account.
+Queue `OUTBOX_PROCESS_QUEUE` owns `ExpandFollowers` fan-out and `ProcessExpiredPolls`. What it gives up on goes to the dead-letter queue `tstodon-outbox-dlq` (`OUTBOX_DLQ`), whose consumer stores it in `outbox_dead_jobs` for an operator to requeue. Workflow `OUTBOX_DELIVERY_WORKFLOW` owns POST retries: one instance per activity, ten inboxes per step, each inbox on its own backoff. `DeliverTarget` on the queue only inserts its target and starts that workflow (legacy or replay). `StreamHub` receives write-time `update` / `notification` / `status.update` events per account.
 
 ## Open Questions
 

@@ -4,7 +4,6 @@ import {
   DeliveryAttemptOutcome,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
   InstanceIdentity,
-  OutboxJob,
   type OutboxJob as OutboxJobValue,
   Hostname,
   Username,
@@ -180,30 +179,20 @@ const enqueueSignedActivity = async (
   if (skippedTargets.isErr()) {
     return err(skippedTargets.error);
   }
-  for (const inboxUrl of deliver) {
-    const deliver = OutboxJob.parse({
-      kind: "DeliverTarget",
-      activityId: activityId.value,
-      inboxUrl,
-    });
-    if (deliver.isErr() || deliver.value.kind !== "DeliverTarget") {
-      return err({ kind: "InvalidActivityId" });
-    }
-    await startOutboxDeliveryWorkflow(env, deliver.value);
+  if (deliver.length > 0) {
+    await startOutboxDeliveryWorkflow(env, activityId.value);
   }
   writeMetric(env, "outbox.enqueue", [1], [kind, "targeted"]);
   return ok(undefined);
 };
 
-export const deliveryWorkflowId = async (activityId: string, inboxUrl: string): Promise<string> => {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(`${activityId}\n${inboxUrl}`),
-  );
+/** The id of the activity's delivery Workflow instance. */
+export const deliveryWorkflowId = async (activityId: string): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(activityId));
   const hex = [...new Uint8Array(digest).subarray(0, 16)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `outbox-${hex}`;
+  return `outbox-activity-${hex}`;
 };
 
 /**
@@ -260,28 +249,26 @@ export type DeliveryWorkflowCreate = Readonly<{
   create: (options: Readonly<{ id: string; params: OutboxWorkflowParams }>) => Promise<unknown>;
 }>;
 
-/** Start the target's delivery Workflow; false (logged) when Workflows refused it. */
+/**
+ * Start the Workflow that delivers the activity to each of its `Queued`
+ * targets; false (logged) when Workflows refused it.
+ */
 export const startOutboxDeliveryWorkflow = async (
   env: Env,
-  job: DeliverTargetJob,
+  activityId: string,
   workflows: DeliveryWorkflowCreate = env.OUTBOX_DELIVERY_WORKFLOW,
 ): Promise<boolean> => {
-  const id = await deliveryWorkflowId(job.activityId, job.inboxUrl);
   try {
     await workflows.create({
-      id,
-      params: {
-        kind: "DeliverTarget" as const,
-        activityId: job.activityId,
-        inboxUrl: job.inboxUrl,
-      },
+      id: await deliveryWorkflowId(activityId),
+      params: { kind: "DeliverActivity", activityId },
     });
     return true;
   } catch (cause) {
     console.error(
       JSON.stringify({
         kind: "OutboxWorkflowCreateFailed",
-        activityId: job.activityId,
+        activityId,
         message: cause instanceof Error ? cause.message : String(cause),
       }),
     );
@@ -341,63 +328,81 @@ const local = (outcome: DeliveryAttemptOutcomeValue): InboxDeliveryAttempt => ({
   remote: false,
 });
 
-export const attemptInboxDeliveryWithEvidence = async (
-  env: Env,
-  job: DeliverTargetJob,
-): Promise<InboxDeliveryAttempt> => {
-  const activity = await findOutboundActivityWithSigner(env.DB, job.activityId);
+/** Posts the prepared activity to one inbox. */
+export type InboxPost = (inboxUrl: string) => Promise<InboxDeliveryAttempt>;
+
+/**
+ * A POST that has not answered in this long counts as a network failure, so
+ * one silent inbox does not hold up the others delivered in the same step.
+ */
+const POST_TIMEOUT_MS = 60_000;
+
+/**
+ * Read the activity and its signing key once, for posting it to any number
+ * of inboxes. An activity that cannot be sent settles every inbox the same
+ * way, without an answer from any.
+ */
+export const prepareInboxDelivery = async (env: Env, activityId: string): Promise<InboxPost> => {
+  const settled = (outcome: DeliveryAttemptOutcomeValue): InboxPost => {
+    const attempt = local(outcome);
+    return async () => attempt;
+  };
+  const activity = await findOutboundActivityWithSigner(env.DB, activityId);
   if (activity.isErr()) {
-    return local(DeliveryAttemptOutcome.Local);
+    return settled(DeliveryAttemptOutcome.Local);
   }
   if (!activity.value) {
-    return local(DeliveryAttemptOutcome.forHttpStatus(404));
+    return settled(DeliveryAttemptOutcome.forHttpStatus(404));
   }
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return local(DeliveryAttemptOutcome.Local);
+    return settled(DeliveryAttemptOutcome.Local);
   }
   const key = await signingKey(env, identity.value, activity.value);
   if (key.kind === "Missing") {
-    return local(DeliveryAttemptOutcome.forHttpStatus(404));
+    return settled(DeliveryAttemptOutcome.forHttpStatus(404));
   }
   if (key.kind === "Unavailable") {
-    return local(DeliveryAttemptOutcome.Local);
+    return settled(DeliveryAttemptOutcome.Local);
   }
-  let inbox: URL;
-  try {
-    inbox = new URL(job.inboxUrl);
-  } catch {
-    return local(DeliveryAttemptOutcome.forHttpStatus(400));
-  }
-  const headers = await signInboxRequest(
-    inbox,
-    key.privateKeyJwk,
-    key.keyId,
-    activity.value.payload_json,
-  );
-  if (headers.isErr()) {
-    return local(DeliveryAttemptOutcome.forHttpStatus(400));
-  }
-  try {
-    const response = await fetch(inbox, {
-      method: "POST",
-      headers: headers.value,
-      body: activity.value.payload_json,
-    });
-    return {
-      outcome: DeliveryAttemptOutcome.forHttpStatus(
-        response.status,
-        DeliveryAttemptOutcome.retryAfterSeconds(response.headers.get("retry-after"), Date.now()),
-      ),
-      remote: true,
-    };
-  } catch {
-    return { outcome: DeliveryAttemptOutcome.Network, remote: true };
-  }
+  const body = activity.value.payload_json;
+  return async (inboxUrl) => {
+    let inbox: URL;
+    try {
+      inbox = new URL(inboxUrl);
+    } catch {
+      return local(DeliveryAttemptOutcome.forHttpStatus(400));
+    }
+    const headers = await signInboxRequest(inbox, key.privateKeyJwk, key.keyId, body);
+    if (headers.isErr()) {
+      return local(DeliveryAttemptOutcome.forHttpStatus(400));
+    }
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), POST_TIMEOUT_MS);
+    try {
+      const response = await fetch(inbox, {
+        method: "POST",
+        headers: headers.value,
+        body,
+        signal: timeout.signal,
+      });
+      return {
+        outcome: DeliveryAttemptOutcome.forHttpStatus(
+          response.status,
+          DeliveryAttemptOutcome.retryAfterSeconds(response.headers.get("retry-after"), Date.now()),
+        ),
+        remote: true,
+      };
+    } catch {
+      return { outcome: DeliveryAttemptOutcome.Network, remote: true };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 };
 
 export const attemptInboxDelivery = async (
   env: Env,
   job: DeliverTargetJob,
 ): Promise<DeliveryAttemptOutcomeValue> =>
-  (await attemptInboxDeliveryWithEvidence(env, job)).outcome;
+  (await (await prepareInboxDelivery(env, job.activityId))(job.inboxUrl)).outcome;

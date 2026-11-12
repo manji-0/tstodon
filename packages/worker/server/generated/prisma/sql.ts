@@ -312,6 +312,8 @@ export * from "./sql/findLocalReblog";
 
 export * from "./sql/findMediaById";
 
+export * from "./sql/findNextOutboxTargetDue";
+
 export * from "./sql/findNotificationById";
 
 export * from "./sql/findNotificationOwned";
@@ -579,6 +581,8 @@ export * from "./sql/listDeliveryDomainHealth";
 export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
+
+export * from "./sql/listDueOutboxTargets";
 
 export * from "./sql/listEndedLocalPollVoters";
 

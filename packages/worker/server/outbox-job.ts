@@ -1,7 +1,6 @@
 import { assertNever } from "@tstodon/core";
 import {
   Hostname,
-  OutboxJob,
   StoredMediaMetadata,
   StoredMediaSizes,
   type OutboxJob as OutboxJobValue,
@@ -410,16 +409,8 @@ export const processOutboxJob = async (
         );
         return "ok";
       }
-      for (const inboxUrl of deliver) {
-        const deliverJob = OutboxJob.parse({
-          kind: "DeliverTarget",
-          activityId: job.activityId,
-          inboxUrl,
-        });
-        if (deliverJob.isErr() || deliverJob.value.kind !== "DeliverTarget") {
-          continue;
-        }
-        await startOutboxDeliveryWorkflow(env, deliverJob.value);
+      if (deliver.length > 0) {
+        await startOutboxDeliveryWorkflow(env, job.activityId);
       }
       // doubles: [remoteTargetCount, expandMs, okFlag, skippedCount]
       writeMetric(
@@ -435,7 +426,7 @@ export const processOutboxJob = async (
       if (target.isErr()) {
         return "ok";
       }
-      await startOutboxDeliveryWorkflow(env, job);
+      await startOutboxDeliveryWorkflow(env, job.activityId);
       return "ok";
     }
     default:

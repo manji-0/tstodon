@@ -161,7 +161,7 @@ afterEach(() => {
 });
 
 describe("outbox delivery cost", () => {
-  it("delivers one activity to 25 inboxes, 2 failing once, within a bounded number of Workflow steps", async () => {
+  it("delivers one activity to 25 inboxes, 2 failing once, in one Workflow instance and five steps", async () => {
     const account = await signedInAccount("delivery-cost@example.com");
     const hosts = Array.from(
       { length: 25 },
@@ -266,6 +266,16 @@ describe("outbox delivery cost", () => {
       .all();
     expect(results).toEqual([{ kind: "Delivered", n: 25 }]);
     expect([...posted.values()].reduce((sum, n) => sum + n, 0)).toBe(27);
+    // One instance for the activity; three steps of ten inboxes, a sleep, and
+    // one step retrying the two that failed.
+    expect(created).toHaveLength(1);
+    expect(step.names).toEqual([
+      "round-0-chunk-0",
+      "round-0-chunk-1",
+      "round-0-chunk-2",
+      "round-0-wait",
+      "round-1-chunk-0",
+    ]);
 
     console.info(
       `DELIVERY_COST inboxes=25 failing=2 creates=${created.length} step_do=${step.dos} step_sleep=${step.sleeps}` +

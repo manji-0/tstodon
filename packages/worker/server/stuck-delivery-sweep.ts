@@ -1,7 +1,6 @@
 import {
   DELIVERY_MAX_ATTEMPTS,
   type DeliveryInstanceState,
-  OutboxJob,
   StuckDelivery,
   type StuckDeliveryDeps,
   type StuckDeliverySweep,
@@ -37,9 +36,7 @@ const instanceState = async (
   // `get` throws for an id Workflows does not know: never created, or past
   // its retention.
   try {
-    const instance = await workflows.get(
-      await deliveryWorkflowId(target.activityId, target.inboxUrl),
-    );
+    const instance = await workflows.get(await deliveryWorkflowId(target.activityId));
     const { status } = await instance.status();
     return ENDED.has(status) ? "Ended" : "Active";
   } catch {
@@ -64,21 +61,10 @@ export const stuckDeliveryDeps = (
 ): StuckDeliveryDeps => ({
   list: (dueBefore, limit) => listStuckOutboxTargets(env.DB, dueBefore, limit),
   instanceState: (target) => instanceState(workflows, target),
-  create: async (target) => {
-    const job = OutboxJob.parse({
-      kind: "DeliverTarget",
-      activityId: target.activityId,
-      inboxUrl: target.inboxUrl,
-    });
-    return job.isOk() && job.value.kind === "DeliverTarget"
-      ? startOutboxDeliveryWorkflow(env, job.value, workflows)
-      : false;
-  },
+  create: (target) => startOutboxDeliveryWorkflow(env, target.activityId, workflows),
   restart: async (target) => {
     try {
-      const instance = await workflows.get(
-        await deliveryWorkflowId(target.activityId, target.inboxUrl),
-      );
+      const instance = await workflows.get(await deliveryWorkflowId(target.activityId));
       await instance.restart();
       return true;
     } catch (cause) {
