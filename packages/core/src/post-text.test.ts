@@ -68,6 +68,13 @@ describe("statusLength", () => {
     }
   });
 
+  it("takes a URL up to twitter-text's MAX_URL_LENGTH, as Mastodon's Ruby does", () => {
+    const url = (length: number) =>
+      `https://example.com/${"a".repeat(length - "https://example.com/".length)}`;
+    expect(statusLength("", url(4096))).toBe(23);
+    expect(statusLength("", url(4097))).toBe(4097);
+  });
+
   it("counts a URL as charactersReservedPerUrl, however long", () => {
     expect(statusLength("", `https://example.com/${"a".repeat(200)}?q=1`)).toBe(23);
   });
