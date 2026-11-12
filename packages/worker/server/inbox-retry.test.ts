@@ -6,6 +6,10 @@ import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
+import { unsignedFetch } from "./federated-fetch";
+import { findRemoteActorsByUris } from "./remote-actor-store";
+import { applyRemoteUpdate } from "./remote-update";
+import { parseInstanceIdentity } from "./runtime-config";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -138,6 +142,74 @@ describe("an inbox activity whose write failed", () => {
       await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
     );
     expect(history.map((version) => version.content)).toEqual(["<p>original</p>", "<p>edited</p>"]);
+  });
+
+  it("keeps each version once in the history when two Updates were computed from the same version", async () => {
+    const author = await remoteActor("retry-stale-base");
+    const original = note(author, "retry-stale-base", { content: "<p>original</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const first = note(author, "retry-stale-base", {
+      content: "<p>first edit</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const second = note(author, "retry-stale-base", {
+      content: "<p>second edit</p>",
+      updated: "2026-10-22T00:00:00.000Z",
+    });
+    const secondUpdate = { id: `${second.id}/update-2`, type: "Update", object: second };
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("update fixture rejected");
+    }
+
+    // The second Update has read the original when the first one is applied:
+    // its first write waits for the first Update's delivery to finish.
+    let interleaved = false;
+    const db = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key !== "batch") {
+          const value: unknown = Reflect.get(target, key, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return async (statements: D1PreparedStatement[]) => {
+          if (!interleaved) {
+            interleaved = true;
+            expect(
+              await author.send({ id: `${first.id}/update-1`, type: "Update", object: first }),
+            ).toBe(202);
+          }
+          return target.batch(statements);
+        };
+      },
+    });
+    const stale = await applyRemoteUpdate(
+      new Proxy(env, { get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)) }),
+      identity.value,
+      signer,
+      second,
+      { fetchSigner: unsignedFetch },
+    );
+
+    expect(interleaved).toBe(true);
+    expect(stale.isErr()).toBe(true);
+    expect((await status(id)).content).toBe("<p>first edit</p>");
+
+    expect(await author.send(secondUpdate)).toBe(202);
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual([
+      "<p>original</p>",
+      "<p>first edit</p>",
+      "<p>second edit</p>",
+    ]);
   });
 
   it("notifies a newly mentioned account once when an Update that failed after its mention was recorded is redelivered", async () => {
