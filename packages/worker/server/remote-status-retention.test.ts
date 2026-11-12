@@ -351,12 +351,13 @@ describe("remote status retention", () => {
     expect(scans(statuses)).toEqual([]);
     // The delete's own range and 17 probes, then one seek per table its
     // foreign keys cascade to.
-    expect(statuses.filter((line) => line.startsWith("SEARCH"))).toHaveLength(29);
+    expect(statuses.filter((line) => line.startsWith("SEARCH"))).toHaveLength(30);
     for (const child of [
       "remote_status_tags",
       "remote_status_edits",
       "remote_status_mentions",
       "remote_status_remote_mentions",
+      "remote_status_owed",
       "remote_actor_pins",
       "remote_boosts",
       "status_quotes",
