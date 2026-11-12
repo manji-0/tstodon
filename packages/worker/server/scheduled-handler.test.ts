@@ -35,6 +35,7 @@ describe("handleScheduled", () => {
         "RefreshLinkCards",
         "BackfillRemoteTags",
         "BackfillLocalNoteTags",
+        "FoldTagNames",
         "RekeyLegacyMedia",
         "PublishScheduledStatuses",
         "CleanUpStatuses",
