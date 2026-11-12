@@ -68,4 +68,33 @@ describe("an inbox activity whose write failed", () => {
     expect(id).toBeDefined();
     expect((await status(id ?? "")).content).toBe("<p>hello</p>");
   });
+
+  it("answers an Update with a server error, and applies the edit when the same Update is redelivered", async () => {
+    const author = await remoteActor("retry-update");
+    const original = note(author, "retry-update", { content: "<p>before</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edited = note(author, "retry-update", {
+      content: "<p>after</p>",
+      tag: [hashtag("retryupdate")],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    const allow = await refuseTag("retryupdate");
+    try {
+      expect(await author.send(activity)).toBe(500);
+      expect((await status(id)).content).toBe("<p>before</p>");
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await status(id)).toMatchObject({
+      content: "<p>after</p>",
+      edited_at: "2026-10-21T00:00:00.000Z",
+    });
+  });
 });
