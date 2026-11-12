@@ -62,13 +62,23 @@ describe("toAscii", () => {
   });
 
   it("refuses a long label before normalizing it", () => {
+    // The fastest of three counts, against a text as long whose label
+    // normalizes to itself, so a loaded machine slows both alike.
+    const fastest = (text: string): number => {
+      statusLength("", text.slice(0, 100));
+      return Math.min(
+        ...[0, 1, 2].map(() => {
+          const started = performance.now();
+          statusLength("", text);
+          return performance.now() - started;
+        }),
+      );
+    };
     for (const run of ["\u0f71\u0f72", "\ufdfa", "e\u0301"]) {
       expect(toAscii(`a${run.repeat(4083)}.com`), run).toBeUndefined();
       const text = `https://a${run.repeat(4083)}.com `.repeat(12);
-      statusLength("", text.slice(0, 100));
-      const started = performance.now();
-      statusLength("", text);
-      expect(performance.now() - started, run).toBeLessThan(100);
+      const plain = `https://a${"é".repeat(run.length * 4083)}.com `.repeat(12);
+      expect(fastest(text), run).toBeLessThan(3 * fastest(plain) + 10);
     }
   });
 
