@@ -153,10 +153,43 @@ describe("extractHashtags", () => {
 });
 
 describe("normalizeHashtag and isHashtagName", () => {
-  it("normalizes as HashtagNormalizer, without accent folding", () => {
+  it("normalizes as HashtagNormalizer", () => {
     expect(normalizeHashtag("#Cat!")).toBe("cat");
     expect(normalizeHashtag("ＣＡＴ")).toBe("cat");
-    expect(normalizeHashtag("café")).toBe("café");
+  });
+
+  // What Ruby 3.3 returns for Mastodon v4.7.5's `HashtagNormalizer#normalize`.
+  it.each([
+    ["café", "cafe"],
+    ["Café", "cafe"],
+    // A decomposed accent composes under NFKC, then folds.
+    ["cafe\u0301", "cafe"],
+    ["ÅNGSTRÖM", "angstrom"],
+    ["Łódź", "lodz"],
+    ["Đặng", "dặng"],
+    ["straße", "straße"],
+    ["æsir", "æsir"],
+    ["þór", "þor"],
+    // Outside Latin-1 and Latin Extended-A: not in the table.
+    ["ǎ", "ǎ"],
+    ["ё", "ё"],
+    ["İstanbul", "istanbul"],
+    ["ısı", "isi"],
+    // NFKC decomposes it before the fold could read it.
+    ["ŉ", "\u02BCn"],
+    ["ĸ", "k"],
+    ["ſ", "s"],
+    ["ｃａｆé", "cafe"],
+    ["日本語", "日本語"],
+    // Unlike Ruby's `downcase`, a final `Σ` is `ς` (SHR-8): stored names keep reading.
+    ["ΟΔΟΣ", "οδος"],
+    ["οδος", "οδος"],
+  ])("folds accents as ASCIIFolding: %s is %s", (raw, name) => {
+    expect(normalizeHashtag(raw)).toBe(name);
+  });
+
+  it("extracts an accented tag under its folded name", () => {
+    expect(extractHashtags("un #Café et un #cafe")).toEqual(["cafe"]);
   });
 
   it("leaves every stored ASCII name as it is", () => {

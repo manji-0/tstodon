@@ -39,6 +39,7 @@ import {
 } from "./media-metadata-backfill";
 import { backfillStoredMediaSizesPage, logBackfillStoredMediaSizesDone } from "./media-sizes";
 import { backfillLocalNoteTags } from "./local-tag-backfill";
+import { foldTagNames } from "./tag-name-fold";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
@@ -186,6 +187,17 @@ export const processOutboxJob = async (
         }
         if (page.value.chained) {
           await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillLocalNoteTags" });
+        }
+        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
+      });
+    case "FoldTagNames":
+      return measureJobPage(env, job.kind, async () => {
+        const page = await foldTagNames(env.DB);
+        if (page.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        if (page.value.chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "FoldTagNames" });
         }
         return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
       });

@@ -132,13 +132,37 @@ const lastBranchLength = (name: ReadonlyArray<string>): number => {
 };
 
 /**
+ * Mastodon's `ASCIIFolding` table (`app/lib/ascii_folding.rb`, v4.7.5): each
+ * letter of the first string folds to the one at its place in the second.
+ * It is Latin-1 and Latin Extended-A only, so `é` folds and `ǎ`, `ß`, `æ`
+ * and `ё` stay.
+ */
+const NON_ASCII_CHARS =
+  "ÀÁÂÃÄÅàáâãäåĀāĂăĄąÇçĆćĈĉĊċČčÐðĎďĐđÈÉÊËèéêëĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħÌÍÎÏìíîïĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłÑñŃńŅņŇňŉŊŋÒÓÔÕÖØòóôõöøŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšſŢţŤťŦŧÙÚÛÜùúûüŨũŪūŬŭŮůŰűŲųŴŵÝýÿŶŷŸŹźŻżŽž";
+const EQUIVALENT_ASCII_CHARS =
+  "AAAAAAaaaaaaAaAaAaCcCcCcCcCcDdDdDdEEEEeeeeEeEeEeEeEeGgGgGgGgHhHhIIIIiiiiIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnNnnNnOOOOOOooooooOoOoOoRrRrRrSsSsSsSssTtTtTtUUUUuuuuUuUuUuUuUuUuWwYyyYyYZzZzZz";
+const ASCII_FOLDS: ReadonlyMap<string, string> = new Map(
+  Array.from(NON_ASCII_CHARS, (c, i) => [c, EQUIVALENT_ASCII_CHARS[i] ?? c]),
+);
+/** The table's range: every character of `NON_ASCII_CHARS` is in it. */
+const FOLDABLE = /[\u00C0-\u017F]/g;
+
+/**
  * A tag's stored name, as Mastodon's `HashtagNormalizer`: NFKC (full-width
- * to half-width), lowercase, and only the characters a tag can hold, so
- * `#Cat`, `ＣＡＴ` and `cat!` are all `cat`. Mastodon also folds accents to
- * ASCII (`café` to `cafe`); this does not (SHR-3).
+ * to half-width), lowercase, accents folded to ASCII (`ASCIIFolding`), and
+ * only the characters a tag can hold, so `#Cat`, `ＣＡＴ` and `cat!` are all
+ * `cat`, and `Café` is `cafe`. The fold reads composed characters, after
+ * NFKC composed them: a letter the table lacks keeps its accent (`ǎ`).
+ * One known difference: `toLowerCase` writes a `Σ` ending a word as `ς`
+ * (`ΟΔΟΣ` is `οδος`), where Ruby's `downcase` writes `σ`. Names have been
+ * stored this way, so it is kept rather than strand them (SHR-8).
  */
 export const normalizeHashtag = (raw: string): string =>
-  raw.normalize("NFKC").toLowerCase().replace(HASHTAG_INVALID_CHARACTERS, "");
+  raw
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(FOLDABLE, (c) => ASCII_FOLDS.get(c) ?? c)
+    .replace(HASHTAG_INVALID_CHARACTERS, "");
 
 /** Whether a name is a hashtag's (`Tag::HASHTAG_NAME_RE`): `日本語`, `a1`, not `2024`. */
 export const isHashtagName = (name: string): boolean => {

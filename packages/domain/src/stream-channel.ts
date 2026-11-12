@@ -1,4 +1,4 @@
-import { isHashtagName, schemaResult, unitKind } from "@tstodon/core";
+import { isHashtagName, normalizeHashtag, schemaResult, unitKind } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { StreamEvent } from "./stream-event";
@@ -95,11 +95,15 @@ const streamName = (channel: StreamChannel): string[] => {
   }
 };
 
-/** Identity of a channel: hashtags compare case-insensitively, as Mastodon normalizes them. */
+/**
+ * Identity of a channel: hashtags compare by their stored name, as Mastodon
+ * normalizes them, so `Café`, `café` and `cafe` are one channel, the one
+ * `stream_subscriptions` row a fan-out finds them all by.
+ */
 const key = (channel: StreamChannel): string =>
   JSON.stringify(
     channel.kind === "Hashtag"
-      ? streamName({ ...channel, tag: channel.tag.toLowerCase() })
+      ? streamName({ ...channel, tag: normalizeHashtag(channel.tag) })
       : streamName(channel),
   );
 

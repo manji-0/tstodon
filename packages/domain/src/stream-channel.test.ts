@@ -49,6 +49,14 @@ describe("StreamChannel", () => {
     expect(StreamChannel.key(local)).not.toBe(StreamChannel.key(lower));
   });
 
+  it("treats hashtags with one stored name as one channel", () => {
+    const key = (tag: string): string =>
+      StreamChannel.key(StreamChannel.fromWire({ stream: "hashtag", tag })._unsafeUnwrap());
+    expect(key("Café")).toBe(key("cafe"));
+    expect(key("ＣＡＴＳ")).toBe(key("cats"));
+    expect(key("cafés")).not.toBe(key("cafe"));
+  });
+
   it("accepts only hashtag names: letters, digits, and underscores with a letter", () => {
     for (const tag of ["cats", "Cats_2026", "日本語", "café", "a".repeat(STREAM_TAG_MAX_LENGTH)]) {
       expect(StreamChannel.fromWire({ stream: "hashtag", tag }).isOk()).toBe(true);

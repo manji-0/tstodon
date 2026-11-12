@@ -47,6 +47,9 @@ export const handleScheduled = (
           // Index the tags of local notes written before `local_status_tags`;
           // a single read once the cursor is complete.
           env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillLocalNoteTags" }),
+          // Rename the tag names stored before accents were folded; a single
+          // read once the cursor is complete.
+          env.OUTBOX_PROCESS_QUEUE.send({ kind: "FoldTagNames" }),
           // Move attachments stored at an id-derived key to a random one.
           env.OUTBOX_PROCESS_QUEUE.send({ kind: "RekeyLegacyMedia", afterId: "" }),
           // Publish the scheduled posts whose time has come.
