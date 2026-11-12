@@ -11,7 +11,7 @@ import {
   type MentionedPost,
   type QuotePolicyAuthor,
 } from "@tstodon/domain";
-import { schemaResult } from "@tstodon/core";
+import { isHashtagName, normalizeHashtag, schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -101,6 +101,37 @@ export const noteEmojis = (
     }
   }
   return remoteEmojisInTexts(texts, emojis).slice(0, MAX_EMOJIS);
+};
+
+const TaggedSchema = z.object({ tag: z.unknown().optional() });
+const HashtagTagSchema = z.object({
+  type: z.union([z.string(), z.array(z.unknown())]),
+  name: z.string(),
+});
+
+/**
+ * A note's hashtags: the names of the `Hashtag` objects of its `tag`, as
+ * Mastodon reads them (`ActivityPub::Activity::Create#process_hashtag`,
+ * `ProcessStatusUpdateService#update_tags!`), not the hashtags its content
+ * reads as. `tag` may be one object, and `type` a list that includes
+ * `Hashtag`. Each name is stored as `normalizeHashtag` writes it (which drops
+ * a leading `#`) and kept once, in the note's order, when it is a tag's name.
+ */
+export const noteHashtags = (raw: unknown): ReadonlyArray<string> => {
+  const tagged = schemaResult(TaggedSchema)(raw);
+  const tag = tagged.isOk() ? tagged.value.tag : undefined;
+  const entries: ReadonlyArray<unknown> = Array.isArray(tag) ? tag : [tag];
+  const names = entries.flatMap((entry) => {
+    const hashtag = schemaResult(HashtagTagSchema)(entry);
+    if (hashtag.isErr()) {
+      return [];
+    }
+    const { type, name } = hashtag.value;
+    return (typeof type === "string" ? type === "Hashtag" : type.includes("Hashtag"))
+      ? [normalizeHashtag(name)]
+      : [];
+  });
+  return [...new Set(names.filter(isHashtagName))];
 };
 
 export const noteFromUnknown = (
@@ -563,7 +594,7 @@ const storeRemoteNote = async (
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
-  const stored = await upsertRemoteStatus(env.DB, status, inReplyTo, known);
+  const stored = await upsertRemoteStatus(env.DB, status, noteHashtags(raw), inReplyTo, known);
   if (stored.isErr() || stored.value === undefined) {
     return stored;
   }

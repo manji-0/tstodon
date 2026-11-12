@@ -292,37 +292,31 @@ export const listRemoteStatusTags = async (
 };
 
 /**
- * Replace a remote status's indexed tags with the hashtags in its HTML, store
- * their names for hashtag search when its visibility lets anyone read them,
- * and mark the row as indexed so the backfill job skips it.
+ * The statements that replace a remote status's indexed tags with `tags`,
+ * store their names for hashtag search when its visibility lets anyone read
+ * them, and mark the row as indexed so the backfill job skips it. Four
+ * statements at most, however many tags.
  */
-const replaceRemoteStatusTags = async (
-  db: D1Database,
-  statusId: string,
-  visibility: Visibility,
-  contentHtml: string,
-): Promise<void> => {
-  await runD1Batch(db, remoteStatusTagStatements(db, statusId, visibility, contentHtml));
-};
-
 const remoteStatusTagStatements = (
   db: D1Database,
   statusId: string,
   visibility: Visibility,
-  contentHtml: string,
-): D1PreparedStatement[] => {
-  const tags = htmlHashtags(contentHtml);
-  return [
-    db.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(statusId),
-    ...tags.map((tag) =>
-      db
-        .prepare("INSERT OR IGNORE INTO remote_status_tags (status_id, tag) VALUES (?, ?)")
-        .bind(statusId, tag),
-    ),
-    d1PrepareTyped(db, markRemoteStatusTagsIndexedSql(statusId)),
-    ...recordTagNames(db, searchableTagNames(visibility, tags)),
-  ];
-};
+  tags: ReadonlyArray<string>,
+): D1PreparedStatement[] => [
+  db.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(statusId),
+  ...(tags.length === 0
+    ? []
+    : [
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO remote_status_tags (status_id, tag)
+             SELECT ?, value FROM json_each(?) ORDER BY key`,
+          )
+          .bind(statusId, jsonStringArray(tags)),
+      ]),
+  d1PrepareTyped(db, markRemoteStatusTagsIndexedSql(statusId)),
+  ...recordTagNames(db, searchableTagNames(visibility, tags)),
+];
 
 /** Insert a remote status row, or update the row its object URI already holds. */
 const writeRemoteStatusRow = async (
@@ -377,6 +371,8 @@ export type KnownRemoteStatus = Readonly<{
 export const upsertRemoteStatus = async (
   db: D1Database,
   status: RemoteStatus,
+  /** The note's hashtags (`noteHashtags`), which replace the ones stored. */
+  tags: ReadonlyArray<string>,
   /** The note's `inReplyTo`, kept to group direct conversations. */
   inReplyToUri?: string,
   /** The caller's read of this URI, which spares reading it again. */
@@ -414,7 +410,13 @@ export const upsertRemoteStatus = async (
       }
     }
     // The row has to exist before its tags (the index holds a foreign key).
-    await replaceRemoteStatusTags(db, persisted.id, persisted.visibility, persisted.contentHtml);
+    const tagged = await runD1Batch(
+      db,
+      remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
+    );
+    if (tagged.isErr()) {
+      throw new Error(tagged.error.message);
+    }
     // A changed tally is the author's count of every vote it has seen, ours included.
     if (
       existing.value &&
@@ -476,7 +478,7 @@ export const indexMissingRemoteTags = async (
       row.id,
       // An unreadable visibility keeps the names out of search, as a direct note's.
       Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
-      row.content_html,
+      htmlHashtags(row.content_html),
     ),
   );
   // Several statuses per batch, never splitting one status's statements. A

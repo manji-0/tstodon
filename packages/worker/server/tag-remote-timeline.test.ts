@@ -98,6 +98,11 @@ const remotePost = async (
       type: "Note",
       attributedTo: actor.actorUri,
       content,
+      // As Mastodon sends a note: a `Hashtag` object for each hashtag link.
+      tag: [...content.matchAll(/#<span>([^<]+)<\/span>/g)].map(([, name]) => ({
+        type: "Hashtag",
+        name: `#${name}`,
+      })),
       published: new Date().toISOString(),
       to,
     },
