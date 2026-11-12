@@ -92,6 +92,21 @@ describe("formatPostText", () => {
     );
   });
 
+  it("links the URLs Mastodon's server finds: any path character, its other schemes, xmpp: and magnet:", () => {
+    expect(format("https://例え.jp/パス!")).toBe(
+      `<p>${link("https://例え.jp/パス", "https://", "例え.jp/パス", "")}!</p>`,
+    );
+    expect(format("gemini://example.com/a/long/capsule/path ftp://example.com")).toBe(
+      `<p>${link("gemini://example.com/a/long/capsule/path", "", "gemini://example.com/a/long/ca", "psule/path")} ftp://example.com</p>`,
+    );
+    expect(format("(xmpp:alice@example.com) magnet:?xt=urn:btih:abc&dn=a.")).toBe(
+      `<p>(${link("xmpp:alice@example.com", "xmpp:", "alice@example.com", "")}) ${link("magnet:?xt=urn:btih:abc&amp;dn=a", "", "magnet:?xt=urn:btih:abc&amp;dn=a", "")}.</p>`,
+    );
+    expect(format("example.com/https://example.org")).toBe(
+      "<p>example.com/https://example.org</p>",
+    );
+  });
+
   it("links a hashtag as written to its normalized name's page", () => {
     expect(format("＃ＣＡＴ #日本語")).toBe(
       `<p><a href="https://example.com/tags/cat" class="mention hashtag" rel="tag">#<span>ＣＡＴ</span></a> <a href="https://example.com/tags/${encodeURIComponent("日本語")}" class="mention hashtag" rel="tag">#<span>日本語</span></a></p>`,

@@ -137,6 +137,10 @@ describe("status limits", () => {
     ["a URL twitter-text ends before a quote", "", "https://example.com/'quoted'", 24],
     ["a host with no known TLD", "", "http://a.b", 10],
     ["a URL right after the content warning", "CW", "https://example.com", 25],
+    ["a URL with a path twitter-text's own pattern ends early", "", "https://例え.jp/パス", 23],
+    ["a gemini URL", "", "gemini://example.com/a/long/capsule/path", 23],
+    ["a URL inside a match that has no scheme", "", "example.com/https://example.org/a/path", 38],
+    ["an xmpp: and a magnet: link", "", "xmpp:alice@example.com magnet:?xt=urn:btih:abc", 46],
   ])("counts %s as the web UI's counter does", async (_, spoilerText, text, length) => {
     const email = "limits-shared-count@example.com";
     const padded = (n: number) => ({
