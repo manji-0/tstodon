@@ -10,12 +10,25 @@ import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
  * --silent=false`; without `QUERY_COUNT=1` it is skipped.
  */
 
-type Tally = { statements: number; rounds: number; batches: number };
+type Tally = { statements: number; rounds: number; batches: number; sql: string[] };
 
-const tally: Tally = { statements: 0, rounds: 0, batches: 0 };
+const tally: Tally = { statements: 0, rounds: 0, batches: 0, sql: [] };
 let inFlight = 0;
 
-const track = async <T>(statements: number, work: () => Promise<T>): Promise<T> => {
+const sqlOf = (statement: unknown): string => {
+  const text =
+    typeof statement === "object" && statement !== null
+      ? Reflect.get(statement, "statement")
+      : undefined;
+  return typeof text === "string" ? text.replace(/\s+/g, " ").slice(0, 140) : "?";
+};
+
+const track = async <T>(
+  statements: number,
+  work: () => Promise<T>,
+  sql: ReadonlyArray<string> = [],
+): Promise<T> => {
+  tally.sql.push(...sql.map((text) => `${inFlight === 0 ? "+" : " "} ${text}`));
   if (inFlight === 0) {
     tally.rounds += 1;
   }
@@ -40,14 +53,18 @@ const patchD1 = (): void => {
     const original = Reflect.get(stmtProto, method);
     if (typeof original !== "function") continue;
     Reflect.set(stmtProto, method, function (this: unknown, ...args: unknown[]) {
-      return track(1, () => Reflect.apply(original, this, args));
+      return track(1, () => Reflect.apply(original, this, args), [sqlOf(this)]);
     });
   }
   const batch = Reflect.get(dbProto, "batch");
   if (typeof batch === "function") {
     Reflect.set(dbProto, "batch", function (this: unknown, statements: unknown[]) {
       tally.batches += 1;
-      return track(statements.length, () => Reflect.apply(batch, this, [statements]));
+      return track(
+        statements.length,
+        () => Reflect.apply(batch, this, [statements]),
+        statements.map((statement) => `[batch] ${sqlOf(statement)}`),
+      );
     });
   }
   const exec = Reflect.get(dbProto, "exec");
@@ -62,6 +79,7 @@ const reset = (): void => {
   tally.statements = 0;
   tally.rounds = 0;
   tally.batches = 0;
+  tally.sql = [];
 };
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
@@ -110,13 +128,23 @@ const measure = async (
   await settle();
   reset();
   const result = await call(token, method, path, body);
-  const before = { ...tally };
+  const before = { ...tally, sql: [...tally.sql] };
   await settle();
   const deferred = tally.statements - before.statements;
   const size = Array.isArray(result.json) ? result.json.length : "";
   console.log(
     `QUERY_COUNT_ROW|${label}|${result.status}|${size}|${before.statements}|${before.rounds}|${before.batches}|${deferred}`,
   );
+  const detail = Reflect.get(env, "QUERY_COUNT_SQL");
+  if (typeof detail === "string" && detail !== "" && label.includes(detail)) {
+    console.log(before.sql.map((line) => `QUERY_SQL ${line}`).join("\n"));
+    console.log(
+      tally.sql
+        .slice(before.sql.length)
+        .map((line) => `QUERY_SQL_DEFERRED ${line}`)
+        .join("\n"),
+    );
+  }
   return result.json;
 };
 

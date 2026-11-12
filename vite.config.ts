@@ -70,6 +70,9 @@ export default defineConfig({
                 // `QUERY_COUNT=1` runs the D1 query-count report
                 // (`query-count.bench.test.ts`); it is skipped otherwise.
                 QUERY_COUNT: process.env.QUERY_COUNT ?? "",
+                // With `QUERY_COUNT_SQL=<label part>`, the report also lists
+                // the matching requests' statements (`+` starts a serial round).
+                QUERY_COUNT_SQL: process.env.QUERY_COUNT_SQL ?? "",
               },
             },
           }),
