@@ -152,9 +152,10 @@ const applyNoteUpdate = async (
     return err(stored.error);
   }
   // Known limit: a failure from here on is retried by the sender, but the
-  // retry reads the content stored above, so `edited` is false: it finishes
-  // the mentions and the quote, and skips the boosters' `update`
-  // notifications and the `status.update` fan-out.
+  // retry reads the content stored above, so `edited` is false. The retry
+  // writes the mention rows, the remote mentions and the quote again and
+  // queues the link card, but the boosters' `update` notifications and the
+  // `status.update` fan-out of this edit are never sent.
   if (stored.value === undefined) {
     return ok(undefined);
   }
@@ -169,6 +170,18 @@ const applyNoteUpdate = async (
   const recorded = await recordRemoteStatusMentions(env.DB, stored.value.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  // Sent as soon as the rows exist: a retry after a later failure finds the
+  // rows, so `added` is empty and it would notify nobody.
+  if (added.length > 0) {
+    const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
+    for (const accountId of added) {
+      await notifyFromRemote(
+        env,
+        { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
+        post,
+      );
+    }
   }
   const remoteMentions = await replaceRemoteStatusRemoteMentions(
     env.DB,
@@ -187,16 +200,6 @@ const applyNoteUpdate = async (
   );
   if (quote.isErr()) {
     return err(quote.error);
-  }
-  if (added.length > 0) {
-    const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
-    for (const accountId of added) {
-      await notifyFromRemote(
-        env,
-        { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
-        post,
-      );
-    }
   }
   await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   if (edited) {

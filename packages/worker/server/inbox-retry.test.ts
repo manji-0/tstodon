@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiStatus, ApiStatusEdit } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
+import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 
@@ -19,16 +20,28 @@ const note = (author: Remote, slug: string, extra: Record<string, unknown>) => (
 
 const hashtag = (name: string) => ({ type: "Hashtag", name: `#${name}` });
 
-/** Makes D1 refuse to store `tag` for any status until the returned function is called. */
-const refuseTag = async (tag: string): Promise<() => Promise<void>> => {
+/**
+ * Makes D1 refuse an insert into `table` whose `column` is `value`, until the
+ * returned function is called. `name` is the trigger's, one per test, so a
+ * trigger a test failed to drop does not reach the next one.
+ */
+const refuseInsert = async (
+  name: string,
+  table: "remote_status_tags" | "remote_status_remote_mentions",
+  column: "tag" | "actor_uri",
+  value: string,
+): Promise<() => Promise<void>> => {
   await env.DB.prepare(
-    `CREATE TRIGGER inbox_retry_refuse_tag BEFORE INSERT ON remote_status_tags
-     WHEN NEW.tag = '${tag}' BEGIN SELECT RAISE(ABORT, 'tag write refused'); END`,
+    `CREATE TRIGGER ${name} BEFORE INSERT ON ${table}
+     WHEN NEW.${column} = '${value}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
   ).run();
   return async () => {
-    await env.DB.prepare("DROP TRIGGER inbox_retry_refuse_tag").run();
+    await env.DB.prepare(`DROP TRIGGER ${name}`).run();
   };
 };
+
+const refuseTag = (tag: string) =>
+  refuseInsert(`inbox_retry_${tag}`, "remote_status_tags", "tag", tag);
 
 const storedId = async (objectUri: string): Promise<string | undefined> =>
   parseRows(
@@ -125,5 +138,54 @@ describe("an inbox activity whose write failed", () => {
       await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
     );
     expect(history.map((version) => version.content)).toEqual(["<p>original</p>", "<p>edited</p>"]);
+  });
+
+  it("notifies a newly mentioned account once when an Update that failed after its mention was recorded is redelivered", async () => {
+    const headers = await authHeaders("inbox-retry-mention@example.com");
+    const account = expectContract(
+      z.object({ username: z.string() }),
+      await (
+        await SELF.fetch("https://example.com/api/v1/accounts/verify_credentials", { headers })
+      ).json(),
+    );
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const elsewhere = "https://elsewhere.example/users/retry-mentioned";
+    const author = await remoteActor("retry-mention");
+    const original = note(author, "retry-mention", { content: "<p>hi</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edited = note(author, "retry-mention", {
+      content: "<p>hi @you @them</p>",
+      tag: [
+        { type: "Mention", href: actorUrl },
+        { type: "Mention", href: elsewhere },
+      ],
+      cc: [actorUrl],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    const allow = await refuseInsert(
+      "inbox_retry_remote_mention",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect(await author.send(activity)).toBe(500);
+    } finally {
+      await allow();
+    }
+    expect(await author.send(activity)).toBe(202);
+
+    const mentions = expectContract(
+      z.array(z.object({ status: z.object({ id: z.string() }) })),
+      await (
+        await SELF.fetch("https://example.com/api/v1/notifications?types[]=mention", { headers })
+      ).json(),
+    );
+    expect(mentions.filter((entry) => entry.status.id === id)).toHaveLength(1);
   });
 });
