@@ -63,6 +63,107 @@ const status = async (id: string) =>
     await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).json(),
   );
 
+/** The kinds of late work the stored note is still owed (`remote_status_owed`). */
+const owedKinds = async (statusId: string): Promise<string[]> =>
+  parseRows(
+    z.object({ kind: z.string() }),
+    (
+      await env.DB.prepare("SELECT kind FROM remote_status_owed WHERE status_id = ? ORDER BY kind")
+        .bind(statusId)
+        .all()
+    ).results,
+  ).map((row) => row.kind);
+
+const remoteMentions = async (statusId: string): Promise<string[]> =>
+  parseRows(
+    z.object({ actor_uri: z.string() }),
+    (
+      await env.DB.prepare(
+        "SELECT actor_uri FROM remote_status_remote_mentions WHERE status_id = ? ORDER BY actor_uri",
+      )
+        .bind(statusId)
+        .all()
+    ).results,
+  ).map((row) => row.actor_uri);
+
+/** A signed-in local account: its request headers and its actor URL. */
+const localAccount = async (email: string) => {
+  const headers = await authHeaders(email);
+  const account = expectContract(
+    z.object({ username: z.string() }),
+    await (
+      await SELF.fetch("https://example.com/api/v1/accounts/verify_credentials", { headers })
+    ).json(),
+  );
+  return { headers, actorUrl: `https://example.com/users/${account.username}` };
+};
+
+/** How many notifications of `type` about status `id` the account holds. */
+const notifiedOf = async (
+  headers: Record<string, string>,
+  type: string,
+  id: string,
+): Promise<number> =>
+  expectContract(
+    z.array(z.object({ status: z.object({ id: z.string() }) })),
+    await (
+      await SELF.fetch(`https://example.com/api/v1/notifications?types[]=${type}`, { headers })
+    ).json(),
+  ).filter((entry) => entry.status.id === id).length;
+
+describe("an inbox activity that failed after its row was stored", () => {
+  it("finishes a Create's mentions, notification and quote once when the same Create is redelivered", async () => {
+    const mentioned = await localAccount("inbox-retry-create-late@example.com");
+    const elsewhere = "https://elsewhere.example/users/retry-create-late";
+    const author = await remoteActor("retry-create-late");
+    const quoted = note(author, "retry-create-late-quoted", { content: "<p>quoted</p>" });
+    expect(await author.send({ id: `${quoted.id}/create`, type: "Create", object: quoted })).toBe(
+      202,
+    );
+    const quotedId = (await storedId(quoted.id)) ?? "";
+    // A delivery that finished owes nothing.
+    expect(await owedKinds(quotedId)).toEqual([]);
+    const object = note(author, "retry-create-late", {
+      content: "<p>hi @you @them</p>",
+      tag: [
+        { type: "Mention", href: mentioned.actorUrl },
+        { type: "Mention", href: elsewhere },
+      ],
+      cc: [mentioned.actorUrl],
+      quote: quoted.id,
+    });
+    const activity = { id: `${object.id}/create`, type: "Create", object };
+
+    const allow = await refuseInsert(
+      "inbox_retry_create_late",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    let id = "";
+    try {
+      expect(await author.send(activity)).toBe(500);
+      id = (await storedId(object.id)) ?? "";
+      expect(await owedKinds(id)).toEqual(["Created"]);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await remoteMentions(id)).toEqual([elsewhere]);
+    expect((await status(id)).quote).toMatchObject({
+      state: "accepted",
+      quoted_status: { id: quotedId },
+    });
+    expect(await owedKinds(id)).toEqual([]);
+
+    // Nothing is owed any more: the same note delivered again notifies nobody.
+    expect(await author.send({ ...activity, id: `${object.id}/create-again` })).toBe(202);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+  });
+});
+
 describe("an inbox activity whose write failed", () => {
   it("answers a Create with a server error, and stores the note when the same Create is redelivered", async () => {
     const author = await remoteActor("retry-create");

@@ -1,8 +1,4 @@
-import { RealtimeWindow } from "@tstodon/domain";
 import { err, ok } from "neverthrow";
-import { nowInstant } from "../clock";
-import { enqueueHomeFanOut } from "../home-fan-out";
-import { enqueuePublicFanOut } from "../public-fan-out";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { persistRemoteObject, settleInvalidRemoteStatus } from "../remote-status-persist";
 import { findDeliveredRemoteStatus } from "../remote-status-store";
@@ -37,29 +33,9 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
     identity,
     signer,
     received.object,
-    { allowHosts, blockedHosts, fetchSigner, notifyMentions: true },
+    { allowHosts, blockedHosts, fetchSigner, delivery: "Create" },
     { objectUri, row: known.value },
   );
   // A storage failure: the route releases the claim and answers 5xx, so the sender redelivers.
-  if (created.isErr()) {
-    return err(created.error);
-  }
-  // Streaming is for a note stored now and published recently, as Mastodon's
-  // `Status::REAL_TIME_WINDOW`: a redelivered Create, or an old note arriving
-  // late, would show up in clients as a new status. Notifications still go out.
-  if (
-    known.value === undefined &&
-    created.value?.actorUri === signer.actorUri &&
-    RealtimeWindow.contains(created.value.publishedAt, nowInstant())
-  ) {
-    await enqueueHomeFanOut(env, {
-      event: "update",
-      entryId: created.value.id,
-      author: { kind: "RemoteActor", actorUri: signer.actorUri },
-    });
-    if (created.value.visibility.kind === "Public") {
-      await enqueuePublicFanOut(env, { event: "update", entryId: created.value.id });
-    }
-  }
-  return ok(undefined);
+  return created.map(() => undefined);
 };

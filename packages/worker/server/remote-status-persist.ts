@@ -1,5 +1,6 @@
 import {
   InstanceIdentity,
+  RealtimeWindow,
   IsoInstant,
   RemoteEmojiSchema,
   QuoteInteractionPolicy,
@@ -14,8 +15,8 @@ import {
 import { isHashtagName, normalizeHashtag, schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
-import { nowIso } from "./clock";
-import type { RepositoryError } from "./d1";
+import { nowInstant, nowIso } from "./clock";
+import { type RepositoryError, runD1 } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
@@ -23,7 +24,16 @@ import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { enqueueLinkCard } from "./link-card";
-import { mentionedPost, notifyFromRemote } from "./notify";
+import { mentionedPost, notifyFromRemoteOnce } from "./notify";
+import { enqueueHomeFanOut } from "./home-fan-out";
+import { enqueuePublicFanOut } from "./public-fan-out";
+import {
+  clearOwed,
+  listOwed,
+  newOwedMarker,
+  type OwedMarker,
+  owedStatement,
+} from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
 import {
   findRemoteStatusByObjectUri,
@@ -299,42 +309,107 @@ export const remoteMentionedPost = async (
   );
 };
 
-const recordMentions = async (
+/**
+ * What {@link finishRemoteNote} finishes: the note `actor` wrote, as stored
+ * (`status`) and as delivered or fetched (`raw`). `Created` is a note stored
+ * from `raw`; `marker` is the one written with its row, absent for a note
+ * that owes nothing (one that was fetched, or one whose row existed).
+ */
+export type LateSteps = Readonly<{
+  kind: "Created";
+  actor: RemoteActor;
+  raw: unknown;
+  status: RemoteStatusValue;
+  options: PersistOptions;
+  marker: OwedMarker | undefined;
+}>;
+
+/**
+ * The steps of storing a remote note that run after the batch that writes
+ * its row: the mention rows, the mention notifications, the direct
+ * conversation, the quote, the link card and the stream events, then the
+ * deletion of the marker that owed them. A failure is returned, so the inbox
+ * answers 5xx and the marker stays; the sender's redelivery runs every step
+ * again, which is why each one gives the same result the second time: the
+ * writes replace what they wrote, a notification is sent once
+ * (`notifyFromRemoteOnce`), and the stream events come last, where a client
+ * drops a status it already holds.
+ */
+export const finishRemoteNote = async (
   env: Env,
   identity: InstanceIdentity,
-  actor: RemoteActor,
-  raw: unknown,
-  status: RemoteStatusValue,
-  notify: boolean,
+  late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
-  const statusId = status.id;
-  const accountIds = await mentionedLocalAccountIds(env, identity, raw);
-  const recorded = await recordRemoteStatusMentions(env.DB, statusId, accountIds);
+  const { actor, raw, status, options } = late;
+  const delivery = options.delivery ?? "Fetched";
+  const mentioned = await mentionedLocalAccountIds(env, identity, raw);
+  const recorded = await recordRemoteStatusMentions(env.DB, status.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
   }
+  // Mention rows exist before the notifications that point at them.
+  const notified = delivery === "Fetched" ? [] : mentioned;
+  if (notified.length > 0) {
+    const post = await remoteMentionedPost(env.DB, identity, raw, status, mentioned);
+    for (const accountId of notified) {
+      const sent = await notifyFromRemoteOnce(
+        env,
+        { accountId, actorUri: actor.actorUri, kind: "mention", statusId: status.id },
+        undefined,
+        post,
+      );
+      if (sent.isErr()) {
+        return err(sent.error);
+      }
+    }
+  }
   const remote = await replaceRemoteStatusRemoteMentions(
     env.DB,
-    statusId,
+    status.id,
     mentionedRemoteActorUris(identity, raw),
   );
   if (remote.isErr()) {
     return err(remote.error);
   }
   if (status.visibility.kind === "Direct") {
-    await publishConversationUpdate(env, identity, accountIds, statusId);
+    await publishConversationUpdate(env, identity, mentioned, status.id);
   }
-  if (notify && accountIds.length > 0) {
-    const post = await remoteMentionedPost(env.DB, identity, raw, status, accountIds);
-    for (const accountId of accountIds) {
-      await notifyFromRemote(
-        env,
-        { accountId, actorUri: actor.actorUri, kind: "mention", statusId },
-        post,
-      );
+  const quote = await syncRemoteQuote(
+    env,
+    identity,
+    status,
+    raw,
+    remoteQuoteContext(env, identity, actor, options),
+  );
+  if (quote.isErr()) {
+    return err(quote.error);
+  }
+  // Preview cards are built off the request path like for local posts.
+  const card = await runD1(() =>
+    enqueueLinkCard(env, "RemoteStatus", status.id, status.contentHtml),
+  );
+  if (card.isErr()) {
+    return err(card.error);
+  }
+  // Streaming is for a note a `Create` stored and published recently, as
+  // Mastodon's `Status::REAL_TIME_WINDOW`: an old note arriving late would
+  // show up in clients as a new status. A marker read back on a redelivery
+  // counts as stored now: the delivery that wrote it never got this far.
+  if (
+    late.marker !== undefined &&
+    delivery === "Create" &&
+    RealtimeWindow.contains(status.publishedAt, nowInstant())
+  ) {
+    await enqueueHomeFanOut(env, {
+      event: "update",
+      entryId: status.id,
+      author: { kind: "RemoteActor", actorUri: actor.actorUri },
+    });
+    if (status.visibility.kind === "Public") {
+      await enqueuePublicFanOut(env, { event: "update", entryId: status.id });
     }
   }
-  return ok(undefined);
+  return clearOwed(env.DB, status.id, late.marker ? [late.marker] : []);
 };
 
 /** An admin block with `reject_media` keeps the post but not its attachments. */
@@ -378,8 +453,15 @@ export const settleInvalidRemoteStatus = async (
 
 type PersistOptions = FederatedFetchOptions &
   Readonly<{
-    /** Notify the local accounts the note mentions, when it is newly stored (inbox `Create`). */
-    notifyMentions?: boolean;
+    /**
+     * How the note arrives; `Fetched` by default. `Create` and `QuoteRequest`
+     * are inbox activities its author signed, which the sender delivers again
+     * after a 5xx: the local accounts a note stored from one mentions are
+     * notified, and its late steps stay owed (`remote_status_owed`) until
+     * they finish, so the redelivery resumes them. A `Create` also streams
+     * the note as a new status.
+     */
+    delivery?: "Create" | "QuoteRequest" | "Fetched";
     /** Which instant a newly stored note's id sorts at; `Received` by default. */
     idClock?: IdClock;
     /**
@@ -426,7 +508,12 @@ export const persistRemoteObject = async (
     return err(cached.error);
   }
   if (cached.value) {
-    return ok(cached.value.kind === "Local" ? undefined : cached.value);
+    if (cached.value.kind === "Local") {
+      return ok(undefined);
+    }
+    const status = cached.value;
+    const resumed = await resumeCreated(env, identity, actor, object, status, options);
+    return resumed.map(() => status);
   }
   if (typeof object !== "string") {
     return storeRemoteNote(env, identity, actor, object, options, { objectUri, row: undefined });
@@ -577,7 +664,7 @@ export const remoteQuoteContext = (
 ): RemoteQuoteContext => {
   const depth = options.quoteDepth ?? 0;
   const mayFetch = depth < MAX_QUOTE_DEPTH;
-  const nested: PersistOptions = { ...options, notifyMentions: false, quoteDepth: depth + 1 };
+  const nested: PersistOptions = { ...options, delivery: "Fetched", quoteDepth: depth + 1 };
   return {
     fetchOptions: options,
     mayFetch,
@@ -625,33 +712,76 @@ const storeRemoteNote = async (
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
-  const stored = await upsertRemoteStatus(env.DB, status, noteHashtags(raw), inReplyTo, known);
+  const read = known ? ok(known.row) : await findRemoteStatusByObjectUri(env.DB, status.objectUri);
+  if (read.isErr()) {
+    return err(read.error);
+  }
+  const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
+  // A note an inbox activity stores owes its late steps until they finish.
+  const marker =
+    existing.row === undefined && (options.delivery ?? "Fetched") !== "Fetched"
+      ? newOwedMarker("Created")
+      : undefined;
+  const stored = await upsertRemoteStatus(
+    env.DB,
+    status,
+    noteHashtags(raw),
+    inReplyTo,
+    existing,
+    [],
+    marker ? [(id) => owedStatement(env.DB, id, marker)] : [],
+  );
   if (stored.isErr() || stored.value === undefined) {
     return stored;
   }
-  // Mention rows exist before the notifications that point at them.
-  const mentions = await recordMentions(
-    env,
-    identity,
+  const finished = await finishRemoteNote(env, identity, {
+    kind: "Created",
     actor,
     raw,
-    stored.value,
-    options.notifyMentions === true,
-  );
-  if (mentions.isErr()) {
-    return err(mentions.error);
+    status: stored.value,
+    options,
+    marker,
+  });
+  return finished.map(() => stored.value);
+};
+
+/**
+ * Finish what the delivery that stored `status` left owed, when `actor`
+ * wrote the note and delivers it again in an inbox activity. The stored row
+ * is kept as it is; only the late steps run, from the document delivered
+ * now. A note edited since is left alone: the `Update` wrote its mentions
+ * and quote from a newer document than a `Create` carries, so the marker
+ * stays until the sweep deletes it.
+ */
+const resumeCreated = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  object: ObjectReference,
+  status: RemoteStatusValue,
+  options: PersistOptions,
+): Promise<Result<void, RepositoryError>> => {
+  if ((options.delivery ?? "Fetched") === "Fetched" || status.actorUri !== actor.actorUri) {
+    return ok(undefined);
   }
-  const quote = await syncRemoteQuote(
-    env,
-    identity,
-    stored.value,
-    raw,
-    remoteQuoteContext(env, identity, actor, options),
-  );
-  if (quote.isErr()) {
-    return err(quote.error);
+  const owed = await listOwed(env.DB, status.id);
+  if (owed.isErr()) {
+    return err(owed.error);
   }
-  // Preview cards are built off the request path like for local posts.
-  await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
-  return stored;
+  const marker = owed.value.find((entry) => entry.kind === "Created");
+  if (marker === undefined || status.editedAt.kind === "Edited") {
+    return ok(undefined);
+  }
+  let raw: unknown = object;
+  if (typeof object === "string") {
+    const fetched = await fetchActivityJson(identity, object, options);
+    if (fetched.isErr() || !fetchedAsItself(fetched.value, object)) {
+      return ok(undefined);
+    }
+    raw = fetched.value;
+  }
+  if (noteFromUnknown(raw, actor).isErr()) {
+    return ok(undefined);
+  }
+  return finishRemoteNote(env, identity, { kind: "Created", actor, raw, status, options, marker });
 };

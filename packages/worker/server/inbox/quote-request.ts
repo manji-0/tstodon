@@ -146,7 +146,7 @@ const cacheInstrument = async (
     blockedHosts,
     fetchSigner,
     // A `Create` that comes after finds the note cached and notifies nobody.
-    notifyMentions: true,
+    delivery: "QuoteRequest",
   });
   return stored.map((status) => (status?.actorUri === signer.actorUri ? status : undefined));
 };

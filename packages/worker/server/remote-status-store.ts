@@ -424,6 +424,12 @@ export const upsertRemoteStatus = async (
   known?: KnownRemoteStatus,
   /** Writes that commit or fail with the row, run before it. */
   alongside: ReadonlyArray<D1PreparedStatement> = [],
+  /**
+   * Writes that commit or fail with the row, run after it, as they refer to
+   * it. Each is built from the id the row is stored under, which is not
+   * `status.id` for a row that exists or a new one whose id was taken.
+   */
+  after: ReadonlyArray<(id: string) => D1PreparedStatement> = [],
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
   const existing =
     known?.objectUri === status.objectUri
@@ -472,6 +478,7 @@ export const upsertRemoteStatus = async (
           remoteStatusRowStatement(db, persisted, inReplyToUri),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
           ...settled,
+          ...after.map((statement) => statement(persisted.id)),
         ]);
         break;
       } catch (error) {
