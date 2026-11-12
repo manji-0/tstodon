@@ -49,7 +49,7 @@ import {
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
-import { settleRemotePollVotes } from "./remote-poll-vote-store";
+import { settleRemotePollVotesStatement } from "./remote-poll-vote-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
@@ -395,6 +395,14 @@ export const upsertRemoteStatus = async (
   let persisted = existing.value
     ? { ...status, id: existing.value.id, kind: "RemoteNote" as const }
     : status;
+  // A changed tally is the author's count of every vote it has seen, ours
+  // included. Settled with the row: a retry reads the new tally as stored.
+  const settled =
+    existing.value &&
+    persisted.poll.kind !== "NoPoll" &&
+    JSON.stringify(existing.value.poll) !== JSON.stringify(persisted.poll)
+      ? [settleRemotePollVotesStatement(db, existing.value.id)]
+      : [];
   const written = await runD1(async () => {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -405,6 +413,7 @@ export const upsertRemoteStatus = async (
           ...alongside,
           remoteStatusRowStatement(db, persisted, inReplyToUri),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
+          ...settled,
         ]);
         break;
       } catch (error) {
@@ -419,14 +428,6 @@ export const upsertRemoteStatus = async (
         }
         persisted = { ...persisted, id: rerolled.value };
       }
-    }
-    // A changed tally is the author's count of every vote it has seen, ours included.
-    if (
-      existing.value &&
-      persisted.poll.kind !== "NoPoll" &&
-      JSON.stringify(existing.value.poll) !== JSON.stringify(persisted.poll)
-    ) {
-      await settleRemotePollVotes(db, persisted.id);
     }
     return persisted;
   });
