@@ -18,7 +18,7 @@ import {
 /** The row stays as it is and the delivery is dropped, as Mastodon drops a `RecordInvalid`. */
 const kept = (
   statusId: string,
-  reason: "NotTheAuthorsNote" | "RowNotRewritable" | "NotNewer",
+  reason: "NotTheAuthorsNote" | "DocumentNotANote" | "RowNotRewritable" | "NotNewer",
 ): Result<void, RepositoryError> => {
   console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowKept", statusId, reason }));
   return ok(undefined);
@@ -50,8 +50,11 @@ export const settleInvalidRemoteStatus = async (
   const { activity, raw } = delivery;
   const parsed = noteFromUnknown(raw, signer);
   const note = parseNoteDocument(raw);
-  if (invalid.actorUri !== signer.actorUri || parsed.isErr() || note.isErr()) {
+  if (invalid.actorUri !== signer.actorUri) {
     return kept(invalid.id, "NotTheAuthorsNote");
+  }
+  if (parsed.isErr() || note.isErr()) {
+    return kept(invalid.id, "DocumentNotANote");
   }
   const salvaged = await salvageRemoteStatus(env.DB, invalid.id, parsed.value);
   if (salvaged.isErr()) {
