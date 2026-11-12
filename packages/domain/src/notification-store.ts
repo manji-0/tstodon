@@ -49,10 +49,14 @@ export type ScreenSender = (
   mentionedPost?: MentionedPost,
 ) => Promise<Result<SenderScreening, RepositoryError>>;
 
-/** Record the notification; resolves to its new id. */
+/**
+ * Record the notification; resolves to its new id, or `undefined` when it
+ * was already recorded and nothing was inserted. The caller holds, publishes
+ * and pushes only a notification that was inserted.
+ */
 export type InsertNotification = (
   notification: NewNotification,
-) => Promise<Result<string, RepositoryError>>;
+) => Promise<Result<string | undefined, RepositoryError>>;
 
 /** File a recorded notification under the recipient's notification requests. */
 export type HoldNotification = (

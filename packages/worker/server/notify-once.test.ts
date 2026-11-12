@@ -63,6 +63,28 @@ describe("notifyFromRemoteOnce", () => {
     expect(await notified(email, "mention", statusId)).toBe(1);
   });
 
+  it("notifies an account once when the same mention is requested twice at once", async () => {
+    const email = "notify-once-concurrent@example.com";
+    const recipient = await signedInAccount(email);
+    const author = await remoteActor("notify-once-concurrent");
+    const statusId = await storedNote(author, "notify-once-concurrent");
+    const mention = {
+      accountId: recipient.id,
+      actorUri: author.actorUri,
+      kind: "mention",
+      statusId,
+    };
+
+    const sent = await Promise.all([
+      notifyFromRemoteOnce(env, mention),
+      notifyFromRemoteOnce(env, mention),
+      notifyFromRemoteOnce(env, mention),
+    ]);
+
+    expect(sent.every((result) => result.isOk())).toBe(true);
+    expect(await notified(email, "mention", statusId)).toBe(1);
+  });
+
   it("notifies again when the stored notification is older than `since`", async () => {
     const email = "notify-once-since@example.com";
     const recipient = await signedInAccount(email);

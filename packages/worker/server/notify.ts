@@ -33,8 +33,8 @@ import { findRemoteBlock } from "./remote-block-store";
 import { mastodonNotification } from "./notification-documents";
 import {
   findNotificationById,
-  hasRemoteNotification,
   insertNotification,
+  insertNotificationOnce,
 } from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -154,10 +154,15 @@ const recordNotification = async (
   if (inserted.isErr()) {
     return err(inserted.error);
   }
-  if (disposition === "filter") {
-    return contracts.holdNotification(inserted.value, input);
+  // Already recorded: whoever inserted it holds, publishes and pushes it.
+  if (inserted.value === undefined) {
+    return ok(undefined);
   }
-  await contracts.publishNotification(input.accountId, inserted.value);
+  const notificationId = inserted.value;
+  if (disposition === "filter") {
+    return contracts.holdNotification(notificationId, input);
+  }
+  await contracts.publishNotification(input.accountId, notificationId);
   return ok(undefined);
 };
 
@@ -342,48 +347,53 @@ const isStaffSender = async (
   );
 };
 
+type RemoteNotification = Readonly<{
+  accountId: string;
+  actorUri: string;
+  kind: string;
+  statusId?: string;
+  targetAccountId?: string;
+}>;
+
 /** A notification from a remote actor, whose sender id is the actor's `r_…` account id. */
+const remoteNotification = (input: RemoteNotification): NewNotification => ({
+  accountId: input.accountId,
+  fromAccountId: RemoteAccountId.encode(input.actorUri),
+  fromActorUri: input.actorUri,
+  kind: input.kind,
+  ...(input.statusId ? { statusId: input.statusId } : {}),
+  ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
+});
+
 export const notifyFromRemote = (
   env: Env,
-  input: Readonly<{
-    accountId: string;
-    actorUri: string;
-    kind: string;
-    statusId?: string;
-    targetAccountId?: string;
-  }>,
+  input: RemoteNotification,
   mentionedPost?: MentionedPost,
 ): Promise<Result<void, RepositoryError>> =>
-  notifyAccount(
-    env,
-    {
-      accountId: input.accountId,
-      fromAccountId: RemoteAccountId.encode(input.actorUri),
-      fromActorUri: input.actorUri,
-      kind: input.kind,
-      ...(input.statusId ? { statusId: input.statusId } : {}),
-      ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
-    },
-    mentionedPost,
-  );
+  notifyAccount(env, remoteNotification(input), mentionedPost);
 
 /**
  * {@link notifyFromRemote}, unless the account already holds a notification
  * of this kind from this actor about this status, created at `since` or later
  * (at any time by default). A delivery that is applied again after a failure
- * calls this, so the work it repeats notifies nobody twice. A notification
+ * calls this, so the work it repeats notifies nobody twice, also when another
+ * delivery of the same note repeats it at the same moment: the check and the
+ * insert are one statement (`insertNotificationOnce`), and only the delivery
+ * that inserted holds, publishes and pushes the notification. A notification
  * the first attempt dropped (a block, a mute, the policy) left no row, and is
  * screened again.
  */
-export const notifyFromRemoteOnce = async (
+export const notifyFromRemoteOnce = (
   env: Env,
-  input: Readonly<{ accountId: string; actorUri: string; kind: string; statusId: string }>,
+  input: RemoteNotification & Readonly<{ statusId: string }>,
   since?: string,
   mentionedPost?: MentionedPost,
-): Promise<Result<void, RepositoryError>> => {
-  const sent = await hasRemoteNotification(env.DB, input, since);
-  if (sent.isErr()) {
-    return err(sent.error);
-  }
-  return sent.value ? ok(undefined) : notifyFromRemote(env, input, mentionedPost);
-};
+): Promise<Result<void, RepositoryError>> =>
+  deliverNotification(
+    {
+      ...notifyContracts(env),
+      insertNotification: (notification) => insertNotificationOnce(env.DB, notification, since),
+    },
+    remoteNotification(input),
+    mentionedPost,
+  );

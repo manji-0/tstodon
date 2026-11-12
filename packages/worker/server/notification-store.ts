@@ -11,7 +11,7 @@ import {
 } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
-import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { CountedRow, queryTyped, runTyped } from "./typed-sql";
@@ -56,27 +56,46 @@ export const deleteRemoteNotifications = async (
   );
 
 /**
- * Whether `accountId` holds a notification of `kind` from the remote actor
- * about `statusId`, created at `since` or later (at any time by default).
- * Read through `idx_notifications_account_status`.
+ * Record a notification from a remote actor about a status, unless the
+ * account already holds one of the same kind from that actor about that
+ * status, created at `since` or later (at any time by default). One
+ * statement, so of two deliveries that record the same one at once, one
+ * inserts. Resolves to the new id, or `undefined` when nothing was inserted.
+ * The lookup reads `idx_notifications_account_status`.
  */
-export const hasRemoteNotification = async (
+export const insertNotificationOnce = async (
   db: D1Database,
-  input: Readonly<{ accountId: string; actorUri: string; kind: string; statusId: string }>,
+  input: NewNotification,
   since: string = "",
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await db
+): Promise<Result<string | undefined, RepositoryError>> => {
+  const id = newEntityId();
+  return runD1(async () => {
+    const written = await db
       .prepare(
-        `SELECT 1 AS present FROM notifications
-         WHERE account_id = ? AND status_id = ? AND kind = ? AND from_actor_uri = ?
-           AND created_at >= ?
-         LIMIT 1`,
+        `INSERT INTO notifications
+           (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications
+           WHERE account_id = ?2 AND status_id = ?6 AND kind = ?5 AND from_actor_uri = ?4
+             AND created_at >= ?9
+         )`,
       )
-      .bind(input.accountId, input.statusId, input.kind, input.actorUri, since)
-      .all();
-    return parseRows(PresentRow, rows.results).length > 0;
+      .bind(
+        id,
+        input.accountId,
+        input.fromAccountId,
+        input.fromActorUri ?? null,
+        input.kind,
+        input.statusId ?? null,
+        nowIso(),
+        input.targetAccountId ?? null,
+        since,
+      )
+      .run();
+    return (written.meta.changes ?? 0) > 0 ? id : undefined;
   });
+};
 
 export const insertNotification = async (
   db: D1Database,

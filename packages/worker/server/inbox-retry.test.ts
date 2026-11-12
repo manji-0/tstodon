@@ -8,6 +8,7 @@ import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { unsignedFetch } from "./federated-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
+import { persistRemoteObject } from "./remote-status-persist";
 import { applyRemoteUpdate } from "./remote-update";
 import { parseInstanceIdentity } from "./runtime-config";
 
@@ -306,6 +307,50 @@ describe("an inbox activity that failed after its row was stored", () => {
       vi.restoreAllMocks();
       await env.DB.prepare("DROP TRIGGER IF EXISTS inbox_retry_update_stream").run();
     }
+  });
+});
+
+describe("two inbox activities that carry one note", () => {
+  /** What `persistRemoteObject` takes to store `author`'s note as an inbox activity delivers it. */
+  const deliverer = async (author: Remote) => {
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("delivery fixture rejected");
+    }
+    return (object: Readonly<{ id: string } & Record<string, unknown>>) =>
+      (delivery: "Create" | "QuoteRequest") =>
+        persistRemoteObject(env, identity.value, signer, object, {
+          fetchSigner: unsignedFetch,
+          delivery,
+        });
+  };
+
+  it("notifies a mentioned account once when a Create arrives while the QuoteRequest that stored the note is in its late steps", async () => {
+    const counts: number[] = [];
+    for (let round = 0; round < 8; round += 1) {
+      const mentioned = await localAccount(`inbox-retry-concurrent-${round}@example.com`);
+      const author = await remoteActor(`retry-concurrent-${round}`);
+      const object = note(author, `retry-concurrent-${round}`, {
+        content: "<p>hi @you</p>",
+        tag: [{ type: "Mention", href: mentioned.actorUrl }],
+        cc: [mentioned.actorUrl],
+      });
+      const deliver = (await deliverer(author))(object);
+
+      const first = deliver("QuoteRequest");
+      let id = await storedId(object.id);
+      while (id === undefined || (await owedKinds(id)).length === 0) {
+        id = await storedId(object.id);
+      }
+      const delivered = await Promise.all([first, deliver("Create")]);
+
+      expect(delivered.every((result) => result.isOk())).toBe(true);
+      counts.push(await notifiedOf(mentioned.headers, "mention", id));
+    }
+    expect(counts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
   });
 });
 
