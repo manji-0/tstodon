@@ -17,7 +17,7 @@ import { isHashtagName, normalizeHashtag, schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant, nowIso } from "./clock";
-import type { RepositoryError } from "./d1";
+import { readableRow, type RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
@@ -39,7 +39,6 @@ import { findThreadParent } from "./thread-context";
 import {
   findDeliveredRemoteStatus,
   type KnownRemoteStatus,
-  readableRemoteStatus,
   upsertRemoteStatus,
 } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
@@ -580,7 +579,7 @@ const cachedRemoteStatus = async (
   }
   const read = await findDeliveredRemoteStatus(env.DB, objectUri);
   const unreadable = read.isErr() && read.error.kind === "StoredRowInvalid";
-  return readableRemoteStatus(read).map((status) => (unreadable ? { kind: "Unreadable" } : status));
+  return readableRow(read).map((status) => (unreadable ? { kind: "Unreadable" } : status));
 };
 
 export const persistRemoteObject = async (

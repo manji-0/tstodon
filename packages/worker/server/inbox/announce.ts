@@ -7,6 +7,7 @@ import {
   reblogVisibility,
 } from "@tstodon/domain";
 import { err, ok } from "neverthrow";
+import { readableRow } from "../d1";
 import { parseLocalStatusId } from "../activitypub";
 import { nowInstant } from "../clock";
 import { startHomeFanOut } from "../home-fan-out";
@@ -14,7 +15,7 @@ import { newEntityId } from "../ids";
 import { recordRemoteBoost } from "../remote-boost";
 import { upsertRemoteAnnounce } from "../remote-interaction-store";
 import { persistAnnouncedObject } from "../remote-status-persist";
-import { findStatusById, insertLocalReblog } from "../status-store";
+import { findStatusById, insertLocalReblog, readStatusById } from "../status-store";
 import type { InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
 import { notifyStatusAuthor } from "./notify-status-author";
 
@@ -31,7 +32,7 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   // As Mastodon's `announceable?`, a remote actor may share a local status
   // only when it is public or unlisted; otherwise the Announce is dropped.
   const statusId = parseLocalStatusId(identity, activity.object);
-  const target = statusId ? await findStatusById(env.DB, statusId) : ok(undefined);
+  const target = statusId ? readableRow(await readStatusById(env.DB, statusId)) : ok(undefined);
   if (target.isErr()) {
     return err(target.error);
   }

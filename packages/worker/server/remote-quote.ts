@@ -13,7 +13,7 @@ import { err, ok, type Result } from "neverthrow";
 import { parseLocalStatusId } from "./activitypub";
 import { JsonObjectSchema, refId } from "./activitypub-wire";
 import { nowInstant } from "./clock";
-import type { RepositoryError } from "./d1";
+import { readableRow, type RepositoryError } from "./d1";
 import type { FederatedFetchOptions } from "./federated-fetch";
 import { newEntityId } from "./ids";
 import {
@@ -29,7 +29,7 @@ import {
   unresolvedQuoteState,
   verifyRemoteQuote,
 } from "./remote-quote-verify";
-import { findStatusById } from "./status-store";
+import { findStatusById, readStatusById } from "./status-store";
 import { findAccountById } from "./account-store";
 import { federateStampDeletion } from "./quote-stamp-revoke";
 import { enqueueQuoteRefetch, type QuoteRefetch } from "./quote-retry-queue";
@@ -144,7 +144,8 @@ const syncLocalQuoted = async (
   if (forgotten.isErr()) {
     return forgotten;
   }
-  const quoted = await findStatusById(db, quotedId);
+  // A quoted local note whose row does not read is no note to quote.
+  const quoted = readableRow(await readStatusById(db, quotedId));
   if (quoted.isErr()) {
     return err(quoted.error);
   }

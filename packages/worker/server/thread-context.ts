@@ -8,7 +8,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseLocalStatusId } from "./activitypub";
-import { type RepositoryError, runD1, storedRowError } from "./d1";
+import { readableRow, type RepositoryError, runD1, storedRowError } from "./d1";
 import {
   listLocalThreadAncestors as listLocalThreadAncestorsSql,
   listRemoteThreadAncestors as listRemoteThreadAncestorsSql,
@@ -17,7 +17,6 @@ import {
 import {
   findDeliveredRemoteStatus,
   findRemoteStatusesByIds,
-  readableRemoteStatus,
   remoteStatusFromRow,
   RemoteStatusRowSchema,
 } from "./remote-status-store";
@@ -78,7 +77,7 @@ export const findThreadParent = async (
     return ok(parent.value ? { kind: "Local", status: parent.value } : undefined);
   }
   // A parent whose row does not read is unknown, as one that was never stored.
-  const parent = readableRemoteStatus(await findDeliveredRemoteStatus(db, parentUri));
+  const parent = readableRow(await findDeliveredRemoteStatus(db, parentUri));
   if (parent.isErr()) {
     return err(parent.error);
   }

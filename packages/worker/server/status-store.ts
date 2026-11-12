@@ -16,6 +16,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import {
+  foundRow,
   jsonStringArray,
   okValues,
   parseRows,
@@ -24,7 +25,6 @@ import {
   runD1Batch,
   sqlInJsonEach,
   type StoredRowInvalid,
-  storedRowError,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { deletedMediaObjectKeys } from "./media-store";
@@ -191,23 +191,26 @@ export const readStatusById = async (
   if (raw === undefined) {
     return ok(undefined);
   }
-  const invalid: StoredRowInvalid = { kind: "StoredRowInvalid", id };
   const row = schemaResult(StatusRowSchema)(raw);
   if (row.isErr()) {
-    return err(invalid);
+    return err({ kind: "StoredRowInvalid", id, fault: "Shape" });
   }
   const media = await runD1(() => mediaIdsFor(db, id));
   if (media.isErr()) {
     return err(media.error);
   }
-  return statusFromRow(row.value, media.value).mapErr(() => invalid);
+  return statusFromRow(row.value, media.value).mapErr((): StoredRowInvalid => ({
+    kind: "StoredRowInvalid",
+    id,
+    fault: "Values",
+  }));
 };
 
 export const findStatusById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<LocalStatusValue | undefined, RepositoryError>> =>
-  (await readStatusById(db, id)).mapErr(storedRowError);
+  foundRow(await readStatusById(db, id));
 
 export const findStatusesByIds = async (
   db: D1Database,

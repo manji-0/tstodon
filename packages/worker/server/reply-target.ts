@@ -1,9 +1,9 @@
 import { InstanceIdentity, type ThreadStatus, type Visibility } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { findAccountById } from "./account-store";
-import type { RepositoryError } from "./d1";
+import { readableRow, type RepositoryError } from "./d1";
 import { findShownStatusAnywhere } from "./found-status";
-import { findDeliveredRemoteStatus, readableRemoteStatus } from "./remote-status-store";
+import { findDeliveredRemoteStatus } from "./remote-status-store";
 import { findStatusById, listStatusReplyUris } from "./status-store";
 
 /**
@@ -58,7 +58,7 @@ export const loadNoteReply = async (
   if (!inReplyTo) {
     return undefined;
   }
-  const parent = readableRemoteStatus(await findDeliveredRemoteStatus(db, inReplyTo));
+  const parent = readableRow(await findDeliveredRemoteStatus(db, inReplyTo));
   const open = note.visibility.kind === "Public" || note.visibility.kind === "Unlisted";
   return {
     inReplyTo,

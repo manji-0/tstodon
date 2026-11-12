@@ -5,7 +5,7 @@ import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
-import { parseRows, type StoredRowInvalid, storedRowError, toRepositoryError } from "./d1";
+import { foundRow, parseRows, type StoredRowInvalid, toRepositoryError } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped, type TypedSqlLike } from "./typed-sql";
 import {
   claimLocalPollExpiryNotice as claimLocalPollExpiryNoticeSql,
@@ -119,7 +119,7 @@ const pollFromRow = async (
 ): Promise<Result<PollRecord, RepositoryError | StoredRowInvalid>> => {
   const options = parseJsonColumn(PollOptionsSchema, row.options_json);
   if (options.isErr()) {
-    return err({ kind: "StoredRowInvalid", id: row.id });
+    return err({ kind: "StoredRowInvalid", id: row.id, fault: "Values" });
   }
   const votes = viewerId
     ? await runD1(async () =>
@@ -159,7 +159,9 @@ const loadPoll = async (
     return ok(undefined);
   }
   const row = schemaResult(PollRowSchema)(queried.value);
-  return row.isErr() ? err({ kind: "StoredRowInvalid", id }) : pollFromRow(db, row.value, viewerId);
+  return row.isErr()
+    ? err({ kind: "StoredRowInvalid", id, fault: "Shape" })
+    : pollFromRow(db, row.value, viewerId);
 };
 
 /**
@@ -177,7 +179,7 @@ export const findPollByStatusId = async (
   statusId: string,
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> =>
-  (await readPollByStatusId(db, statusId, viewerId)).mapErr(storedRowError);
+  foundRow(await readPollByStatusId(db, statusId, viewerId));
 
 /** The poll a note federates with its `Question`, or undefined for a plain note. */
 export const loadNotePoll = async (
@@ -303,7 +305,7 @@ export const findPollById = async (
   pollId: string,
   viewerId: string | undefined,
 ): Promise<Result<PollRecord | undefined, RepositoryError>> =>
-  (await loadPoll(db, findPollByIdSql(pollId), pollId, viewerId)).mapErr(storedRowError);
+  foundRow(await loadPoll(db, findPollByIdSql(pollId), pollId, viewerId));
 
 export const votePoll = async (
   db: D1Database,

@@ -350,3 +350,131 @@ describe("the author's delivery of a note whose stored row does not read, replac
     });
   });
 });
+
+/** The ways a local status row stops reading as a status: by its values, or by its shape. */
+const LOCAL_FAULTS = {
+  value: "visibility = 'unreadable'",
+  shape: "created_at = ''",
+} as const;
+
+const breakLocal = async (id: string, fault: keyof typeof LOCAL_FAULTS): Promise<void> => {
+  await env.DB.prepare(`UPDATE statuses SET ${LOCAL_FAULTS[fault]} WHERE id = ?`).bind(id).run();
+};
+
+describe.each(["value", "shape"] as const)(
+  "an inbox activity that refers to a local note whose stored row does not read (%s)",
+  (fault) => {
+    it("drops an Announce of the note with 202", async () => {
+      const local = await localNote(`ul-announced-${fault}@example.com`);
+      const booster = await remoteActor(`unreadable-local-booster-${fault}`);
+      await breakLocal(local.id, fault);
+
+      expect(
+        await booster.send({
+          id: `${booster.actorUri}/announces/local-${fault}`,
+          type: "Announce",
+          object: local.uri,
+          published: "2026-10-21T00:00:00.000Z",
+          to: [PUBLIC],
+        }),
+      ).toBe(202);
+
+      expect(
+        await count(
+          "SELECT COUNT(*) AS n FROM remote_boosts WHERE actor_uri = ?",
+          booster.actorUri,
+        ),
+      ).toBe(0);
+    });
+
+    it("stores a Create that quotes the note, without the quote", async () => {
+      const local = await localNote(`ul-quoted-${fault}@example.com`);
+      const quoter = await remoteActor(`unreadable-local-quoter-${fault}`);
+      await breakLocal(local.id, fault);
+      const quoting = note(quoter, `unreadable-local-quoting-${fault}`, { quote: local.uri });
+
+      expect(await create(quoter, quoting)).toBe(202);
+
+      const id = (await storedId(quoting.id)) ?? "";
+      expect(await status(id)).toMatchObject({ content: quoting.content });
+      expect(
+        await count("SELECT COUNT(*) AS n FROM status_quotes WHERE remote_status_id = ?", id),
+      ).toBe(0);
+    });
+
+    it("drops a QuoteRequest on the note with 202 and no answer", async () => {
+      const local = await localNote(`ul-requested-${fault}@example.com`);
+      const quoter = await remoteActor(`unreadable-local-requester-${fault}`);
+      await breakLocal(local.id, fault);
+
+      expect(
+        await quoter.send({
+          id: `${quoter.actorUri}/quote_requests/local-${fault}`,
+          type: "QuoteRequest",
+          object: local.uri,
+          instrument: note(quoter, `unreadable-local-instrument-${fault}`, { quote: local.uri }),
+        }),
+      ).toBe(202);
+
+      expect(
+        await count(
+          "SELECT COUNT(*) AS n FROM outbound_activities WHERE account_id = ? AND kind IN ('Accept', 'Reject')",
+          local.account.id,
+        ),
+      ).toBe(0);
+    });
+
+    it("drops the quoted author's answer when the quoting local note is the one, with 202", async () => {
+      const author = await remoteActor(`unreadable-local-answered-${fault}`);
+      const quoter = await localNote(`ul-answered-${fault}@example.com`);
+      const original = note(author, `unreadable-local-answered-${fault}`, {
+        interactionPolicy: { canQuote: { manualApproval: [PUBLIC] } },
+      });
+      expect(await create(author, original)).toBe(202);
+      const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...quoter.headers },
+        body: JSON.stringify({ status: "quoting", quoted_status_id: await storedId(original.id) }),
+      });
+      expect(posted.status).toBe(200);
+      const quotingId = expectContract(z.object({ id: z.string() }), await posted.json()).id;
+      const quote = async () =>
+        (
+          await rows(
+            z.object({ state: z.string(), activity_uri: z.string() }),
+            "SELECT state, activity_uri FROM status_quotes WHERE status_id = ?",
+            quotingId,
+          )
+        )[0];
+      const before = await quote();
+      expect(before?.state).toBe("pending");
+      await breakLocal(quotingId, fault);
+
+      expect(
+        await author.send({
+          id: `${author.actorUri}/rejects/local-${fault}`,
+          type: "Reject",
+          object: before?.activity_uri,
+        }),
+      ).toBe(202);
+
+      expect(await quote()).toEqual(before);
+    });
+  },
+);
+
+describe("a stored row whose shape does not parse, read outside the inbox", () => {
+  it("reads as no status: the REST API answers 404 for a local and for a remote one", async () => {
+    const local = await localNote("unreadable-shape-rest@example.com");
+    const author = await remoteActor("unreadable-shape-rest");
+    const remote = await unreadable(author, "unreadable-shape-rest", "shape");
+    await breakLocal(local.id, "shape");
+
+    for (const id of [local.id, remote.id]) {
+      expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).toBe(404);
+      expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}/context`)).status).toBe(
+        404,
+      );
+    }
+  });
+});

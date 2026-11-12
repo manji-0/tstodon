@@ -17,6 +17,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
 import {
+  foundRow,
   jsonStringArray,
   okValues,
   parseRows,
@@ -24,7 +25,6 @@ import {
   runD1,
   runD1Batch,
   type StoredRowInvalid,
-  storedRowError,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonColumn, parseJsonText } from "./json-column";
@@ -124,6 +124,7 @@ export const remoteStatusFromRow = (
 ): Result<RemoteStatus, InvalidRemoteStatusRow> => {
   const invalid: InvalidRemoteStatusRow = {
     kind: "StoredRowInvalid",
+    fault: "Values",
     id: row.id,
     actorUri: row.actor_uri,
   };
@@ -172,6 +173,7 @@ const storedRemoteStatus = (raw: unknown): Result<RemoteStatus, InvalidRemoteSta
   const ref = schemaResult(InvalidRowRef)(raw);
   return err({
     kind: "StoredRowInvalid",
+    fault: "Shape",
     id: ref.isOk() ? ref.value.id : "",
     actorUri: ref.isOk() ? ref.value.actor_uri : "",
   });
@@ -194,25 +196,6 @@ const readRemoteStatus = (queried: Result<unknown, RepositoryError>): RemoteStat
   return queried.value === undefined ? ok(undefined) : storedRemoteStatus(queried.value);
 };
 
-/**
- * The read of a caller that goes on without a row that does not read: the
- * row is logged and counts as none, where a failed read stays an error. An
- * inbox activity that refers to such a row is settled this way, as its
- * redelivery would find the same row.
- */
-export const readableRemoteStatus = (
-  read: RemoteStatusRead,
-): Result<RemoteStatus | undefined, RepositoryError> => {
-  if (read.isOk()) {
-    return ok(read.value);
-  }
-  if (read.error.kind === "RepositoryError") {
-    return err(read.error);
-  }
-  console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowSkipped", statusId: read.error.id }));
-  return ok(undefined);
-};
-
 /** {@link findDeliveredRemoteStatus}, by id. */
 export const findDeliveredRemoteStatusById = async (
   db: D1Database,
@@ -223,7 +206,7 @@ export const findRemoteStatusById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  (await findDeliveredRemoteStatusById(db, id)).mapErr(storedRowError);
+  foundRow(await findDeliveredRemoteStatusById(db, id));
 
 /**
  * Claim fetching the status's thread unless one was claimed within `ttlMs`.
@@ -336,7 +319,7 @@ export const findRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  (await findDeliveredRemoteStatus(db, objectUri)).mapErr(storedRowError);
+  foundRow(await findDeliveredRemoteStatus(db, objectUri));
 
 const StatusTagRow = z.object({ status_id: z.string(), tag: z.string() });
 
