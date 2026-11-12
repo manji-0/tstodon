@@ -6,6 +6,10 @@ import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
+import { unsignedFetch } from "./federated-fetch";
+import { findRemoteActorsByUris } from "./remote-actor-store";
+import { applyRemoteUpdate } from "./remote-update";
+import { parseInstanceIdentity } from "./runtime-config";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -140,6 +144,138 @@ describe("an inbox activity whose write failed", () => {
     expect(history.map((version) => version.content)).toEqual(["<p>original</p>", "<p>edited</p>"]);
   });
 
+  it("keeps each version once in the history when two Updates were computed from the same version", async () => {
+    const author = await remoteActor("retry-stale-base");
+    const original = note(author, "retry-stale-base", { content: "<p>original</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const first = note(author, "retry-stale-base", {
+      content: "<p>first edit</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const second = note(author, "retry-stale-base", {
+      content: "<p>second edit</p>",
+      updated: "2026-10-22T00:00:00.000Z",
+    });
+    const secondUpdate = { id: `${second.id}/update-2`, type: "Update", object: second };
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("update fixture rejected");
+    }
+
+    // The second Update has read the original when the first one is applied:
+    // its first write waits for the first Update's delivery to finish.
+    let interleaved = false;
+    const db = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key !== "batch") {
+          const value: unknown = Reflect.get(target, key, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return async (statements: D1PreparedStatement[]) => {
+          if (!interleaved) {
+            interleaved = true;
+            expect(
+              await author.send({ id: `${first.id}/update-1`, type: "Update", object: first }),
+            ).toBe(202);
+          }
+          return target.batch(statements);
+        };
+      },
+    });
+    const stale = await applyRemoteUpdate(
+      new Proxy(env, { get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)) }),
+      identity.value,
+      signer,
+      second,
+      { fetchSigner: unsignedFetch },
+    );
+
+    expect(interleaved).toBe(true);
+    expect(stale.isErr()).toBe(true);
+    expect((await status(id)).content).toBe("<p>first edit</p>");
+
+    expect(await author.send(secondUpdate)).toBe(202);
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual([
+      "<p>original</p>",
+      "<p>first edit</p>",
+      "<p>second edit</p>",
+    ]);
+  });
+
+  it("keeps an edit that was stored while an Update with the replaced content was being applied", async () => {
+    const author = await remoteActor("retry-stale-refresh");
+    const original = note(author, "retry-stale-refresh", { content: "<p>original</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edit = note(author, "retry-stale-refresh", {
+      content: "<p>edit</p>",
+      updated: "2026-10-22T00:00:00.000Z",
+    });
+    // The content the note had before the edit, as a refresh sent before it carries.
+    const refresh = { ...original, updated: "2026-10-21T00:00:00.000Z" };
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("update fixture rejected");
+    }
+
+    let interleaved = false;
+    const db = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key !== "batch") {
+          const value: unknown = Reflect.get(target, key, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+        return async (statements: D1PreparedStatement[]) => {
+          if (!interleaved) {
+            interleaved = true;
+            expect(
+              await author.send({ id: `${edit.id}/update-edit`, type: "Update", object: edit }),
+            ).toBe(202);
+          }
+          return target.batch(statements);
+        };
+      },
+    });
+    const stale = await applyRemoteUpdate(
+      new Proxy(env, { get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)) }),
+      identity.value,
+      signer,
+      refresh,
+      { fetchSigner: unsignedFetch },
+    );
+
+    expect(interleaved).toBe(true);
+    expect(stale.isErr()).toBe(true);
+    expect(
+      await author.send({ id: `${refresh.id}/update-refresh`, type: "Update", object: refresh }),
+    ).toBe(202);
+
+    expect(await status(id)).toMatchObject({
+      content: "<p>edit</p>",
+      edited_at: "2026-10-22T00:00:00.000Z",
+    });
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual(["<p>original</p>", "<p>edit</p>"]);
+  });
+
   it("notifies a newly mentioned account once when an Update that failed after its mention was recorded is redelivered", async () => {
     const headers = await authHeaders("inbox-retry-mention@example.com");
     const account = expectContract(
@@ -187,5 +323,85 @@ describe("an inbox activity whose write failed", () => {
       ).json(),
     );
     expect(mentions.filter((entry) => entry.status.id === id)).toHaveLength(1);
+  });
+});
+
+describe("a delivery of a note whose stored row does not read as a status", () => {
+  /** A stored note, then made unreadable as a row written by older code could be. */
+  const unreadable = async (author: Remote, slug: string): Promise<string> => {
+    const original = note(author, slug, { content: "<p>stored</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare(
+      "UPDATE remote_statuses SET visibility = 'unreadable', edited_at = 'unreadable' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+    return id;
+  };
+
+  const storedRow = async (id: string) =>
+    parseRows(
+      z.object({ visibility: z.string(), content_html: z.string() }),
+      (
+        await env.DB.prepare("SELECT visibility, content_html FROM remote_statuses WHERE id = ?")
+          .bind(id)
+          .all()
+      ).results,
+    )[0];
+
+  it("answers the author's Create with 202 and replaces the row under its id", async () => {
+    const author = await remoteActor("invalid-row-create");
+    const id = await unreadable(author, "invalid-row-create");
+    const object = note(author, "invalid-row-create", { content: "<p>sent again</p>" });
+
+    expect(await author.send({ id: `${object.id}/create-again`, type: "Create", object })).toBe(
+      202,
+    );
+
+    expect(await storedId(object.id)).toBe(id);
+    expect(await status(id)).toMatchObject({
+      content: "<p>sent again</p>",
+      visibility: "public",
+      edited_at: null,
+    });
+  });
+
+  it("answers the author's Update with 202 and replaces the row, with no version kept", async () => {
+    const author = await remoteActor("invalid-row-update");
+    const id = await unreadable(author, "invalid-row-update");
+    const object = note(author, "invalid-row-update", {
+      content: "<p>edited</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+
+    expect(await author.send({ id: `${object.id}/update`, type: "Update", object })).toBe(202);
+
+    expect(await status(id)).toMatchObject({ content: "<p>edited</p>", visibility: "public" });
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual(["<p>edited</p>"]);
+  });
+
+  it("answers another actor's Update with 202 and leaves the row as it is", async () => {
+    const author = await remoteActor("invalid-row-author");
+    const other = await remoteActor("invalid-row-other");
+    const id = await unreadable(author, "invalid-row-author");
+    const object = note(author, "invalid-row-author", {
+      content: "<p>not mine</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+
+    expect(await other.send({ id: `${object.id}/update`, type: "Update", object })).toBe(202);
+
+    expect(await storedRow(id)).toEqual({
+      visibility: "unreadable",
+      content_html: "<p>stored</p>",
+    });
   });
 });

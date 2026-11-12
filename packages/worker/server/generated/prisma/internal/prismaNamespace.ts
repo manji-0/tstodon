@@ -7707,6 +7707,7 @@ export const PollsScalarFieldEnum = {
   options_json: "options_json",
   expiry_notified_at: "expiry_notified_at",
   update_queued_at: "update_queued_at",
+  update_distributed_at: "update_distributed_at",
 } as const;
 
 export type PollsScalarFieldEnum = (typeof PollsScalarFieldEnum)[keyof typeof PollsScalarFieldEnum];

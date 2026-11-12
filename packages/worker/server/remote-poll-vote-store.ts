@@ -117,10 +117,14 @@ export const recordRemotePollVotes = async (
   );
 };
 
-/** The author reported fresh counts, which now include the votes added locally. */
-export const settleRemotePollVotes = async (db: D1Database, statusId: string): Promise<void> => {
-  await runTyped(db, settleRemotePollOwnVotesSql(statusId));
-};
+/**
+ * The statement that stops adding the local votes on top of a remote poll's
+ * counts: the author reported fresh counts, which now include them.
+ */
+export const settleRemotePollVotesStatement = (
+  db: D1Database,
+  statusId: string,
+): D1PreparedStatement => d1PrepareTyped(db, settleRemotePollOwnVotesSql(statusId));
 
 /** A local account that voted on a remote poll which has since ended, and the poll's author. */
 export type EndedRemotePollVoter = Readonly<{

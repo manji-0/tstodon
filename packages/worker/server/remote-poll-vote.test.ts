@@ -317,7 +317,7 @@ const handleVote = async (
     inReplyTo: poll.statusUri,
     name: title,
   });
-  expect(outcome.kind).toBe("Recorded");
+  expect(outcome.isOk() ? outcome.value.kind : outcome.error.message).toBe("Recorded");
 };
 
 const runUpdateJob = async (poll: LocalPoll): Promise<void> => {
@@ -467,5 +467,101 @@ describe("Update of the Question after votes", () => {
     expect((await updates(poll))[0]).toMatchObject({
       object: { votersCount: 1, oneOf: [{}, { replies: { totalItems: 1 } }, {}] },
     });
+  });
+});
+
+describe("a remote vote whose storage failed", () => {
+  it("answers a server error when the vote cannot be written, and counts it once when it is redelivered", async () => {
+    const poll = await createPoll("retry-vote-author@example.com");
+    const voter = await remoteActor("retry-vote-voter");
+    const objectId = "https://remote.example/votes/retry-vote";
+
+    await env.DB.prepare(
+      `CREATE TRIGGER poll_vote_retry_insert BEFORE INSERT ON remote_poll_votes
+       WHEN NEW.object_uri = '${objectId}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+    ).run();
+    try {
+      expect(await castVote(voter, poll, "dogs", objectId)).toBe(500);
+      expect((await pollState(poll)).votes_count).toBe(0);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER poll_vote_retry_insert").run();
+    }
+
+    expect(await castVote(voter, poll, "dogs", objectId)).toBe(202);
+    // A new activity id, so the inbox does not drop it as seen: the vote itself is found counted.
+    expect(await castVote(voter, poll, "dogs")).toBe(202);
+    const state = await pollState(poll);
+    expect(state.options.map((option) => option.votes_count)).toEqual([0, 1, 0]);
+    expect(state.voters_count).toBe(1);
+  });
+
+  it("does not store the vote as a status when the poll's status cannot be read", async () => {
+    const poll = await createPoll("unreadable-poll-author@example.com");
+    const voter = await remoteActor("unreadable-poll-voter");
+    const objectId = "https://remote.example/votes/unreadable-poll";
+    // Some servers send a vote with empty content and a date, which is also a note that parses.
+    const activity = {
+      id: `${objectId}/activity`,
+      type: "Create",
+      to: [actorUrl(poll)],
+      object: {
+        id: objectId,
+        type: "Note",
+        attributedTo: voter.actorUri,
+        to: [actorUrl(poll)],
+        inReplyTo: poll.statusUri,
+        name: "birds",
+        content: "",
+        published: "2026-10-20T00:00:00.000Z",
+      },
+    };
+    const stored = () =>
+      count("SELECT COUNT(*) AS n FROM remote_statuses WHERE actor_uri = ?", voter.actorUri);
+
+    await env.DB.prepare("UPDATE statuses SET visibility = 'unreadable' WHERE id = ?")
+      .bind(poll.statusId)
+      .run();
+    try {
+      expect(await voter.send(activity)).toBe(500);
+      expect(await stored()).toBe(0);
+    } finally {
+      await env.DB.prepare("UPDATE statuses SET visibility = 'public' WHERE id = ?")
+        .bind(poll.statusId)
+        .run();
+    }
+
+    expect(await voter.send(activity)).toBe(202);
+    expect(await stored()).toBe(0);
+    expect((await pollState(poll)).options.map((option) => option.votes_count)).toEqual([0, 0, 1]);
+  });
+
+  it("distributes a vote that was counted but whose update was never queued, when it is sent again", async () => {
+    const poll = await createPoll("counted-vote-author@example.com");
+    const voter = await remoteActor("counted-vote-voter");
+    expect(await castVote(voter, poll, "cats")).toBe(202);
+    // The state a failure between counting the vote and queueing its update leaves.
+    await env.DB.prepare("UPDATE polls SET update_queued_at = NULL WHERE id = ?")
+      .bind(poll.pollId)
+      .run();
+
+    expect(await castVote(voter, poll, "cats")).toBe(202);
+
+    expect(await queuedAt(poll)).toEqual(expect.any(String));
+    expect((await pollState(poll)).votes_count).toBe(1);
+    await runUpdateJob(poll);
+    expect(await updates(poll)).toHaveLength(1);
+  });
+
+  it("queues no update for a vote sent again under a new Create id after its update went out", async () => {
+    const poll = await createPoll("resent-vote-author@example.com");
+    const voter = await remoteActor("resent-vote-voter");
+    expect(await castVote(voter, poll, "cats")).toBe(202);
+    await runUpdateJob(poll);
+    expect(await queuedAt(poll)).toBeNull();
+
+    expect(await castVote(voter, poll, "cats")).toBe(202);
+
+    expect(await queuedAt(poll)).toBeNull();
+    expect((await pollState(poll)).votes_count).toBe(1);
   });
 });

@@ -24,6 +24,7 @@ import {
   markPollExpiryNotified as markPollExpiryNotifiedSql,
   releasePollUpdate as releasePollUpdateSql,
   replacePollOptions as replacePollOptionsSql,
+  startPollUpdate as startPollUpdateSql,
   updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
   updateStatusPollId as updateStatusPollIdSql,
 } from "./generated/prisma/sql";
@@ -349,10 +350,16 @@ export const votePoll = async (
   return ok(undefined);
 };
 
-/** What became of a vote a remote account cast on a local poll. */
+/**
+ * What became of a vote a remote account cast on a local poll. A vote that
+ * was already counted is `Undistributed` while no poll update has started
+ * since (its delivery failed before one was queued), else `Duplicate`.
+ */
 export type RemotePollVoteOutcome = Readonly<{
-  kind: "Recorded" | "Expired" | "UnknownOption" | "Duplicate" | "AlreadyVoted";
+  kind: "Recorded" | "Expired" | "UnknownOption" | "Undistributed" | "Duplicate" | "AlreadyVoted";
 }>;
+
+const RemotePollVoteRow = z.object({ option_index: z.number(), undistributed: z.number() });
 
 /**
  * Count a remote account's vote for the option titled `title`. As for a local
@@ -373,13 +380,14 @@ export const recordRemotePollVote = async (
     return ok({ kind: "UnknownOption" });
   }
   const earlier = await runD1(async () =>
-    queryTyped(db, listRemotePollVotesForActorSql(poll.id, vote.actorUri), OptionIndexRow),
+    queryTyped(db, listRemotePollVotesForActorSql(poll.id, vote.actorUri), RemotePollVoteRow),
   );
   if (earlier.isErr()) {
     return err(earlier.error);
   }
-  if (earlier.value.some((row) => row.option_index === choice)) {
-    return ok({ kind: "Duplicate" });
+  const counted = earlier.value.find((row) => row.option_index === choice);
+  if (counted) {
+    return ok({ kind: counted.undistributed === 1 ? "Undistributed" : "Duplicate" });
   }
   if (!poll.multiple && earlier.value.length > 0) {
     return ok({ kind: "AlreadyVoted" });
@@ -524,6 +532,14 @@ export const claimPollUpdate = async (
 /** Free the poll's `Update` slot so the next vote queues a fresh job. */
 export const releasePollUpdate = async (db: D1Database, pollId: string): Promise<void> => {
   await runTyped(db, releasePollUpdateSql(pollId));
+};
+
+/**
+ * Free the poll's `Update` slot as its job starts, and record the start: the
+ * votes counted before it are in the `Update` the job sends.
+ */
+export const startPollUpdate = async (db: D1Database, pollId: string): Promise<void> => {
+  await runTyped(db, startPollUpdateSql(pollId, nowIso()));
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

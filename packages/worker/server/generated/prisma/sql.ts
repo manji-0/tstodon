@@ -810,6 +810,8 @@ export * from "./sql/recordHeaderFileSize";
 
 export * from "./sql/recordMediaFileSizes";
 
+export * from "./sql/refuseReplacedRemoteStatus";
+
 export * from "./sql/rejectFollowRequest";
 
 export * from "./sql/rejectOutboundFollow";
@@ -867,6 +869,8 @@ export * from "./sql/setRemoteStatusCard";
 export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
+
+export * from "./sql/startPollUpdate";
 
 export * from "./sql/sumAccountMediaBytes";
 

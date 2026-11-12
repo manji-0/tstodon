@@ -17,6 +17,7 @@ import {
 import {
   findRemoteStatusByObjectUri,
   remoteStatusFromRow,
+  storedRowError,
   RemoteStatusRowSchema,
 } from "./remote-status-store";
 import { findRemoteStatusReplyTargets, listRemoteRepliesToUris } from "./remote-reply-store";
@@ -155,7 +156,7 @@ export const listThreadAncestors = async (
     for (const row of rows.value) {
       const status = remoteStatusFromRow(row);
       if (status.isErr()) {
-        return err(status.error);
+        return err(storedRowError(status.error));
       }
       remotes.set(row.object_uri, status.value);
       remoteReplyUris.set(row.id, row.in_reply_to_uri ?? undefined);
