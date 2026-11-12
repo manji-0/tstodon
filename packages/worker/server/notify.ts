@@ -31,7 +31,11 @@ import { localAccountPresentations } from "./account-presentation";
 import { findActiveMute, findBlock, silencesAnyOf } from "./block-mute-store";
 import { findRemoteBlock } from "./remote-block-store";
 import { mastodonNotification } from "./notification-documents";
-import { findNotificationById, insertNotification } from "./notification-store";
+import {
+  findNotificationById,
+  hasRemoteNotification,
+  insertNotification,
+} from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
@@ -362,3 +366,24 @@ export const notifyFromRemote = (
     },
     mentionedPost,
   );
+
+/**
+ * {@link notifyFromRemote}, unless the account already holds a notification
+ * of this kind from this actor about this status, created at `since` or later
+ * (at any time by default). A delivery that is applied again after a failure
+ * calls this, so the work it repeats notifies nobody twice. A notification
+ * the first attempt dropped (a block, a mute, the policy) left no row, and is
+ * screened again.
+ */
+export const notifyFromRemoteOnce = async (
+  env: Env,
+  input: Readonly<{ accountId: string; actorUri: string; kind: string; statusId: string }>,
+  since?: string,
+  mentionedPost?: MentionedPost,
+): Promise<Result<void, RepositoryError>> => {
+  const sent = await hasRemoteNotification(env.DB, input, since);
+  if (sent.isErr()) {
+    return err(sent.error);
+  }
+  return sent.value ? ok(undefined) : notifyFromRemote(env, input, mentionedPost);
+};

@@ -11,7 +11,7 @@ import {
 } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
-import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { CountedRow, queryTyped, runTyped } from "./typed-sql";
@@ -54,6 +54,29 @@ export const deleteRemoteNotifications = async (
         )
       ).length,
   );
+
+/**
+ * Whether `accountId` holds a notification of `kind` from the remote actor
+ * about `statusId`, created at `since` or later (at any time by default).
+ * Read through `idx_notifications_account_status`.
+ */
+export const hasRemoteNotification = async (
+  db: D1Database,
+  input: Readonly<{ accountId: string; actorUri: string; kind: string; statusId: string }>,
+  since: string = "",
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare(
+        `SELECT 1 AS present FROM notifications
+         WHERE account_id = ? AND status_id = ? AND kind = ? AND from_actor_uri = ?
+           AND created_at >= ?
+         LIMIT 1`,
+      )
+      .bind(input.accountId, input.statusId, input.kind, input.actorUri, since)
+      .all();
+    return parseRows(PresentRow, rows.results).length > 0;
+  });
 
 export const insertNotification = async (
   db: D1Database,
