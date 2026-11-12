@@ -140,4 +140,70 @@ describe("a remote note's hashtags", () => {
     expect(await tagsOf(id)).toEqual([]);
     expect(await timelineIds("rshkept")).toEqual([]);
   });
+
+  /** Makes D1 refuse to store `tag` for any status until the returned function is called. */
+  const refuseTag = async (tag: string): Promise<() => Promise<void>> => {
+    await env.DB.prepare(
+      `CREATE TRIGGER rsh_refuse_tag BEFORE INSERT ON remote_status_tags
+       WHEN NEW.tag = '${tag}' BEGIN SELECT RAISE(ABORT, 'tag write refused'); END`,
+    ).run();
+    return async () => {
+      await env.DB.prepare("DROP TRIGGER rsh_refuse_tag").run();
+    };
+  };
+
+  const storedContent = async (objectUri: string): Promise<string | undefined> =>
+    parseRows(
+      z.object({ content_html: z.string() }),
+      (
+        await env.DB.prepare("SELECT content_html FROM remote_statuses WHERE object_uri = ?")
+          .bind(objectUri)
+          .all()
+      ).results,
+    )[0]?.content_html;
+
+  it("stores no note when its tags cannot be written, so a later Create writes both", async () => {
+    const author = await remoteActor("hashtag-atomic-create");
+    const object = note(author, "rsh-atomic-create", {
+      content: `<p>${hashtagHtml("rshatomichtml")}</p>`,
+      tag: [hashtag("#rshatomic")],
+    });
+
+    const allow = await refuseTag("rshatomic");
+    try {
+      await author.send({ id: `${object.id}/create`, type: "Create", object });
+      expect(await storedContent(object.id)).toBeUndefined();
+    } finally {
+      await allow();
+    }
+
+    // A new activity id: the inbox answers a repeated id without applying it.
+    const id = await deliver(author, "Create", object, 1);
+    expect((await tagsOf(id)).map((tag) => tag.name)).toEqual(["rshatomic"]);
+  });
+
+  it("leaves a note as it was when an Update's tags cannot be written, so a later Update is an edit", async () => {
+    const author = await remoteActor("hashtag-atomic-update");
+    const original = note(author, "rsh-atomic-update", { content: "<p>before</p>" });
+    const id = await deliver(author, "Create", original);
+    const edited = note(author, "rsh-atomic-update", {
+      content: "<p>after</p>",
+      tag: [hashtag("#rshatomicedit")],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+
+    const allow = await refuseTag("rshatomicedit");
+    try {
+      await author.send({ id: `${edited.id}/update`, type: "Update", object: edited });
+      expect(await storedContent(edited.id)).toBe("<p>before</p>");
+    } finally {
+      await allow();
+    }
+
+    await deliver(author, "Update", edited, 1);
+    const status = expectContract(ApiStatus, await json(`/api/v1/statuses/${id}`));
+    expect(status.content).toBe("<p>after</p>");
+    expect(status.edited_at).toBe("2026-10-21T00:00:00.000Z");
+    expect(status.tags.map((tag) => tag.name)).toEqual(["rshatomicedit"]);
+  });
 });

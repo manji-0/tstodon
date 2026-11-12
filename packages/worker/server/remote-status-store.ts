@@ -320,13 +320,13 @@ const remoteStatusTagStatements = (
   ...recordTagNames(db, searchableTagNames(visibility, tags)),
 ];
 
-/** Insert a remote status row, or update the row its object URI already holds. */
-const writeRemoteStatusRow = async (
+/** The statement that inserts a remote status row, or updates the row its object URI already holds. */
+const remoteStatusRowStatement = (
   db: D1Database,
   row: RemoteStatus,
   inReplyToUri: string | undefined,
-): Promise<void> => {
-  await runTyped(
+): D1PreparedStatement =>
+  d1PrepareTyped(
     db,
     upsertRemoteStatusSql(
       row.id,
@@ -351,7 +351,6 @@ const writeRemoteStatusRow = async (
         : JSON.stringify(row.quotePolicy),
     ),
   );
-};
 
 /** Retries for a new remote status whose generated id is already taken. */
 const ID_COLLISION_RETRIES = 4;
@@ -396,7 +395,13 @@ export const upsertRemoteStatus = async (
   const written = await runD1(async () => {
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await writeRemoteStatusRow(db, persisted, inReplyToUri);
+        // One transaction: a note is never stored without its tags, so a
+        // delivery that failed here is processed again as if it never ran.
+        // The row comes first (the tag index holds a foreign key to it).
+        await db.batch([
+          remoteStatusRowStatement(db, persisted, inReplyToUri),
+          ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
+        ]);
         break;
       } catch (error) {
         // A new row whose id another isolate already stored (same instant, same
@@ -410,14 +415,6 @@ export const upsertRemoteStatus = async (
         }
         persisted = { ...persisted, id: rerolled.value };
       }
-    }
-    // The row has to exist before its tags (the index holds a foreign key).
-    const tagged = await runD1Batch(
-      db,
-      remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
-    );
-    if (tagged.isErr()) {
-      throw new Error(tagged.error.message);
     }
     // A changed tally is the author's count of every vote it has seen, ours included.
     if (
