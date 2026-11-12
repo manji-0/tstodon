@@ -37,9 +37,10 @@ import {
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
 import {
-  findRemoteStatusByObjectUri,
+  findDeliveredRemoteStatus,
   type KnownRemoteStatus,
   overwriteRemoteStatus,
+  readableRemoteStatus,
   type StoredRowInvalid,
   upsertRemoteStatus,
 } from "./remote-status-store";
@@ -584,23 +585,33 @@ type PersistOptions = FederatedFetchOptions &
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
 
 /**
- * The cached remote status for `objectUri`, or `Local` for one of this
- * instance's own; `known` is the caller's read of it, when it made one.
+ * What stands at a URI in place of a cached remote status: `Local` is one of
+ * this instance's own statuses, `Unreadable` a stored row that does not read
+ * as a status. Nothing is fetched or stored over either.
+ */
+type Uncacheable = Readonly<{ kind: "Local" | "Unreadable" }>;
+
+/**
+ * The cached remote status for `objectUri`, or why there can be none;
+ * `known` is the caller's read of it, when it made one. A row that does not
+ * read is settled here, as reading it again gives the same row: the callers
+ * drop what refers to it, where a failed read is an error.
  */
 const cachedRemoteStatus = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
   known: KnownRemoteStatus | undefined,
-): Promise<
-  Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>
-> => {
+): Promise<Result<Uncacheable | RemoteStatusValue | undefined, RepositoryError>> => {
   if (parseLocalStatusId(identity, objectUri)) {
     return ok({ kind: "Local" });
   }
-  return known?.objectUri === objectUri
-    ? ok(known.row)
-    : findRemoteStatusByObjectUri(env.DB, objectUri);
+  if (known?.objectUri === objectUri) {
+    return ok(known.row);
+  }
+  const read = await findDeliveredRemoteStatus(env.DB, objectUri);
+  const unreadable = read.isErr() && read.error.kind === "StoredRowInvalid";
+  return readableRemoteStatus(read).map((status) => (unreadable ? { kind: "Unreadable" } : status));
 };
 
 export const persistRemoteObject = async (
@@ -617,7 +628,7 @@ export const persistRemoteObject = async (
     return err(cached.error);
   }
   if (cached.value) {
-    if (cached.value.kind === "Local") {
+    if (cached.value.kind !== "RemoteNote") {
       return ok(undefined);
     }
     const status = cached.value;
@@ -668,7 +679,7 @@ export const persistAnnouncedObject = async (
     return err(cached.error);
   }
   if (cached.value) {
-    return ok(cached.value.kind === "Local" ? undefined : cached.value);
+    return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
   }
   if (typeof object !== "string") {
     const embedded = parseNoteDocument(object);
@@ -778,9 +789,14 @@ export const remoteQuoteContext = (
     fetchOptions: options,
     mayFetch,
     resolveQuoted: async (uri, embedded) => {
-      const cached = await findRemoteStatusByObjectUri(env.DB, uri);
-      if (cached.isErr() || cached.value || !mayFetch) {
-        return cached;
+      const cached = await cachedRemoteStatus(env, identity, uri, undefined);
+      if (cached.isErr()) {
+        return err(cached.error);
+      }
+      // A quoted note whose row does not read is not fetched over it: the
+      // quote stays unresolved, as one whose note cannot be fetched.
+      if (cached.value || !mayFetch) {
+        return ok(cached.value?.kind === "RemoteNote" ? cached.value : undefined);
       }
       if (embedded) {
         const vouched = await persistVouchedQuoted(env, identity, actor, uri, embedded, nested);
@@ -821,9 +837,12 @@ const storeRemoteNote = async (
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
-  const read = known ? ok(known.row) : await findRemoteStatusByObjectUri(env.DB, status.objectUri);
+  const read = await cachedRemoteStatus(env, identity, status.objectUri, known);
   if (read.isErr()) {
     return err(read.error);
+  }
+  if (read.value && read.value.kind !== "RemoteNote") {
+    return ok(undefined);
   }
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.

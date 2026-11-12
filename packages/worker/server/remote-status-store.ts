@@ -51,7 +51,7 @@ import {
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
 import { settleRemotePollVotesStatement } from "./remote-poll-vote-store";
-import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped, type TypedSqlLike } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
 const VisibilityRow = z.object({ visibility: z.string() });
@@ -126,8 +126,8 @@ export type StoredRowInvalid = Readonly<{
 }>;
 
 /** The error of a reader that fails on a row it cannot use, whatever is wrong with it. */
-export const storedRowError = (_invalid: StoredRowInvalid): RepositoryError =>
-  toRepositoryError("invalid remote status row");
+export const storedRowError = (error: RepositoryError | StoredRowInvalid): RepositoryError =>
+  error.kind === "RepositoryError" ? error : toRepositoryError("invalid remote status row");
 
 export const remoteStatusFromRow = (
   row: RemoteStatusRow,
@@ -166,27 +166,71 @@ export const remoteStatusFromRow = (
   }).mapErr(() => invalid);
 };
 
-const readRemoteStatus = async (
-  queried: Result<RemoteStatusRow | undefined, RepositoryError>,
-): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
+const InvalidRowRef = z.object({ id: z.string(), actor_uri: z.string() });
+
+/**
+ * The status a stored row holds, as D1 returned it. A row whose shape does
+ * not parse (an empty `published_at`, a `sensitive` that is no number) is
+ * invalid as one whose values do not read: both are there, and neither is a
+ * status.
+ */
+const storedRemoteStatus = (raw: unknown): Result<RemoteStatus, StoredRowInvalid> => {
+  const row = parseRemoteStatusRow(raw);
+  if (row.isOk()) {
+    return remoteStatusFromRow(row.value);
+  }
+  const ref = schemaResult(InvalidRowRef)(raw);
+  return err({
+    kind: "StoredRowInvalid",
+    id: ref.isOk() ? ref.value.id : "",
+    actorUri: ref.isOk() ? ref.value.actor_uri : "",
+  });
+};
+
+/** What a read of one stored remote status gives: the status, none, or a row that is no status. */
+export type RemoteStatusRead = Result<RemoteStatus | undefined, RepositoryError | StoredRowInvalid>;
+
+/** The first row of a query for one remote status, unparsed, or `undefined` for none. */
+const findRow = (db: D1Database, typed: TypedSqlLike): Promise<Result<unknown, RepositoryError>> =>
+  runD1(async () => (await queryTyped(db, typed, z.unknown()))[0]);
+
+const readRemoteStatus = (queried: Result<unknown, RepositoryError>): RemoteStatusRead => {
   if (queried.isErr()) {
     return err(queried.error);
   }
-  return queried.value === undefined
-    ? ok(undefined)
-    : remoteStatusFromRow(queried.value).mapErr(storedRowError);
+  return queried.value === undefined ? ok(undefined) : storedRemoteStatus(queried.value);
 };
+
+/**
+ * The read of a caller that goes on without a row that does not read: the
+ * row is logged and counts as none, where a failed read stays an error. An
+ * inbox activity that refers to such a row is settled this way, as its
+ * redelivery would find the same row.
+ */
+export const readableRemoteStatus = (
+  read: RemoteStatusRead,
+): Result<RemoteStatus | undefined, RepositoryError> => {
+  if (read.isOk()) {
+    return ok(read.value);
+  }
+  if (read.error.kind === "RepositoryError") {
+    return err(read.error);
+  }
+  console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowSkipped", statusId: read.error.id }));
+  return ok(undefined);
+};
+
+/** {@link findDeliveredRemoteStatus}, by id. */
+export const findDeliveredRemoteStatusById = async (
+  db: D1Database,
+  id: string,
+): Promise<RemoteStatusRead> => readRemoteStatus(await findRow(db, findRemoteStatusByIdSql(id)));
 
 export const findRemoteStatusById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  readRemoteStatus(
-    await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteStatusByIdSql(id), RemoteStatusRowSchema);
-      return rows[0];
-    }),
-  );
+  (await findDeliveredRemoteStatusById(db, id)).mapErr(storedRowError);
 
 /**
  * Claim fetching the status's thread unless one was claimed within `ttlMs`.
@@ -283,40 +327,23 @@ export const findRemoteStatusesByIds = async (
   );
 };
 
-const findRowByObjectUri = (
+/**
+ * The status stored at an object URI, for a caller that tells a row that
+ * does not read as a status from a failed read: an inbox activity settles
+ * the first (it replaces the row, or goes on without it), where a failed
+ * read is retried.
+ */
+export const findDeliveredRemoteStatus = async (
   db: D1Database,
   objectUri: string,
-): Promise<Result<RemoteStatusRow | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      findRemoteStatusByObjectUriSql(objectUri),
-      RemoteStatusRowSchema,
-    );
-    return rows[0];
-  });
+): Promise<RemoteStatusRead> =>
+  readRemoteStatus(await findRow(db, findRemoteStatusByObjectUriSql(objectUri)));
 
 export const findRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  readRemoteStatus(await findRowByObjectUri(db, objectUri));
-
-/**
- * The status an inbox `Create` or `Update` finds stored at its object URI.
- * A row that does not read as a status is told apart from a failed read:
- * the delivery replaces or drops it, where a failed read is retried.
- */
-export const findDeliveredRemoteStatus = async (
-  db: D1Database,
-  objectUri: string,
-): Promise<Result<RemoteStatus | undefined, RepositoryError | StoredRowInvalid>> => {
-  const queried = await findRowByObjectUri(db, objectUri);
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  return queried.value === undefined ? ok(undefined) : remoteStatusFromRow(queried.value);
-};
+  (await findDeliveredRemoteStatus(db, objectUri)).mapErr(storedRowError);
 
 const StatusTagRow = z.object({ status_id: z.string(), tag: z.string() });
 

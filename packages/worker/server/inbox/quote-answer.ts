@@ -17,7 +17,7 @@ import { announceNoteUpdate } from "../local-status-update";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { forwardStampDelete } from "../quote-stamp-revoke";
 import { stampAuthorizes } from "../remote-quote-verify";
-import { findRemoteStatusById } from "../remote-status-store";
+import { findDeliveredRemoteStatusById, readableRemoteStatus } from "../remote-status-store";
 import { findStatusById } from "../status-store";
 import type { RemoteDelivery } from "./handler";
 
@@ -42,7 +42,9 @@ const signerQuote = async (
   if (quote.quoting.kind !== "LocalStatus" || quote.quoted.kind !== "RemoteStatus") {
     return ok(undefined);
   }
-  const quoted = await findRemoteStatusById(db, quote.quoted.statusId);
+  const quoted = readableRemoteStatus(
+    await findDeliveredRemoteStatusById(db, quote.quoted.statusId),
+  );
   if (quoted.isErr()) {
     return err(quoted.error);
   }
@@ -213,7 +215,9 @@ export const revokeQuoteStamp = async (
     if (quote.quoting.kind !== "RemoteStatus" || quote.quoted.kind !== "RemoteStatus") {
       continue;
     }
-    const quoted = await findRemoteStatusById(env.DB, quote.quoted.statusId);
+    const quoted = readableRemoteStatus(
+      await findDeliveredRemoteStatusById(env.DB, quote.quoted.statusId),
+    );
     if (quoted.isErr()) {
       return err(quoted.error);
     }
@@ -224,7 +228,9 @@ export const revokeQuoteStamp = async (
     if (saved.isErr()) {
       return err(saved.error);
     }
-    const remoteQuoting = await findRemoteStatusById(env.DB, quote.quoting.statusId);
+    const remoteQuoting = readableRemoteStatus(
+      await findDeliveredRemoteStatusById(env.DB, quote.quoting.statusId),
+    );
     if (remoteQuoting.isErr()) {
       return err(remoteQuoting.error);
     }

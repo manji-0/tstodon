@@ -36,7 +36,7 @@ import { loadNoteQuotePolicy } from "../quote-policy-name";
 import { findQuoteByActivityUri, findQuoteByQuoting, saveQuoteState } from "../quote-store";
 import { remoteFollowerActorUris } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
-import { findRemoteStatusByObjectUri } from "../remote-status-store";
+import { findDeliveredRemoteStatus, readableRemoteStatus } from "../remote-status-store";
 import { findStatusById } from "../status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
 import type { RemoteDelivery } from "./handler";
@@ -226,7 +226,7 @@ const rejectQuoteRequest = async (
   signer: RemoteActor,
   request: QuoteRequestRef,
 ): Promise<Result<void, RepositoryError>> => {
-  const quoting = await findRemoteStatusByObjectUri(env.DB, request.instrument);
+  const quoting = readableRemoteStatus(await findDeliveredRemoteStatus(env.DB, request.instrument));
   if (quoting.isErr()) {
     return err(quoting.error);
   }

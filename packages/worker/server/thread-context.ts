@@ -15,8 +15,9 @@ import {
   listThreadDescendantIds as listThreadDescendantIdsSql,
 } from "./generated/prisma/sql";
 import {
-  findRemoteStatusByObjectUri,
+  findDeliveredRemoteStatus,
   findRemoteStatusesByIds,
+  readableRemoteStatus,
   remoteStatusFromRow,
   storedRowError,
   RemoteStatusRowSchema,
@@ -77,7 +78,8 @@ export const findThreadParent = async (
     }
     return ok(parent.value ? { kind: "Local", status: parent.value } : undefined);
   }
-  const parent = await findRemoteStatusByObjectUri(db, parentUri);
+  // A parent whose row does not read is unknown, as one that was never stored.
+  const parent = readableRemoteStatus(await findDeliveredRemoteStatus(db, parentUri));
   if (parent.isErr()) {
     return err(parent.error);
   }
