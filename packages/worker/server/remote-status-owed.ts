@@ -87,3 +87,34 @@ export const clearOwed = async (
   );
   return cleared.map(() => undefined);
 };
+
+/**
+ * How long a marker waits for the redelivery that finishes its work: a
+ * sender retries a failed delivery for some days and then gives up. A week
+ * is also the least the inbox keeps its dedupe rows
+ * (`INBOX_ACTIVITY_RETENTION_DAYS`).
+ */
+export const OWED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Delete the markers older than {@link OWED_RETENTION_MS}: their sender gave
+ * up, so the work they name stays undone. The counts of what was abandoned,
+ * by marker kind.
+ */
+export const deleteAbandonedOwed = (
+  db: D1Database,
+  nowMs: number = Date.now(),
+): Promise<Result<Readonly<{ created: number; edited: number }>, RepositoryError>> =>
+  runD1(async () => {
+    const deleted = await db
+      .prepare(
+        "DELETE FROM remote_status_owed WHERE created_at < ? RETURNING kind, token, created_at",
+      )
+      .bind(new Date(nowMs - OWED_RETENTION_MS).toISOString())
+      .all();
+    const kinds = parseRows(OwedRowSchema, deleted.results).map((row) => row.kind);
+    return {
+      created: kinds.filter((kind) => kind === "Created").length,
+      edited: kinds.filter((kind) => kind === "Edited").length,
+    };
+  });
