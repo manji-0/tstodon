@@ -2,6 +2,8 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { ApiStatus } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { answerLinkPreviews } from "../test/link-card-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
@@ -96,6 +98,11 @@ const remotePost = async (
       type: "Note",
       attributedTo: actor.actorUri,
       content,
+      // As Mastodon sends a note: a `Hashtag` object for each hashtag link.
+      tag: [...content.matchAll(/#<span>([^<]+)<\/span>/g)].map(([, name]) => ({
+        type: "Hashtag",
+        name: `#${name}`,
+      })),
       published: new Date().toISOString(),
       to,
     },
@@ -210,6 +217,36 @@ describe("tag timeline across the fediverse", () => {
         );
       }
     }
+  });
+
+  it("renders a remote status's stored tags, in stored order", async () => {
+    const actor = await remoteAuthor("tara", "tagrender.example");
+    const id = await remotePost(actor, `${actor.actorUri}/statuses/1`, "<p>tagged</p>");
+    const other = await remotePost(actor, `${actor.actorUri}/statuses/2`, "<p>untagged</p>");
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM remote_status_tags WHERE status_id IN (?, ?)").bind(id, other),
+      env.DB.prepare(
+        "INSERT INTO remote_status_tags (status_id, tag) VALUES (?, 'tagrenderz'), (?, '日本語'), (?, 'tagrendera')",
+      ).bind(id, id, id),
+    ]);
+    const expected = [
+      { name: "tagrenderz", url: "https://example.com/tags/tagrenderz" },
+      { name: "日本語", url: "https://example.com/tags/%E6%97%A5%E6%9C%AC%E8%AA%9E" },
+      { name: "tagrendera", url: "https://example.com/tags/tagrendera" },
+    ];
+
+    const single = await json(`/api/v1/statuses/${id}`);
+    expect(single.status).toBe(200);
+    expect(expectContract(ApiStatus, single.body).tags).toEqual(expected);
+
+    const timeline = await json("/api/v1/timelines/tag/tagrenderz?remote=true");
+    expect(timeline.status).toBe(200);
+    expect(
+      expectContract(z.array(ApiStatus), timeline.body).map((status) => [status.id, status.tags]),
+    ).toEqual([[id, expected]]);
+
+    const untagged = await json(`/api/v1/statuses/${other}`);
+    expect(expectContract(ApiStatus, untagged.body).tags).toEqual([]);
   });
 
   it("indexes older remote statuses from cron", async () => {

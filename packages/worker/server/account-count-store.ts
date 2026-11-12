@@ -21,7 +21,7 @@ export const accountCounts = async (
 ): Promise<Result<AccountCounts, RepositoryError>> =>
   (await accountCountsByIds(db, [accountId])).map((counts) => counts.get(accountId) ?? NO_COUNTS);
 
-/** The counters triggers keep in `account_stats` (migration 0135); an account without a row has none. */
+/** The counters triggers keep in `account_stats` (migration 0137); an account without a row has none. */
 export const accountCountsByIds = async (
   db: D1Database,
   accountIds: ReadonlyArray<string>,

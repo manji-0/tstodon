@@ -7,19 +7,17 @@ import {
   listRemoteStatusEditSnapshots as listRemoteStatusEditSnapshotsSql,
 } from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
-import { queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 const SnapshotJsonRow = z.object({ snapshot_json: z.string() });
 
-/** Keep the version of a remote note an `Update` is about to replace. */
-export const insertRemoteStatusEdit = async (
+/** The statement that keeps the version of a remote note an `Update` is about to replace. */
+export const remoteStatusEditStatement = (
   db: D1Database,
   statusId: string,
   snapshotJson: string,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await runTyped(db, insertRemoteStatusEditSql(newEntityId(), statusId, snapshotJson, nowIso()));
-  });
+): D1PreparedStatement =>
+  d1PrepareTyped(db, insertRemoteStatusEditSql(newEntityId(), statusId, snapshotJson, nowIso()));
 
 /** Replaced versions as stored JSON text, newest first. */
 export const listRemoteStatusEdits = async (

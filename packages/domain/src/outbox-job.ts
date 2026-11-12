@@ -28,6 +28,11 @@ const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
  */
 const BackfillLocalNoteTagsSchema = unitKind("BackfillLocalNoteTags");
 /**
+ * Rename the next page of tag names stored before `normalizeHashtag` folded
+ * accents, from the `tag_name_fold` cursor (cron, self-chaining, stops once complete).
+ */
+const FoldTagNamesSchema = unitKind("FoldTagNames");
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -300,6 +305,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
   BackfillLocalNoteTagsSchema,
+  FoldTagNamesSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

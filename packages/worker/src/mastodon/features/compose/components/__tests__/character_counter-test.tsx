@@ -15,6 +15,28 @@ describe('CharacterCounter', () => {
     expect(screen.getByText('475')).toBeDefined();
   });
 
+  it("counts a URL as Mastodon's server finds it, where twitter-text ends it early or finds none", () => {
+    render(
+      <CharacterCounter
+        max={500}
+        text={countableText('https://例え.jp/パス gemini://example.com/capsule')}
+        length={graphemeLength}
+      />,
+    );
+    expect(screen.getByText('453')).toBeDefined();
+  });
+
+  it('counts a URL as written if IDNA2003 refuses its host, as the server does', () => {
+    render(
+      <CharacterCounter
+        max={500}
+        text={countableText('https://👍.com/ https://☃.com/')}
+        length={graphemeLength}
+      />,
+    );
+    expect(screen.getByText('462')).toBeDefined();
+  });
+
   it('counts with stringz unless given a length, as the alt text modal does', () => {
     render(<CharacterCounter max={1} text='कि' />);
     expect(screen.getByText('-1')).toBeDefined();

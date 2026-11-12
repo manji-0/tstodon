@@ -1,0 +1,21 @@
+-- `normalizeHashtag` now folds accents to ASCII, as Mastodon's
+-- `HashtagNormalizer` (`café` is `cafe`), and lowercases a final `Σ` as `σ`.
+-- Lookups normalize the name they are given, so a row stored under the old
+-- name is no longer reached. The fold is a rule in TypeScript, not in SQL,
+-- so the `FoldTagNames` job (server/tag-name-fold.ts) renames the stored
+-- names a page at a time with `normalizeHashtag` itself, from this cursor
+-- (the last name read), in every table that holds a tag name:
+--
+--   tags.name, followed_tags.tag_name, featured_tags.tag_name,
+--   local_status_tags.tag, remote_status_tags.tag,
+--   trend_reviews.target (kind 'Tag'),
+--   stream_subscriptions.param (stream 'hashtag' or 'hashtag:local')
+--
+-- Where the folded name is already stored, the rows merge:
+--   - a follow, a feature, a status's tag and a stream subscription are
+--     memberships: the union is kept (the folded row where both exist);
+--   - `tags`: `usable` and `listable` take the more restrictive value (0),
+--     `display_name` the folded row's, else the old row's, and `created_at`
+--     the earlier;
+--   - `trend_reviews`: `Rejected` wins over `Approved`.
+INSERT OR IGNORE INTO backfill_cursors (name) VALUES ('tag_name_fold');

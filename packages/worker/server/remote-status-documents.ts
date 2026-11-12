@@ -37,8 +37,13 @@ import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { mastodonRemoteStatus } from "./remote-status-document";
 import { documentsById } from "./documents-by-id";
-import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
+import {
+  findRemoteStatusesByIds,
+  findRemoteStatusRefsByObjectUris,
+  listRemoteStatusTags,
+} from "./remote-status-store";
 import { listRemoteStatusCards } from "./status-card-store";
+import { tagUrl } from "./tag-documents";
 import { statusInteractionCountsByIds } from "./status-interaction-store";
 import { findStatusesByIds } from "./status-store";
 import { quotedStatusAccess } from "./quoted-status-access";
@@ -292,9 +297,10 @@ const renderRemoteStatuses = async <Q>(
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
   const targets = statuses.map((status) => StatusTarget.remote(status.id));
-  const [cards, actors, moderations, pollVotes, interactions, relations, quotes] =
+  const [cards, tags, actors, moderations, pollVotes, interactions, relations, quotes] =
     await Promise.all([
       listRemoteStatusCards(env.DB, ids),
+      listRemoteStatusTags(env.DB, ids),
       findRemoteActorsByUris(env.DB, actorUris),
       listRemoteActorModerations(env.DB, actorUris),
       findRemotePollVotes(env.DB, viewerId, statuses),
@@ -325,6 +331,10 @@ const renderRemoteStatuses = async <Q>(
     const card = rawCard ? parseCardJson(rawCard) : undefined;
     const document = mastodonRemoteStatus(status, author.document, {
       card: card ? cardDocument(card) : null,
+      tags: (tags.isOk() ? (tags.value.get(status.id) ?? []) : []).map((name) => ({
+        name,
+        url: tagUrl(identity, name),
+      })),
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
       quoteApproval: QuoteInteractionPolicy.forViewer(
@@ -349,7 +359,7 @@ const renderRemoteStatuses = async <Q>(
 
 /**
  * Cached remote statuses as Mastodon statuses rendered for the viewer, in the
- * order given: author, preview card, the viewer's poll votes, local accounts'
+ * order given: author, preview card, hashtags, the viewer's poll votes, local accounts'
  * favourites and boosts with the viewer's own, whether the viewer may quote
  * it, its quote, and reply refs. A status with
  * media is marked sensitive when an admin marked its author's media sensitive,

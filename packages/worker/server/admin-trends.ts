@@ -1,3 +1,4 @@
+import { normalizeHashtag } from "@tstodon/core";
 import { Hostname, StatusId } from "@tstodon/domain";
 import { err, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
@@ -33,7 +34,7 @@ export const reviewTrend = async (
 ): Promise<Result<void, ReviewTrendError>> => {
   switch (target.kind) {
     case "Tag": {
-      const name = target.name.trim();
+      const name = normalizeHashtag(target.name);
       return name.length === 0 ? err({ kind: "NotFound" }) : setTrendReview(db, "Tag", name, state);
     }
     case "Link":

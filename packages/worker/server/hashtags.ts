@@ -13,7 +13,9 @@ import { d1PrepareTyped } from "./typed-sql";
  * {@link extractHashtags} reads a local note's. A link counts only when its
  * text is a hashtag (Mastodon renders one as `#<span>name</span>`): another
  * link's text is a URL or a mention, whose fragment or path is no tag even
- * where the link splits it across spans.
+ * where the link splits it across spans. Only the backfill reads tags this
+ * way, for a status stored without them: a note that arrives is indexed
+ * under its `Hashtag` tag objects (`noteHashtags`).
  */
 export const htmlHashtags = (html: string): string[] =>
   extractHashtags(

@@ -111,6 +111,12 @@ export default defineConfig({
       "packages/worker/.wrangler/**",
       "pnpm-lock.yaml",
       "**/worker-configuration.d.ts",
+      // As their generators write them (scripts/generate-post-text-*.mjs,
+      // scripts/generate-idna-tables.mjs).
+      "packages/core/src/post-text-url-pattern.ts",
+      "packages/core/src/post-text.fixture.json",
+      "packages/core/src/idna-tables.ts",
+      "packages/core/src/idna.fixture.json",
       // Mastodon's vendored frontend and its Vite plugins keep upstream's
       // formatting; see packages/worker/src/UPSTREAM.md.
       "packages/worker/src/**",

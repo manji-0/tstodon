@@ -51,11 +51,16 @@ export type CronJob =
 export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Refresh the previews whose cache entry has aged out.
   { kind: "Inline", job: { kind: "RefreshLinkCards" } },
-  // Index the tags of remote statuses written before the tag index.
+  // Index the tags of remote statuses left to the backfill (written before
+  // the tag index, or sent back by migration 0136); one empty read once none
+  // is left.
   { kind: "Inline", job: { kind: "BackfillRemoteTags" } },
   // Index the tags of local notes written before `local_status_tags`; a
   // single read once the cursor is complete.
   { kind: "Inline", job: { kind: "BackfillLocalNoteTags" } },
+  // Rename the tag names stored before accents were folded; a single read
+  // once the cursor is complete.
+  { kind: "Inline", job: { kind: "FoldTagNames" } },
   // Move attachments stored at an id-derived key to a random one.
   { kind: "Inline", job: { kind: "RekeyLegacyMedia", afterId: "" } },
   // Queue one cleanup run per account with automated post deletion on.

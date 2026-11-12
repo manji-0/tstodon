@@ -31,7 +31,9 @@ const kindsOf = (jobs: ReadonlyArray<CronJob>, kind?: CronJob["kind"]): string[]
 
 /** Jobs that queue their next page when a page is full. */
 const PAGED = new Set([
+  "BackfillRemoteTags",
   "BackfillLocalNoteTags",
+  "FoldTagNames",
   "RekeyLegacyMedia",
   "VacuumMediaAttachments",
   "VacuumActivities",

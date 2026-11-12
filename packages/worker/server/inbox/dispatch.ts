@@ -25,12 +25,11 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
     case "Create":
       return receiveRemoteCreate({ ...delivery, activity });
     case "Update":
-      await applyRemoteUpdate(env, identity, signer, receipt.received.object, {
+      return applyRemoteUpdate(env, identity, signer, receipt.received.object, {
         allowHosts: receipt.allowHosts,
         blockedHosts: receipt.blockedHosts,
         fetchSigner: receipt.fetchSigner,
       });
-      return ok(undefined);
     case "Delete":
       return receiveRemoteDelete({ ...delivery, activity });
     case "Follow":

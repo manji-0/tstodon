@@ -1,19 +1,20 @@
+import { toAscii } from "./idna";
 import { InstanceLimits } from "./instance-limits";
-import { POST_URL_PATTERN } from "./post-text-url-pattern";
+import { POST_TEXT_PATTERNS } from "./post-text-url-pattern";
 
 /**
- * How Mastodon counts post text against a length limit, shared by the Worker
- * (which enforces the limits) and the web UI (which shows what is left). It
- * imports no Zod, so the web UI can load it: `@tstodon/core/post-text`.
+ * How Mastodon's server reads post text: what it counts against a length
+ * limit and what it links. Shared by the Worker (which enforces the limits
+ * and writes the HTML) and the web UI (which shows what is left). It imports
+ * no Zod, so the web UI can load it: `@tstodon/core/post-text`.
  */
 
 /**
- * An `http(s)` URL in post text: twitter-text's pattern with the scheme
- * required, as Mastodon's web UI and `StatusLengthValidator` find URLs. `$2`
- * is the character before the URL. Global: use it with `replace`, which
- * resets `lastIndex`.
+ * A URL with a scheme in post text, for taking URLs out of it (`replace`,
+ * which resets `lastIndex`); the match starts with the character before the
+ * URL. `extractEntities` is what finds the URLs Mastodon links.
  */
-export const postUrlRegex = new RegExp(POST_URL_PATTERN.source, POST_URL_PATTERN.flags);
+export const postUrlRegex = new RegExp(POST_TEXT_PATTERNS.schemedUrl, "giu");
 
 const URL_PLACEHOLDER = "x".repeat(InstanceLimits.status.charactersReservedPerUrl);
 
@@ -62,6 +63,7 @@ const WORD_CHARACTER = new RegExp(`^[${WORD}]$`, "u");
 const ALPHA_CHARACTER = new RegExp(`^[${ALPHA}]$`, "u");
 const SEPARATOR_CHARACTER = new RegExp(`^[${SEPARATORS}]$`, "u");
 const HASHTAG_INVALID_CHARACTERS = new RegExp(`[^${ALNUM}\\u0E47-\\u0E4E${SEPARATORS}]`, "gu");
+const BLANK = new RegExp(`^[${SPACE}]*$`, "u");
 const isWord = (c: string): boolean => WORD_CHARACTER.test(c);
 const isAlpha = (c: string): boolean => ALPHA_CHARACTER.test(c);
 const isSeparator = (c: string): boolean => SEPARATOR_CHARACTER.test(c);
@@ -130,13 +132,37 @@ const lastBranchLength = (name: ReadonlyArray<string>): number => {
 };
 
 /**
+ * Mastodon's `ASCIIFolding` table (`app/lib/ascii_folding.rb`, v4.7.5): each
+ * letter of the first string folds to the one at its place in the second.
+ * It is Latin-1 and Latin Extended-A only, so `é` folds and `ǎ`, `ß`, `æ`
+ * and `ё` stay.
+ */
+const NON_ASCII_CHARS =
+  "ÀÁÂÃÄÅàáâãäåĀāĂăĄąÇçĆćĈĉĊċČčÐðĎďĐđÈÉÊËèéêëĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħÌÍÎÏìíîïĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłÑñŃńŅņŇňŉŊŋÒÓÔÕÖØòóôõöøŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšſŢţŤťŦŧÙÚÛÜùúûüŨũŪūŬŭŮůŰűŲųŴŵÝýÿŶŷŸŹźŻżŽž";
+const EQUIVALENT_ASCII_CHARS =
+  "AAAAAAaaaaaaAaAaAaCcCcCcCcCcDdDdDdEEEEeeeeEeEeEeEeEeGgGgGgGgHhHhIIIIiiiiIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnNnnNnOOOOOOooooooOoOoOoRrRrRrSsSsSsSssTtTtTtUUUUuuuuUuUuUuUuUuUuWwYyyYyYZzZzZz";
+const ASCII_FOLDS: ReadonlyMap<string, string> = new Map(
+  Array.from(NON_ASCII_CHARS, (c, i) => [c, EQUIVALENT_ASCII_CHARS[i] ?? c]),
+);
+/** The table's range: every character of `NON_ASCII_CHARS` is in it. */
+const FOLDABLE = /[\u00C0-\u017F]/g;
+
+/**
  * A tag's stored name, as Mastodon's `HashtagNormalizer`: NFKC (full-width
- * to half-width), lowercase, and only the characters a tag can hold, so
- * `#Cat`, `ＣＡＴ` and `cat!` are all `cat`. Mastodon also folds accents to
- * ASCII (`café` to `cafe`); this does not (SHR-3).
+ * to half-width), lowercase, accents folded to ASCII (`ASCIIFolding`), and
+ * only the characters a tag can hold, so `#Cat`, `ＣＡＴ` and `cat!` are all
+ * `cat`, and `Café` is `cafe`. The fold reads composed characters, after
+ * NFKC composed them: a letter the table lacks keeps its accent (`ǎ`).
+ * One known difference: `toLowerCase` writes a `Σ` ending a word as `ς`
+ * (`ΟΔΟΣ` is `οδος`), where Ruby's `downcase` writes `σ`. Names have been
+ * stored this way, so it is kept rather than strand them (SHR-8).
  */
 export const normalizeHashtag = (raw: string): string =>
-  raw.normalize("NFKC").toLowerCase().replace(HASHTAG_INVALID_CHARACTERS, "");
+  raw
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(FOLDABLE, (c) => ASCII_FOLDS.get(c) ?? c)
+    .replace(HASHTAG_INVALID_CHARACTERS, "");
 
 /** Whether a name is a hashtag's (`Tag::HASHTAG_NAME_RE`): `日本語`, `a1`, not `2024`. */
 export const isHashtagName = (name: string): boolean => {
@@ -177,12 +203,167 @@ export type PostEntity =
 
 type EntityOf<Kind extends PostEntity["kind"]> = Extract<PostEntity, { kind: Kind }>;
 
-const urlEntities = (text: string): EntityOf<"Url">[] =>
-  [...text.matchAll(postUrlRegex)].map((match) => {
-    const start = match.index + (match[2] ?? "").length;
-    const end = match.index + match[0].length;
-    return { kind: "Url", start, end, url: text.slice(start, end) };
-  });
+const URL_AT = new RegExp(POST_TEXT_PATTERNS.url, "iuy");
+const TCO_URL = new RegExp(POST_TEXT_PATTERNS.tcoUrl, "iu");
+const EXTRA_URI_START = new RegExp(POST_TEXT_PATTERNS.extraUriStart, "giu");
+const XMPP_AUTHORITY = new RegExp(POST_TEXT_PATTERNS.xmppAuthority, "iuy");
+const XMPP_ADDRESS = new RegExp(POST_TEXT_PATTERNS.xmppAddress, "iuy");
+const SCHEME = new RegExp(POST_TEXT_PATTERNS.scheme, "giu");
+const DOMAIN_LABEL = new RegExp(POST_TEXT_PATTERNS.domainLabel, "gu");
+const TLD_AT = new RegExp(POST_TEXT_PATTERNS.tld, "iuy");
+/** twitter-text's `MAX_URL_LENGTH` and `MAX_TCO_SLUG_LENGTH`. */
+const MAX_URL_LENGTH = 4096;
+const MAX_TCO_SLUG_LENGTH = 40;
+
+const isLowSurrogate = (text: string, index: number): boolean =>
+  (text.charCodeAt(index) & 0xfc00) === 0xdc00 && (text.charCodeAt(index - 1) & 0xfc00) === 0xd800;
+
+/**
+ * The indices of `text` where `URL_AT` can match: one character before a
+ * domain, or before a scheme and a domain. `URL_AT` matches from a domain
+ * without a scheme too, as twitter-text's `valid_url`, so trying it at every
+ * index walks a run of labels with no top-level domain (`é.é.é.…`) once per
+ * label, which is quadratic. This finds where a domain starts in one pass
+ * from the right: a label starts one if it ends at a top-level domain, or at
+ * a label that starts one.
+ */
+const urlAttempts = (text: string): Uint8Array => {
+  const domainStarts = new Uint8Array(text.length + 1);
+  const attempts = new Uint8Array(text.length + 1);
+  const attemptBefore = (index: number): void => {
+    attempts[Math.max(0, index - (isLowSurrogate(text, index - 1) ? 2 : 1))] = 1;
+  };
+  let next = { start: -1, startsDomain: false };
+  for (const match of [...text.matchAll(DOMAIN_LABEL)].reverse()) {
+    const label = match[0];
+    const dot = match.index + label.length - 1;
+    if (!label.endsWith(".") || /[_-]\.$/.test(label)) {
+      continue;
+    }
+    TLD_AT.lastIndex = dot + 1;
+    // An underscore may be in a subdomain, not in the name before the top-level domain.
+    const first =
+      next.start === dot + 1 && next.startsDomain
+        ? 0
+        : TLD_AT.test(text)
+          ? label.lastIndexOf("_") + 1
+          : label.length;
+    for (let i = first; i < label.length - 1; i += 1) {
+      const index = match.index + i;
+      if (label[i] !== "-" && label[i] !== "_" && !isLowSurrogate(text, index)) {
+        domainStarts[index] = 1;
+        attemptBefore(index);
+      }
+    }
+    next = { start: match.index, startsDomain: domainStarts[match.index] === 1 };
+  }
+  for (const match of text.matchAll(SCHEME)) {
+    if (domainStarts[match.index + match[0].length] === 1) {
+      attemptBefore(match.index);
+    }
+  }
+  return attempts;
+};
+
+const codePointLength = (text: string): number => {
+  let length = text.length;
+  for (let index = 1; index < text.length; index += 1) {
+    if (isLowSurrogate(text, index)) {
+      length -= 1;
+    }
+  }
+  return length;
+};
+
+/**
+ * twitter-text's `is_valid_domain`: the host converts to ASCII (IDNA2003, as
+ * libidn's `IDN::Idna.toASCII`), and the URL is at most `MAX_URL_LENGTH`
+ * characters with what the conversion adds to the host. So
+ * `https://👍.com`, whose host Unicode 3.2 does not have, is no URL.
+ */
+const isValidDomain = (url: string, domain: string): boolean => {
+  const length = codePointLength(url);
+  if (length > MAX_URL_LENGTH) {
+    return false;
+  }
+  const ascii = toAscii(domain);
+  return (
+    ascii !== undefined &&
+    length + Math.max(0, ascii.length - codePointLength(domain)) <= MAX_URL_LENGTH
+  );
+};
+
+/**
+ * The URLs Mastodon counts as `charactersReservedPerUrl` characters
+ * (`Extractor.extract_urls_with_indices` without the URLs that have no
+ * scheme). A match without a scheme is no URL, but a URL inside it is none
+ * either: `example.com/https://example.org` has no URL. A `t.co` link ends
+ * after its slug.
+ */
+const urlEntities = (text: string): EntityOf<"Url">[] => {
+  const attempts = urlAttempts(text);
+  const urls: EntityOf<"Url">[] = [];
+  let matchedTo = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (attempts[index] !== 1 || index < matchedTo) {
+      continue;
+    }
+    URL_AT.lastIndex = index;
+    const match = URL_AT.exec(text);
+    if (match === null) {
+      continue;
+    }
+    matchedTo = index + match[0].length;
+    if (match.groups?.["scheme"] === undefined) {
+      continue;
+    }
+    const start = index + (match.groups["before"] ?? "").length;
+    const matched = text.slice(start, matchedTo);
+    const tco = TCO_URL.exec(matched);
+    const url = tco?.[0] ?? matched;
+    if (
+      (tco?.[1] ?? "").length <= MAX_TCO_SLUG_LENGTH &&
+      isValidDomain(url, match.groups["domain"] ?? "")
+    ) {
+      urls.push({ kind: "Url", start, end: start + url.length, url });
+    }
+  }
+  return urls;
+};
+
+/** Where `pattern` (sticky) ends when it matches `text` at `index`. */
+const endOfMatchAt = (pattern: RegExp, text: string, index: number): number | undefined => {
+  pattern.lastIndex = index;
+  return pattern.test(text) ? pattern.lastIndex : undefined;
+};
+
+/** Where the `xmpp:` URI ends whose `xmpp:` ends at `index`: after its address, which may follow an authority (`//guest@example.com/`). */
+const xmppEnd = (text: string, index: number): number | undefined => {
+  const authority = endOfMatchAt(XMPP_AUTHORITY, text, index);
+  return (
+    (authority === undefined ? undefined : endOfMatchAt(XMPP_ADDRESS, text, authority)) ??
+    endOfMatchAt(XMPP_ADDRESS, text, index)
+  );
+};
+
+/** The `xmpp:` and `magnet:` URIs Mastodon links but counts as written (`Extractor.extract_extra_uris_with_indices`). */
+const extraUriEntities = (text: string): EntityOf<"Url">[] => {
+  const uris: EntityOf<"Url">[] = [];
+  EXTRA_URI_START.lastIndex = 0;
+  for (let match = EXTRA_URI_START.exec(text); match !== null; match = EXTRA_URI_START.exec(text)) {
+    const start = match.index + (match.groups?.["before"] ?? "").length;
+    const matchedTo = match.index + match[0].length;
+    const end = match.groups?.["xmpp"] === undefined ? matchedTo : xmppEnd(text, matchedTo);
+    if (end === undefined) {
+      // No URI here: look on after the `x`, which nothing can start at or follow.
+      EXTRA_URI_START.lastIndex = start + 1;
+    } else {
+      uris.push({ kind: "Url", start, end, url: text.slice(start, end) });
+      EXTRA_URI_START.lastIndex = end;
+    }
+  }
+  return uris;
+};
 
 /**
  * A tag right before `://` loses a trailing `http` or `https` (`#tagged
@@ -250,18 +431,26 @@ const withoutOverlaps = <Entity extends PostEntity>(entities: ReadonlyArray<Enti
 
 /**
  * The URLs, hashtags and mentions Mastodon links in post text, in text
- * order (`Extractor.extract_entities_with_indices`). Unlike Mastodon, a URL
- * needs `http(s)` (no `xmpp:` or `magnet:` link).
+ * order (`Extractor.extract_entities_with_indices`).
  */
 export const extractEntities = (text: string): PostEntity[] =>
-  withoutOverlaps([...urlEntities(text), ...hashtagEntities(text), ...mentionEntities(text)]);
+  withoutOverlaps([
+    ...urlEntities(text),
+    ...hashtagEntities(text),
+    ...mentionEntities(text),
+    ...extraUriEntities(text),
+  ]);
 
 /**
  * The text Mastodon counts: each URL is `charactersReservedPerUrl`
- * characters long, and a mention counts without its domain
+ * characters long, but an `xmpp:` or `magnet:` URI counts as written, and a
+ * mention counts without its domain. Text of spaces only counts as none
  * (`StatusLengthValidator#countable_text`).
  */
 export const countableText = (text: string): string => {
+  if (BLANK.test(text)) {
+    return "";
+  }
   let counted = "";
   let index = 0;
   for (const entity of withoutOverlaps([...urlEntities(text), ...mentionEntities(text)])) {

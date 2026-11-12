@@ -11,7 +11,7 @@ import { z } from "zod";
 import type { RepositoryError } from "./d1";
 import { parseJsonColumn } from "./json-column";
 import { mastodonRemoteStatus } from "./remote-status-document";
-import { insertRemoteStatusEdit, listRemoteStatusEdits } from "./remote-status-edit-store";
+import { listRemoteStatusEdits, remoteStatusEditStatement } from "./remote-status-edit-store";
 
 /** One version of a remote note: what its author had published as of `at`. */
 const RemoteRevisionSchema = z.object({
@@ -39,12 +39,16 @@ export const revisionOf = (status: RemoteStatusValue): RemoteRevision => ({
   emojis: [...status.emojis],
 });
 
-/** Keep the version `status` holds now, before an `Update` replaces it. */
-export const snapshotRemoteRevision = (
+/**
+ * The statement that keeps the version `status` holds now. It runs in the
+ * batch that replaces the row (`upsertRemoteStatus`), so an `Update` whose
+ * write fails keeps no version, and its redelivery keeps it once.
+ */
+export const remoteRevisionStatement = (
   db: D1Database,
   status: RemoteStatusValue,
-): Promise<Result<void, RepositoryError>> =>
-  insertRemoteStatusEdit(db, status.id, JSON.stringify(revisionOf(status)));
+): D1PreparedStatement =>
+  remoteStatusEditStatement(db, status.id, JSON.stringify(revisionOf(status)));
 
 /** The `StatusEdit` entity of one version of `status`. */
 const statusEditJson = (
