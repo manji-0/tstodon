@@ -178,6 +178,32 @@ describe("an inbox activity that failed after its row was stored", () => {
     expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
   });
 
+  it("notifies a mentioned account when the Create that failed before its mention row was written is redelivered", async () => {
+    const mentioned = await localAccount("inbox-retry-create-early@example.com");
+    const author = await remoteActor("retry-create-early");
+    const object = note(author, "retry-create-early", {
+      content: "<p>hi @you</p>",
+      tag: [{ type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+    });
+    const activity = { id: `${object.id}/create`, type: "Create", object };
+
+    const allow = await refuseMentionRow("inbox_retry_create_early", mentioned.id);
+    let id = "";
+    try {
+      expect(await author.send(activity)).toBe(500);
+      id = (await storedId(object.id)) ?? "";
+      expect(await owedKinds(id)).toEqual(["Created"]);
+      expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
   /** A stored note of `author` that the local account `email` boosted. */
   const boostedNote = async (author: Remote, slug: string, email: string) => {
     const original = note(author, slug, { content: "<p>before</p>" });
