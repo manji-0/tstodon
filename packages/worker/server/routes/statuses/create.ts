@@ -332,9 +332,9 @@ const postStatus = async (
   if (published.isErr()) {
     return err(ApiRefusal.repository(published.error.message));
   }
-  const document = await mastodonStatus(env, identity, published.value, author.id);
+  const { note: publishedNote, document } = published.value;
   return ok({
-    record: { kind: "Status", id: published.value.id },
+    record: { kind: "Status", id: publishedNote.id },
     document: document.isErr()
       ? err(ApiRefusal.repository(document.error.message))
       : document.value

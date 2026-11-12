@@ -1,4 +1,6 @@
 import { InstanceLimits } from "@tstodon/core";
+import type { ApiStatusJSON } from "@tstodon/api";
+import { afterResponse } from "./after-response";
 import type {
   LocalAccount,
   LocalNote,
@@ -123,12 +125,18 @@ export const applyMediaAttributes = async (
  * ActivityPub `Create`, and the streaming event. Shared by `POST
  * /api/v1/statuses` and the scheduled-status publisher so both behave the same.
  */
+/** A published note and its author's view of it (as `GET /api/v1/statuses/:id` renders it). */
+export type PublishedNote = Readonly<{
+  note: LocalNote;
+  document: Result<ApiStatusJSON | undefined, RepositoryError>;
+}>;
+
 export const publishLocalNote = async (
   env: Env,
   identity: InstanceIdentity,
   user: LocalAccount,
   input: PublishNoteInput,
-): Promise<Result<LocalNote, RepositoryError>> => {
+): Promise<Result<PublishedNote, RepositoryError>> => {
   const id = StatusId.parse(newEntityId());
   if (id.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid status id" });
@@ -346,26 +354,30 @@ export const publishLocalNote = async (
       console.error(JSON.stringify({ kind: "QuoteRequestNotSent", statusId: note.id }));
     }
   }
-  // A render that fails sends no event; the caller renders the note again and reports it.
+  // The author's own view of the note: the response and the author's stream
+  // event both send it. A render that fails sends no event.
   const document = await mastodonStatus(env, identity, note, user.id);
-  if (document.isOk() && document.value) {
-    await publishToAccount(env, user.id, { kind: "update", payload: document.value });
-  }
-  if (note.visibility.kind === "Direct") {
-    await publishConversationUpdate(
-      env,
-      identity,
-      [user.id, ...mentionedAccounts.map((account) => account.id)],
-      note.id,
-    );
-  }
-  await enqueueHomeFanOut(env, {
-    event: "update",
-    entryId: note.id,
-    author: { kind: "LocalAccount", accountId: user.id },
+  // Stream events and fan-out queue sends wait until the response is ready.
+  afterResponse("LocalNoteFanOutFailed", async () => {
+    if (document.isOk() && document.value) {
+      await publishToAccount(env, user.id, { kind: "update", payload: document.value });
+    }
+    if (note.visibility.kind === "Direct") {
+      await publishConversationUpdate(
+        env,
+        identity,
+        [user.id, ...mentionedAccounts.map((account) => account.id)],
+        note.id,
+      );
+    }
+    await enqueueHomeFanOut(env, {
+      event: "update",
+      entryId: note.id,
+      author: { kind: "LocalAccount", accountId: user.id },
+    });
+    if (note.visibility.kind === "Public") {
+      await enqueuePublicFanOut(env, { event: "update", entryId: note.id });
+    }
   });
-  if (note.visibility.kind === "Public") {
-    await enqueuePublicFanOut(env, { event: "update", entryId: note.id });
-  }
-  return ok(note);
+  return ok({ note, document });
 };

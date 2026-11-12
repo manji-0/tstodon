@@ -1,4 +1,5 @@
 import type { ApiNotificationJSON } from "@tstodon/api";
+import { afterResponse } from "./after-response";
 import { assertNever } from "@tstodon/core";
 import {
   FediRole,
@@ -177,12 +178,17 @@ const notifyContracts = (env: Env): NotifyContracts => {
         notification.fromAccountId,
         notification.statusId,
       ),
-    publishNotification: async (accountId, notificationId) => {
-      const streamed = await streamedNotification(env, accountId, notificationId);
-      if (streamed) {
-        await publishToAccount(env, accountId, { kind: "notification", payload: streamed });
-      }
-      await enqueuePushDeliveries(env, accountId, notificationId);
+    // The stream render and push fan-out read about forty statements; the
+    // notification row is already written, so they run after the response.
+    publishNotification: (accountId, notificationId) => {
+      afterResponse("NotificationPublishFailed", async () => {
+        const streamed = await streamedNotification(env, accountId, notificationId);
+        if (streamed) {
+          await publishToAccount(env, accountId, { kind: "notification", payload: streamed });
+        }
+        await enqueuePushDeliveries(env, accountId, notificationId);
+      });
+      return Promise.resolve();
     },
   };
 };
