@@ -283,8 +283,9 @@ describe("the media sweep", () => {
     expect(read(z.object({ count: z.number() }), left).count).toBe(1);
   });
 
-  it("is queued by the six-hourly cron, not the hourly one", async () => {
-    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+  it("is run by the six-hourly cron, not the hourly one", async () => {
+    const old = await seedMedia(await accountIdOf("media-cleanup-cron@example.com"), 2);
+    vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
     const fire = async (cron: string) => {
       const ctx = createExecutionContext();
       await handleScheduled(
@@ -296,8 +297,8 @@ describe("the media sweep", () => {
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     await fire("17 * * * *");
-    expect(send).not.toHaveBeenCalledWith({ kind: "VacuumMediaAttachments" });
+    await expectKept(old);
     await fire("17 */6 * * *");
-    expect(send).toHaveBeenCalledWith({ kind: "VacuumMediaAttachments" });
+    await expectGone(old);
   });
 });

@@ -273,8 +273,13 @@ describe("the activity vacuum", () => {
     ).toContain("idx_inbox_activities_created");
   });
 
-  it("is queued by the six-hourly cron, not the hourly one", async () => {
-    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+  it("is run by the six-hourly cron, not the hourly one", async () => {
+    const activity = "vacuum-cron";
+    await env.DB.batch([
+      insertDelivery("vc-cron-old", activity, "Delivered", "https://cron.example/inbox", OLD),
+    ]);
+    const left = () => ids("SELECT id FROM outbox_deliveries WHERE activity_id = ?", activity);
+    vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     const fire = async (cron: string) => {
       const ctx = createExecutionContext();
@@ -286,9 +291,9 @@ describe("the activity vacuum", () => {
       await waitOnExecutionContext(ctx);
     };
     await fire("17 * * * *");
-    expect(send).not.toHaveBeenCalledWith({ kind: "VacuumActivities" });
+    expect(await left()).toEqual(["vc-cron-old"]);
     await fire("17 */6 * * *");
-    expect(send).toHaveBeenCalledWith({ kind: "VacuumActivities" });
+    expect(await left()).toEqual([]);
   });
 
   // Runs at today's date, so it comes last: it prunes every 2001 row above.

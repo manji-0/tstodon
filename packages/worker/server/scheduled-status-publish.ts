@@ -162,6 +162,12 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
   }
 };
 
+/** Whether a scheduled post is due now. A failed read answers yes. */
+export const hasDueScheduledStatuses = async (env: Env): Promise<boolean> => {
+  const due = await listDueScheduledStatuses(env.DB, nowIso(), 1);
+  return due.isErr() || due.value.length > 0;
+};
+
 /** Cron path: publish the posts that are due, a bounded batch per run. */
 export const publishDueScheduledStatuses = async (env: Env): Promise<void> => {
   const due = await listDueScheduledStatuses(env.DB, nowIso(), PUBLISH_BATCH);
