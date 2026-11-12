@@ -1,41 +1,12 @@
 import { z } from "zod";
-import { type RemoteStatus } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import {
   findRemoteStatusReplyTargetByObjectUri as findRemoteStatusReplyTargetByObjectUriSql,
   findRemoteStatusReplyTargets as findRemoteStatusReplyTargetsSql,
   findRemoteStatusReplyTargetsByObjectUris as findRemoteStatusReplyTargetsByObjectUrisSql,
 } from "./generated/prisma/sql";
 import { queryTyped } from "./typed-sql";
-import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
-import { REMOTE_STATUS_SELECT } from "./remote-status-timeline-store";
-
-/** Cached remote notes answering any of these URIs, oldest first. */
-export const listRemoteRepliesToUris = async (
-  db: D1Database,
-  uris: ReadonlyArray<string>,
-  limit: number,
-): Promise<Result<RemoteStatus[], RepositoryError>> => {
-  if (uris.length === 0 || limit <= 0) {
-    return ok([]);
-  }
-  return runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
-         WHERE s.in_reply_to_uri IN (SELECT value FROM json_each(?))
-         ORDER BY s.id ASC LIMIT ?`,
-      )
-      .bind(jsonStringArray([...new Set(uris)]), limit)
-      .all();
-    return okValues(
-      (results ?? []).map((raw) =>
-        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
-      ),
-    );
-  });
-};
 
 /** What a conversation needs to walk up a remote reply chain. */
 export type RemoteReplyTarget = Readonly<{

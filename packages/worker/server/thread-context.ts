@@ -7,24 +7,24 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { findAccountsByIds } from "./account-store";
 import { parseLocalStatusId } from "./activitypub";
 import { type RepositoryError, runD1 } from "./d1";
 import {
   listLocalThreadAncestors as listLocalThreadAncestorsSql,
   listRemoteThreadAncestors as listRemoteThreadAncestorsSql,
+  listThreadDescendantIds as listThreadDescendantIdsSql,
 } from "./generated/prisma/sql";
 import {
   findRemoteStatusByObjectUri,
+  findRemoteStatusesByIds,
   remoteStatusFromRow,
   RemoteStatusRowSchema,
 } from "./remote-status-store";
-import { findRemoteStatusReplyTargets, listRemoteRepliesToUris } from "./remote-reply-store";
+import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import {
   findStatusById,
+  findStatusesByIds,
   hydrateStatusRows,
-  listLocalRepliesToIds,
-  listLocalRepliesToUris,
   listStatusReplyUris,
   StatusRowSchema,
 } from "./status-store";
@@ -250,10 +250,23 @@ export const listThreadAncestors = async (
   return ok(chain.reverse());
 };
 
+const DescendantIdRow = z.object({
+  kind: z.literal(["Local", "Remote"]),
+  id: z.string(),
+  depth: z.number(),
+});
+
 /**
- * Replies below a status, breadth-first and ordered by id like the local
- * walk: local replies by `in_reply_to_id`, and replies naming a status by URI
- * — remote ones to anything, local ones to a remote status.
+ * Rows the reply-tree query may produce before it stops, however many
+ * replies the response keeps: a bound on one thread's cost.
+ */
+const MAX_THREAD_TREE_ROWS = 2_000;
+
+/**
+ * Replies below a status, breadth-first and ordered by id within each level:
+ * local replies by `in_reply_to_id`, and replies naming a status by URI —
+ * remote ones to anything, local ones to a remote status. One recursive
+ * query walks the tree; the statuses then load in one concurrent round.
  */
 export const listThreadDescendants = async (
   db: D1Database,
@@ -262,63 +275,50 @@ export const listThreadDescendants = async (
   limit: number,
   depth: number,
 ): Promise<Result<ThreadStatus[], RepositoryError>> => {
-  const collected: ThreadStatus[] = [];
-  const seen = new Set<string>([start.status.id]);
-  let frontier: ThreadStatus[] = [start];
-  for (let level = 0; level < depth && frontier.length > 0; level += 1) {
-    const remaining = limit - collected.length;
-    if (remaining <= 0) {
-      break;
-    }
-    const localIds = frontier.flatMap((node) => (node.kind === "Local" ? [node.status.id] : []));
-    const authors = await findAccountsByIds(
-      db,
-      frontier.flatMap((node) => (node.kind === "Local" ? [node.status.accountId] : [])),
-    );
-    if (authors.isErr()) {
-      return err(authors.error);
-    }
-    const localUris = frontier.flatMap((node) => {
-      const author = node.kind === "Local" ? authors.value.get(node.status.accountId) : undefined;
-      return author
-        ? [`${InstanceIdentity.actorUrl(identity, author.username)}/statuses/${node.status.id}`]
-        : [];
-    });
-    const remoteUris = frontier.flatMap((node) =>
-      node.kind === "Remote" ? [node.status.objectUri] : [],
-    );
-    const [localChildren, localRepliesToRemote, remoteChildren] = await Promise.all([
-      listLocalRepliesToIds(db, localIds, remaining),
-      listLocalRepliesToUris(db, remoteUris, remaining),
-      listRemoteRepliesToUris(db, [...localUris, ...remoteUris], remaining),
-    ]);
-    if (localChildren.isErr()) {
-      return err(localChildren.error);
-    }
-    if (localRepliesToRemote.isErr()) {
-      return err(localRepliesToRemote.error);
-    }
-    if (remoteChildren.isErr()) {
-      return err(remoteChildren.error);
-    }
-    const children: ThreadStatus[] = [
-      ...localChildren.value.map((status): ThreadStatus => ({ kind: "Local", status })),
-      ...localRepliesToRemote.value.map((status): ThreadStatus => ({ kind: "Local", status })),
-      ...remoteChildren.value.map((status): ThreadStatus => ({ kind: "Remote", status })),
-    ];
-    const next: ThreadStatus[] = [];
-    for (const child of children.toSorted((left, right) =>
-      left.status.id.localeCompare(right.status.id),
-    )) {
-      if (seen.has(child.status.id) || collected.length >= limit) {
-        continue;
-      }
-      seen.add(child.status.id);
-      collected.push(child);
-      next.push(child);
-    }
-    frontier = next;
+  if (limit <= 0 || depth <= 0) {
+    return ok([]);
   }
+  const rows = await runD1(async () =>
+    queryTyped(
+      db,
+      listThreadDescendantIdsSql(
+        start.kind,
+        start.status.id,
+        `${InstanceIdentity.actorUrl(identity, "")}`,
+        depth,
+        Math.max(MAX_THREAD_TREE_ROWS, limit),
+      ),
+      DescendantIdRow,
+    ),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
+  }
+  const picked = rows.value.slice(0, limit);
+  const [locals, remotes] = await Promise.all([
+    findStatusesByIds(
+      db,
+      picked.flatMap((row) => (row.kind === "Local" ? [row.id] : [])),
+    ),
+    findRemoteStatusesByIds(
+      db,
+      picked.flatMap((row) => (row.kind === "Remote" ? [row.id] : [])),
+    ),
+  ]);
+  if (locals.isErr()) {
+    return err(locals.error);
+  }
+  if (remotes.isErr()) {
+    return err(remotes.error);
+  }
+  const collected = picked.flatMap((row): ThreadStatus[] => {
+    if (row.kind === "Local") {
+      const status = locals.value.get(row.id);
+      return status ? [{ kind: "Local", status }] : [];
+    }
+    const status = remotes.value.get(row.id);
+    return status ? [{ kind: "Remote", status }] : [];
+  });
   return ok(collected.toSorted((left, right) => left.status.id.localeCompare(right.status.id)));
 };
 

@@ -722,6 +722,8 @@ export * from "./sql/listSuspendedDomains";
 
 export * from "./sql/listTagModerationsByNamesJson";
 
+export * from "./sql/listThreadDescendantIds";
+
 export * from "./sql/listUnavailableDeliveryDomains";
 
 export * from "./sql/listUnindexedRemoteStatuses";

@@ -493,49 +493,5 @@ const statusesWithMedia = (
   );
 };
 
-/** Local notes answering any of these local statuses, oldest first. */
-export const listLocalRepliesToIds = async (
-  db: D1Database,
-  statusIds: ReadonlyArray<string>,
-  limit: number,
-): Promise<Result<LocalStatusValue[], RepositoryError>> => {
-  if (statusIds.length === 0 || limit <= 0) {
-    return ok([]);
-  }
-  return runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' AND in_reply_to_id ${sqlInJsonEach()}
-         ORDER BY id ASC LIMIT ?`,
-      )
-      .bind(jsonStringArray([...new Set(statusIds)]), limit)
-      .all();
-    return hydrateStatusRows(db, results ?? []);
-  });
-};
-
-/** Local notes answering any of these remote URIs, oldest first. */
-export const listLocalRepliesToUris = async (
-  db: D1Database,
-  uris: ReadonlyArray<string>,
-  limit: number,
-): Promise<Result<LocalStatusValue[], RepositoryError>> => {
-  if (uris.length === 0 || limit <= 0) {
-    return ok([]);
-  }
-  return runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' AND in_reply_to_uri ${sqlInJsonEach()}
-         ORDER BY id ASC LIMIT ?`,
-      )
-      .bind(jsonStringArray([...new Set(uris)]), limit)
-      .all();
-    return hydrateStatusRows(db, results ?? []);
-  });
-};
-
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([StatusRowSchema]);
