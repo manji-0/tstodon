@@ -534,7 +534,7 @@ describe("a remote vote whose storage failed", () => {
     expect((await pollState(poll)).options.map((option) => option.votes_count)).toEqual([0, 0, 1]);
   });
 
-  it("queues the poll's update for a vote that was already counted", async () => {
+  it("distributes a vote that was counted but whose update was never queued, when it is sent again", async () => {
     const poll = await createPoll("counted-vote-author@example.com");
     const voter = await remoteActor("counted-vote-voter");
     expect(await castVote(voter, poll, "cats")).toBe(202);
@@ -546,6 +546,21 @@ describe("a remote vote whose storage failed", () => {
     expect(await castVote(voter, poll, "cats")).toBe(202);
 
     expect(await queuedAt(poll)).toEqual(expect.any(String));
+    expect((await pollState(poll)).votes_count).toBe(1);
+    await runUpdateJob(poll);
+    expect(await updates(poll)).toHaveLength(1);
+  });
+
+  it("queues no update for a vote sent again under a new Create id after its update went out", async () => {
+    const poll = await createPoll("resent-vote-author@example.com");
+    const voter = await remoteActor("resent-vote-voter");
+    expect(await castVote(voter, poll, "cats")).toBe(202);
+    await runUpdateJob(poll);
+    expect(await queuedAt(poll)).toBeNull();
+
+    expect(await castVote(voter, poll, "cats")).toBe(202);
+
+    expect(await queuedAt(poll)).toBeNull();
     expect((await pollState(poll)).votes_count).toBe(1);
   });
 });

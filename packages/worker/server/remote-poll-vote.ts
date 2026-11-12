@@ -96,11 +96,13 @@ export const handleRemotePollVote = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  if (recorded.value.kind !== "Recorded" && recorded.value.kind !== "Duplicate") {
+  if (recorded.value.kind !== "Recorded" && recorded.value.kind !== "Undistributed") {
     return ok({ kind: "Ignored" });
   }
-  // A `Duplicate` may be the redelivery of a vote that was counted before a
-  // failure below, so it queues the update too; the queue keeps one per poll.
+  // `Undistributed` is the redelivery of a vote that was counted before a
+  // failure below: it queues the update the first delivery did not. A vote
+  // sent again after its update went out is a `Duplicate` and queues none,
+  // so new activity ids for one vote cannot make the poll federate again.
   const counted = await findPollByStatusId(env.DB, note.id, undefined);
   if (counted.isErr()) {
     return err(counted.error);

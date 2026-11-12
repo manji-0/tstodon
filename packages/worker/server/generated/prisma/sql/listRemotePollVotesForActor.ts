@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  */
 export const listRemotePollVotesForActor = $runtime.makeTypedQueryFactory(
-  "SELECT option_index FROM remote_poll_votes WHERE poll_id = $1 AND actor_uri = $2",
+  "SELECT\nv.option_index,\nv.created_at >= coalesce(p.update_distributed_at, '') AS undistributed\nFROM remote_poll_votes v\nJOIN polls p ON p.id = v.poll_id\nWHERE v.poll_id = $1 AND v.actor_uri = $2",
 ) as (
   pollId: string,
   actorUri: string,
@@ -19,5 +19,6 @@ export namespace listRemotePollVotesForActor {
   export type Parameters = [pollId: string, actorUri: string];
   export type Result = {
     option_index: number;
+    undistributed: null | null;
   };
 }

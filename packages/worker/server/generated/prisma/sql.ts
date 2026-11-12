@@ -870,6 +870,8 @@ export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
 
+export * from "./sql/startPollUpdate";
+
 export * from "./sql/sumAccountMediaBytes";
 
 export * from "./sql/sumStoredMediaBytes";
