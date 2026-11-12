@@ -1,10 +1,11 @@
-import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { channelOf, openEventStream, requestEventStream } from "../test/sse-fixture";
-import { MAX_EVENT_STREAMS, MAX_HUB_TAGGED_CHANNELS, SSE_HEARTBEAT_MS } from "./stream-hub";
+import { SSE_HEARTBEAT_MS } from "./sse-bridge";
+import { MAX_EVENT_STREAMS, MAX_HUB_TAGGED_CHANNELS } from "./stream-hub";
 
 const ORIGIN = "https://example.com";
 
@@ -315,6 +316,16 @@ describe("streaming over SSE", () => {
     for (const stream of opened.slice(1)) {
       await stream.cancel();
     }
+  });
+
+  it("are held as hibernatable hub sockets, not in the hub's memory", async () => {
+    const stream = await openEventStream("/public/local", { email: "sse-hibernate@example.com" });
+    const stub = env.STREAM_HUB.get(env.STREAM_HUB.idFromName(stream.hub));
+    const sockets = () =>
+      runInDurableObject(stub, (_instance, state) => state.getWebSockets().length);
+    expect(await sockets()).toBe(1);
+    await stream.cancel();
+    await vi.waitFor(async () => expect(await sockets()).toBe(0));
   });
 
   it("drop the registry row when the client disconnects, and keep it while another connection holds it", async () => {
