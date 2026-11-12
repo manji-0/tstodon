@@ -479,7 +479,7 @@ const publishBoost = async (
   if (document.isOk() && document.value) {
     await publishToAccount(env, booster.id, { kind: "update", payload: document.value });
   }
-  startHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "update",
     entryId: reblog.id,
     author: { kind: "LocalAccount", accountId: booster.id },
@@ -605,7 +605,7 @@ export const postV1StatusesByIdUnreblog = async (
     ]);
     await deleteReblogOf(c.env.DB, user.value.id, target);
     await publishToAccount(c.env, user.value.id, { kind: "delete", statusId: reblogId.value });
-    startHomeFanOut(c.env, {
+    await startHomeFanOut(c.env, {
       event: "delete",
       entryId: reblogId.value,
       author: { kind: "LocalAccount", accountId: user.value.id },

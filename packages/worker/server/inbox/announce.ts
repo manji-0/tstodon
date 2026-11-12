@@ -60,7 +60,7 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   // As for a `Create`, a boost published more than the real-time window ago
   // is stored but not streamed.
   if (boosted.value && RealtimeWindow.contains(boosted.value.publishedAt, nowInstant())) {
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "update",
       entryId: boosted.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },

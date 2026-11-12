@@ -39,25 +39,25 @@ const PUBLIC_FAN_OUT_PASS_BUDGET = 6 + MAX_HUB_TAGGED_CHANNELS;
  * `FanOutOnWriteService` and `RemoveStatusService` publish to
  * `timeline:public*` and `timeline:hashtag:*`. Callers start it only for
  * public notes stored as they happen, not for backfilled ones. Nothing is
- * done when no hub holds a public or hashtag stream; otherwise the first
+ * done when no hub holds a public or hashtag stream (one cached read);
+ * otherwise the first
  * page of hubs is told once the response is ready, and the queue takes later
  * pages and a page to retry. Best effort: a viewer who misses the event still
  * sees the status on the next fetch.
  */
-export const startPublicFanOut = (
+export const startPublicFanOut = async (
   env: Env,
   fanOut: Readonly<{ event: FanOutPublic["event"]; entryId: string }>,
-): void => {
+): Promise<void> => {
   const job = OutboxJob.parse({ kind: "FanOutPublic", ...fanOut, afterHub: "" });
   if (job.isErr() || job.value.kind !== "FanOutPublic") {
     return;
   }
+  if (!(await streamListeners(env.DB)).public) {
+    return;
+  }
   const fanOutJob = job.value;
-  afterResponse(fanOutJob.kind, async () => {
-    if ((await streamListeners(env.DB)).public) {
-      await runOrQueue(env, fanOutJob, processFanOutPublicJob);
-    }
-  });
+  afterResponse(fanOutJob.kind, () => runOrQueue(env, fanOutJob, processFanOutPublicJob));
 };
 
 /** The entry as `channel`'s timeline holds it for the viewer, or nothing when it does not. */

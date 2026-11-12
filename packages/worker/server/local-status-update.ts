@@ -73,13 +73,13 @@ export const announceNoteUpdate = async (
   if (document) {
     await publishToAccount(env, account.id, { kind: "status.update", payload: document });
   }
-  startHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: note.id,
     author: { kind: "LocalAccount", accountId: account.id },
   });
   if (note.visibility.kind === "Public") {
-    startPublicFanOut(env, { event: "status.update", entryId: note.id });
+    await startPublicFanOut(env, { event: "status.update", entryId: note.id });
   }
   return rendered.isErr() ? err(rendered.error) : ok(document);
 };

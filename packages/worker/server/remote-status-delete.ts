@@ -47,13 +47,13 @@ const remoteStatusRemovalContracts = (env: Env): RemoteStatusRemovalContracts =>
       : deleteRemoteStatusById(env.DB, match.id, actorUri),
   publishRemoval: async (actorUri, removed) => {
     await announceRemovedBoosts(env, removed.boosts);
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "delete",
       entryId: removed.id,
       author: { kind: "RemoteActor", actorUri },
     });
     if (removed.public) {
-      startPublicFanOut(env, { event: "delete", entryId: removed.id });
+      await startPublicFanOut(env, { event: "delete", entryId: removed.id });
     }
   },
   withdrawRemoteNotifications: (withdrawal) => deleteRemoteNotifications(env.DB, withdrawal),

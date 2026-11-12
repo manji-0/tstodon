@@ -204,13 +204,13 @@ const applyNoteUpdate = async (
         statusId: stored.value.id,
       });
     }
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "status.update",
       entryId: stored.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },
     });
     if (stored.value.visibility.kind === "Public") {
-      startPublicFanOut(env, { event: "status.update", entryId: stored.value.id });
+      await startPublicFanOut(env, { event: "status.update", entryId: stored.value.id });
     }
   }
   return ok(undefined);

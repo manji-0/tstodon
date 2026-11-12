@@ -41,12 +41,12 @@ export const HOME_FAN_OUT_PAGE_SIZE = 20;
  * Tell the author's local followers about a home timeline entry, as
  * Mastodon's `FanOutOnWriteService` and `RemoveStatusService` do for the
  * `user` and `list` streams. Nothing is done when no hub holds a `user` or
- * `list` stream; otherwise the first page of followers is told once the
- * response is ready, and the queue takes later pages and a page to retry.
+ * `list` stream (one cached read); otherwise the first page of followers is
+ * told once the response is ready, and the queue takes later pages and a page to retry.
  * Best effort: the entry is stored either way, and a follower who misses the
  * event still sees the entry on the next home timeline fetch.
  */
-export const startHomeFanOut = (
+export const startHomeFanOut = async (
   env: Env,
   fanOut: Readonly<{
     event: FanOutHome["event"];
@@ -55,17 +55,16 @@ export const startHomeFanOut = (
       | Readonly<{ kind: "LocalAccount"; accountId: string }>
       | Readonly<{ kind: "RemoteActor"; actorUri: string }>;
   }>,
-): void => {
+): Promise<void> => {
   const job = OutboxJob.parse({ kind: "FanOutHome", ...fanOut, afterAccountId: "" });
   if (job.isErr() || job.value.kind !== "FanOutHome") {
     return;
   }
+  if (!(await streamListeners(env.DB)).home) {
+    return;
+  }
   const fanOutJob = job.value;
-  afterResponse(fanOutJob.kind, async () => {
-    if ((await streamListeners(env.DB)).home) {
-      await runOrQueue(env, fanOutJob, processFanOutHomeJob);
-    }
-  });
+  afterResponse(fanOutJob.kind, () => runOrQueue(env, fanOutJob, processFanOutHomeJob));
 };
 
 /**
@@ -86,7 +85,7 @@ export const announceRemovedBoosts = async (
         console.error(JSON.stringify({ kind: "BoostRemovalNotPublished", entryId: boost.id }));
       }
     }
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "delete",
       entryId: boost.id,
       author: { kind: "LocalAccount", accountId: boost.accountId },

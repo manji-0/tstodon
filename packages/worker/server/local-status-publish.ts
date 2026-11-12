@@ -357,7 +357,7 @@ export const publishLocalNote = async (
   // The author's own view of the note: the response and the author's stream
   // event both send it. A render that fails sends no event.
   const document = await mastodonStatus(env, identity, note, user.id);
-  // Stream events and fan-out queue sends wait until the response is ready.
+  // Stream events and fan-outs wait until the response is ready.
   afterResponse("LocalNoteFanOutFailed", async () => {
     if (document.isOk() && document.value) {
       await publishToAccount(env, user.id, { kind: "update", payload: document.value });
@@ -370,13 +370,13 @@ export const publishLocalNote = async (
         note.id,
       );
     }
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "update",
       entryId: note.id,
       author: { kind: "LocalAccount", accountId: user.id },
     });
     if (note.visibility.kind === "Public") {
-      startPublicFanOut(env, { event: "update", entryId: note.id });
+      await startPublicFanOut(env, { event: "update", entryId: note.id });
     }
   });
   return ok({ note, document });

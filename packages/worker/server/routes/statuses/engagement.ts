@@ -201,13 +201,13 @@ const publishQuoteRevoke = async (
     }
     return;
   }
-  startHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: quoting.status.id,
     author: { kind: "RemoteActor", actorUri: quoting.status.actorUri },
   });
   if (quoting.status.visibility.kind === "Public") {
-    startPublicFanOut(env, { event: "status.update", entryId: quoting.status.id });
+    await startPublicFanOut(env, { event: "status.update", entryId: quoting.status.id });
   }
 };
 

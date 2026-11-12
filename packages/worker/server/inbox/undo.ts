@@ -82,7 +82,7 @@ export const receiveRemoteUndo: InboxHandler<RemoteDelivery<"Undo">> = async ({
     return err(undone.error);
   }
   if (undone.value) {
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "delete",
       entryId: undone.value,
       author: { kind: "RemoteActor", actorUri },

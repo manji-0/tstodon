@@ -52,13 +52,13 @@ export const deleteLocalStatus = async (
   await deleteMediaObjects(env, deleted.value.mediaObjectKeys, { statusId: status.id });
   await announceRemovedBoosts(env, deleted.value.boosts);
   await publishToAccount(env, account.id, { kind: "delete", statusId: status.id });
-  startHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "delete",
     entryId: status.id,
     author: { kind: "LocalAccount", accountId: account.id },
   });
   if (status.kind === "LocalNote" && status.visibility.kind === "Public") {
-    startPublicFanOut(env, { event: "delete", entryId: status.id });
+    await startPublicFanOut(env, { event: "delete", entryId: status.id });
   }
   if (tombstone && reachesRemoteInboxes(tombstone, identity.domain)) {
     // The status is gone either way; a failed enqueue only leaves remote copies.

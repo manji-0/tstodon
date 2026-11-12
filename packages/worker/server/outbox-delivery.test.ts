@@ -567,6 +567,10 @@ describe("unavailable domains", () => {
       .bind(inbox, account.id)
       .first();
     expect(row).toEqual({ kind: "Skipped", reason_kind: "DomainUnavailable" });
+    // The post's queued fan-out to followers is still running: let it start
+    // its delivery Workflows before the file ends, as a teardown during that
+    // never completes.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 });
 

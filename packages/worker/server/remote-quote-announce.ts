@@ -10,12 +10,12 @@ export const announceRemoteQuoteChange = async (
   env: Env,
   status: RemoteStatusValue,
 ): Promise<void> => {
-  startHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: status.id,
     author: { kind: "RemoteActor", actorUri: status.actorUri },
   });
   if (status.visibility.kind === "Public") {
-    startPublicFanOut(env, { event: "status.update", entryId: status.id });
+    await startPublicFanOut(env, { event: "status.update", entryId: status.id });
   }
 };

@@ -44,13 +44,13 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
     created.value?.actorUri === signer.actorUri &&
     RealtimeWindow.contains(created.value.publishedAt, nowInstant())
   ) {
-    startHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "update",
       entryId: created.value.id,
       author: { kind: "RemoteActor", actorUri: signer.actorUri },
     });
     if (created.value.visibility.kind === "Public") {
-      startPublicFanOut(env, { event: "update", entryId: created.value.id });
+      await startPublicFanOut(env, { event: "update", entryId: created.value.id });
     }
   }
   return ok(undefined);

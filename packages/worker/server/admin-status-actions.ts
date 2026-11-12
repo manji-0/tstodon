@@ -139,13 +139,13 @@ const sensitizeRemote = async (
   if (changed.isErr() || !changed.value) {
     return changed.map((row) => row !== undefined);
   }
-  startHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: statusId,
     author: { kind: "RemoteActor", actorUri },
   });
   if (changed.value.public) {
-    startPublicFanOut(env, { event: "status.update", entryId: statusId });
+    await startPublicFanOut(env, { event: "status.update", entryId: statusId });
   }
   return ok(true);
 };
