@@ -40,8 +40,8 @@ import {
   findDeliveredRemoteStatus,
   type KnownRemoteStatus,
   overwriteRemoteStatus,
+  type InvalidRemoteStatusRow,
   readableRemoteStatus,
-  type StoredRowInvalid,
   upsertRemoteStatus,
 } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
@@ -544,7 +544,7 @@ export const applyMediaPolicy = async (
 export const settleInvalidRemoteStatus = async (
   env: Env,
   signer: RemoteActor,
-  invalid: StoredRowInvalid,
+  invalid: InvalidRemoteStatusRow,
   raw: unknown,
 ): Promise<Result<void, RepositoryError>> => {
   const id = StatusId.parse(invalid.id);

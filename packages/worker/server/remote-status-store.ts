@@ -23,10 +23,11 @@ import {
   type RepositoryError,
   runD1,
   runD1Batch,
+  type StoredRowInvalid,
+  storedRowError,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonColumn, parseJsonText } from "./json-column";
-import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
 import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import {
@@ -114,25 +115,13 @@ const quotePolicyFromJson = (raw: string | null): QuoteInteractionPolicy =>
     ? QuoteInteractionPolicy.none
     : parseJsonColumn(QuoteInteractionPolicy.schema, raw).unwrapOr(QuoteInteractionPolicy.none);
 
-/**
- * A stored remote status row that does not read as a status. Unlike a
- * `RepositoryError`, reading it again gives the same answer, so a sender
- * gains nothing by delivering again. `id` and `actorUri` are the row's.
- */
-export type StoredRowInvalid = Readonly<{
-  kind: "StoredRowInvalid";
-  id: string;
-  actorUri: string;
-}>;
-
-/** The error of a reader that fails on a row it cannot use, whatever is wrong with it. */
-export const storedRowError = (error: RepositoryError | StoredRowInvalid): RepositoryError =>
-  error.kind === "RepositoryError" ? error : toRepositoryError("invalid remote status row");
+/** A stored remote status row that does not read as a status, and the author it names. */
+export type InvalidRemoteStatusRow = StoredRowInvalid & Readonly<{ actorUri: string }>;
 
 export const remoteStatusFromRow = (
   row: RemoteStatusRow,
-): Result<RemoteStatus, StoredRowInvalid> => {
-  const invalid: StoredRowInvalid = {
+): Result<RemoteStatus, InvalidRemoteStatusRow> => {
+  const invalid: InvalidRemoteStatusRow = {
     kind: "StoredRowInvalid",
     id: row.id,
     actorUri: row.actor_uri,
@@ -174,7 +163,7 @@ const InvalidRowRef = z.object({ id: z.string(), actor_uri: z.string() });
  * invalid as one whose values do not read: both are there, and neither is a
  * status.
  */
-const storedRemoteStatus = (raw: unknown): Result<RemoteStatus, StoredRowInvalid> => {
+const storedRemoteStatus = (raw: unknown): Result<RemoteStatus, InvalidRemoteStatusRow> => {
   const row = parseRemoteStatusRow(raw);
   if (row.isOk()) {
     return remoteStatusFromRow(row.value);
@@ -188,7 +177,10 @@ const storedRemoteStatus = (raw: unknown): Result<RemoteStatus, StoredRowInvalid
 };
 
 /** What a read of one stored remote status gives: the status, none, or a row that is no status. */
-export type RemoteStatusRead = Result<RemoteStatus | undefined, RepositoryError | StoredRowInvalid>;
+export type RemoteStatusRead = Result<
+  RemoteStatus | undefined,
+  RepositoryError | InvalidRemoteStatusRow
+>;
 
 /** The first row of a query for one remote status, unparsed, or `undefined` for none. */
 const findRow = (db: D1Database, typed: TypedSqlLike): Promise<Result<unknown, RepositoryError>> =>

@@ -1,12 +1,12 @@
-import { warmSchemas } from "@tstodon/core";
+import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
-import { parseRows, toRepositoryError } from "./d1";
-import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import { parseRows, type StoredRowInvalid, storedRowError, toRepositoryError } from "./d1";
+import { d1PrepareTyped, queryTyped, runTyped, type TypedSqlLike } from "./typed-sql";
 import {
   claimLocalPollExpiryNotice as claimLocalPollExpiryNoticeSql,
   claimPollUpdate as claimPollUpdateSql,
@@ -116,10 +116,10 @@ const pollFromRow = async (
   db: D1Database,
   row: PollRow,
   viewerId: string | undefined,
-): Promise<Result<PollRecord, RepositoryError>> => {
+): Promise<Result<PollRecord, RepositoryError | StoredRowInvalid>> => {
   const options = parseJsonColumn(PollOptionsSchema, row.options_json);
   if (options.isErr()) {
-    return err(options.error);
+    return err({ kind: "StoredRowInvalid", id: row.id });
   }
   const votes = viewerId
     ? await runD1(async () =>
@@ -141,35 +141,43 @@ const pollFromRow = async (
   });
 };
 
+/** What a read of one stored poll gives: the poll, none, or a row that is no poll. */
+type PollRead = Result<PollRecord | undefined, RepositoryError | StoredRowInvalid>;
+
+/** The poll of the first row of `typed`; `id` names a row whose shape does not parse. */
 const loadPoll = async (
-  queried: Result<z.infer<typeof PollRowSchema> | undefined, RepositoryError>,
   db: D1Database,
+  typed: TypedSqlLike,
+  id: string,
   viewerId: string | undefined,
-): Promise<Result<PollRecord | undefined, RepositoryError>> => {
+): Promise<PollRead> => {
+  const queried = await runD1(async () => (await queryTyped(db, typed, z.unknown()))[0]);
   if (queried.isErr()) {
     return err(queried.error);
   }
   if (queried.value === undefined) {
     return ok(undefined);
   }
-  const poll = await pollFromRow(db, queried.value, viewerId);
-  if (poll.isErr()) {
-    return err(poll.error);
-  }
-  return ok(poll.value);
+  const row = schemaResult(PollRowSchema)(queried.value);
+  return row.isErr() ? err({ kind: "StoredRowInvalid", id }) : pollFromRow(db, row.value, viewerId);
 };
+
+/**
+ * The poll of a status, for a caller that tells a row that does not read as
+ * a poll from a failed read (see `readStatusById`).
+ */
+export const readPollByStatusId = (
+  db: D1Database,
+  statusId: string,
+  viewerId: string | undefined,
+): Promise<PollRead> => loadPoll(db, findPollByStatusIdSql(statusId), statusId, viewerId);
 
 export const findPollByStatusId = async (
   db: D1Database,
   statusId: string,
   viewerId: string | undefined,
-): Promise<Result<PollRecord | undefined, RepositoryError>> => {
-  const queried = await runD1(async () => {
-    const rows = await queryTyped(db, findPollByStatusIdSql(statusId), PollRowSchema);
-    return rows[0];
-  });
-  return loadPoll(queried, db, viewerId);
-};
+): Promise<Result<PollRecord | undefined, RepositoryError>> =>
+  (await readPollByStatusId(db, statusId, viewerId)).mapErr(storedRowError);
 
 /** The poll a note federates with its `Question`, or undefined for a plain note. */
 export const loadNotePoll = async (
@@ -294,13 +302,8 @@ export const findPollById = async (
   db: D1Database,
   pollId: string,
   viewerId: string | undefined,
-): Promise<Result<PollRecord | undefined, RepositoryError>> => {
-  const queried = await runD1(async () => {
-    const rows = await queryTyped(db, findPollByIdSql(pollId), PollRowSchema);
-    return rows[0];
-  });
-  return loadPoll(queried, db, viewerId);
-};
+): Promise<Result<PollRecord | undefined, RepositoryError>> =>
+  (await loadPoll(db, findPollByIdSql(pollId), pollId, viewerId)).mapErr(storedRowError);
 
 export const votePoll = async (
   db: D1Database,

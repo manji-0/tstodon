@@ -8,6 +8,17 @@ export const toRepositoryError = (message: string): RepositoryError => ({
   message,
 });
 
+/**
+ * A stored row that does not read as what its table holds; `id` is the row's.
+ * Unlike a `RepositoryError`, reading it again gives the same answer, so a
+ * sender gains nothing by delivering again.
+ */
+export type StoredRowInvalid = Readonly<{ kind: "StoredRowInvalid"; id: string }>;
+
+/** The error of a reader that fails on a row it cannot use, whatever is wrong with it. */
+export const storedRowError = (error: RepositoryError | StoredRowInvalid): RepositoryError =>
+  error.kind === "RepositoryError" ? error : toRepositoryError("invalid stored row");
+
 export const parseRow = <T>(schema: z.ZodType<T>, value: unknown): Result<T, RepositoryError> =>
   schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid row"));
 

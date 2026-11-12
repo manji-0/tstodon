@@ -495,45 +495,75 @@ describe("a remote vote whose storage failed", () => {
     expect(state.voters_count).toBe(1);
   });
 
-  it("does not store the vote as a status when the poll's status cannot be read", async () => {
-    const poll = await createPoll("unreadable-poll-author@example.com");
-    const voter = await remoteActor("unreadable-poll-voter");
-    const objectId = "https://remote.example/votes/unreadable-poll";
-    // Some servers send a vote with empty content and a date, which is also a note that parses.
-    const activity = {
-      id: `${objectId}/activity`,
-      type: "Create",
+  /** A vote some servers send with empty content and a date, which is also a note that parses. */
+  const datedVote = (voter: Remote, poll: LocalPoll, objectId: string) => ({
+    id: `${objectId}/activity`,
+    type: "Create",
+    to: [actorUrl(poll)],
+    object: {
+      id: objectId,
+      type: "Note",
+      attributedTo: voter.actorUri,
       to: [actorUrl(poll)],
-      object: {
-        id: objectId,
-        type: "Note",
-        attributedTo: voter.actorUri,
-        to: [actorUrl(poll)],
-        inReplyTo: poll.statusUri,
-        name: "birds",
-        content: "",
-        published: "2026-10-20T00:00:00.000Z",
-      },
-    };
-    const stored = () =>
-      count("SELECT COUNT(*) AS n FROM remote_statuses WHERE actor_uri = ?", voter.actorUri);
+      inReplyTo: poll.statusUri,
+      name: "birds",
+      content: "",
+      published: "2026-10-20T00:00:00.000Z",
+    },
+  });
 
-    await env.DB.prepare("UPDATE statuses SET visibility = 'unreadable' WHERE id = ?")
-      .bind(poll.statusId)
-      .run();
+  const storedBy = (voter: Remote) =>
+    count("SELECT COUNT(*) AS n FROM remote_statuses WHERE actor_uri = ?", voter.actorUri);
+
+  it("answers 500 and does not store the vote as a status while the poll's status cannot be read", async () => {
+    const poll = await createPoll("unread-poll-author@example.com");
+    const voter = await remoteActor("unread-poll-voter");
+    const activity = datedVote(voter, poll, "https://remote.example/votes/unread-poll");
+
+    // The read of a status also reads its media, which fails without the table.
+    await env.DB.exec("ALTER TABLE media_attachments RENAME TO media_attachments_off");
     try {
       expect(await voter.send(activity)).toBe(500);
-      expect(await stored()).toBe(0);
+      expect(await storedBy(voter)).toBe(0);
     } finally {
-      await env.DB.prepare("UPDATE statuses SET visibility = 'public' WHERE id = ?")
-        .bind(poll.statusId)
-        .run();
+      await env.DB.exec("ALTER TABLE media_attachments_off RENAME TO media_attachments");
     }
 
     expect(await voter.send(activity)).toBe(202);
-    expect(await stored()).toBe(0);
+    expect(await storedBy(voter)).toBe(0);
     expect((await pollState(poll)).options.map((option) => option.votes_count)).toEqual([0, 0, 1]);
   });
+
+  it.each([
+    ["status", "UPDATE statuses SET visibility = ? WHERE poll_id = ?", "public"],
+    [
+      "poll",
+      "UPDATE polls SET options_json = ? WHERE id = ?",
+      JSON.stringify(["cats", "dogs", "birds"].map((title) => ({ title, votesCount: 0 }))),
+    ],
+  ])(
+    "drops a vote with 202 when the row of the %s does not read, as its redelivery would find the same row",
+    async (row, sql, readable) => {
+      const poll = await createPoll(`unreadable-${row}-author@example.com`);
+      const voter = await remoteActor(`unreadable-${row}-voter`);
+      const activity = datedVote(voter, poll, `https://remote.example/votes/unreadable-${row}`);
+
+      await env.DB.prepare(sql).bind("unreadable", poll.pollId).run();
+      try {
+        expect(await voter.send(activity)).toBe(202);
+        expect(await storedBy(voter)).toBe(0);
+      } finally {
+        await env.DB.prepare(sql).bind(readable, poll.pollId).run();
+      }
+
+      expect((await pollState(poll)).options.map((option) => option.votes_count)).toEqual([
+        0, 0, 0,
+      ]);
+      expect(
+        await count("SELECT COUNT(*) AS n FROM remote_poll_votes WHERE poll_id = ?", poll.pollId),
+      ).toBe(0);
+    },
+  );
 
   it("distributes a vote that was counted but whose update was never queued, when it is sent again", async () => {
     const poll = await createPoll("counted-vote-author@example.com");

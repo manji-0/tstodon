@@ -1,4 +1,4 @@
-import { extractHashtags, warmSchemas } from "@tstodon/core";
+import { extractHashtags, schemaResult, warmSchemas } from "@tstodon/core";
 import {
   AccountId,
   IsoInstant,
@@ -23,6 +23,8 @@ import {
   runD1,
   runD1Batch,
   sqlInJsonEach,
+  type StoredRowInvalid,
+  storedRowError,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { deletedMediaObjectKeys } from "./media-store";
@@ -172,24 +174,40 @@ const mediaIdsFor = async (db: D1Database, statusId: string): Promise<MediaId[]>
   });
 };
 
-export const findStatusById = async (
+/**
+ * The status `id` names, for a caller that tells a row that does not read as
+ * a status from a failed read: an inbox activity drops what refers to the
+ * first, where a failed read is retried.
+ */
+export const readStatusById = async (
   db: D1Database,
   id: string,
-): Promise<Result<LocalStatusValue | undefined, RepositoryError>> => {
-  const queried = await runD1(async () => queryTyped(db, findStatusByIdSql(id), StatusRowSchema));
+): Promise<Result<LocalStatusValue | undefined, RepositoryError | StoredRowInvalid>> => {
+  const queried = await runD1(async () => queryTyped(db, findStatusByIdSql(id), z.unknown()));
   if (queried.isErr()) {
     return err(queried.error);
   }
-  const row = queried.value[0];
-  if (!row) {
+  const raw = queried.value[0];
+  if (raw === undefined) {
     return ok(undefined);
+  }
+  const invalid: StoredRowInvalid = { kind: "StoredRowInvalid", id };
+  const row = schemaResult(StatusRowSchema)(raw);
+  if (row.isErr()) {
+    return err(invalid);
   }
   const media = await runD1(() => mediaIdsFor(db, id));
   if (media.isErr()) {
     return err(media.error);
   }
-  return statusFromRow(row, media.value);
+  return statusFromRow(row.value, media.value).mapErr(() => invalid);
 };
+
+export const findStatusById = async (
+  db: D1Database,
+  id: string,
+): Promise<Result<LocalStatusValue | undefined, RepositoryError>> =>
+  (await readStatusById(db, id)).mapErr(storedRowError);
 
 export const findStatusesByIds = async (
   db: D1Database,

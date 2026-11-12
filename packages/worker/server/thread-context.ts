@@ -8,7 +8,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseLocalStatusId } from "./activitypub";
-import { type RepositoryError, runD1 } from "./d1";
+import { type RepositoryError, runD1, storedRowError } from "./d1";
 import {
   listLocalThreadAncestors as listLocalThreadAncestorsSql,
   listRemoteThreadAncestors as listRemoteThreadAncestorsSql,
@@ -19,7 +19,6 @@ import {
   findRemoteStatusesByIds,
   readableRemoteStatus,
   remoteStatusFromRow,
-  storedRowError,
   RemoteStatusRowSchema,
 } from "./remote-status-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
