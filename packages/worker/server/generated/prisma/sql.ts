@@ -512,6 +512,8 @@ export * from "./sql/insertTagNames";
 
 export * from "./sql/insertUnindexedRemoteStatusTags";
 
+export * from "./sql/insertUnindexedRemoteTagNames";
+
 export * from "./sql/isActiveRemoteStatusMention";
 
 export * from "./sql/isStatusPinned";

@@ -42,6 +42,7 @@ import {
   listLocalBoostsOfRemoteObject as listLocalBoostsOfRemoteObjectSql,
   deleteUnindexedRemoteStatusTags as deleteUnindexedRemoteStatusTagsSql,
   insertUnindexedRemoteStatusTags as insertUnindexedRemoteStatusTagsSql,
+  insertUnindexedRemoteTagNames as insertUnindexedRemoteTagNamesSql,
   listRemoteStatusTags as listRemoteStatusTagsSql,
   markRemoteStatusesTagsIndexed as markRemoteStatusesTagsIndexedSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
@@ -472,7 +473,7 @@ export type RemoteTagBackfillPage = Readonly<{
  * marked `tags_indexed = 0` under the hashtags their stored HTML reads as
  * (the note's `tag` is not kept), newest first, and mark them indexed. Those
  * are the statuses stored before the index, and the ones migration 0136 sent
- * back. The page is one batch of four statements at most, each of which
+ * back. The page is one batch of four statements, each of which
  * skips a status a delivery has indexed since the page was read. Another
  * pass follows a full page that indexed something: a full page that indexed
  * nothing would be read again as it is.
@@ -490,28 +491,30 @@ export const indexMissingRemoteTags = async (
   if (rows.value.length === 0) {
     return ok({ scanned: 0, chained: false });
   }
-  const tagged = rows.value.map((row) => ({ row, tags: htmlHashtags(row.content_html) }));
+  const entries = rows.value.flatMap((row) => {
+    const tags = htmlHashtags(row.content_html);
+    return tags.length === 0 ? [] : [{ row, tags }];
+  });
+  const entriesJson = (of: typeof entries): string =>
+    JSON.stringify(of.map(({ row, tags }) => [row.id, tags]));
   const idsJson = jsonStringArray(rows.value.map((row) => row.id));
-  const names = new Set(
-    tagged.flatMap(({ row, tags }) =>
-      searchableTagNames(
-        // An unreadable visibility keeps the names out of search, as a direct note's.
-        Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
-        tags,
-      ),
-    ),
-  );
   const indexed = await runD1Batch(db, [
     d1PrepareTyped(db, deleteUnindexedRemoteStatusTagsSql(idsJson)),
+    d1PrepareTyped(db, insertUnindexedRemoteStatusTagsSql(entriesJson(entries))),
     d1PrepareTyped(
       db,
-      insertUnindexedRemoteStatusTagsSql(
-        JSON.stringify(
-          tagged.flatMap(({ row, tags }) => (tags.length === 0 ? [] : [[row.id, tags]])),
+      insertUnindexedRemoteTagNamesSql(
+        entriesJson(
+          entries.filter(
+            ({ row }) =>
+              // An unreadable visibility keeps the names out of search, as a direct note's.
+              !Visibility.isRestricted(
+                Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
+              ),
+          ),
         ),
       ),
     ),
-    ...recordTagNames(db, [...names]),
     d1PrepareTyped(db, markRemoteStatusesTagsIndexedSql(idsJson)),
   ]);
   if (indexed.isErr()) {

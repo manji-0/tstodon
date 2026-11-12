@@ -6,13 +6,8 @@ import { expectContract } from "../test/api-contract";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import migration from "../app/db/migrations/0136_remote_tag_reindex.sql?raw";
 import { parseRows } from "./d1";
-import {
-  deleteUnindexedRemoteStatusTags,
-  insertUnindexedRemoteStatusTags,
-} from "./generated/prisma/sql";
 import { processOutboxJob } from "./outbox-job";
 import { indexMissingRemoteTags } from "./remote-status-store";
-import { d1PrepareTyped } from "./typed-sql";
 
 const json = async (path: string): Promise<unknown> =>
   (await SELF.fetch(`https://example.com${path}`)).json();
@@ -53,6 +48,29 @@ const timelineIds = async (tag: string, limit: number = 20): Promise<string[]> =
     z.array(ApiStatus),
     await json(`/api/v1/timelines/tag/${encodeURIComponent(tag)}?remote=true&limit=${limit}`),
   ).map((status) => status.id);
+
+const searchNames = async (query: string): Promise<string[]> =>
+  z
+    .object({ hashtags: z.array(z.object({ name: z.string() })) })
+    .parse(await json(`/api/v2/search?q=${query}&type=hashtags`))
+    .hashtags.map((tag) => tag.name);
+
+/** `db`, running `land` before each batch: what another request writes between a read and its write. */
+const beforeBatch = (db: D1Database, land: () => Promise<void>): D1Database =>
+  new Proxy(db, {
+    get(target, prop) {
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          await land();
+          return target.batch(statements);
+        };
+      }
+      const value: unknown = Reflect.get(target, prop);
+      return typeof value === "function"
+        ? (...args: unknown[]) => Reflect.apply(value, target, args)
+        : value;
+    },
+  });
 
 const pending = async (prefix: string): Promise<unknown> =>
   env.DB.prepare(
@@ -124,6 +142,7 @@ describe("the remote tag reindex", () => {
     expect(await timelineIds("日本語")).toEqual([unicode]);
     expect(await timelineIds("rtrascii")).toEqual([unicode]);
     expect(await timelineIds("rtrmany", 40)).toHaveLength(40);
+    expect(await searchNames("rtrmany")).toEqual(["rtrmany"]);
     expect(
       await env.DB.prepare(
         "SELECT COUNT(*) AS count FROM remote_status_tags WHERE tag = 'rtrmany'",
@@ -137,19 +156,32 @@ describe("the remote tag reindex", () => {
     expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
   });
 
-  it("leaves a status alone once a delivery wrote its own tags", async () => {
+  it("leaves a status alone when a delivery wrote its own tags after the pass read it", async () => {
     const author = await remoteActor("rtr-race");
-    const id = await stored(author, "rtr-race", `<p>${hashtagHtml("rtrracehtml")}</p>`);
-    expect(await tagNames(id)).toEqual([]);
+    const object = {
+      id: "https://remote.example/notes/rtr-race",
+      type: "Note",
+      attributedTo: author.actorUri,
+      content: `<p>${hashtagHtml("rtrracehtml")}</p>`,
+      tag: [{ type: "Hashtag", name: "#rtrraceap" }],
+      published: "2026-10-20T00:00:00.000Z",
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+    };
+    // Stored before tags were read from `tag`, and sent back by the migration.
+    const id = await stored(author, "rtr-race", object.content);
+    await env.DB.prepare("UPDATE remote_statuses SET tags_indexed = 0 WHERE id = ?").bind(id).run();
 
-    // The page was read while the row was pending; the delivery landed since.
-    await env.DB.batch([
-      d1PrepareTyped(env.DB, deleteUnindexedRemoteStatusTags(JSON.stringify([id]))),
-      d1PrepareTyped(
-        env.DB,
-        insertUnindexedRemoteStatusTags(JSON.stringify([[id, ["rtrracehtml"]]])),
-      ),
-    ]);
-    expect(await tagNames(id)).toEqual([]);
+    // The pass reads the status as pending; its author's Update lands before the pass writes.
+    const page = await indexMissingRemoteTags(
+      beforeBatch(env.DB, async () => {
+        expect(await author.send({ id: `${object.id}/update`, type: "Update", object })).toBe(202);
+        expect(await tagNames(id)).toEqual(["rtrraceap"]);
+      }),
+    );
+
+    expect(page.isOk() && page.value.scanned).toBe(1);
+    expect(await tagNames(id)).toEqual(["rtrraceap"]);
+    expect(await timelineIds("rtrracehtml")).toEqual([]);
+    expect(await searchNames("rtrrace")).toEqual(["rtrraceap"]);
   });
 });
