@@ -1,10 +1,17 @@
 import { SELF, env } from "cloudflare:test";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { ActivityId, OutboxDelivery, OutboxJob, QuoteRetry } from "@tstodon/domain";
+import {
+  ActivityId,
+  OutboxDelivery,
+  OutboxJob,
+  QuoteRetry,
+  type StreamChannelValue,
+} from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { openStream } from "../test/stream-fixture";
 import { attemptInboxDelivery } from "./delivery";
 import { processOutboxJob } from "./outbox-job";
 import { requestQuoteRefresh } from "./quote-retry-queue";
@@ -182,12 +189,33 @@ const queuedRefetch = (recording: Recording, attempt: number) => {
   return job?.message;
 };
 
-const announcedUpdate = (recording: Recording, statusId: string) =>
-  expect(jobsOf(recording, "FanOutHome")).toContainEqual(
-    expect.objectContaining({
-      message: expect.objectContaining({ event: "status.update", entryId: statusId }),
-    }),
-  );
+/** A public stream, open for the whole file, that hears each quote change announced. */
+let viewer: Awaited<ReturnType<typeof openStream>>;
+
+const PUBLIC_STREAM: StreamChannelValue = { kind: "Public", origin: "All", onlyMedia: false };
+
+beforeAll(async () => {
+  viewer = await openStream({ email: "qr-viewer@example.com", query: "?stream=public" });
+});
+
+afterAll(() => {
+  viewer.close();
+});
+
+/** Wait until the viewer hears a `status.update` for `statusId`. */
+const announcedUpdate = async (statusId: string): Promise<void> => {
+  for (;;) {
+    const heard = await viewer.next();
+    if (
+      heard.event === "status.update" &&
+      read(IdSchema, JSON.parse(heard.payload)).id === statusId
+    ) {
+      return;
+    }
+  }
+};
+
+const IdSchema = z.object({ id: z.string() });
 
 describe("RefetchAndVerifyQuote (Mastodon's RefetchAndVerifyQuoteWorker)", () => {
   it("queues a refetch when the stamp fetch fails for now; a later run accepts the quote", async () => {
@@ -217,7 +245,7 @@ describe("RefetchAndVerifyQuote (Mastodon's RefetchAndVerifyQuoteWorker)", () =>
       expect.objectContaining({ id: before.id, state: "accepted", approval_uri: q.stampUri }),
     );
     expect(jobsOf(running, "RefetchAndVerifyQuote")).toEqual([]);
-    announcedUpdate(running, after.remote_status_id);
+    await announcedUpdate(after.remote_status_id);
   });
 
   it("queues a refetch when the quoted note does not resolve; a later run resolves it", async () => {
@@ -243,7 +271,7 @@ describe("RefetchAndVerifyQuote (Mastodon's RefetchAndVerifyQuoteWorker)", () =>
         state: "accepted",
       }),
     );
-    announcedUpdate(running, before.remote_status_id);
+    await announcedUpdate(before.remote_status_id);
   });
 
   it("gives up after four attempts", async () => {
@@ -258,7 +286,7 @@ describe("RefetchAndVerifyQuote (Mastodon's RefetchAndVerifyQuoteWorker)", () =>
       expect(await runJob(running, message)).toBe("ok");
       message = queuedRefetch(running, attempt);
       // A run that changes nothing announces nothing.
-      expect(jobsOf(running, "FanOutHome")).toEqual([]);
+      expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
     }
     const last = recordingEnv();
     expect(await runJob(last, message)).toBe("ok");
@@ -281,7 +309,7 @@ describe("RefetchAndVerifyQuote (Mastodon's RefetchAndVerifyQuoteWorker)", () =>
     const after = await q.quoteRow();
     expect(after.state).toBe("rejected");
     expect(jobsOf(running, "RefetchAndVerifyQuote")).toEqual([]);
-    announcedUpdate(running, after.remote_status_id);
+    await announcedUpdate(after.remote_status_id);
   });
 
   it("queues nothing for a stamp that resolves but does not match", async () => {
@@ -435,7 +463,7 @@ describe("RefreshQuote (Mastodon's QuoteRefreshWorker)", () => {
 
     expect(fetched).toEqual([q.stampUri]);
     expect((await q.quoteRow()).state).toBe("revoked");
-    announcedUpdate(running, q.statusId);
+    await announcedUpdate(q.statusId);
   });
 
   it.each([

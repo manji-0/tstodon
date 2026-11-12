@@ -4,7 +4,7 @@
 // @ts-nocheck
 export * from "./sql/acceptOutboundFollow";
 
-export * from "./sql/accountCounts";
+export * from "./sql/accountStatsByIdsJson";
 
 export * from "./sql/advanceBackfillCursor";
 
@@ -60,25 +60,15 @@ export * from "./sql/countActiveAccountsSince";
 
 export * from "./sql/countFeaturedTags";
 
-export * from "./sql/countFollowersByAccountIdsJson";
-
-export * from "./sql/countFollowingByAccountIdsJson";
-
 export * from "./sql/countNotificationRequests";
 
 export * from "./sql/countPinnedStatuses";
 
 export * from "./sql/countPollVotes";
 
-export * from "./sql/countRemoteAnnounces";
-
-export * from "./sql/countRemoteFavourites";
-
 export * from "./sql/countSearchAccounts";
 
 export * from "./sql/countStatuses";
-
-export * from "./sql/countStatusesByAccountIdsJson";
 
 export * from "./sql/countUnreadNotifications";
 
@@ -314,6 +304,8 @@ export * from "./sql/findLocalReblog";
 
 export * from "./sql/findMediaById";
 
+export * from "./sql/findNextOutboxTargetDue";
+
 export * from "./sql/findNotificationById";
 
 export * from "./sql/findNotificationOwned";
@@ -391,6 +383,8 @@ export * from "./sql/findStatusById";
 export * from "./sql/findStatusIdempotency";
 
 export * from "./sql/findStatusUpdatedAt";
+
+export * from "./sql/findStreamListeners";
 
 export * from "./sql/findTagModeration";
 
@@ -586,6 +580,8 @@ export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
 
+export * from "./sql/listDueOutboxTargets";
+
 export * from "./sql/listEndedLocalPollVoters";
 
 export * from "./sql/listEndedRemotePollVoters";
@@ -692,6 +688,8 @@ export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 
+export * from "./sql/listRemoteStatusRetentionSlice";
+
 export * from "./sql/listRemoteStatusTags";
 
 export * from "./sql/listRemoteThreadAncestors";
@@ -729,6 +727,8 @@ export * from "./sql/listSuggestionExclusionIds";
 export * from "./sql/listSuspendedDomains";
 
 export * from "./sql/listTagModerationsByNamesJson";
+
+export * from "./sql/listThreadDescendantIds";
 
 export * from "./sql/listUnavailableDeliveryDomains";
 
@@ -770,9 +770,13 @@ export * from "./sql/pruneInboxActivities";
 
 export * from "./sql/pruneOutboundActivities";
 
+export * from "./sql/pruneRemoteStatusRetentionSlice";
+
 export * from "./sql/pruneStatusIdempotency";
 
 export * from "./sql/pruneTerminalDeliveries";
+
+export * from "./sql/pruneUnreferencedRemoteActors";
 
 export * from "./sql/purgeRemoteActorBlocks";
 
@@ -871,6 +875,8 @@ export * from "./sql/setStatusReplyUri";
 export * from "./sql/settleRemotePollOwnVotes";
 
 export * from "./sql/startPollUpdate";
+
+export * from "./sql/statusStatsByIdsJson";
 
 export * from "./sql/sumAccountMediaBytes";
 

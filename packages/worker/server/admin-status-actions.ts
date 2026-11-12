@@ -4,12 +4,12 @@ import { z } from "zod";
 import { findAccountById } from "./account-store";
 import { nowIso } from "./clock";
 import { parseRows, type RepositoryError, runD1 } from "./d1";
-import { enqueueHomeFanOut } from "./home-fan-out";
+import { startHomeFanOut } from "./home-fan-out";
 import { htmlToText } from "./html";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { deleteLocalStatus } from "./local-status-delete";
 import { announceNoteUpdate } from "./local-status-update";
-import { enqueuePublicFanOut } from "./public-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
 import { removeRemoteStatus } from "./remote-status-delete";
 import { setRemoteStatusSensitive } from "./remote-status-store";
 import type { ReportParty } from "./report-store";
@@ -139,13 +139,13 @@ const sensitizeRemote = async (
   if (changed.isErr() || !changed.value) {
     return changed.map((row) => row !== undefined);
   }
-  await enqueueHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: statusId,
     author: { kind: "RemoteActor", actorUri },
   });
   if (changed.value.public) {
-    await enqueuePublicFanOut(env, { event: "status.update", entryId: statusId });
+    await startPublicFanOut(env, { event: "status.update", entryId: statusId });
   }
   return ok(true);
 };

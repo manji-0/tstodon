@@ -1,4 +1,9 @@
-import { createExecutionContext, env, runInDurableObject } from "cloudflare:test";
+import {
+  createExecutionContext,
+  env,
+  runDurableObjectAlarm,
+  runInDurableObject,
+} from "cloudflare:test";
 import { Hono } from "hono";
 import { err, ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
@@ -7,7 +12,7 @@ import {
   type HitRateLimitCounters,
   RateLimit,
   type RateLimitCounterTable,
-  type RateLimitHit,
+  type RateLimitIncrement,
 } from "@tstodon/domain";
 import { expectContract } from "../test/api-contract";
 import { accessTokenFor, authHeaders } from "../test/auth-fixture";
@@ -15,7 +20,12 @@ import { envWith } from "../test/env-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { generateAccountKeys } from "./keys";
 import { signInboxRequest } from "./http-signature";
-import { createRateLimiter, rateLimitMiddleware, rateLimitPolicy } from "./rate-limit";
+import {
+  createRateLimiter,
+  limitInboxDelivery,
+  rateLimitMiddleware,
+  rateLimitPolicy,
+} from "./rate-limit";
 import type { RateLimitCounter } from "./rate-limit-counter";
 import { postInbox } from "./routes/activitypub";
 
@@ -29,13 +39,16 @@ import { postInbox } from "./routes/activitypub";
 const memoryCounters = () => {
   const tables = new Map<string, RateLimitCounterTable>();
   const calls: string[] = [];
+  /** Each call's increments, as `name×by`. */
+  const sent: string[][] = [];
   const counters: HitRateLimitCounters = async (subjectKey, hits, nowMs) => {
     calls.push(subjectKey);
+    sent.push(hits.map((hit) => `${hit.name}×${hit.by}`));
     const { table, states } = RateLimit.count(tables.get(subjectKey) ?? {}, hits, nowMs);
     tables.set(subjectKey, table);
     return ok(states);
   };
-  return { counters, calls };
+  return { counters, calls, sent };
 };
 
 /** 2026-11-09T00:00:00Z: on every window boundary the tests use. */
@@ -44,8 +57,8 @@ const START_MS = Date.UTC(2026, 10, 9);
 const limitedApp = (
   vars: Readonly<Record<string, string>> = {},
   counters?: HitRateLimitCounters,
+  memory = memoryCounters(),
 ) => {
-  const memory = memoryCounters();
   const clock = { nowMs: START_MS };
   const limiter = createRateLimiter({
     counters: () => counters ?? memory.counters,
@@ -66,7 +79,7 @@ const limitedApp = (
       testEnv,
       createExecutionContext(),
     );
-  return { request, clock, calls: memory.calls };
+  return { request, clock, calls: memory.calls, sent: memory.sent };
 };
 
 const limits = (overrides: Record<string, unknown>): Record<string, string> => ({
@@ -143,6 +156,72 @@ describe("rate limits on the API", () => {
     expect(calls).toHaveLength(2);
     clock.nowMs += 60_000;
     expect((await send()).status).toBe(200);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("counts 75 of 300 in the isolate, then asks with all 76", async () => {
+    const { request, calls, sent } = limitedApp();
+    const send = () => request("GET", "/api/v1/instance", ip("198.51.100.12"));
+    const remaining: Array<string | null> = [];
+    for (let index = 0; index < 75; index += 1) {
+      const response = await send();
+      expect(response.status).toBe(200);
+      expect(response.headers.get("X-RateLimit-Limit")).toBe("300");
+      expect(response.headers.get("X-RateLimit-Reset")).toBe("2026-11-09T00:05:00.000Z");
+      remaining.push(response.headers.get("X-RateLimit-Remaining"));
+    }
+    expect(remaining.slice(0, 2)).toEqual(["299", "298"]);
+    expect(remaining.at(-1)).toBe("225");
+    expect(calls).toHaveLength(0);
+    const asked = await send();
+    expect(asked.headers.get("X-RateLimit-Remaining")).toBe("224");
+    expect(sent).toEqual([["api_ip×76"]]);
+  });
+
+  it("asks twice in a window for a client at half its limit", async () => {
+    const { request, calls } = limitedApp();
+    const send = () => request("GET", "/api/v1/instance", ip("198.51.100.16"));
+    expect(new Set(await repeat(150, send))).toEqual(new Set([200]));
+    expect(calls).toHaveLength(2);
+  });
+
+  it("holds a flood from one client to exactly its limit with few asks, until the next window", async () => {
+    const { request, calls, clock } = limitedApp();
+    const send = () => request("GET", "/api/v1/instance", ip("198.51.100.13"));
+    const seen = await repeat(2000, send);
+    expect(seen.filter((status) => status === 200)).toHaveLength(300);
+    expect(seen.slice(300)).toEqual(Array.from({ length: 1700 }, () => 429));
+    expect(calls.length).toBeLessThan(50);
+    clock.nowMs += 300_000;
+    expect((await send()).status).toBe(200);
+  });
+
+  it("holds a flood spread over four isolates to 1.75 times the limit", async () => {
+    const memory = memoryCounters();
+    const isolates = [1, 2, 3, 4].map(() => limitedApp({}, undefined, memory));
+    const seen: number[] = [];
+    for (let index = 0; index < 2000; index += 1) {
+      const isolate = isolates[index % isolates.length];
+      if (isolate !== undefined) {
+        seen.push((await isolate.request("GET", "/api/v1/instance", ip("198.51.100.14"))).status);
+      }
+    }
+    expect(seen.filter((status) => status === 200).length).toBeLessThanOrEqual(300 * 1.75);
+    expect(seen.slice(-1000)).toEqual(Array.from({ length: 1000 }, () => 429));
+  });
+
+  it("asks on every hit of an abuse-sensitive family, with all of the subject's counters", async () => {
+    const { request, calls, sent } = limitedApp();
+    const headers = { ...(await authHeaders("ratelimit-strict@example.com")) };
+    expect((await request("GET", "/api/v1/timelines/home", headers)).status).toBe(200);
+    expect(calls).toHaveLength(0);
+    expect((await request("POST", "/api/v1/statuses", headers)).status).toBe(200);
+    expect((await request("POST", "/api/v1/statuses", headers)).status).toBe(200);
+    expect(sent.map((names) => names.map((name) => name.replace(/:.*×/, "×")))).toEqual([
+      ["api_token×2", "api_account×2", "statuses×1"],
+      ["api_token×1", "api_account×1", "statuses×1"],
+    ]);
+    expect((await request("GET", "/auth/sign_in", ip("198.51.100.15"))).status).toBe(200);
     expect(calls).toHaveLength(3);
   });
 
@@ -285,7 +364,13 @@ describe("rate limit configuration", () => {
 });
 
 describe("RateLimitCounter (Durable Object)", () => {
-  const hit: RateLimitHit = { name: "media", bucket: "media", limit: 2, periodMs: 60_000 };
+  const hit: RateLimitIncrement = {
+    name: "media",
+    bucket: "media",
+    limit: 2,
+    periodMs: 60_000,
+    by: 1,
+  };
 
   it("counts per subject and keeps subjects apart", async () => {
     const namespace = env.RATE_LIMIT_COUNTER;
@@ -313,6 +398,14 @@ describe("RateLimitCounter (Durable Object)", () => {
     );
     expect(stored).toBeUndefined();
   });
+
+  it("keeps a window that has not ended through the sweep", async () => {
+    const namespace = env.RATE_LIMIT_COUNTER;
+    const stub = namespace.get(namespace.idFromName("test:do-sweep-live"));
+    await stub.hit([{ ...hit, periodMs: 86_400_000 }], Date.now());
+    await runDurableObjectAlarm(stub);
+    expect((await stub.hit([{ ...hit, periodMs: 86_400_000 }], Date.now()))[0]?.count).toBe(2);
+  });
 });
 
 describe("inbox deliveries per sending server", () => {
@@ -329,6 +422,26 @@ describe("inbox deliveries per sending server", () => {
       return response.status;
     };
   };
+
+  it("counts a server's deliveries in the isolate until a quarter of its limit", async () => {
+    const memory = memoryCounters();
+    const limiter = createRateLimiter({ counters: () => memory.counters, now: () => START_MS });
+    const app = new Hono<{ Bindings: Env }>();
+    app.post(
+      "/inbox",
+      async (c) => (await limitInboxDelivery(c, "busy.example", limiter)) ?? c.body(null, 202),
+    );
+    const testEnv = envWith({
+      RATE_LIMITS_ENABLED: "true",
+      ...limits({ inbox_domain: { limit: 40, period: 300 } }),
+    });
+    const deliver = async () =>
+      app.request("https://example.com/inbox", { method: "POST" }, testEnv);
+    expect(await repeat(10, deliver)).toEqual(Array.from({ length: 10 }, () => 202));
+    expect(memory.calls).toEqual([]);
+    expect((await deliver()).status).toBe(202);
+    expect(memory.calls).toEqual(["domain:busy.example"]);
+  });
 
   it("counts only deliveries whose signature verified, keyed on the signer's host", async () => {
     const host = "ratelimit-inbox.example";

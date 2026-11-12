@@ -7,12 +7,18 @@ import {
   type StreamDeliveryValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { afterResponse } from "./after-response";
 import type { RepositoryError } from "./d1";
+import { runOrQueue } from "./inline-job";
 import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { MAX_HUB_TAGGED_CHANNELS } from "./stream-hub";
 import { publishToHub } from "./stream-publish";
-import { type HubChannels, listPublicStreamSubscriptions } from "./stream-subscription-store";
+import {
+  type HubChannels,
+  listPublicStreamSubscriptions,
+  streamListeners,
+} from "./stream-subscription-store";
 import { publicTimelineDocuments, tagTimelineDocuments } from "./timeline-documents";
 
 type FanOutPublic = Extract<OutboxJobValue, { kind: "FanOutPublic" }>;
@@ -29,25 +35,29 @@ const PUBLIC_FAN_OUT_PAGE_SIZE = 20;
 const PUBLIC_FAN_OUT_PASS_BUDGET = 6 + MAX_HUB_TAGGED_CHANNELS;
 
 /**
- * Queue telling the public and hashtag streams about a public status, as
- * Mastodon's `FanOutOnWriteService` and `RemoveStatusService` publish to
- * `timeline:public*` and `timeline:hashtag:*`. Callers queue it only for
- * public notes stored as they happen, not for backfilled ones. Best effort:
- * a viewer who misses the event still sees the status on the next fetch.
+ * Tell the public and hashtag streams about a public status, as Mastodon's
+ * `FanOutOnWriteService` and `RemoveStatusService` publish to
+ * `timeline:public*` and `timeline:hashtag:*`. Callers start it only for
+ * public notes stored as they happen, not for backfilled ones. Nothing is
+ * done when no hub holds a public or hashtag stream (one cached read);
+ * otherwise the first
+ * page of hubs is told once the response is ready, and the queue takes later
+ * pages and a page to retry. Best effort: a viewer who misses the event still
+ * sees the status on the next fetch.
  */
-export const enqueuePublicFanOut = async (
+export const startPublicFanOut = async (
   env: Env,
   fanOut: Readonly<{ event: FanOutPublic["event"]; entryId: string }>,
 ): Promise<void> => {
   const job = OutboxJob.parse({ kind: "FanOutPublic", ...fanOut, afterHub: "" });
-  if (job.isErr()) {
+  if (job.isErr() || job.value.kind !== "FanOutPublic") {
     return;
   }
-  try {
-    await env.OUTBOX_PROCESS_QUEUE.send(job.value);
-  } catch {
-    console.error(JSON.stringify({ kind: "PublicFanOutNotQueued", entryId: fanOut.entryId }));
+  if (!(await streamListeners(env.DB)).public) {
+    return;
   }
+  const fanOutJob = job.value;
+  afterResponse(fanOutJob.kind, () => runOrQueue(env, fanOutJob, processFanOutPublicJob));
 };
 
 /** The entry as `channel`'s timeline holds it for the viewer, or nothing when it does not. */

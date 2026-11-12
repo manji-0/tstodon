@@ -30,7 +30,7 @@ Then verify the deployment end to end with the [launch checklist](./launch-check
 
 Before migration 0103, an attachment was stored at `attachments/<accountId>/<mediaId>`. The account id is public and a media id is its upload millisecond plus 16 random bits, so anyone who knows roughly when an attachment was uploaded can find it on the public media hostname, even on a direct post. New uploads get a random 128-bit name.
 
-The `RekeyLegacyMedia` queue job finds every row whose `object_key` is still the id-derived key. It matches on the key itself, so it also finds rows that the previous Worker wrote while the deploy rolled out. You do not need to start the job: the hourly cron queues it, and a full batch of 50 queues the batch after it at once. For each row it does these steps:
+The `RekeyLegacyMedia` queue job finds every row whose `object_key` is still the id-derived key. It matches on the key itself, so it also finds rows that the previous Worker wrote while the deploy rolled out. You do not need to start the job: the hourly cron runs its first batch, and a full batch of 50 queues the batch after it at once. For each row it does these steps:
 
 1. Copy the object to a new random key, with its HTTP and custom metadata.
 2. Point the row's `object_key` at the copy and keep the old key in `legacy_object_key`. In the same D1 batch, replace the old key with the new one in the row's status's edit history. API documents, ActivityPub notes, `GET /media/:id`, and `/history` use the new URL from then on.
@@ -114,7 +114,7 @@ Starting it again, at any time, is safe: once every row is marked, a run is one 
 
 Migration 0125 adds the byte size of each stored object (see [Media storage accounting](../reference/configuration.md#media-storage-accounting)). Uploads, avatar and header changes, custom emoji uploads and the metadata rewrite record sizes from then on; rows stored before have no size (NULL) and count 0 in `space_usage`, `instance_media_attachments` and the export page until the `BackfillStoredMediaSizes` queue job has read them.
 
-You do not need to start the job: the six-hourly cron queues its first page on `tstodon-outbox-process`. Each page is one D1 query (`listUnsizedMedia`) for up to 50 rows of unknown size, attachments first, then avatars, headers and custom emojis; each object gets a `HEAD` (its size from R2's metadata, no body read), and the row records the size only while it still holds that key and its size is still unknown, so an upload or metadata rewrite since is never overwritten. A full page queues the next one with its cursor (`source`, `afterId`) and the counts so far.
+You do not need to start the job: the six-hourly cron runs its first page, and later pages go through `tstodon-outbox-process`. Each page is one D1 query (`listUnsizedMedia`) for up to 50 rows of unknown size, attachments first, then avatars, headers and custom emojis; each object gets a `HEAD` (its size from R2's metadata, no body read), and the row records the size only while it still holds that key and its size is still unknown, so an upload or metadata rewrite since is never overwritten. A full page queues the next one with its cursor (`source`, `afterId`) and the counts so far.
 
 - **Missing objects.** A row whose object is not in the bucket gets size 0 and a `MediaSizeNotRead` warning with the key and `outcome` `Missing`.
 - **Failures.** A `HEAD` or D1 write that fails is logged as `MediaSizeNotRead` (`Deferred`) and leaves the row's size unknown for the next run.

@@ -8,6 +8,7 @@ import {
   type RateLimitCaller,
   type RateLimitCounterState,
   type RateLimitHit,
+  type RateLimitIncrement,
 } from "./rate-limit";
 
 const policy = RateLimitPolicy.defaults;
@@ -143,8 +144,20 @@ describe("RateLimit.inboxDomainCheck", () => {
 });
 
 describe("RateLimit.count", () => {
-  const hit: RateLimitHit = { name: "media", bucket: "media", limit: 2, periodMs: 60_000 };
-  const other: RateLimitHit = { name: "statuses", bucket: "statuses", limit: 5, periodMs: 10_000 };
+  const hit: RateLimitIncrement = {
+    name: "media",
+    bucket: "media",
+    limit: 2,
+    periodMs: 60_000,
+    by: 1,
+  };
+  const other: RateLimitIncrement = {
+    name: "statuses",
+    bucket: "statuses",
+    limit: 5,
+    periodMs: 10_000,
+    by: 1,
+  };
 
   it("counts within an epoch-aligned window and starts again in the next", () => {
     let table = {};
@@ -169,6 +182,13 @@ describe("RateLimit.count", () => {
     expect(RateLimit.expiresAtMs({})).toBeUndefined();
   });
 
+  it("counts hits an isolate handed over together", () => {
+    const first = RateLimit.count({}, [{ ...hit, by: 11 }], 120_000);
+    expect(first.states[0]?.count).toBe(11);
+    expect(RateLimit.count(first.table, [{ ...hit, by: 3 }], 130_000).states[0]?.count).toBe(14);
+    expect(RateLimit.count(first.table, [{ ...hit, by: 3 }], 180_000).states[0]?.count).toBe(3);
+  });
+
   it("restarts a counter whose window length changed", () => {
     const first = RateLimit.count({}, [hit], 120_000);
     const resized = RateLimit.count(first.table, [{ ...hit, periodMs: 120_000 }], 125_000);
@@ -179,6 +199,48 @@ describe("RateLimit.count", () => {
     const { table } = RateLimit.count({}, [hit], 120_000);
     expect(RateLimit.parseTable(JSON.parse(JSON.stringify(table)))._unsafeUnwrap()).toEqual(table);
     expect(RateLimit.parseTable({ media: { count: "x" } }).isErr()).toBe(true);
+  });
+});
+
+describe("RateLimit.mayCountLocally", () => {
+  const api: RateLimitHit = { name: "api_ip", bucket: "api_ip", limit: 300, periodMs: 300_000 };
+  const fresh = { seen: 0, unsent: 0, shared: 0 };
+
+  it("lets an isolate count a quarter of the headroom alone on the high-volume buckets", () => {
+    expect(RateLimit.mayCountLocally(api, { ...fresh, seen: 74, unsent: 74 })).toBe(true);
+    expect(RateLimit.mayCountLocally(api, { ...fresh, seen: 75, unsent: 75 })).toBe(false);
+    // After the shared counter answered 76: up to 76 + floor(224 / 4) = 132.
+    expect(RateLimit.mayCountLocally(api, { seen: 131, unsent: 55, shared: 76 })).toBe(true);
+    expect(RateLimit.mayCountLocally(api, { seen: 132, unsent: 56, shared: 76 })).toBe(false);
+    expect(RateLimit.mayCountLocally(api, { seen: 0, unsent: 0, shared: 298 })).toBe(false);
+    expect(RateLimit.mayCountLocally(api, { seen: 0, unsent: 0, shared: 400 })).toBe(false);
+    expect(RateLimit.mayCountLocally({ ...api, limit: 3 }, fresh)).toBe(false);
+    for (const bucket of ["federation_fetch", "inbox_ip", "inbox_domain", "api_account"] as const) {
+      expect(RateLimit.mayCountLocally({ ...api, bucket }, fresh), bucket).toBe(true);
+    }
+  });
+
+  it("trusts what the isolate saw itself over a shared count that forgot it", () => {
+    expect(RateLimit.mayCountLocally(api, { seen: 75, unsent: 0, shared: 0 })).toBe(false);
+    expect(RateLimit.localEstimate({ seen: 75, unsent: 0, shared: 0 })).toBe(75);
+  });
+
+  it("sends every hit of the abuse-sensitive buckets to the shared counter", () => {
+    const strict = [
+      "media",
+      "statuses",
+      "reblogs",
+      "follows",
+      "reports",
+      "sign_in",
+      "app_registration",
+      "oauth_token",
+    ] as const;
+    for (const bucket of strict) {
+      expect(RateLimit.mayCountLocally({ ...api, bucket, limit: 10_000 }, fresh), bucket).toBe(
+        false,
+      );
+    }
   });
 });
 

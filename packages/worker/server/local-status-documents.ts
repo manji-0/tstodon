@@ -26,12 +26,7 @@ import { type PresentedAccount, presentedAccounts } from "./account-documents";
 import { boostedStatusAuthors, StatusAuthors } from "./account-presentation";
 import { findAccountsByIds } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
-import {
-  findQuotesByQuoting,
-  findStatusQuotePolicies,
-  quoteCountsByQuoted,
-  type QuotePolicy,
-} from "./quote-store";
+import { findQuotesByQuoting, findStatusQuotePolicies, type QuotePolicy } from "./quote-store";
 import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -47,6 +42,7 @@ import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./rem
 import { findStatusesByIds, listStatusReplyUris } from "./status-store";
 import { listStatusCards } from "./status-card-store";
 import {
+  NO_STATUS_INTERACTIONS,
   type StatusInteractionCounts,
   statusInteractionCountsByIds,
 } from "./status-interaction-store";
@@ -129,7 +125,7 @@ const buildLocalNoteDocument = (
     language: status.language.kind === "Present" ? status.language.value : null,
     uri: url,
     url,
-    replies_count: 0,
+    replies_count: interactions.replies,
     reblogs_count: interactions.reblogs,
     favourites_count: interactions.favourites,
     edited_at: status.editedAt,
@@ -147,7 +143,7 @@ const buildLocalNoteDocument = (
     card,
     poll: poll ? pollJson(poll) : null,
     quote: null,
-    quotes_count: 0,
+    quotes_count: interactions.quotes,
     quote_approval: { automatic: [], manual: [], current_user: "denied" },
     // Mastodon 4.7 collections; none are kept here.
     tagged_collections: [],
@@ -340,7 +336,6 @@ const renderLocalStatuses = async (
     mediaResult,
     sensitizedResult,
     cardsResult,
-    quoteCountsResult,
     policiesResult,
     viewerFollowing,
     mutedRoots,
@@ -353,7 +348,6 @@ const renderLocalStatuses = async (
     findMediaByIds(env.DB, mediaIds),
     sensitizedAccountIds(env.DB, accountIds),
     listStatusCards(env.DB, noteIds),
-    quoteCountsByQuoted(env.DB, noteTargetsOf(allStatuses)),
     findStatusQuotePolicies(env.DB, noteIds),
     viewerId
       ? followedAccountIds(
@@ -385,9 +379,6 @@ const renderLocalStatuses = async (
       },
     ),
   );
-  const quoteCounts = quoteCountsResult.isOk()
-    ? quoteCountsResult.value
-    : new Map<string, number>();
   const quotePolicies = policiesResult.isOk()
     ? policiesResult.value
     : new Map<string, QuotePolicy>();
@@ -441,13 +432,7 @@ const renderLocalStatuses = async (
         status,
         account,
         author.document,
-        interactions.get(status.id) ?? {
-          favourites: 0,
-          reblogs: 0,
-          favourited: false,
-          reblogged: false,
-          bookmarked: false,
-        },
+        interactions.get(status.id) ?? NO_STATUS_INTERACTIONS,
         polls.get(status.id),
         mediaById,
         parent?.accountId ?? null,
@@ -618,7 +603,6 @@ const renderLocalStatuses = async (
         quoted.kind === "Unresolved" ? undefined : quotedDocument(quoted),
       );
     }
-    document.quotes_count = quoteCounts.get(status.id) ?? 0;
     const policy = quoteInteractionPolicy(
       noteQuotePolicy(account, status, quotePolicies.get(status.id)),
     );

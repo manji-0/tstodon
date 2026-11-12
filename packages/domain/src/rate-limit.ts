@@ -170,6 +170,12 @@ export type RateLimitHit = Readonly<{
   periodMs: number;
 }>;
 
+/**
+ * A hit counted `by` times at once: the hits an isolate counted alone,
+ * handed to the shared counter together.
+ */
+export type RateLimitIncrement = RateLimitHit & Readonly<{ by: number }>;
+
 /** The counters a request increments under one subject. */
 export type RateLimitCheck = Readonly<{
   subject: RateLimitSubject;
@@ -343,6 +349,38 @@ export type RateLimitVerdict =
 
 const remaining = (state: RateLimitCounterState): number => Math.max(0, state.limit - state.count);
 
+/**
+ * The high-volume buckets an isolate may count on its own for a while
+ * before it asks the shared counter (the `RateLimitCounter` Durable Object).
+ * Every other bucket (the action families, sign-in, OAuth, app
+ * registration) asks the shared counter on every hit: those requests are
+ * rare, their windows are long or their limits small, and they are what an
+ * abuser spends.
+ */
+const LOCAL_FIRST_BUCKETS: ReadonlySet<RateLimitBucket> = new Set([
+  "api_ip",
+  "api_token",
+  "api_account",
+  "federation_fetch",
+  "inbox_ip",
+  "inbox_domain",
+]);
+
+/**
+ * One counter as one isolate has seen it in the current window: the hits it
+ * counted (`seen`), those not yet sent to the shared counter (`unsent`), and
+ * the count the shared counter last answered, every isolate's hits included
+ * (`shared`, 0 before any answer).
+ */
+export type RateLimitLocalCount = Readonly<{ seen: number; unsent: number; shared: number }>;
+
+/** The best count an isolate knows of for one counter in this window. */
+const localEstimate = (local: RateLimitLocalCount): number =>
+  Math.max(local.seen, local.shared + local.unsent);
+
+/** An isolate counts alone up to a quarter of what the shared count last left. */
+const LOCAL_SHARE_DIVISOR = 4;
+
 export const RateLimit = {
   /**
    * The checks a request counts against, one per subject: its client
@@ -372,17 +410,35 @@ export const RateLimit = {
     const hit = hitFor(policy, "inbox_domain");
     return hit === undefined ? undefined : { subject: { kind: "RemoteDomain", host }, hits: [hit] };
   },
+  localEstimate,
+  /**
+   * Whether an isolate may count one more hit on `hit`'s counter alone,
+   * without asking the shared counter: only for `LOCAL_FIRST_BUCKETS`, and
+   * only while the estimate stays within a quarter of the headroom the
+   * shared counter last left (`shared + floor((limit - shared) / 4)`). A
+   * client under a quarter of its limit costs no shared-counter call (hits
+   * 1 to 75 of 300; the 76th asks, sending all 76); one that keeps going
+   * asks again at about 44% and 58% of the limit, and near the limit the
+   * quarter rounds to 0 so every hit asks and a single isolate holds it to
+   * the limit exactly. A client spread over n isolates can get up to
+   * (n - 1) quarters of the limit past it before the shared count refuses
+   * it everywhere.
+   */
+  mayCountLocally: (hit: RateLimitHit, local: RateLimitLocalCount): boolean =>
+    LOCAL_FIRST_BUCKETS.has(hit.bucket) &&
+    localEstimate(local) + 1 <=
+      local.shared + Math.floor(Math.max(0, hit.limit - local.shared) / LOCAL_SHARE_DIVISOR),
   window: windowAt,
   tableSchema: CounterTableSchema,
   parseTable: schemaResult(CounterTableSchema),
   /**
    * Count `hits` at `nowMs`: each counter in its current window goes up by
-   * one, a counter whose window has passed starts again at one, and windows
-   * that have ended are dropped from the table.
+   * the hit's `by`, a counter whose window has passed starts again at `by`,
+   * and windows that have ended are dropped from the table.
    */
   count: (
     table: RateLimitCounterTable,
-    hits: ReadonlyArray<RateLimitHit>,
+    hits: ReadonlyArray<RateLimitIncrement>,
     nowMs: number,
   ): Readonly<{ table: RateLimitCounterTable; states: ReadonlyArray<RateLimitCounterState> }> => {
     const next: Record<string, z.infer<typeof StoredCounterSchema>> = {};
@@ -398,8 +454,8 @@ export const RateLimit = {
         stored !== undefined &&
         stored.startMs === window.startMs &&
         stored.periodMs === hit.periodMs
-          ? stored.count + 1
-          : 1;
+          ? stored.count + hit.by
+          : hit.by;
       next[hit.name] = { startMs: window.startMs, periodMs: hit.periodMs, count };
       return { name: hit.name, limit: hit.limit, count, resetAtMs: window.endMs };
     });

@@ -44,7 +44,6 @@ const QuoteDbRow = z.object({
   legacy: z.number(),
   created_at: z.string(),
 });
-const QuoteCountRow = z.object({ quoted_id: z.string(), count: z.number() });
 const TargetRow = z.object({
   status_id: z.string().nullable(),
   remote_status_id: z.string().nullable(),
@@ -270,28 +269,6 @@ export const findQuotesByApprovalUri = (
   db: D1Database,
   uri: string,
 ): Promise<Result<QuoteValue[], RepositoryError>> => findQuotesWhere(db, "approval_uri", uri);
-
-/** How many accepted quotes each of these statuses has, keyed by status id. */
-export const quoteCountsByQuoted = async (
-  db: D1Database,
-  targets: ReadonlyArray<StatusTargetValue>,
-): Promise<Result<ReadonlyMap<string, number>, RepositoryError>> =>
-  runD1(async () => {
-    if (targets.length === 0) {
-      return new Map<string, number>();
-    }
-    const { results } = await db
-      .prepare(
-        `SELECT COALESCE(quoted_status_id, quoted_remote_status_id) AS quoted_id, COUNT(*) AS count
-         FROM status_quotes
-         WHERE state = 'accepted'
-           AND (quoted_status_id ${sqlInJsonEach()} OR quoted_remote_status_id ${sqlInJsonEach()})
-         GROUP BY quoted_id`,
-      )
-      .bind(...targetIdBinds(targets))
-      .all();
-    return new Map(parseRows(QuoteCountRow, results).map((row) => [row.quoted_id, row.count]));
-  });
 
 /** The statuses that quote one status with an accepted quote, by quoting status id under the cursor. */
 export const listQuotingTargets = async (

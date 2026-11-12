@@ -155,6 +155,20 @@ const announceEndedLocalPolls = async (env: Env, notifiedAt: string): Promise<Pa
 };
 
 /**
+ * Whether a `ProcessExpiredPolls` run would find a voter to tell or a poll to
+ * announce now, by one row of each list. A failed read answers yes.
+ */
+export const hasExpiredPollWork = async (env: Env): Promise<boolean> => {
+  const now = nowIso();
+  const [remote, local, expired] = await Promise.all([
+    listEndedRemotePollVoters(env.DB, now, 1),
+    listEndedLocalPollVoters(env.DB, now, 1),
+    listExpiredUnnotifiedPolls(env.DB, now, 1),
+  ]);
+  return [remote, local, expired].some((rows) => rows.isErr() || rows.value.length > 0);
+};
+
+/**
  * The `ProcessExpiredPolls` job, as Mastodon's `PollExpirationNotifyWorker`.
  * A full batch queues the next run at once rather than waiting for the hourly
  * cron. Only a run that claimed something chains, so a batch that keeps

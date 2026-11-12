@@ -30,15 +30,17 @@ const remoteSender = async (
   recipientId: string,
   actorUri: string,
 ): Promise<Result<NotificationSender, RepositoryError>> => {
-  const follow = await findRemoteFollow(db, recipientId, actorUri);
+  const [follow, moderation, actor] = await Promise.all([
+    findRemoteFollow(db, recipientId, actorUri),
+    getRemoteActorModeration(db, actorUri),
+    findRemoteActorByUri(db, actorUri),
+  ]);
   if (follow.isErr()) {
     return err(follow.error);
   }
-  const moderation = await getRemoteActorModeration(db, actorUri);
   if (moderation.isErr()) {
     return err(moderation.error);
   }
-  const actor = await findRemoteActorByUri(db, actorUri);
   if (actor.isErr()) {
     return err(actor.error);
   }
@@ -50,38 +52,35 @@ const remoteSender = async (
   });
 };
 
-/** What `NotificationPolicy.disposition` needs to know about a local sender. */
 const localSender = async (
   db: D1Database,
   input: DispositionInput,
   createdAt: string,
 ): Promise<Result<NotificationSender, RepositoryError>> => {
-  const standing = await findAccountStanding(db, input.senderId);
+  // Independent reads: one D1 round instead of one each.
+  const [standing, profile, followed, follows, status] = await Promise.all([
+    findAccountStanding(db, input.senderId),
+    findAccountProfile(db, input.senderId),
+    findFollowKind(db, input.recipientId, input.senderId),
+    findFollowKind(db, input.senderId, input.recipientId),
+    input.kind === "mention" && input.statusId
+      ? findStatusById(db, input.statusId)
+      : Promise.resolve(ok(undefined)),
+  ]);
   if (standing.isErr()) {
     return err(standing.error);
   }
-  const profile = await findAccountProfile(db, input.senderId);
   if (profile.isErr()) {
     return err(profile.error);
   }
-  const followed = await findFollowKind(db, input.recipientId, input.senderId);
   if (followed.isErr()) {
     return err(followed.error);
   }
-  const follows = await findFollowKind(db, input.senderId, input.recipientId);
   if (follows.isErr()) {
     return err(follows.error);
   }
-  let privateMention = false;
-  if (input.kind === "mention" && input.statusId) {
-    const status = await findStatusById(db, input.statusId);
-    if (status.isErr()) {
-      return err(status.error);
-    }
-    privateMention =
-      status.value !== undefined &&
-      status.value.kind === "LocalNote" &&
-      status.value.visibility.kind === "Direct";
+  if (status.isErr()) {
+    return err(status.error);
   }
   return ok({
     kind: "Local",
@@ -89,7 +88,10 @@ const localSender = async (
     silenced: standing.value.kind === "Silenced",
     recipientFollowsSender: followed.value === "Accepted",
     senderFollowsRecipient: follows.value === "Accepted",
-    privateMention,
+    privateMention:
+      status.value !== undefined &&
+      status.value.kind === "LocalNote" &&
+      status.value.visibility.kind === "Direct",
     bot: profile.value.bot,
   });
 };
@@ -103,18 +105,22 @@ export const notificationDisposition = async (
   db: D1Database,
   input: DispositionInput,
 ): Promise<Result<NotificationDisposition, RepositoryError>> => {
-  const accepted = await isSenderAccepted(db, input.recipientId, input.senderId);
+  // The policy and the sender's account are read with the acceptance check,
+  // not after it: an accepted sender is rare, a serial round is not.
+  const [accepted, policy, account] = await Promise.all([
+    isSenderAccepted(db, input.recipientId, input.senderId),
+    findNotificationPolicy(db, input.recipientId),
+    findAccountById(db, input.senderId),
+  ]);
   if (accepted.isErr()) {
     return err(accepted.error);
   }
   if (accepted.value) {
     return ok("accept");
   }
-  const policy = await findNotificationPolicy(db, input.recipientId);
   if (policy.isErr()) {
     return err(policy.error);
   }
-  const account = await findAccountById(db, input.senderId);
   if (account.isErr()) {
     return err(account.error);
   }

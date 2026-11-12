@@ -21,12 +21,14 @@ import {
 import {
   findOutboundActivity as findOutboundActivitySql,
   findOutboundActivityWithSigner as findOutboundActivityWithSignerSql,
+  findNextOutboxTargetDue as findNextOutboxTargetDueSql,
   findOutboxFanout as findOutboxFanoutSql,
   findOutboxTarget as findOutboxTargetSql,
   insertOutboundActivity as insertOutboundActivitySql,
   insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
   insertOutboxTargetOrIgnore as insertOutboxTargetOrIgnoreSql,
   insertSettledOutboxTargetOrIgnore as insertSettledOutboxTargetOrIgnoreSql,
+  listDueOutboxTargets as listDueOutboxTargetsSql,
   listStuckOutboxTargets as listStuckOutboxTargetsSql,
   postponeOutboxTarget as postponeOutboxTargetSql,
   listOutboundActivities as listOutboundActivitiesSql,
@@ -380,29 +382,112 @@ export const persistOutboxTarget = async (
   delivery: OutboxDeliveryValue,
   nextAttemptAt: string | null = null,
   lastHttpStatus: number | null = null,
+): Promise<Result<void, RepositoryError>> =>
+  persistOutboxTargets(db, activityId, [{ inboxUrl, delivery, nextAttemptAt, lastHttpStatus }]);
+
+/** A `Queued` target's state after one attempt. */
+export type SettledOutboxTarget = Readonly<{
+  inboxUrl: string;
+  delivery: OutboxDeliveryValue;
+  nextAttemptAt: string | null;
+  lastHttpStatus: number | null;
+}>;
+
+/** {@link persistOutboxTarget} for several targets of one activity, in one D1 batch. */
+export const persistOutboxTargets = async (
+  db: D1Database,
+  activityId: string,
+  settled: ReadonlyArray<SettledOutboxTarget>,
 ): Promise<Result<void, RepositoryError>> => {
-  const parsed = ActivityId.parse(activityId);
-  if (parsed.isErr()) {
+  if (ActivityId.parse(activityId).isErr()) {
     return err(toRepositoryError("invalid activity id"));
   }
-  return runD1(async () => {
-    const columns = persistColumns(delivery);
-    const transient =
-      delivery.kind === "Queued" ||
-      (delivery.kind === "Failed" && delivery.reasonKind === "RetryExhausted");
-    await runTyped(
-      db,
-      updateOutboxTargetSql(
+  if (settled.length === 0) {
+    return ok(undefined);
+  }
+  const updatedAt = nowIso();
+  const batched = await runTypedBatch(
+    db,
+    settled.map(({ inboxUrl, delivery, nextAttemptAt, lastHttpStatus }) => {
+      const columns = persistColumns(delivery);
+      const transient =
+        delivery.kind === "Queued" ||
+        (delivery.kind === "Failed" && delivery.reasonKind === "RetryExhausted");
+      return updateOutboxTargetSql(
         columns.kind,
         columns.reasonKind,
         columns.attemptCount,
         columns.httpStatus ?? (transient ? lastHttpStatus : null),
-        nowIso(),
+        updatedAt,
         activityId,
         inboxUrl,
         delivery.kind === "Queued" ? nextAttemptAt : null,
-      ),
-    );
+      );
+    }),
+  );
+  return batched.map(() => undefined);
+};
+
+const DueTargetRowSchema = z.object({
+  inbox_url: z.string().min(1),
+  attempt_count: z.number().int().nonnegative(),
+});
+
+/** A `Queued` target due for an attempt. */
+export type DueOutboxTarget = Readonly<{ inboxUrl: string; attemptCount: number }>;
+
+/**
+ * Up to `limit` of the activity's `Queued` targets (only `inboxUrl`'s when
+ * given) after `afterInboxUrl` in inbox order, due by `dueBy`; a target
+ * never attempted is always due.
+ */
+export const listDueOutboxTargets = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrl: string | null,
+  afterInboxUrl: string,
+  dueBy: string,
+  limit: number,
+): Promise<Result<DueOutboxTarget[], RepositoryError>> => {
+  const rows = await runD1(() =>
+    queryTyped(
+      db,
+      listDueOutboxTargetsSql(activityId, inboxUrl, afterInboxUrl, dueBy, limit),
+      DueTargetRowSchema,
+    ),
+  );
+  return rows.map((found) =>
+    found.map((row) => ({ inboxUrl: row.inbox_url, attemptCount: row.attempt_count })),
+  );
+};
+
+export type NextOutboxTargetDue =
+  | Readonly<{ kind: "None" }>
+  | Readonly<{ kind: "Now" }>
+  | Readonly<{ kind: "At"; at: string }>;
+
+const NextDueRowSchema = z.object({ next_attempt_at: z.string().min(1).nullable() });
+
+/**
+ * When the activity's next `Queued` target (only `inboxUrl`'s when given) is
+ * due: `"Now"` for one never attempted, `"None"` when no target is `Queued`.
+ */
+export const findNextOutboxTargetDue = async (
+  db: D1Database,
+  activityId: string,
+  inboxUrl: string | null,
+): Promise<Result<NextOutboxTargetDue, RepositoryError>> => {
+  const rows = await runD1(() =>
+    queryTyped(db, findNextOutboxTargetDueSql(activityId, inboxUrl), NextDueRowSchema),
+  );
+  return rows.map((found) => {
+    const row = found[0];
+    if (row === undefined) {
+      return { kind: "None" as const };
+    }
+    return row.next_attempt_at === null
+      ? { kind: "Now" as const }
+      : { kind: "At" as const, at: row.next_attempt_at };
   });
 };
 
@@ -482,4 +567,6 @@ warmSchemas([
   OutboundActivityWithSignerRowSchema,
   OutboxDeliveryRowSchema,
   StuckTargetRowSchema,
+  DueTargetRowSchema,
+  NextDueRowSchema,
 ]);

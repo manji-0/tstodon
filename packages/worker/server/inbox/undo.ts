@@ -4,7 +4,7 @@ import { err, ok } from "neverthrow";
 import { parseLocalStatusId } from "../activitypub";
 import { NestedActivityObjectSchema } from "../activitypub-wire";
 import { unfollowAccount } from "../follow-store";
-import { enqueueHomeFanOut } from "../home-fan-out";
+import { startHomeFanOut } from "../home-fan-out";
 import { deleteRemoteNotifications } from "../notification-store";
 import { deleteRemoteFollow } from "../remote-actor-store";
 import { deleteRemoteBlock } from "../remote-block-store";
@@ -82,7 +82,7 @@ export const receiveRemoteUndo: InboxHandler<RemoteDelivery<"Undo">> = async ({
     return err(undone.error);
   }
   if (undone.value) {
-    await enqueueHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "delete",
       entryId: undone.value,
       author: { kind: "RemoteActor", actorUri },

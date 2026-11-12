@@ -3,13 +3,13 @@ import { InstanceIdentity, IsoInstant, type LocalAccount, type LocalNote } from 
 import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
-import { enqueueHomeFanOut } from "./home-fan-out";
+import { startHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
 import { loadNoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
-import { enqueuePublicFanOut } from "./public-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
 import { loadNoteReply } from "./reply-target";
@@ -73,13 +73,13 @@ export const announceNoteUpdate = async (
   if (document) {
     await publishToAccount(env, account.id, { kind: "status.update", payload: document });
   }
-  await enqueueHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: note.id,
     author: { kind: "LocalAccount", accountId: account.id },
   });
   if (note.visibility.kind === "Public") {
-    await enqueuePublicFanOut(env, { event: "status.update", entryId: note.id });
+    await startPublicFanOut(env, { event: "status.update", entryId: note.id });
   }
   return rendered.isErr() ? err(rendered.error) : ok(document);
 };
