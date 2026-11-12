@@ -686,6 +686,8 @@ export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 
+export * from "./sql/listRemoteStatusTags";
+
 export * from "./sql/listRemoteThreadAncestors";
 
 export * from "./sql/listRestrictedDomains";

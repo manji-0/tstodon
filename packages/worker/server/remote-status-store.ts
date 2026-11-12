@@ -41,6 +41,7 @@ import {
   findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusRefsByObjectUris as findRemoteStatusRefsByObjectUrisSql,
   listLocalBoostsOfRemoteObject as listLocalBoostsOfRemoteObjectSql,
+  listRemoteStatusTags as listRemoteStatusTagsSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
@@ -270,6 +271,25 @@ export const findRemoteStatusByObjectUri = async (
       return rows[0];
     }),
   );
+
+const StatusTagRow = z.object({ status_id: z.string(), tag: z.string() });
+
+/** The tag names of the given remote statuses in stored order, keyed by status id. */
+export const listRemoteStatusTags = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, ReadonlyArray<string>>, RepositoryError>> => {
+  const unique = [...new Set(statusIds.filter((id) => id.length > 0))];
+  if (unique.length === 0) {
+    return ok(new Map());
+  }
+  const queried = await runD1(async () =>
+    queryTyped(db, listRemoteStatusTagsSql(jsonStringArray(unique)), StatusTagRow),
+  );
+  return queried
+    .map((rows) => Map.groupBy(rows, (row) => row.status_id))
+    .map((groups) => new Map([...groups].map(([id, rows]) => [id, rows.map((row) => row.tag)])));
+};
 
 /**
  * Replace a remote status's indexed tags with the hashtags in its HTML, store
