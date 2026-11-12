@@ -6,6 +6,7 @@ import {
   QuoteInteractionPolicy,
   RemoteStatus,
   StatusId,
+  StatusTarget,
   type RemoteEmoji,
   RemoteActor,
   type RemoteStatus as RemoteStatusValue,
@@ -43,7 +44,12 @@ import {
   upsertRemoteStatus,
 } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
-import { recordRemoteStatusMentions, replaceRemoteStatusRemoteMentions } from "./mention-store";
+import {
+  isActiveRemoteStatusMention,
+  recordRemoteStatusMentions,
+  replaceRemoteStatusRemoteMentions,
+} from "./mention-store";
+import { listLocalBoosterAccountIds } from "./status-interaction-store";
 import { isTruthy, stringList } from "./form-values";
 import { NoteDocumentSchema } from "./activitypub-wire";
 import { remoteEmojisInTexts } from "./remote-emoji-document";
@@ -253,7 +259,7 @@ const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): stri
  * `StatusReachFinder` reaches; they are not fetched here, so only the ones
  * cached by then are reached.
  */
-export const mentionedRemoteActorUris = (identity: InstanceIdentity, raw: unknown): string[] => {
+const mentionedRemoteActorUris = (identity: InstanceIdentity, raw: unknown): string[] => {
   const local = new URL(identity.publicOrigin).origin;
   return [
     ...new Set(
@@ -273,7 +279,7 @@ export const mentionedRemoteActorUris = (identity: InstanceIdentity, raw: unknow
  * Record the local accounts a newly stored remote note addresses, so it can
  * reach their conversations, and notify them when asked.
  */
-export const mentionedLocalAccountIds = async (
+const mentionedLocalAccountIds = async (
   env: Env,
   identity: InstanceIdentity,
   raw: unknown,
@@ -293,7 +299,7 @@ export const mentionedLocalAccountIds = async (
  * addresses, the actors its `Mention` tags name, and the author of the
  * stored status it replies to.
  */
-export const remoteMentionedPost = async (
+const remoteMentionedPost = async (
   db: D1Database,
   identity: InstanceIdentity,
   raw: unknown,
@@ -311,24 +317,66 @@ export const remoteMentionedPost = async (
 
 /**
  * What {@link finishRemoteNote} finishes: the note `actor` wrote, as stored
- * (`status`) and as delivered or fetched (`raw`). `Created` is a note stored
- * from `raw`; `marker` is the one written with its row, absent for a note
- * that owes nothing (one that was fetched, or one whose row existed).
+ * (`status`) and as delivered or fetched (`raw`).
+ *
+ * `Created` is a note stored from `raw`. `marker` is the one written with its
+ * row, absent for a note that owes nothing (one that was fetched, or one
+ * whose row existed).
+ *
+ * `Updated` is an `Update` applied to a stored note. `edit` is the marker of
+ * a change to its content: written by this delivery, or `resumed` from one
+ * whose late steps failed, which this delivery finishes although the content
+ * it carries is already stored. Absent for an `Update` that edits nothing.
  */
 export type LateSteps = Readonly<{
-  kind: "Created";
   actor: RemoteActor;
   raw: unknown;
   status: RemoteStatusValue;
   options: PersistOptions;
-  marker: OwedMarker | undefined;
-}>;
+}> &
+  (
+    | Readonly<{ kind: "Created"; marker: OwedMarker | undefined }>
+    | Readonly<{
+        kind: "Updated";
+        edit: Readonly<{ marker: OwedMarker; resumed: boolean }> | undefined;
+      }>
+  );
 
 /**
- * The steps of storing a remote note that run after the batch that writes
- * its row: the mention rows, the mention notifications, the direct
- * conversation, the quote, the link card and the stream events, then the
- * deletion of the marker that owed them. A failure is returned, so the inbox
+ * The accounts among `mentioned` to notify of their mention, read before the
+ * mention rows are written. A note an inbox activity stored notifies all of
+ * them. An `Update` notifies the ones the note did not mention before, as
+ * Mastodon does: the ones with no mention row yet. A resumed edit cannot tell
+ * them apart, as the failed delivery may have written the rows, so it
+ * notifies all of them; `notifyFromRemoteOnce` skips the ones already told.
+ */
+const mentionsToNotify = async (
+  db: D1Database,
+  late: LateSteps,
+  mentioned: ReadonlyArray<string>,
+): Promise<ReadonlyArray<string>> => {
+  if (late.kind === "Created") {
+    return (late.options.delivery ?? "Fetched") === "Fetched" ? [] : mentioned;
+  }
+  if (late.edit?.resumed) {
+    return mentioned;
+  }
+  const added: string[] = [];
+  for (const accountId of mentioned) {
+    const already = await isActiveRemoteStatusMention(db, late.status.id, accountId);
+    if (already.isOk() && !already.value) {
+      added.push(accountId);
+    }
+  }
+  return added;
+};
+
+/**
+ * The steps of storing or updating a remote note that run after the batch
+ * that writes its row: the mention rows, the mention notifications, the
+ * direct conversation of a new note, the quote, the link card, the boosters'
+ * `update` notifications of an edit and the stream events, then the deletion
+ * of the marker that owed them. A failure is returned, so the inbox
  * answers 5xx and the marker stays; the sender's redelivery runs every step
  * again, which is why each one gives the same result the second time: the
  * writes replace what they wrote, a notification is sent once
@@ -341,14 +389,16 @@ export const finishRemoteNote = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const delivery = options.delivery ?? "Fetched";
+  const marker = late.kind === "Created" ? late.marker : late.edit?.marker;
   const mentioned = await mentionedLocalAccountIds(env, identity, raw);
+  const notified = await mentionsToNotify(env.DB, late, mentioned);
   const recorded = await recordRemoteStatusMentions(env.DB, status.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  // Mention rows exist before the notifications that point at them.
-  const notified = delivery === "Fetched" ? [] : mentioned;
+  // Mention rows exist before the notifications that point at them. They are
+  // sent before the later writes: an `Update` that edits nothing owes no
+  // marker, so its redelivery finds the rows and would notify nobody.
   if (notified.length > 0) {
     const post = await remoteMentionedPost(env.DB, identity, raw, status, mentioned);
     for (const accountId of notified) {
@@ -371,7 +421,7 @@ export const finishRemoteNote = async (
   if (remote.isErr()) {
     return err(remote.error);
   }
-  if (status.visibility.kind === "Direct") {
+  if (late.kind === "Created" && status.visibility.kind === "Direct") {
     await publishConversationUpdate(env, identity, mentioned, status.id);
   }
   const quote = await syncRemoteQuote(
@@ -391,25 +441,58 @@ export const finishRemoteNote = async (
   if (card.isErr()) {
     return err(card.error);
   }
-  // Streaming is for a note a `Create` stored and published recently, as
-  // Mastodon's `Status::REAL_TIME_WINDOW`: an old note arriving late would
-  // show up in clients as a new status. A marker read back on a redelivery
-  // counts as stored now: the delivery that wrote it never got this far.
-  if (
-    late.marker !== undefined &&
-    delivery === "Create" &&
-    RealtimeWindow.contains(status.publishedAt, nowInstant())
-  ) {
+  if (late.kind === "Updated" && late.edit) {
+    // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
+    // Quotes are skipped: a local account cannot yet quote a remote status.
+    // Once per edit: a notification stored since the edit's marker is this edit's.
+    const boosters = await listLocalBoosterAccountIds(env.DB, StatusTarget.remote(status.id));
+    if (boosters.isErr()) {
+      return err(boosters.error);
+    }
+    for (const accountId of boosters.value) {
+      const sent = await notifyFromRemoteOnce(
+        env,
+        { accountId, actorUri: actor.actorUri, kind: "update", statusId: status.id },
+        late.edit.marker.createdAt,
+      );
+      if (sent.isErr()) {
+        return err(sent.error);
+      }
+    }
+  }
+  // The stream events come last. A redelivery that got this far before it
+  // failed sends them again, and a client drops a status it already holds.
+  const event = streamEvent(late);
+  if (event !== undefined) {
     await enqueueHomeFanOut(env, {
-      event: "update",
+      event,
       entryId: status.id,
       author: { kind: "RemoteActor", actorUri: actor.actorUri },
     });
     if (status.visibility.kind === "Public") {
-      await enqueuePublicFanOut(env, { event: "update", entryId: status.id });
+      await enqueuePublicFanOut(env, { event, entryId: status.id });
     }
   }
-  return clearOwed(env.DB, status.id, late.marker ? [late.marker] : []);
+  return clearOwed(env.DB, status.id, marker ? [marker] : []);
+};
+
+/**
+ * The stream event the finished note is sent with, if any. An edit is
+ * `status.update`. A new note is `update` when a `Create` stored it and it
+ * was published recently, as Mastodon's `Status::REAL_TIME_WINDOW`: an old
+ * note arriving late would show up in clients as a new status. A marker read
+ * back on a redelivery counts as stored now: the delivery that wrote it
+ * never got this far, so the note was not streamed.
+ */
+const streamEvent = (late: LateSteps): "update" | "status.update" | undefined => {
+  if (late.kind === "Updated") {
+    return late.edit ? "status.update" : undefined;
+  }
+  return late.marker !== undefined &&
+    late.options.delivery === "Create" &&
+    RealtimeWindow.contains(late.status.publishedAt, nowInstant())
+    ? "update"
+    : undefined;
 };
 
 /** An admin block with `reject_media` keeps the post but not its attachments. */

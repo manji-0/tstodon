@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApiStatus, ApiStatusEdit } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
@@ -161,6 +161,151 @@ describe("an inbox activity that failed after its row was stored", () => {
     // Nothing is owed any more: the same note delivered again notifies nobody.
     expect(await author.send({ ...activity, id: `${object.id}/create-again` })).toBe(202);
     expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+  });
+
+  /** A stored note of `author` that the local account `email` boosted. */
+  const boostedNote = async (author: Remote, slug: string, email: string) => {
+    const original = note(author, slug, { content: "<p>before</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const booster = await authHeaders(email);
+    const boosted = await SELF.fetch(`https://example.com/api/v1/statuses/${id}/reblog`, {
+      method: "POST",
+      headers: booster,
+    });
+    expect(boosted.status).toBe(200);
+    return { id, booster };
+  };
+
+  it("notifies a booster of an edit once when the Update that failed after its row was stored is redelivered", async () => {
+    const elsewhere = "https://elsewhere.example/users/retry-update-late";
+    const author = await remoteActor("retry-update-late");
+    const { id, booster } = await boostedNote(
+      author,
+      "retry-update-late",
+      "inbox-retry-update-late@example.com",
+    );
+    const edited = note(author, "retry-update-late", {
+      content: "<p>after</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    const allow = await refuseInsert(
+      "inbox_retry_update_late",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect(await author.send(activity)).toBe(500);
+      expect((await status(id)).content).toBe("<p>after</p>");
+      expect(await owedKinds(id)).toEqual(["Edited"]);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(booster, "update", id)).toBe(1);
+    expect(await remoteMentions(id)).toEqual([elsewhere]);
+    expect(await owedKinds(id)).toEqual([]);
+
+    // The edit is finished: the same content delivered again is not one.
+    expect(await author.send({ ...activity, id: `${edited.id}/update-again` })).toBe(202);
+    expect(await notifiedOf(booster, "update", id)).toBe(1);
+
+    const second = note(author, "retry-update-late", {
+      content: "<p>after again</p>",
+      updated: "2026-10-22T00:00:00.000Z",
+    });
+    expect(await author.send({ id: `${second.id}/update-2`, type: "Update", object: second })).toBe(
+      202,
+    );
+    expect(await notifiedOf(booster, "update", id)).toBe(2);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
+  it("notifies a booster once when the Update that failed after every late step is redelivered", async () => {
+    const author = await remoteActor("retry-update-clear");
+    const { id, booster } = await boostedNote(
+      author,
+      "retry-update-clear",
+      "inbox-retry-update-clear@example.com",
+    );
+    const edited = note(author, "retry-update-clear", {
+      content: "<p>after</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    await env.DB.prepare(
+      `CREATE TRIGGER inbox_retry_update_clear BEFORE DELETE ON remote_status_owed
+       WHEN OLD.status_id = '${id}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+    ).run();
+    try {
+      expect(await author.send(activity)).toBe(500);
+      expect(await notifiedOf(booster, "update", id)).toBe(1);
+      expect(await owedKinds(id)).toEqual(["Edited"]);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER inbox_retry_update_clear").run();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(booster, "update", id)).toBe(1);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
+  it("streams the edit when the Update that failed after its row was stored is applied again", async () => {
+    const elsewhere = "https://elsewhere.example/users/retry-update-stream";
+    const author = await remoteActor("retry-update-stream");
+    const original = note(author, "retry-update-stream", { content: "<p>before</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edited = note(author, "retry-update-stream", {
+      content: "<p>after</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("update fixture rejected");
+    }
+    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue({
+      metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+    });
+    const streamedEdits = (): number =>
+      parseRows(
+        z.object({ kind: z.literal("FanOutHome"), event: z.literal("status.update") }),
+        send.mock.calls.map(([body]) => body),
+      ).length;
+    const apply = () =>
+      applyRemoteUpdate(env, identity.value, signer, edited, { fetchSigner: unsignedFetch });
+
+    const allow = await refuseInsert(
+      "inbox_retry_update_stream",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect((await apply()).isErr()).toBe(true);
+      expect(streamedEdits()).toBe(0);
+      await allow();
+      expect((await apply()).isOk()).toBe(true);
+      expect(streamedEdits()).toBe(1);
+      expect(await owedKinds(id)).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+      await env.DB.prepare("DROP TRIGGER IF EXISTS inbox_retry_update_stream").run();
+    }
   });
 });
 
