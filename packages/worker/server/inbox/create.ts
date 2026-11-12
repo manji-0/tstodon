@@ -19,7 +19,10 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   fetchSigner,
 }) => {
   const vote = await handleRemotePollVote(env, identity, signer, received.object);
-  if (vote.kind !== "NotAVote") {
+  if (vote.isErr()) {
+    return err(vote.error);
+  }
+  if (vote.value.kind !== "NotAVote") {
     return ok(undefined);
   }
   const objectUri = typeof received.object === "string" ? received.object : received.object.id;
