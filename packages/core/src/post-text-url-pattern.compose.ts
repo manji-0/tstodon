@@ -17,6 +17,43 @@ const twitterText = (name: string): string => {
 };
 
 /**
+ * The characters Ruby's case-insensitive matching reads as two or three
+ * ASCII letters (Unicode's full case folding), which JavaScript's does not:
+ * `ﬁ` as `fi`, `ß` as `ss`.
+ */
+const LETTERS_AS_ONE: ReadonlyArray<readonly [letters: string, characters: string]> = [
+  ["ffi", "ﬃ"],
+  ["ffl", "ﬄ"],
+  ["ff", "ﬀ"],
+  ["fi", "ﬁ"],
+  ["fl", "ﬂ"],
+  ["ss", "[ßẞ]"],
+  ["st", "[ﬅﬆ]"],
+];
+
+/** Every way to write `letters` with those characters (`ffi`: `ffi`, `fﬁ`, `ﬃ`, `ﬀi`). */
+const spellings = (letters: string): string[] =>
+  letters === ""
+    ? [""]
+    : [
+        ...spellings(letters.slice(1)).map((rest) => letters.slice(0, 1) + rest),
+        ...LETTERS_AS_ONE.filter(([folded]) => letters.startsWith(folded)).flatMap(
+          ([folded, characters]) =>
+            spellings(letters.slice(folded.length)).map((rest) => characters + rest),
+        ),
+      ];
+
+/**
+ * `source`, a pattern of words (schemes, top-level domains), matching what
+ * Ruby's matches: `swiss` also as `swiß`, `fit` as `ﬁt`.
+ */
+const withRubyCaseFolding = (source: string): string =>
+  source.replace(/(?:ff[il]?|fi|fl|s+t?)+/g, (letters) => {
+    const all = spellings(letters);
+    return all.length === 1 ? letters : `(?:${all.join("|")})`;
+  });
+
+/**
  * The patterns Mastodon's server finds URLs with, as sources for the `iu`
  * flags: the twitter-text gem's `valid_url` with the pieces
  * `config/initializers/twitter_regex.rb` overrides, and that file's
@@ -54,7 +91,9 @@ export const composePostTextPatterns = (): {
     "\\uFFFE\\uFEFF\\uFFFF]";
   const subdomain = `(?:(?:${domainChar}(?:[_\\-]|${domainChar})*)?${domainChar}\\.)`;
   const domainName = `(?:(?:${domainChar}(?:-|${domainChar})*)?${domainChar}\\.)`;
-  const tld = `(?:${twitterText("validGTLD")}|${twitterText("validCCTLD")}|(?:xn--[0-9a-z]+))`;
+  const tld = withRubyCaseFolding(
+    `(?:${twitterText("validGTLD")}|${twitterText("validCCTLD")}|(?:xn--[0-9a-z]+))`,
+  );
   const domain = `(?:${subdomain}*${domainName}${tld})`;
 
   const balancedParens = (pathChar: string): string =>
@@ -71,8 +110,8 @@ export const composePostTextPatterns = (): {
     "\\u{A0}-\\u{D7FF}\\u{F900}-\\u{FDCF}\\u{FDF0}-\\u{FFEF}\\u{10000}-\\u{1FFFD}\\u{20000}-\\u{2FFFD}\\u{30000}-\\u{3FFFD}\\u{40000}-\\u{4FFFD}\\u{50000}-\\u{5FFFD}\\u{60000}-\\u{6FFFD}\\u{70000}-\\u{7FFFD}\\u{80000}-\\u{8FFFD}\\u{90000}-\\u{9FFFD}\\u{A0000}-\\u{AFFFD}\\u{B0000}-\\u{BFFFD}\\u{C0000}-\\u{CFFFD}\\u{D0000}-\\u{DFFFD}\\u{E1000}-\\u{EFFFD}\\u{E000}-\\u{F8FF}\\u{F0000}-\\u{FFFFD}\\u{100000}-\\u{10FFFD}";
   const query = `(?:\\?[a-z0-9!?*'();:&=+$/%#\\[\\]\\-_.,~|@\\^${unicodeChars}]*[a-z0-9_&=#/\\-${unicodeChars}])`;
 
-  const scheme = "(?:https?|dat|dweb|ipfs|ipns|ssb|gopher|gemini):\\/\\/";
-  const urlTail = `${domain}(?::${twitterText("validPortNumber")})?(?:\\/${path}*)?${query}?`;
+  const scheme = withRubyCaseFolding("(?:https?|dat|dweb|ipfs|ipns|ssb|gopher|gemini):\\/\\/");
+  const urlTail = `(?<domain>${domain})(?::${twitterText("validPortNumber")})?(?:\\/${path}*)?${query}?`;
 
   const unreserved = "[a-z\\p{Script=Cyrillic}0-9\\p{Pd}._~]";
   const percentEncoded = "(?:%[0-9a-f]{2})";

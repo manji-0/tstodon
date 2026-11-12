@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
-# What Mastodon's server finds in post text: reads a JSON array of texts on
-# stdin and prints, per text, `[entities, countableText, length]`, where an entity is
-# `[kind, start, end]` (`U`rl, `H`ashtag or `M`ention, UTF-16 indices) from
-# `Extractor.extract_entities_with_indices`, as `TextFormatter` links them,
-# and the text and its length are `StatusLengthValidator`'s `countable_text`
-# and `countable_length`. A text libidn refuses a host of is printed as
-# `null`: see `IDN` below.
+# What Mastodon's server finds in post text: reads `{"texts": […], "domains": […]}`
+# on stdin and prints the same keys. Per text, `[entities, countableText, length]`,
+# where an entity is `[kind, start, end]` (`U`rl, `H`ashtag or `M`ention,
+# UTF-16 indices) from `Extractor.extract_entities_with_indices`, as
+# `TextFormatter` links them, and the text and its length are
+# `StatusLengthValidator`'s `countable_text` and `countable_length`. Per
+# domain, what libidn's `IDN::Idna.toASCII` makes of it, which twitter-text
+# asks for a URL's host, or `null` where it raises.
 #
 # Run by scripts/generate-post-text-fixture.mjs. It needs Ruby 3, the gems
 # `twitter-text` 3.1.0 and `idn-ruby` (libidn), and MASTODON_SRC, a checkout
@@ -51,27 +52,6 @@ load File.join(src, "config/initializers/twitter_regex.rb")
 load File.join(src, "app/lib/extractor.rb")
 load File.join(src, "app/validators/status_length_validator.rb")
 
-# twitter-text drops a URL whose host libidn cannot convert (a label over 63
-# octets, a character Unicode 3.2 does not assign such as an emoji, mixed
-# text directions). tstodon does not check that, so such a text is no
-# reference: `refused` records that a conversion failed.
-module IDN
-  module Idna
-    class << self
-      attr_accessor :refused
-
-      alias_method :to_ascii, :toASCII
-
-      def toASCII(domain)
-        to_ascii(domain)
-      rescue StandardError
-        self.refused = true
-        raise
-      end
-    end
-  end
-end
-
 def utf16(text, index)
   text[0...index].encode("UTF-16LE").bytesize / 2
 end
@@ -79,13 +59,21 @@ end
 KINDS = { url: "U", hashtag: "H", screen_name: "M" }.freeze
 validator = StatusLengthValidator.new
 
-out = JSON.parse($stdin.read).map do |text|
-  IDN::Idna.refused = false
+input = JSON.parse($stdin.read)
+
+texts = input.fetch("texts").map do |text|
   entities = Extractor.extract_entities_with_indices(text, extract_url_without_protocol: false).map do |entity|
     kind = KINDS.fetch(KINDS.keys.find { |key| entity.key?(key) })
     [kind, *entity[:indices].map { |index| utf16(text, index) }]
   end
   countable = validator.send(:countable_text, text)
-  IDN::Idna.refused ? nil : [entities, countable, validator.send(:countable_length, countable)]
+  [entities, countable, validator.send(:countable_length, countable)]
 end
-puts JSON.generate(out)
+
+domains = input.fetch("domains").map do |domain|
+  IDN::Idna.toASCII(domain)
+rescue IDN::Idna::IdnaError
+  nil
+end
+
+puts JSON.generate({ texts: texts, domains: domains })

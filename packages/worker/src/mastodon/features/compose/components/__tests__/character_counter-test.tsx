@@ -26,6 +26,17 @@ describe('CharacterCounter', () => {
     expect(screen.getByText('453')).toBeDefined();
   });
 
+  it('counts a URL as written if IDNA2003 refuses its host, as the server does', () => {
+    render(
+      <CharacterCounter
+        max={500}
+        text={countableText('https://👍.com/ https://☃.com/')}
+        length={graphemeLength}
+      />,
+    );
+    expect(screen.getByText('462')).toBeDefined();
+  });
+
   it('counts with stringz unless given a length, as the alt text modal does', () => {
     render(<CharacterCounter max={1} text='कि' />);
     expect(screen.getByText('-1')).toBeDefined();

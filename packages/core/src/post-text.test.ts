@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
+import { toAscii } from "./idna";
 import {
   countableText,
   extractEntities,
@@ -54,6 +55,11 @@ const corpus: ReadonlyArray<readonly [string, string, number]> = [
   ["", "https://ja.wikipedia.org/wiki/東京_(曖昧さ回避)", 30],
   // `xmpp:` and `magnet:` are links, at their own length.
   ["", "xmpp:alice@example.com magnet:?xt=urn:btih:abc", 46],
+  // A host libidn cannot convert is no URL: Unicode 3.2 has no `👍`.
+  ["", "https://👍.com/", 14],
+  ["", "https://☃.com/", 23],
+  ["", "https://aמ.com/", 15],
+  ["", "https://example.ﬁ/", 23],
 ];
 
 describe("statusLength", () => {
@@ -73,6 +79,13 @@ describe("statusLength", () => {
       `https://example.com/${"a".repeat(length - "https://example.com/".length)}`;
     expect(statusLength("", url(4096))).toBe(23);
     expect(statusLength("", url(4097))).toBe(4097);
+  });
+
+  it("counts what punycode adds to the host against MAX_URL_LENGTH", () => {
+    // `例え` is `xn--r8jz45g`, 9 characters more.
+    const url = (length: number) => `https://例え.jp/${"a".repeat(length - 14)}`;
+    expect(statusLength("", url(4087))).toBe(23);
+    expect(statusLength("", url(4088))).toBe(4088);
   });
 
   it("counts a URL as charactersReservedPerUrl, however long", () => {
@@ -311,10 +324,10 @@ describe("extractEntities", () => {
 
 describe("URL matching against the plain scan", () => {
   // twitter-text's own scan: the pattern at every index. A match without a
-  // scheme is no URL, and nothing inside it is one.
+  // scheme or with a host libidn refuses is no URL, and nothing inside it is one.
   const plainScan = (text: string): ReadonlyArray<readonly [number, number]> =>
     [...text.matchAll(new RegExp(POST_TEXT_PATTERNS.url, "giu"))].flatMap((match) =>
-      match.groups?.["scheme"] === undefined
+      match.groups?.["scheme"] === undefined || toAscii(match.groups["domain"] ?? "") === undefined
         ? []
         : [
             [
@@ -380,6 +393,15 @@ describe("URL matching against the plain scan", () => {
       `xmpp:${fill("a")}`,
       fill("xmpp://a@"),
       `magnet:?${fill("!")}`,
+      // Hosts that are not ASCII, which nameprep and punycode read.
+      `https://${fill("é")}.com/`,
+      `https://${fill("\u00ad")}.com/`,
+      `https://${fill("가\u0301")}.com/`,
+      `https://${fill("é.")}com/`,
+      fill("https://é.com/ "),
+      fill("https://👍.com/"),
+      fill(`https://${"é".repeat(57)}.com `),
+      fill(`https://${"例".repeat(20)}.${"え".repeat(20)}.jp/`),
     ];
     for (const text of texts) {
       extractEntities(text.slice(0, 100));
