@@ -55,7 +55,10 @@ export const listTagStatuses = async (
   filters: TagStatusFilters = { any: [], all: [], none: [], onlyMedia: false },
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const { where, order, binds } = cursorFragment(cursor);
+    // Walk the tag index, newest first, and look each status up: driving from
+    // `statuses` read the whole table whenever a tag had fewer posts than the
+    // page (every row read is billed).
+    const { where, order, binds } = cursorFragment(cursor, "tag_index.status_id");
     const tagged =
       "EXISTS (SELECT 1 FROM local_status_tags t WHERE t.status_id = statuses.id AND t.tag = ?)";
     const any =
@@ -65,16 +68,17 @@ export const listTagStatuses = async (
     const all = filters.all.map(() => ` AND ${tagged}`).join("");
     const none = filters.none.map(() => ` AND NOT ${tagged}`).join("");
     const onlyMedia = filters.onlyMedia ? ` ${WITH_MEDIA_SQL}` : "";
-    const sql = `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+    const sql = `SELECT ${statusSelect} FROM local_status_tags tag_index
+         CROSS JOIN statuses ON statuses.id = tag_index.status_id
+         WHERE tag_index.tag = ? AND kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-           AND ${tagged}${any}${all}${none}${onlyMedia}
+           ${any}${all}${none}${onlyMedia}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
       .bind(
-        ...suppressedBinds(viewerId),
         tag,
+        ...suppressedBinds(viewerId),
         ...filters.any,
         ...filters.all,
         ...filters.none,
