@@ -8,7 +8,7 @@ import { purgeAccount } from "./admin-actions";
 import { RemoteAccountId } from "./remote-account-id";
 
 /**
- * The counters migration 0137 keeps in `account_stats` and `status_stats`
+ * The counters migration 0138 keeps in `account_stats` and `status_stats`
  * must equal counting the rows they summarize. A seeded random run sends
  * local API requests and signed remote activities (posts, replies, deletes,
  * favourites, boosts, quotes, follows, requests, answers, undos), deletes an
@@ -519,7 +519,7 @@ describe("trigger-kept counters", () => {
     const migrations = z
       .array(z.object({ name: z.string(), queries: z.array(z.string()) }))
       .parse(Reflect.get(env, "TEST_MIGRATIONS"));
-    const migration = migrations.find((entry) => entry.name.startsWith("0137_"));
+    const migration = migrations.find((entry) => entry.name.startsWith("0138_"));
     const backfill = (migration?.queries ?? []).filter((query) =>
       /^(?:\s*--[^\n]*\n)*\s*INSERT INTO (account|status)_stats/.test(query),
     );

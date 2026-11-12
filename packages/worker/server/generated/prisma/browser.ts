@@ -443,11 +443,11 @@ export type remote_boosts = Prisma.remote_boostsModel;
 export type statuses_cleanup_policies = Prisma.statuses_cleanup_policiesModel;
 /**
  * Model account_stats
- * Kept by triggers (migration 0137_counters.sql); WITHOUT ROWID.
+ * Kept by triggers (migration 0138_counters.sql); WITHOUT ROWID.
  */
 export type account_stats = Prisma.account_statsModel;
 /**
  * Model status_stats
- * Kept by triggers (migration 0137_counters.sql); WITHOUT ROWID. A local or remote status id.
+ * Kept by triggers (migration 0138_counters.sql); WITHOUT ROWID. A local or remote status id.
  */
 export type status_stats = Prisma.status_statsModel;

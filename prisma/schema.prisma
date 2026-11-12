@@ -681,6 +681,7 @@ model polls {
   options_json       String
   expiry_notified_at String?
   update_queued_at   String?
+  update_distributed_at String?
   poll_votes        poll_votes[]
   remote_poll_votes  remote_poll_votes[]
   statuses          statuses     @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -1117,7 +1118,7 @@ model statuses_cleanup_policies {
   @@index([account_id], map: "idx_statuses_cleanup_policies_enabled")
 }
 
-/// Kept by triggers (migration 0137_counters.sql); WITHOUT ROWID.
+/// Kept by triggers (migration 0138_counters.sql); WITHOUT ROWID.
 model account_stats {
   account_id      String @id
   statuses_count  Int    @default(0)
@@ -1125,7 +1126,7 @@ model account_stats {
   following_count Int    @default(0)
 }
 
-/// Kept by triggers (migration 0137_counters.sql); WITHOUT ROWID. A local or remote status id.
+/// Kept by triggers (migration 0138_counters.sql); WITHOUT ROWID. A local or remote status id.
 model status_stats {
   status_id        String @id
   favourites_count Int    @default(0)

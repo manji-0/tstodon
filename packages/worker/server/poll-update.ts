@@ -8,7 +8,13 @@ import { newEntityId } from "./ids";
 import { measureJobPage } from "./metrics";
 import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
-import { claimPollUpdate, findPollById, type PollRecord, releasePollUpdate } from "./poll-store";
+import {
+  claimPollUpdate,
+  findPollById,
+  type PollRecord,
+  releasePollUpdate,
+  startPollUpdate,
+} from "./poll-store";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
 import { loadNoteMedia } from "./note-attachments";
@@ -119,7 +125,7 @@ export const processDistributePollUpdateJob = async (
 ): Promise<"ok"> => {
   // One poll per job: `size` is 1 when an `Update` was considered, 0 when there was nothing to do.
   await measureJobPage(env, job.kind, async () => {
-    await releasePollUpdate(env.DB, job.pollId);
+    await startPollUpdate(env.DB, job.pollId);
     const identity = parseInstanceIdentity(env);
     const found = await findPollById(env.DB, job.pollId, undefined);
     if (identity.isErr() || found.isErr() || !found.value) {

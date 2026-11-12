@@ -34,10 +34,11 @@ import {
   noteHashtags,
   parseNoteDocument,
   remoteQuoteContext,
+  settleInvalidRemoteStatus,
 } from "./remote-status-persist";
 import { syncRemoteQuote } from "./remote-quote";
 import { listLocalBoosterAccountIds } from "./status-interaction-store";
-import { findRemoteStatusByObjectUri, upsertRemoteStatus } from "./remote-status-store";
+import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
 
 const UpdateObjectSchema = z
   .object({ id: z.string().min(1), type: z.string().min(1) })
@@ -99,9 +100,11 @@ const applyNoteUpdate = async (
   target: Extract<UpdateTarget, { kind: "NoteUpdate" }>,
   options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
-  const cached = await findRemoteStatusByObjectUri(env.DB, target.objectUri);
+  const cached = await findDeliveredRemoteStatus(env.DB, target.objectUri);
   if (cached.isErr()) {
-    return err(cached.error);
+    return cached.error.kind === "StoredRowInvalid"
+      ? settleInvalidRemoteStatus(env, signer, cached.error, target.raw)
+      : err(cached.error);
   }
   if (!cached.value || cached.value.actorUri !== signer.actorUri) {
     return ok(undefined);

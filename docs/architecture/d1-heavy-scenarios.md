@@ -139,7 +139,7 @@ flowchart LR
 4. `Promise.all` of **reads**: `findAccountsByIds`, `accountCountsByIds`, `statusInteractionCountsByIds`, `findPollsByStatusIds`, `findMediaByIds`.
 5. Build documents in memory; `mastodonStatus` delegates to `mastodonStatuses([status])`.
 
-`accountCountsByIds` and `statusInteractionCountsByIds` read the trigger-kept `account_stats` and `status_stats` rows (migration 0137) by `json_each`; the latter batches them with the viewer's flags (Doc A read-side batch pattern).
+`accountCountsByIds` and `statusInteractionCountsByIds` read the trigger-kept `account_stats` and `status_stats` rows (migration 0138) by `json_each`; the latter batches them with the viewer's flags (Doc A read-side batch pattern).
 
 **Risks:**
 

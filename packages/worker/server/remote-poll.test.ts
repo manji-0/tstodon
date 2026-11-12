@@ -281,6 +281,34 @@ describe("remote polls", () => {
       expect(queued.every((entry) => entry.inbox === `${author.actorUri}/inbox`)).toBe(true);
     });
 
+    it("keeps the tally and the local vote on top of it when the author's new counts cannot be settled, and settles on redelivery", async () => {
+      const author = await remoteActor("poll-vote-settle");
+      const id = await create(author, question(author, "vote-settle"));
+      const email = "remote-poll-settle@example.com";
+      expect((await vote(email, id, [1])).status).toBe(200);
+      const counted = question(author, "vote-settle", {
+        oneOf: choices(["cats", "dogs"], [3, 2]),
+        votersCount: 5,
+      });
+      const counts = async () =>
+        (await status(id)).poll?.options.map((option) => option.votes_count);
+
+      await env.DB.prepare(
+        `CREATE TRIGGER remote_poll_settle_refused BEFORE UPDATE ON remote_poll_own_votes
+         WHEN OLD.status_id = '${id}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+      ).run();
+      try {
+        expect(await update(author, "vote-settle", counted)).toBe(500);
+        expect(await counts()).toEqual([3, 2]);
+      } finally {
+        await env.DB.prepare("DROP TRIGGER remote_poll_settle_refused").run();
+      }
+
+      expect(await update(author, "vote-settle", counted)).toBe(202);
+      expect(await counts()).toEqual([3, 2]);
+      expect((await statusAs(email, id)).poll).toMatchObject({ own_votes: [1], voters_count: 5 });
+    });
+
     it("refuses a second vote", async () => {
       const author = await remoteActor("poll-vote-twice");
       const id = await create(author, question(author, "vote-twice"));
