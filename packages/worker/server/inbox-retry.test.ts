@@ -352,6 +352,52 @@ describe("two inbox activities that carry one note", () => {
     }
     expect(counts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
   });
+
+  it("streams a new note once when a QuoteRequest resumes the Create that failed before the Create is redelivered", async () => {
+    const elsewhere = "https://elsewhere.example/users/retry-create-stream";
+    const author = await remoteActor("retry-create-stream");
+    // Published now: inside the real-time window, so the Create streams it.
+    const object = note(author, "retry-create-stream", {
+      content: "<p>hi @them</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+      published: new Date().toISOString(),
+    });
+    const deliver = (await deliverer(author))(object);
+    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue({
+      metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+    });
+    const streamed = (): number =>
+      parseRows(
+        z.object({ kind: z.literal("FanOutHome"), event: z.literal("update") }),
+        send.mock.calls.map(([body]) => body),
+      ).length;
+
+    const allow = await refuseInsert(
+      "inbox_retry_create_stream",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect((await deliver("Create")).isErr()).toBe(true);
+      await allow();
+      const id = (await storedId(object.id)) ?? "";
+      expect(streamed()).toBe(0);
+
+      // The QuoteRequest finishes the writes, but streaming is the Create's to do.
+      expect((await deliver("QuoteRequest")).isOk()).toBe(true);
+      expect(await remoteMentions(id)).toEqual([elsewhere]);
+      expect(streamed()).toBe(0);
+      expect(await owedKinds(id)).toEqual(["Created"]);
+
+      expect((await deliver("Create")).isOk()).toBe(true);
+      expect(streamed()).toBe(1);
+      expect(await owedKinds(id)).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+      await env.DB.prepare("DROP TRIGGER IF EXISTS inbox_retry_create_stream").run();
+    }
+  });
 });
 
 describe("an inbox activity whose write failed", () => {

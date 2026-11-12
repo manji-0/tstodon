@@ -321,7 +321,8 @@ const remoteMentionedPost = async (
  *
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, absent for a note that owes nothing (one that was fetched, or one
- * whose row existed).
+ * whose row existed). It is `resumed` when another delivery wrote it and
+ * this one finishes its steps.
  *
  * `Updated` is an `Update` applied to a stored note. `edit` is the marker of
  * a change to its content: written by this delivery, or `resumed` from one
@@ -335,7 +336,7 @@ export type LateSteps = Readonly<{
   options: PersistOptions;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: OwedMarker | undefined }>
+    | Readonly<{ kind: "Created"; marker: OwedMarker | undefined; resumed: boolean }>
     | Readonly<{
         kind: "Updated";
         edit: Readonly<{ marker: OwedMarker; resumed: boolean }> | undefined;
@@ -389,7 +390,6 @@ export const finishRemoteNote = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const marker = late.kind === "Created" ? late.marker : late.edit?.marker;
   const mentioned = await mentionedLocalAccountIds(env, identity, raw);
   const notified = await mentionsToNotify(env.DB, late, mentioned);
   const recorded = await recordRemoteStatusMentions(env.DB, status.id, mentioned);
@@ -473,7 +473,21 @@ export const finishRemoteNote = async (
       await enqueuePublicFanOut(env, { event, entryId: status.id });
     }
   }
-  return clearOwed(env.DB, status.id, marker ? [marker] : []);
+  const finished = finishedMarker(late);
+  return clearOwed(env.DB, status.id, finished ? [finished] : []);
+};
+
+/**
+ * The marker these steps leave nothing owed for. A `Created` marker that a
+ * `QuoteRequest` resumes is not one: it cannot tell whether a `Create` wrote
+ * it, which still owes the stream events, so it runs the other steps and
+ * leaves the marker to the `Create`'s redelivery, or to the sweep.
+ */
+const finishedMarker = (late: LateSteps): OwedMarker | undefined => {
+  if (late.kind === "Updated") {
+    return late.edit?.marker;
+  }
+  return late.resumed && late.options.delivery !== "Create" ? undefined : late.marker;
 };
 
 /**
@@ -824,6 +838,7 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
+    resumed: false,
   });
   return finished.map(() => stored.value);
 };
@@ -866,5 +881,13 @@ const resumeCreated = async (
   if (noteFromUnknown(raw, actor).isErr()) {
     return ok(undefined);
   }
-  return finishRemoteNote(env, identity, { kind: "Created", actor, raw, status, options, marker });
+  return finishRemoteNote(env, identity, {
+    kind: "Created",
+    actor,
+    raw,
+    status,
+    options,
+    marker,
+    resumed: true,
+  });
 };
