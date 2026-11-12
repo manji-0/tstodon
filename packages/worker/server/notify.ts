@@ -262,7 +262,15 @@ const screenSender = async (
   mentionedPost: MentionedPost | undefined,
 ): Promise<Result<SenderScreening, RepositoryError>> => {
   const recipientId = notification.accountId;
-  const recipient = await localAccountPresentations(db, [recipientId]);
+  const sender = notification.fromActorUri ?? notification.fromAccountId;
+  // Every notification pays for these checks, so they run in one round; the
+  // order of the decisions below is unchanged.
+  const [recipient, blocked, muted, blockedBySender] = await Promise.all([
+    localAccountPresentations(db, [recipientId]),
+    findBlock(db, recipientId, sender),
+    findActiveMute(db, recipientId, sender),
+    findRemoteBlock(db, notification.fromActorUri ?? "", recipientId),
+  ]);
   if (recipient.isErr()) {
     return err(recipient.error);
   }
@@ -282,13 +290,6 @@ const screenSender = async (
       return ok(BYPASS);
     }
   }
-  const sender = notification.fromActorUri ?? notification.fromAccountId;
-  // Every notification pays for this check, so the two lookups run together.
-  const [blocked, muted, blockedBySender] = await Promise.all([
-    findBlock(db, recipientId, sender),
-    findActiveMute(db, recipientId, sender),
-    findRemoteBlock(db, notification.fromActorUri ?? "", recipientId),
-  ]);
   if (blocked.isErr()) {
     return err(blocked.error);
   }
