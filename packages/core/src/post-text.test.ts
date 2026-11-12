@@ -181,8 +181,8 @@ describe("normalizeHashtag and isHashtagName", () => {
     ["ſ", "s"],
     ["ｃａｆé", "cafe"],
     ["日本語", "日本語"],
-    // Ruby's `downcase` has no final sigma.
-    ["ΟΔΟΣ", "οδοσ"],
+    // Unlike Ruby's `downcase`, a final `Σ` is `ς` (SHR-8): stored names keep reading.
+    ["ΟΔΟΣ", "οδος"],
     ["οδος", "οδος"],
   ])("folds accents as ASCIIFolding: %s is %s", (raw, name) => {
     expect(normalizeHashtag(raw)).toBe(name);

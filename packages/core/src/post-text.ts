@@ -153,13 +153,13 @@ const FOLDABLE = /[\u00C0-\u017F]/g;
  * only the characters a tag can hold, so `#Cat`, `ＣＡＴ` and `cat!` are all
  * `cat`, and `Café` is `cafe`. The fold reads composed characters, after
  * NFKC composed them: a letter the table lacks keeps its accent (`ǎ`).
- * Ruby's `downcase` has no final sigma, where `toLowerCase` writes a `Σ` at
- * the end of a word as `ς`: `ΟΔΟΣ` is `οδοσ`, so `Σ` is lowercased first.
+ * One known difference: `toLowerCase` writes a `Σ` ending a word as `ς`
+ * (`ΟΔΟΣ` is `οδος`), where Ruby's `downcase` writes `σ`. Names have been
+ * stored this way, so it is kept rather than strand them (SHR-8).
  */
 export const normalizeHashtag = (raw: string): string =>
   raw
     .normalize("NFKC")
-    .replaceAll("Σ", "σ")
     .toLowerCase()
     .replace(FOLDABLE, (c) => ASCII_FOLDS.get(c) ?? c)
     .replace(HASHTAG_INVALID_CHARACTERS, "");

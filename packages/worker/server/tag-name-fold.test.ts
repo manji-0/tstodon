@@ -209,4 +209,36 @@ describe("accent folding of tag names", () => {
     expect(await processOutboxJob(env, { kind: "FoldTagNames" })).toBe("ok");
     expect(await rows("SELECT name FROM tags WHERE name LIKE 'tnfcron%'")).toEqual([["tnfcrone"]]);
   });
+
+  it("keeps the earlier follow date when two spellings merge", async () => {
+    const id = (await signedInAccount(author)).id;
+    await env.DB.prepare(
+      `INSERT INTO followed_tags (account_id, tag_name, created_at) VALUES
+       (?1, 'tnfdaté', '2020-01-01T00:00:00.000Z'), (?1, 'tnfdate', '2022-01-01T00:00:00.000Z')`,
+    )
+      .bind(id)
+      .run();
+    await restartCursor();
+    await foldEveryPage(200);
+    expect(
+      await rows("SELECT tag_name, created_at FROM followed_tags WHERE tag_name LIKE 'tnfdat%'"),
+    ).toEqual([["tnfdate", "2020-01-01T00:00:00.000Z"]]);
+  });
+
+  it("removes a spelling the job has not renamed yet when the tag is unfollowed", async () => {
+    const id = (await signedInAccount(other)).id;
+    await env.DB.prepare(
+      "INSERT INTO followed_tags (account_id, tag_name) VALUES (?1, 'tnfunfollowé')",
+    )
+      .bind(id)
+      .run();
+    const response = await SELF.fetch("https://example.com/api/v1/tags/tnfunfollowe/unfollow", {
+      method: "POST",
+      headers: await authHeaders(other),
+    });
+    expect(response.status).toBe(200);
+    await restartCursor();
+    await foldEveryPage(200);
+    expect(await followedTags(other)).not.toContain("tnfunfollowe");
+  });
 });

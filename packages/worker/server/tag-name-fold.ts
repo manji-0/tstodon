@@ -66,6 +66,17 @@ const renameMembership = (
   `DELETE FROM ${table} AS r WHERE r.${column} IN ${OLD_NAMES}${where}`,
 ];
 
+/** As `renameMembership`, for an account's follow or feature: the earliest `created_at` wins. */
+const renameDatedMembership = (table: string): ReadonlyArray<string> => [
+  `INSERT INTO ${table} (account_id, created_at, tag_name)
+   SELECT r.account_id, r.created_at, ${NEW}
+   FROM json_each(?1) e JOIN ${table} r ON r.tag_name = ${OLD}
+   WHERE true
+   ON CONFLICT (account_id, tag_name) DO UPDATE SET
+     created_at = min(created_at, excluded.created_at)`,
+  `DELETE FROM ${table} AS r WHERE r.tag_name IN ${OLD_NAMES}`,
+];
+
 /**
  * The statements that rename `[[old, new], ...]` (bound as JSON) in every
  * table, by the merge rules of migration 0135. Each takes the pairs as its
@@ -83,8 +94,8 @@ const RENAMES: ReadonlyArray<string> = [
      listable = min(listable, excluded.listable),
      display_name = coalesce(display_name, excluded.display_name)`,
   `DELETE FROM tags WHERE name IN ${OLD_NAMES}`,
-  ...renameMembership("followed_tags", "tag_name", ["account_id", "created_at"]),
-  ...renameMembership("featured_tags", "tag_name", ["account_id", "created_at"]),
+  ...renameDatedMembership("followed_tags"),
+  ...renameDatedMembership("featured_tags"),
   ...renameMembership("local_status_tags", "tag", ["status_id"]),
   ...renameMembership("remote_status_tags", "tag", ["status_id"]),
   ...renameMembership(

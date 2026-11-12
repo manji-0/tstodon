@@ -653,6 +653,13 @@ tstodon handles a **remote** actor's rotation the same way: when a signature fai
    - fix forward: revert the code change on `main`, keep the migration, deploy;
    - if the migration damaged data, [restore D1 with Time Travel](#d1-time-travel-point-in-time-restore) to just before the deploy, then deploy the version that matches that schema.
 4. Do not edit an applied migration file; Void's deploy gate compares the migrations with what wrangler would apply.
+5. Hashtag names (migration 0135): a build from before the accent fold writes tag names such as `café`, which the `FoldTagNames` job renames once and then stops scanning. If such a build ran after the job completed (a rollback across that change), deploy forward and then make the job scan again:
+
+   ```sh
+   wrangler d1 execute <database> --remote --command "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'tag_name_fold'"
+   ```
+
+   The next hourly cron renames what the old build wrote; a rename of a name already folded writes nothing.
 
 ### Dead-lettered jobs
 
