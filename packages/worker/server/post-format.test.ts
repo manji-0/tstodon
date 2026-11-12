@@ -76,4 +76,26 @@ describe("a local post's HTML", () => {
     expectFormatted(edited.content, { username: carol.username, url: carolUrl }, ghost);
     expect((await note()).content).toBe(edited.content);
   });
+
+  it("links the URLs Mastodon's server links, in the status and its ActivityPub Note", async () => {
+    const email = "post-format-urls@example.com";
+    const author = await signedInAccount(email);
+    const link = (href: string, prefix: string, shown: string) =>
+      `<a href="${href}" target="_blank" rel="nofollow noopener" translate="no">` +
+      `<span class="invisible">${prefix}</span><span class="">${shown}</span><span class="invisible"></span></a>`;
+
+    const posted = await send(email, "POST", "/api/v1/statuses", {
+      status: "https://例え.jp/パス gemini://example.com/capsule xmpp:alice@example.com",
+    });
+    expect(posted.content).toBe(
+      `<p>${link("https://例え.jp/パス", "https://", "例え.jp/パス")}` +
+        ` ${link("gemini://example.com/capsule", "", "gemini://example.com/capsule")}` +
+        ` ${link("xmpp:alice@example.com", "xmpp:", "alice@example.com")}</p>`,
+    );
+    const response = await SELF.fetch(
+      new URL(`/users/${author.username}/statuses/${posted.id}`, ORIGIN),
+      { headers: { accept: "application/activity+json" } },
+    );
+    expect(expectContract(ApStatusDocument, await response.json()).content).toBe(posted.content);
+  });
 });
