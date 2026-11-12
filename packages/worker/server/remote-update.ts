@@ -98,7 +98,7 @@ const applyNoteUpdate = async (
   }
   const parsed = noteFromUnknown(target.raw, signer);
   if (parsed.isErr()) {
-    return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
+    return ok(undefined);
   }
   const note = parseNoteDocument(target.raw);
   if (note.isErr()) {

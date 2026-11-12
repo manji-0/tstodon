@@ -856,3 +856,26 @@ describe("a delivery of a note whose stored row does not read as a status", () =
     });
   });
 });
+
+describe("a note document that parses but does not read as a status", () => {
+  it("answers its Create and its Update with 202 and stores nothing of it, as a note that does not parse", async () => {
+    const author = await remoteActor("unreadable-document");
+    const stored = note(author, "unreadable-document", { content: "<p>stored</p>" });
+    expect(await author.send({ id: `${stored.id}/create`, type: "Create", object: stored })).toBe(
+      202,
+    );
+    const id = (await storedId(stored.id)) ?? "";
+    // `url` is any string in the document, and a URL in a status.
+    const broken = { url: "not a url", updated: "2026-10-21T00:00:00.000Z" };
+    const fresh = note(author, "unreadable-document-new", { content: "<p>new</p>", ...broken });
+    const edit = { ...stored, content: "<p>edited</p>", ...broken };
+
+    expect(await author.send({ id: `${fresh.id}/create`, type: "Create", object: fresh })).toBe(
+      202,
+    );
+    expect(await author.send({ id: `${edit.id}/update`, type: "Update", object: edit })).toBe(202);
+
+    expect(await storedId(fresh.id)).toBeUndefined();
+    expect(await status(id)).toMatchObject({ content: "<p>stored</p>", edited_at: null });
+  });
+});

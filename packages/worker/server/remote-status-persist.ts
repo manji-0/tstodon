@@ -156,7 +156,7 @@ export const noteFromUnknown = (
   raw: unknown,
   author: QuotePolicyAuthor,
   idClock: IdClock = "Received",
-): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
+): Result<RemoteStatusValue, { kind: "InvalidObject" }> => {
   const actorUri = author.actorUri;
   const document = parseNoteDocument(raw);
   if (document.isErr()) {
@@ -816,7 +816,7 @@ const storeRemoteNote = async (
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const parsed = noteFromUnknown(raw, actor, options.idClock);
   if (parsed.isErr()) {
-    return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
+    return ok(undefined);
   }
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
