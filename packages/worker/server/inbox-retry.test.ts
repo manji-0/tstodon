@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { ApiStatus } from "@tstodon/api";
+import { ApiStatus, ApiStatusEdit } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
@@ -96,5 +96,34 @@ describe("an inbox activity whose write failed", () => {
       content: "<p>after</p>",
       edited_at: "2026-10-21T00:00:00.000Z",
     });
+  });
+
+  it("keeps the replaced version once in the history when a failed Update is redelivered", async () => {
+    const author = await remoteActor("retry-history");
+    const original = note(author, "retry-history", { content: "<p>original</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edited = note(author, "retry-history", {
+      content: "<p>edited</p>",
+      tag: [hashtag("retryhistory")],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    const allow = await refuseTag("retryhistory");
+    try {
+      expect(await author.send(activity)).toBe(500);
+    } finally {
+      await allow();
+    }
+    expect(await author.send(activity)).toBe(202);
+
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual(["<p>original</p>", "<p>edited</p>"]);
   });
 });

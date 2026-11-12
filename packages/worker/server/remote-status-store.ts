@@ -379,6 +379,8 @@ export const upsertRemoteStatus = async (
   inReplyToUri?: string,
   /** The caller's read of this URI, which spares reading it again. */
   known?: KnownRemoteStatus,
+  /** Writes that commit or fail with the row, run before it. */
+  alongside: ReadonlyArray<D1PreparedStatement> = [],
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
   const existing =
     known?.objectUri === status.objectUri
@@ -400,6 +402,7 @@ export const upsertRemoteStatus = async (
         // delivery that failed here is processed again as if it never ran.
         // The row comes first (the tag index holds a foreign key to it).
         await db.batch([
+          ...alongside,
           remoteStatusRowStatement(db, persisted, inReplyToUri),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
         ]);
