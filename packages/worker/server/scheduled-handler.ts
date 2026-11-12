@@ -1,6 +1,7 @@
 import { releaseStaleInboxClaims } from "./inbox-store";
 import { writeMetric } from "./metrics";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
+import { runRemoteStatusRetention } from "./remote-status-retention";
 import { sweepStuckDeliveries } from "./stuck-delivery-sweep";
 
 /**
@@ -56,6 +57,8 @@ export const handleScheduled = (
           // Re-fetch actors cached over a day ago, under the handle WebFinger
           // confirms.
           refreshStaleRemoteActors(env),
+          // Delete a slice of stale remote statuses nothing local needs.
+          runRemoteStatusRetention(env),
           // Start or restart the delivery Workflows of targets left `Queued`
           // past their next attempt (a failed create, a step that errored).
           sweepStuckDeliveries(env),

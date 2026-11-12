@@ -128,6 +128,8 @@ The six-hourly cron queues `VacuumActivities`, which prunes three tables (rules 
 | `OUTBOUND_ACTIVITY_RETENTION_DAYS` | `30`    | `outbound_activities` by `created_at`, except those still being delivered and each account's newest 40 public posts and boosts |
 | `INBOX_ACTIVITY_RETENTION_DAYS`    | `30`    | `inbox_activities` (the inbox's dedupe by activity id) by `created_at`; at least `7` days                                      |
 
+`REMOTE_STATUS_RETENTION_DAYS` (default `7`; `0` or `off` stops it) is how long a cached remote status that nothing local needs is kept after it was last written. The hourly cron deletes them a slice at a time, with the remote actors nothing refers to any more; what keeps a status is in the runbook's [Retention](../operations/runbook.md#retention).
+
 ## Authentication
 
 <!-- constrained-by ../operations/cloudflare-deploy.md -->

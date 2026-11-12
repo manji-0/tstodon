@@ -690,6 +690,8 @@ export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 
+export * from "./sql/listRemoteStatusRetentionSlice";
+
 export * from "./sql/listRemoteThreadAncestors";
 
 export * from "./sql/listRestrictedDomains";
@@ -766,9 +768,13 @@ export * from "./sql/pruneInboxActivities";
 
 export * from "./sql/pruneOutboundActivities";
 
+export * from "./sql/pruneRemoteStatusRetentionSlice";
+
 export * from "./sql/pruneStatusIdempotency";
 
 export * from "./sql/pruneTerminalDeliveries";
+
+export * from "./sql/pruneUnreferencedRemoteActors";
 
 export * from "./sql/purgeRemoteActorBlocks";
 

@@ -212,7 +212,7 @@ export {
   type PruneInboxActivities,
   type PruneOutboundActivities,
   type PruneTerminalDeliveries,
-  type RetentionWindow,
+  RetentionWindow,
 } from "./activity-vacuum";
 export {
   OutboundFollow,
