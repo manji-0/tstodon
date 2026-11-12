@@ -35,11 +35,14 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
     { allowHosts, blockedHosts, fetchSigner, notifyMentions: true },
     { objectUri, row: known.value },
   );
+  // A storage failure: the route releases the claim and answers 5xx, so the sender redelivers.
+  if (created.isErr()) {
+    return err(created.error);
+  }
   // Streaming is for a note stored now and published recently, as Mastodon's
   // `Status::REAL_TIME_WINDOW`: a redelivered Create, or an old note arriving
   // late, would show up in clients as a new status. Notifications still go out.
   if (
-    created.isOk() &&
     known.value === undefined &&
     created.value?.actorUri === signer.actorUri &&
     RealtimeWindow.contains(created.value.publishedAt, nowInstant())

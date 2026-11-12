@@ -177,7 +177,7 @@ describe("a remote note's hashtags", () => {
       await allow();
     }
 
-    // A new activity id: the inbox answers a repeated id without applying it.
+    // A later Create under a new activity id; inbox-retry.test.ts covers the redelivery of the same one.
     const id = await deliver(author, "Create", object, 1);
     expect((await tagsOf(id)).map((tag) => tag.name)).toEqual(["rshatomic"]);
   });

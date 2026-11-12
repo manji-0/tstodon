@@ -393,7 +393,9 @@ describe("URL matching against the plain scan", () => {
     return ((t ^ (t >>> 14)) >>> 0) % n;
   };
 
-  it("finds the URLs the plain scan finds, on 30,000 random texts", () => {
+  // A correctness sweep, not a timing check: 3 to 5 s alone, past the 5 s
+  // default when the whole suite shares the machine.
+  it("finds the URLs the plain scan finds, on 30,000 random texts", { timeout: 30_000 }, () => {
     for (let i = 0; i < 30_000; i += 1) {
       const text = Array.from({ length: 1 + random(16) }, () => tokens[random(tokens.length)]).join(
         "",

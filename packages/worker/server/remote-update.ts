@@ -24,7 +24,7 @@ import { notifyFromRemote } from "./notify";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
 import { findMoveTarget } from "./remote-move";
-import { snapshotRemoteRevision } from "./remote-status-edit";
+import { remoteRevisionStatement } from "./remote-status-edit";
 import {
   applyMediaPolicy,
   mentionedLocalAccountIds,
@@ -135,13 +135,6 @@ const applyNoteUpdate = async (
   if (edited && previous.kind === "Edited" && !isNewer(editedAt.value, previous.at)) {
     return ok(undefined);
   }
-  if (edited) {
-    // The version being replaced goes into the history first; the original is the first one kept.
-    const kept = await snapshotRemoteRevision(env.DB, cached.value);
-    if (kept.isErr()) {
-      return err(kept.error);
-    }
-  }
   const status: RemoteStatusValue = edited
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
     : refreshed;
@@ -150,10 +143,19 @@ const applyNoteUpdate = async (
     status,
     noteHashtags(target.raw),
     note.value.inReplyTo ?? undefined,
+    { objectUri: target.objectUri, row: cached.value },
+    // The version being replaced goes into the history with the row that
+    // replaces it; the original is the first one kept.
+    edited ? [remoteRevisionStatement(env.DB, cached.value)] : [],
   );
   if (stored.isErr()) {
     return err(stored.error);
   }
+  // Known limit: a failure from here on is retried by the sender, but the
+  // retry reads the content stored above, so `edited` is false. The retry
+  // writes the mention rows, the remote mentions and the quote again and
+  // queues the link card, but the boosters' `update` notifications and the
+  // `status.update` fan-out of this edit are never sent.
   if (stored.value === undefined) {
     return ok(undefined);
   }
@@ -168,6 +170,18 @@ const applyNoteUpdate = async (
   const recorded = await recordRemoteStatusMentions(env.DB, stored.value.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  // Sent as soon as the rows exist: a retry after a later failure finds the
+  // rows, so `added` is empty and it would notify nobody.
+  if (added.length > 0) {
+    const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
+    for (const accountId of added) {
+      await notifyFromRemote(
+        env,
+        { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
+        post,
+      );
+    }
   }
   const remoteMentions = await replaceRemoteStatusRemoteMentions(
     env.DB,
@@ -186,16 +200,6 @@ const applyNoteUpdate = async (
   );
   if (quote.isErr()) {
     return err(quote.error);
-  }
-  if (added.length > 0) {
-    const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
-    for (const accountId of added) {
-      await notifyFromRemote(
-        env,
-        { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
-        post,
-      );
-    }
   }
   await enqueueLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
   if (edited) {
