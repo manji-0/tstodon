@@ -48,6 +48,7 @@ import {
   markRemoteStatusesTagsIndexed as markRemoteStatusesTagsIndexedSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
+  insertRemoteStatus as insertRemoteStatusSql,
   refuseReplacedRemoteStatus as refuseReplacedRemoteStatusSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
@@ -406,16 +407,22 @@ const remoteStatusRowOf = (status: RemoteStatus): RemoteStatusRow => ({
       : JSON.stringify(status.quotePolicy),
 });
 
-/** The statement that inserts a remote status row, or updates the row its object URI already holds. */
+/**
+ * The statement that writes a remote status row. `Replace` updates the row
+ * its object URI holds (and inserts it when that row is gone). `Insert` is
+ * for a URI that was read as free, and fails on a row stored there since.
+ */
 const remoteStatusRowStatement = (
   db: D1Database,
   status: RemoteStatus,
   inReplyToUri: string | undefined,
+  write: "Insert" | "Replace",
 ): D1PreparedStatement => {
   const row = remoteStatusRowOf(status);
+  const sql = write === "Insert" ? insertRemoteStatusSql : upsertRemoteStatusSql;
   return d1PrepareTyped(
     db,
-    upsertRemoteStatusSql(
+    sql(
       row.id,
       row.actor_uri,
       row.object_uri,
@@ -519,6 +526,10 @@ const ID_COLLISION_RETRIES = 4;
 const isIdCollision = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
 
+const isObjectUriTaken = (error: unknown): boolean =>
+  error instanceof Error &&
+  /UNIQUE constraint failed: remote_statuses\.object_uri/.test(error.message);
+
 /** What the caller just read at an object URI: the cached status, or `undefined` for none. */
 export type KnownRemoteStatus = Readonly<{
   objectUri: string;
@@ -526,9 +537,13 @@ export type KnownRemoteStatus = Readonly<{
 }>;
 
 /**
- * Store a remote status, or update the one cached at its object URI. A URI
- * cached as another actor's note is left alone and gives `undefined`: only
- * its author rewrites a note.
+ * Store a remote status, or update the one cached at its object URI. It
+ * gives `undefined` when it wrote nothing, as the URI holds a row that is
+ * not this write's to replace. One is another actor's note: only its author
+ * rewrites a note. The other is a row that another delivery stored after the
+ * URI was read as free: this write was computed for a new note, with no
+ * guard against the version it would replace, so the batch fails on the
+ * unique URI and leaves that row, its tags and its marker as they are.
  */
 export const upsertRemoteStatus = async (
   db: D1Database,
@@ -585,16 +600,27 @@ export const upsertRemoteStatus = async (
         await db.batch([
           ...unreplaced,
           ...alongside,
-          remoteStatusRowStatement(db, persisted, inReplyToUri),
+          remoteStatusRowStatement(
+            db,
+            persisted,
+            inReplyToUri,
+            existing.value ? "Replace" : "Insert",
+          ),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
           ...settled,
           ...after.map((statement) => statement(persisted.id)),
         ]);
-        break;
+        return persisted;
       } catch (error) {
+        if (existing.value) {
+          throw error;
+        }
+        if (isObjectUriTaken(error)) {
+          return undefined;
+        }
         // A new row whose id another isolate already stored (same instant, same
         // random low bits): retry at the same instant with new random low bits.
-        if (existing.value || attempt >= ID_COLLISION_RETRIES || !isIdCollision(error)) {
+        if (attempt >= ID_COLLISION_RETRIES || !isIdCollision(error)) {
           throw error;
         }
         const rerolled = StatusId.parse(rerollEntityId(persisted.id));
@@ -604,7 +630,6 @@ export const upsertRemoteStatus = async (
         persisted = { ...persisted, id: rerolled.value };
       }
     }
-    return persisted;
   });
   if (written.isErr()) {
     return err(written.error);
@@ -628,7 +653,7 @@ export const overwriteRemoteStatus = async (
     db
       .prepare("UPDATE remote_statuses SET edited_at = NULL WHERE id = ? AND actor_uri = ?")
       .bind(status.id, status.actorUri),
-    remoteStatusRowStatement(db, status, undefined),
+    remoteStatusRowStatement(db, status, undefined, "Replace"),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
     ...pollSettlement(db, before, status),
   ]);

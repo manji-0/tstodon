@@ -828,8 +828,13 @@ const storeRemoteNote = async (
     [],
     marker ? [(id) => owedStatement(env.DB, id, marker)] : [],
   );
-  if (stored.isErr() || stored.value === undefined) {
-    return stored;
+  if (stored.isErr()) {
+    return err(stored.error);
+  }
+  if (stored.value === undefined) {
+    return existing.row === undefined
+      ? storedMeanwhile(env, identity, actor, raw, status.objectUri, options)
+      : ok(undefined);
   }
   const finished = await finishRemoteNote(env, identity, {
     kind: "Created",
@@ -844,6 +849,33 @@ const storeRemoteNote = async (
 };
 
 /**
+ * The note `actor` wrote that another delivery stored at `objectUri` while
+ * this one, which read the URI as free, was about to. This delivery wrote
+ * nothing, so it is one that found the note cached: it leaves the row and
+ * writes no marker, and finishes what the other delivery owes as a
+ * redelivery would ({@link resumeCreated}).
+ */
+const storedMeanwhile = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  raw: unknown,
+  objectUri: string,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
+  if (cached.isErr()) {
+    return err(cached.error);
+  }
+  const status = cached.value;
+  if (status?.kind !== "RemoteNote" || status.actorUri !== actor.actorUri) {
+    return ok(undefined);
+  }
+  const resumed = await resumeCreated(env, identity, actor, raw, status, options);
+  return resumed.map(() => status);
+};
+
+/**
  * Finish what the delivery that stored `status` left owed, when `actor`
  * wrote the note and delivers it again in an inbox activity. The stored row
  * is kept as it is; only the late steps run, from the document delivered
@@ -855,7 +887,8 @@ const resumeCreated = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
-  object: ObjectReference,
+  /** The note's document, or its URI, which is fetched. */
+  object: unknown,
   status: RemoteStatusValue,
   options: PersistOptions,
 ): Promise<Result<void, RepositoryError>> => {
