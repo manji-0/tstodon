@@ -200,6 +200,8 @@ export * from "./sql/deleteStreamSubscription";
 
 export * from "./sql/deleteUnattachedMedia";
 
+export * from "./sql/deleteUnindexedRemoteStatusTags";
+
 export * from "./sql/demoteRemoteActorHandle";
 
 export * from "./sql/detachStatusMedia";
@@ -508,6 +510,8 @@ export * from "./sql/insertStreamSubscription";
 
 export * from "./sql/insertTagNames";
 
+export * from "./sql/insertUnindexedRemoteStatusTags";
+
 export * from "./sql/isActiveRemoteStatusMention";
 
 export * from "./sql/isStatusPinned";
@@ -747,6 +751,8 @@ export * from "./sql/markMediaMetadataStripped";
 export * from "./sql/markPollExpiryNotified";
 
 export * from "./sql/markRemoteStatusTagsIndexed";
+
+export * from "./sql/markRemoteStatusesTagsIndexed";
 
 export * from "./sql/muteStatus";
 

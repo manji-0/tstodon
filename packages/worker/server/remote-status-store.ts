@@ -17,7 +17,6 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
 import {
-  D1_BATCH_CHUNK_SIZE,
   jsonStringArray,
   okValues,
   parseRows,
@@ -41,7 +40,10 @@ import {
   findRemoteStatusesByIds as findRemoteStatusesByIdsSql,
   findRemoteStatusRefsByObjectUris as findRemoteStatusRefsByObjectUrisSql,
   listLocalBoostsOfRemoteObject as listLocalBoostsOfRemoteObjectSql,
+  deleteUnindexedRemoteStatusTags as deleteUnindexedRemoteStatusTagsSql,
+  insertUnindexedRemoteStatusTags as insertUnindexedRemoteStatusTagsSql,
   listRemoteStatusTags as listRemoteStatusTagsSql,
+  markRemoteStatusesTagsIndexed as markRemoteStatusesTagsIndexedSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
@@ -458,56 +460,72 @@ export const findRemoteStatusRefsByObjectUris = async (
       );
 };
 
+/** How many remote statuses one pass of the tag backfill reads. */
+const REMOTE_TAG_BACKFILL_PAGE = 100;
+
+export type RemoteTagBackfillPage = Readonly<{
+  /** Statuses read in this pass. */
+  scanned: number;
+  /** Whether another pass should follow. */
+  chained: boolean;
+}>;
+
 /**
- * Cron path: index the tags of remote statuses written before the index
- * existed, a bounded batch per run.
+ * One pass of the remote tag backfill: index a page of the remote statuses
+ * marked `tags_indexed = 0` under the hashtags their stored HTML reads as
+ * (the note's `tag` is not kept), newest first, and mark them indexed. Those
+ * are the statuses stored before the index, and the ones migration 0136 sent
+ * back. The page is one batch of four statements at most, each of which
+ * skips a status a delivery has indexed since the page was read. Another
+ * pass follows a full page that indexed something: a full page that indexed
+ * nothing would be read again as it is.
  */
 export const indexMissingRemoteTags = async (
   db: D1Database,
-  limit: number = 100,
-): Promise<void> => {
+  pageSize: number = REMOTE_TAG_BACKFILL_PAGE,
+): Promise<Result<RemoteTagBackfillPage, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, listUnindexedRemoteStatusesSql(limit), UnindexedRemoteStatusRow),
+    queryTyped(db, listUnindexedRemoteStatusesSql(pageSize), UnindexedRemoteStatusRow),
   );
   if (rows.isErr()) {
-    return;
+    return err(rows.error);
   }
-  const perStatus = rows.value.map((row) =>
-    remoteStatusTagStatements(
-      db,
-      row.id,
-      // An unreadable visibility keeps the names out of search, as a direct note's.
-      Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
-      htmlHashtags(row.content_html),
+  if (rows.value.length === 0) {
+    return ok({ scanned: 0, chained: false });
+  }
+  const tagged = rows.value.map((row) => ({ row, tags: htmlHashtags(row.content_html) }));
+  const idsJson = jsonStringArray(rows.value.map((row) => row.id));
+  const names = new Set(
+    tagged.flatMap(({ row, tags }) =>
+      searchableTagNames(
+        // An unreadable visibility keeps the names out of search, as a direct note's.
+        Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
+        tags,
+      ),
     ),
   );
-  // Several statuses per batch, never splitting one status's statements. A
-  // batch that fails is retried one status per batch, so one status that keeps
-  // failing does not hold back the others, as when each had its own batch.
-  for (const group of packStatementGroups(perStatus, D1_BATCH_CHUNK_SIZE)) {
-    const batched = await runD1Batch(db, group.flat());
-    if (batched.isErr() && group.length > 1) {
-      for (const statements of group) {
-        await runD1Batch(db, statements);
-      }
-    }
+  const indexed = await runD1Batch(db, [
+    d1PrepareTyped(db, deleteUnindexedRemoteStatusTagsSql(idsJson)),
+    d1PrepareTyped(
+      db,
+      insertUnindexedRemoteStatusTagsSql(
+        JSON.stringify(
+          tagged.flatMap(({ row, tags }) => (tags.length === 0 ? [] : [[row.id, tags]])),
+        ),
+      ),
+    ),
+    ...recordTagNames(db, [...names]),
+    d1PrepareTyped(db, markRemoteStatusesTagsIndexedSql(idsJson)),
+  ]);
+  if (indexed.isErr()) {
+    return err(indexed.error);
   }
+  const marked = (indexed.value.at(-1)?.results ?? []).length;
+  return ok({
+    scanned: rows.value.length,
+    chained: rows.value.length === pageSize && marked > 0,
+  });
 };
-
-/** Consecutive groups packed into runs of at most `size` statements; a larger group runs alone. */
-const packStatementGroups = (
-  groups: ReadonlyArray<D1PreparedStatement[]>,
-  size: number,
-): D1PreparedStatement[][][] =>
-  groups.reduce<D1PreparedStatement[][][]>((packed, group) => {
-    const last = packed.at(-1);
-    if (last !== undefined && last.flat().length + group.length <= size) {
-      last.push(group);
-    } else {
-      packed.push([group]);
-    }
-    return packed;
-  }, []);
 
 /**
  * Delete a cached remote status, only when `actorUri` (the Delete's signer)

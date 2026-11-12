@@ -42,7 +42,9 @@ export const handleScheduled = (
           env.OUTBOX_PROCESS_QUEUE.send({ kind: "ProcessExpiredPolls" }),
           // Refresh the previews whose cache entry has aged out.
           env.OUTBOX_PROCESS_QUEUE.send({ kind: "RefreshLinkCards" }),
-          // Index the tags of remote statuses written before the tag index.
+          // Index the tags of remote statuses left to the backfill (written
+          // before the tag index, or sent back by migration 0136); one empty
+          // read once none is left.
           env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillRemoteTags" }),
           // Index the tags of local notes written before `local_status_tags`;
           // a single read once the cursor is complete.
