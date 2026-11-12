@@ -274,7 +274,7 @@ Patches (at most home + notifications) are prepared with `d1PrepareTyped` and co
 
 ### 8. Read-side batch (related, not a write)
 
-`statusInteractionCountsByIds` batches the `status_stats` counters (kept by triggers, migration 0140) with the viewer's favourite, boost and bookmark flags. It illustrates `runD1Batch` for multi-shape reads over the same `json_each` id set — complementary to write batching and used by `mastodonStatuses`.
+`statusInteractionCountsByIds` batches the `status_stats` counters (kept by triggers, migration 0135) with the viewer's favourite, boost and bookmark flags. It illustrates `runD1Batch` for multi-shape reads over the same `json_each` id set — complementary to write batching and used by `mastodonStatuses`.
 
 ## Status publish composition (route-level gap)
 

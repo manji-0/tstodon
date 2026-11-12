@@ -13,7 +13,7 @@ import type * as Prisma from "../internal/prismaNamespace";
 
 /**
  * Model account_stats
- * Kept by triggers (migration 0140_counters.sql); WITHOUT ROWID.
+ * Kept by triggers (migration 0135_counters.sql); WITHOUT ROWID.
  */
 export type account_statsModel =
   runtime.Types.Result.DefaultSelection<Prisma.$account_statsPayload>;

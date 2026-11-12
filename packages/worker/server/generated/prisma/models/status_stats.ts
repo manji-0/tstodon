@@ -13,7 +13,7 @@ import type * as Prisma from "../internal/prismaNamespace";
 
 /**
  * Model status_stats
- * Kept by triggers (migration 0140_counters.sql); WITHOUT ROWID. A local or remote status id.
+ * Kept by triggers (migration 0135_counters.sql); WITHOUT ROWID. A local or remote status id.
  */
 export type status_statsModel = runtime.Types.Result.DefaultSelection<Prisma.$status_statsPayload>;
 
