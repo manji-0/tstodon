@@ -55,6 +55,48 @@ export const deleteRemoteNotifications = async (
       ).length,
   );
 
+/**
+ * Record a notification from a remote actor about a status, unless the
+ * account already holds one of the same kind from that actor about that
+ * status, created at `since` or later (at any time by default). One
+ * statement, so of two deliveries that record the same one at once, one
+ * inserts. Resolves to the new id, or `undefined` when nothing was inserted.
+ * The lookup reads `idx_notifications_account_status`.
+ */
+export const insertNotificationOnce = async (
+  db: D1Database,
+  input: NewNotification,
+  since: string = "",
+): Promise<Result<string | undefined, RepositoryError>> => {
+  const id = newEntityId();
+  return runD1(async () => {
+    const written = await db
+      .prepare(
+        `INSERT INTO notifications
+           (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications
+           WHERE account_id = ?2 AND status_id = ?6 AND kind = ?5 AND from_actor_uri = ?4
+             AND created_at >= ?9
+         )`,
+      )
+      .bind(
+        id,
+        input.accountId,
+        input.fromAccountId,
+        input.fromActorUri ?? null,
+        input.kind,
+        input.statusId ?? null,
+        nowIso(),
+        input.targetAccountId ?? null,
+        since,
+      )
+      .run();
+    return (written.meta.changes ?? 0) > 0 ? id : undefined;
+  });
+};
+
 export const insertNotification = async (
   db: D1Database,
   input: NewNotification,

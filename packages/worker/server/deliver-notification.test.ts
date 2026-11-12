@@ -54,6 +54,16 @@ describe("deliverNotification", () => {
     expect(store.events).toEqual(["disposition", "insert mention", "hold n1"]);
   });
 
+  it.each(["accept", "filter"] as const)(
+    "neither holds nor publishes a notification that was already recorded (%s)",
+    async (disposition) => {
+      const store = recording(disposition);
+      const contracts = { ...store.contracts, insertNotification: async () => ok(undefined) };
+      expect((await deliverNotification(contracts, mention)).isOk()).toBe(true);
+      expect(store.events).toEqual(["disposition"]);
+    },
+  );
+
   it("records nothing the policy drops", async () => {
     const store = recording("drop");
     await deliverNotification(store.contracts, mention);

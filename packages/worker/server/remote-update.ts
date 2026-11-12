@@ -1,7 +1,6 @@
 import {
   IsoInstant,
   RemotePoll,
-  StatusTarget,
   type InstanceIdentity,
   type RemoteActor,
   type RemoteStatusValue,
@@ -12,32 +11,20 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
-import { startHomeFanOut } from "./home-fan-out";
-import { startPublicFanOut } from "./public-fan-out";
-import { startLinkCard } from "./link-card";
-import {
-  isActiveRemoteStatusMention,
-  recordRemoteStatusMentions,
-  replaceRemoteStatusRemoteMentions,
-} from "./mention-store";
-import { notifyFromRemote } from "./notify";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
 import { findMoveTarget } from "./remote-move";
 import { remoteRevisionStatement } from "./remote-status-edit";
 import {
   applyMediaPolicy,
-  mentionedLocalAccountIds,
-  mentionedRemoteActorUris,
-  remoteMentionedPost,
+  finishRemoteNote,
+  newlyMentionedAccountIds,
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
-  remoteQuoteContext,
   settleInvalidRemoteStatus,
 } from "./remote-status-persist";
-import { syncRemoteQuote } from "./remote-quote";
-import { listLocalBoosterAccountIds } from "./status-interaction-store";
+import { listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
 
 const UpdateObjectSchema = z
@@ -141,6 +128,20 @@ const applyNoteUpdate = async (
   const status: RemoteStatusValue = edited
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
     : refreshed;
+  const added = await newlyMentionedAccountIds(env, identity, target.raw, cached.value.id);
+  // An edit whose late steps failed left its marker. The sender's redelivery
+  // carries content that is already stored, so it is not an edit, and
+  // finishes that one's instead. A newer edit replaces the marker, and takes
+  // over the mentions the failed one still owes a notification.
+  const owed = await listOwed(env.DB, cached.value.id);
+  if (owed.isErr()) {
+    return err(owed.error);
+  }
+  const pending = owed.value.find((entry) => entry.kind === "Edited");
+  // An edit owes its late steps until they finish.
+  const marker = edited
+    ? newOwedMarker("Edited", [...new Set([...added, ...(pending?.mentions ?? [])])])
+    : undefined;
   const stored = await upsertRemoteStatus(
     env.DB,
     status,
@@ -150,83 +151,23 @@ const applyNoteUpdate = async (
     // The version being replaced goes into the history with the row that
     // replaces it; the original is the first one kept.
     edited ? [remoteRevisionStatement(env.DB, cached.value)] : [],
+    marker ? [(id) => owedStatement(env.DB, id, marker)] : [],
   );
   if (stored.isErr()) {
     return err(stored.error);
   }
-  // Known limit: a failure from here on is retried by the sender, but the
-  // retry reads the content stored above, so `edited` is false. The retry
-  // writes the mention rows, the remote mentions and the quote again and
-  // queues the link card, but the boosters' `update` notifications and the
-  // `status.update` fan-out of this edit are never sent.
   if (stored.value === undefined) {
     return ok(undefined);
   }
-  const mentioned = await mentionedLocalAccountIds(env, identity, target.raw);
-  const added: string[] = [];
-  for (const accountId of mentioned) {
-    const already = await isActiveRemoteStatusMention(env.DB, stored.value.id, accountId);
-    if (already.isOk() && !already.value) {
-      added.push(accountId);
-    }
-  }
-  const recorded = await recordRemoteStatusMentions(env.DB, stored.value.id, mentioned);
-  if (recorded.isErr()) {
-    return err(recorded.error);
-  }
-  // Sent as soon as the rows exist: a retry after a later failure finds the
-  // rows, so `added` is empty and it would notify nobody.
-  if (added.length > 0) {
-    const post = await remoteMentionedPost(env.DB, identity, target.raw, stored.value, mentioned);
-    for (const accountId of added) {
-      await notifyFromRemote(
-        env,
-        { accountId, actorUri: signer.actorUri, kind: "mention", statusId: stored.value.id },
-        post,
-      );
-    }
-  }
-  const remoteMentions = await replaceRemoteStatusRemoteMentions(
-    env.DB,
-    stored.value.id,
-    mentionedRemoteActorUris(identity, target.raw),
-  );
-  if (remoteMentions.isErr()) {
-    return err(remoteMentions.error);
-  }
-  const quote = await syncRemoteQuote(
-    env,
-    identity,
-    stored.value,
-    target.raw,
-    remoteQuoteContext(env, identity, signer, options),
-  );
-  if (quote.isErr()) {
-    return err(quote.error);
-  }
-  startLinkCard(env, "RemoteStatus", stored.value.id, stored.value.contentHtml);
-  if (edited) {
-    // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
-    // Quotes are skipped: a local account cannot yet quote a remote status.
-    const boosters = await listLocalBoosterAccountIds(env.DB, StatusTarget.remote(stored.value.id));
-    for (const accountId of boosters.isOk() ? boosters.value : []) {
-      await notifyFromRemote(env, {
-        accountId,
-        actorUri: signer.actorUri,
-        kind: "update",
-        statusId: stored.value.id,
-      });
-    }
-    await startHomeFanOut(env, {
-      event: "status.update",
-      entryId: stored.value.id,
-      author: { kind: "RemoteActor", actorUri: signer.actorUri },
-    });
-    if (stored.value.visibility.kind === "Public") {
-      await startPublicFanOut(env, { event: "status.update", entryId: stored.value.id });
-    }
-  }
-  return ok(undefined);
+  return finishRemoteNote(env, identity, {
+    kind: "Updated",
+    actor: signer,
+    raw: target.raw,
+    status: stored.value,
+    options,
+    added,
+    edit: marker ?? pending,
+  });
 };
 
 /**

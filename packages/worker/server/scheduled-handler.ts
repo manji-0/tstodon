@@ -6,6 +6,7 @@ import { hasExpiredPollWork } from "./poll-expiry";
 import { hasDueScheduledStatuses } from "./scheduled-status-publish";
 import { processOutboxJob } from "./outbox-job";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
+import { deleteAbandonedOwed } from "./remote-status-owed";
 import { runRemoteStatusRetention } from "./remote-status-retention";
 import { sweepStuckDeliveries } from "./stuck-delivery-sweep";
 
@@ -29,6 +30,22 @@ const releaseStaleClaims = async (env: Env): Promise<void> => {
     );
   } else if (released.value > 0) {
     console.log(JSON.stringify({ kind: "InboxStaleClaims", released: released.value }));
+  }
+};
+
+/**
+ * Delete the markers of late work on a remote note that no redelivery
+ * finished within the retention (`remote_status_owed`). The warning is the
+ * record that this work stays undone.
+ */
+const sweepAbandonedOwed = async (env: Env): Promise<void> => {
+  const abandoned = await deleteAbandonedOwed(env.DB);
+  if (abandoned.isErr()) {
+    console.error(
+      JSON.stringify({ kind: "RemoteStatusOwedSweepFailed", message: abandoned.error.message }),
+    );
+  } else if (abandoned.value.created + abandoned.value.edited > 0) {
+    console.warn(JSON.stringify({ kind: "RemoteStatusOwedAbandoned", ...abandoned.value }));
   }
 };
 
@@ -146,7 +163,12 @@ export const handleScheduled = (
           sweepStuckDeliveries(env),
           releaseStaleClaims(env),
         ]
-      : [runJobs(env, SIX_HOURLY_JOBS)],
+      : [
+          runJobs(env, SIX_HOURLY_JOBS),
+          // Give up the late work of remote notes that no redelivery finished
+          // within a week; one indexed delete.
+          sweepAbandonedOwed(env),
+        ],
   ).then(() => {
     writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
   });

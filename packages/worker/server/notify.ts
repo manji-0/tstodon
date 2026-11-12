@@ -32,7 +32,11 @@ import { localAccountPresentations } from "./account-presentation";
 import { findActiveMute, findBlock, silencesAnyOf } from "./block-mute-store";
 import { findRemoteBlock } from "./remote-block-store";
 import { mastodonNotification } from "./notification-documents";
-import { findNotificationById, insertNotification } from "./notification-store";
+import {
+  findNotificationById,
+  insertNotification,
+  insertNotificationOnce,
+} from "./notification-store";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
@@ -151,10 +155,15 @@ const recordNotification = async (
   if (inserted.isErr()) {
     return err(inserted.error);
   }
-  if (disposition === "filter") {
-    return contracts.holdNotification(inserted.value, input);
+  // Already recorded: whoever inserted it holds, publishes and pushes it.
+  if (inserted.value === undefined) {
+    return ok(undefined);
   }
-  await contracts.publishNotification(input.accountId, inserted.value);
+  const notificationId = inserted.value;
+  if (disposition === "filter") {
+    return contracts.holdNotification(notificationId, input);
+  }
+  await contracts.publishNotification(input.accountId, notificationId);
   return ok(undefined);
 };
 
@@ -345,27 +354,53 @@ const isStaffSender = async (
   );
 };
 
+type RemoteNotification = Readonly<{
+  accountId: string;
+  actorUri: string;
+  kind: string;
+  statusId?: string;
+  targetAccountId?: string;
+}>;
+
 /** A notification from a remote actor, whose sender id is the actor's `r_…` account id. */
+const remoteNotification = (input: RemoteNotification): NewNotification => ({
+  accountId: input.accountId,
+  fromAccountId: RemoteAccountId.encode(input.actorUri),
+  fromActorUri: input.actorUri,
+  kind: input.kind,
+  ...(input.statusId ? { statusId: input.statusId } : {}),
+  ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
+});
+
 export const notifyFromRemote = (
   env: Env,
-  input: Readonly<{
-    accountId: string;
-    actorUri: string;
-    kind: string;
-    statusId?: string;
-    targetAccountId?: string;
-  }>,
+  input: RemoteNotification,
   mentionedPost?: MentionedPost,
 ): Promise<Result<void, RepositoryError>> =>
-  notifyAccount(
-    env,
+  notifyAccount(env, remoteNotification(input), mentionedPost);
+
+/**
+ * {@link notifyFromRemote}, unless the account already holds a notification
+ * of this kind from this actor about this status, created at `since` or later
+ * (at any time by default). A delivery that is applied again after a failure
+ * calls this, so the work it repeats notifies nobody twice, also when another
+ * delivery of the same note repeats it at the same moment: the check and the
+ * insert are one statement (`insertNotificationOnce`), and only the delivery
+ * that inserted holds, publishes and pushes the notification. A notification
+ * the first attempt dropped (a block, a mute, the policy) left no row, and is
+ * screened again.
+ */
+export const notifyFromRemoteOnce = (
+  env: Env,
+  input: RemoteNotification & Readonly<{ statusId: string }>,
+  since?: string,
+  mentionedPost?: MentionedPost,
+): Promise<Result<void, RepositoryError>> =>
+  deliverNotification(
     {
-      accountId: input.accountId,
-      fromAccountId: RemoteAccountId.encode(input.actorUri),
-      fromActorUri: input.actorUri,
-      kind: input.kind,
-      ...(input.statusId ? { statusId: input.statusId } : {}),
-      ...(input.targetAccountId ? { targetAccountId: input.targetAccountId } : {}),
+      ...notifyContracts(env),
+      insertNotification: (notification) => insertNotificationOnce(env.DB, notification, since),
     },
+    remoteNotification(input),
     mentionedPost,
   );
