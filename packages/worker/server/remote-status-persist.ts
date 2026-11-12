@@ -324,10 +324,12 @@ const remoteMentionedPost = async (
  * whose row existed). It is `resumed` when another delivery wrote it and
  * this one finishes its steps.
  *
- * `Updated` is an `Update` applied to a stored note. `edit` is the marker of
- * a change to its content: written by this delivery, or `resumed` from one
- * whose late steps failed, which this delivery finishes although the content
- * it carries is already stored. Absent for an `Update` that edits nothing.
+ * `Updated` is an `Update` applied to a stored note. `added` are the local
+ * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
+ * the row was written). `edit` is the marker of a change to its content:
+ * written by this delivery, or left by one whose late steps failed, which
+ * this delivery finishes although the content it carries is already stored.
+ * Absent for an `Update` that edits nothing.
  */
 export type LateSteps = Readonly<{
   actor: RemoteActor;
@@ -339,37 +341,48 @@ export type LateSteps = Readonly<{
     | Readonly<{ kind: "Created"; marker: OwedMarker | undefined; resumed: boolean }>
     | Readonly<{
         kind: "Updated";
-        edit: Readonly<{ marker: OwedMarker; resumed: boolean }> | undefined;
+        added: ReadonlyArray<string>;
+        edit: OwedMarker | undefined;
       }>
   );
 
 /**
- * The accounts among `mentioned` to notify of their mention, read before the
- * mention rows are written. A note an inbox activity stored notifies all of
- * them. An `Update` notifies the ones the note did not mention before, as
- * Mastodon does: the ones with no mention row yet. A resumed edit cannot tell
- * them apart, as the failed delivery may have written the rows, so it
- * notifies all of them; `notifyFromRemoteOnce` skips the ones already told.
+ * The local accounts the document `raw` mentions that the stored note
+ * `statusId` did not: the ones with no mention row yet, as Mastodon notifies
+ * only the mentions an `Update` adds. Read before the `Update` writes
+ * anything, and kept on the marker of an edit, as the rows it writes make a
+ * redelivery read every mention as one the note already had.
  */
-const mentionsToNotify = async (
-  db: D1Database,
-  late: LateSteps,
-  mentioned: ReadonlyArray<string>,
+export const newlyMentionedAccountIds = async (
+  env: Env,
+  identity: InstanceIdentity,
+  raw: unknown,
+  statusId: string,
 ): Promise<ReadonlyArray<string>> => {
-  if (late.kind === "Created") {
-    return (late.options.delivery ?? "Fetched") === "Fetched" ? [] : mentioned;
-  }
-  if (late.edit?.resumed) {
-    return mentioned;
-  }
   const added: string[] = [];
-  for (const accountId of mentioned) {
-    const already = await isActiveRemoteStatusMention(db, late.status.id, accountId);
+  for (const accountId of await mentionedLocalAccountIds(env, identity, raw)) {
+    const already = await isActiveRemoteStatusMention(env.DB, statusId, accountId);
     if (already.isOk() && !already.value) {
       added.push(accountId);
     }
   }
   return added;
+};
+
+/**
+ * The accounts among `mentioned` to notify of their mention. A note an inbox
+ * activity stored notifies all of them. An `Update` notifies the ones it
+ * newly mentions, and the ones the edit it finishes did.
+ */
+const mentionsToNotify = (
+  late: LateSteps,
+  mentioned: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  if (late.kind === "Created") {
+    return (late.options.delivery ?? "Fetched") === "Fetched" ? [] : mentioned;
+  }
+  const added = new Set([...late.added, ...(late.edit?.mentions ?? [])]);
+  return mentioned.filter((accountId) => added.has(accountId));
 };
 
 /**
@@ -391,7 +404,7 @@ export const finishRemoteNote = async (
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
   const mentioned = await mentionedLocalAccountIds(env, identity, raw);
-  const notified = await mentionsToNotify(env.DB, late, mentioned);
+  const notified = mentionsToNotify(late, mentioned);
   const recorded = await recordRemoteStatusMentions(env.DB, status.id, mentioned);
   if (recorded.isErr()) {
     return err(recorded.error);
@@ -453,7 +466,7 @@ export const finishRemoteNote = async (
       const sent = await notifyFromRemoteOnce(
         env,
         { accountId, actorUri: actor.actorUri, kind: "update", statusId: status.id },
-        late.edit.marker.createdAt,
+        late.edit.createdAt,
       );
       if (sent.isErr()) {
         return err(sent.error);
@@ -485,7 +498,7 @@ export const finishRemoteNote = async (
  */
 const finishedMarker = (late: LateSteps): OwedMarker | undefined => {
   if (late.kind === "Updated") {
-    return late.edit?.marker;
+    return late.edit;
   }
   return late.resumed && late.options.delivery !== "Create" ? undefined : late.marker;
 };

@@ -87,16 +87,30 @@ const remoteMentions = async (statusId: string): Promise<string[]> =>
     ).results,
   ).map((row) => row.actor_uri);
 
-/** A signed-in local account: its request headers and its actor URL. */
+/** A signed-in local account: its id, its request headers and its actor URL. */
 const localAccount = async (email: string) => {
   const headers = await authHeaders(email);
   const account = expectContract(
-    z.object({ username: z.string() }),
+    z.object({ id: z.string(), username: z.string() }),
     await (
       await SELF.fetch("https://example.com/api/v1/accounts/verify_credentials", { headers })
     ).json(),
   );
-  return { headers, actorUrl: `https://example.com/users/${account.username}` };
+  return { id: account.id, headers, actorUrl: `https://example.com/users/${account.username}` };
+};
+
+/**
+ * Makes D1 refuse the mention row of the local account `accountId` on a
+ * remote note, until the returned function is called.
+ */
+const refuseMentionRow = async (name: string, accountId: string): Promise<() => Promise<void>> => {
+  await env.DB.prepare(
+    `CREATE TRIGGER ${name} BEFORE INSERT ON remote_status_mentions
+     WHEN NEW.account_id = '${accountId}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+  ).run();
+  return async () => {
+    await env.DB.prepare(`DROP TRIGGER ${name}`).run();
+  };
 };
 
 /** How many notifications of `type` about status `id` the account holds. */
@@ -257,6 +271,86 @@ describe("an inbox activity that failed after its row was stored", () => {
     expect(await author.send(activity)).toBe(202);
     expect(await notifiedOf(booster, "update", id)).toBe(1);
     expect(await owedKinds(id)).toEqual([]);
+  });
+
+  it("notifies the account an edit newly mentions when the Update that failed before its mention row was written is redelivered", async () => {
+    const mentioned = await localAccount("inbox-retry-update-added@example.com");
+    const author = await remoteActor("retry-update-added");
+    const original = note(author, "retry-update-added", { content: "<p>before</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edited = note(author, "retry-update-added", {
+      content: "<p>after @you</p>",
+      tag: [{ type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    const allow = await refuseMentionRow("inbox_retry_update_added", mentioned.id);
+    try {
+      expect(await author.send(activity)).toBe(500);
+      expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
+  it("notifies nobody of a mention the note already had when an Update that failed after its row was stored is redelivered", async () => {
+    const mentioned = await localAccount("inbox-retry-update-kept@example.com");
+    const elsewhere = "https://elsewhere.example/users/retry-update-kept";
+    const author = await remoteActor("retry-update-kept");
+    const original = note(author, "retry-update-kept", {
+      content: "<p>hi @you</p>",
+      tag: [{ type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+    });
+    const identity = parseInstanceIdentity(env);
+    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+      .unwrapOr(undefined)
+      ?.get(author.actorUri);
+    if (identity.isErr() || !signer) {
+      throw new Error("fetch fixture rejected");
+    }
+    // Stored by a fetch (an Announce, a backfill): a mention row, and no notification.
+    const fetched = await persistRemoteObject(env, identity.value, signer, original, {
+      fetchSigner: unsignedFetch,
+    });
+    expect(fetched.isOk()).toBe(true);
+    const id = (await storedId(original.id)) ?? "";
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
+    const edited = note(author, "retry-update-kept", {
+      content: "<p>hi @you, edited</p>",
+      tag: [
+        { type: "Mention", href: mentioned.actorUrl },
+        { type: "Mention", href: elsewhere },
+      ],
+      cc: [mentioned.actorUrl],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+
+    const allow = await refuseInsert(
+      "inbox_retry_update_kept",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect(await author.send(activity)).toBe(500);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await owedKinds(id)).toEqual([]);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
   });
 
   it("streams the edit when the Update that failed after its row was stored is applied again", async () => {

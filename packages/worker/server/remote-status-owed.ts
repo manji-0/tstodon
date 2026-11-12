@@ -2,11 +2,13 @@ import { z } from "zod";
 import { ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { parseRows, type RepositoryError, runD1 } from "./d1";
+import { parseJsonColumn } from "./json-column";
 
 const OwedRowSchema = z.object({
   kind: z.union([z.literal("Created"), z.literal("Edited")]),
   token: z.string().min(1),
   created_at: z.string().min(1),
+  mentions_json: z.string(),
 });
 
 /**
@@ -15,23 +17,30 @@ const OwedRowSchema = z.object({
  * activity stored: its mentions are notified and it is streamed as new.
  * `Edited` is an `Update` that changed its content: its boosters are notified
  * and the edit is streamed. `token` names the delivery that wrote the marker.
+ * `mentions` are the local accounts an edit newly mentions, which only the
+ * delivery that wrote the marker could tell; none for a `Created` marker.
  */
 export type OwedMarker = Readonly<{
   kind: z.infer<typeof OwedRowSchema>["kind"];
   token: string;
   createdAt: string;
+  mentions: ReadonlyArray<string>;
 }>;
 
-export const newOwedMarker = (kind: OwedMarker["kind"]): OwedMarker => ({
+export const newOwedMarker = (
+  kind: OwedMarker["kind"],
+  mentions: ReadonlyArray<string> = [],
+): OwedMarker => ({
   kind,
   token: crypto.randomUUID(),
   createdAt: nowIso(),
+  mentions,
 });
 
 /**
  * The statement that writes `marker` for `statusId`, for the batch that
  * writes the status row. A marker of the same kind left by an earlier
- * delivery is replaced: its token and time become this delivery's.
+ * delivery is replaced: its token, time and mentions become this delivery's.
  */
 export const owedStatement = (
   db: D1Database,
@@ -40,11 +49,13 @@ export const owedStatement = (
 ): D1PreparedStatement =>
   db
     .prepare(
-      `INSERT INTO remote_status_owed (status_id, kind, token, created_at) VALUES (?, ?, ?, ?)
+      `INSERT INTO remote_status_owed (status_id, kind, token, created_at, mentions_json)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (status_id, kind) DO UPDATE
-         SET token = excluded.token, created_at = excluded.created_at`,
+         SET token = excluded.token, created_at = excluded.created_at,
+             mentions_json = excluded.mentions_json`,
     )
-    .bind(statusId, marker.kind, marker.token, marker.createdAt);
+    .bind(statusId, marker.kind, marker.token, marker.createdAt, JSON.stringify(marker.mentions));
 
 /** The markers of `statusId`: one per kind at most, none when nothing is owed. */
 export const listOwed = (
@@ -53,13 +64,16 @@ export const listOwed = (
 ): Promise<Result<ReadonlyArray<OwedMarker>, RepositoryError>> =>
   runD1(async () => {
     const rows = await db
-      .prepare("SELECT kind, token, created_at FROM remote_status_owed WHERE status_id = ?")
+      .prepare(
+        "SELECT kind, token, created_at, mentions_json FROM remote_status_owed WHERE status_id = ?",
+      )
       .bind(statusId)
       .all();
     return parseRows(OwedRowSchema, rows.results).map((row) => ({
       kind: row.kind,
       token: row.token,
       createdAt: row.created_at,
+      mentions: parseJsonColumn(z.array(z.string()), row.mentions_json).unwrapOr([]),
     }));
   });
 
@@ -108,7 +122,7 @@ export const deleteAbandonedOwed = (
   runD1(async () => {
     const deleted = await db
       .prepare(
-        "DELETE FROM remote_status_owed WHERE created_at < ? RETURNING kind, token, created_at",
+        "DELETE FROM remote_status_owed WHERE created_at < ? RETURNING kind, token, created_at, mentions_json",
       )
       .bind(new Date(nowMs - OWED_RETENTION_MS).toISOString())
       .all();

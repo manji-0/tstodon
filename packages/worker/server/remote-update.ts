@@ -18,6 +18,7 @@ import { remoteRevisionStatement } from "./remote-status-edit";
 import {
   applyMediaPolicy,
   finishRemoteNote,
+  newlyMentionedAccountIds,
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
@@ -127,8 +128,20 @@ const applyNoteUpdate = async (
   const status: RemoteStatusValue = edited
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
     : refreshed;
+  const added = await newlyMentionedAccountIds(env, identity, target.raw, cached.value.id);
+  // An edit whose late steps failed left its marker. The sender's redelivery
+  // carries content that is already stored, so it is not an edit, and
+  // finishes that one's instead. A newer edit replaces the marker, and takes
+  // over the mentions the failed one still owes a notification.
+  const owed = await listOwed(env.DB, cached.value.id);
+  if (owed.isErr()) {
+    return err(owed.error);
+  }
+  const pending = owed.value.find((entry) => entry.kind === "Edited");
   // An edit owes its late steps until they finish.
-  const marker = edited ? newOwedMarker("Edited") : undefined;
+  const marker = edited
+    ? newOwedMarker("Edited", [...new Set([...added, ...(pending?.mentions ?? [])])])
+    : undefined;
   const stored = await upsertRemoteStatus(
     env.DB,
     status,
@@ -146,25 +159,14 @@ const applyNoteUpdate = async (
   if (stored.value === undefined) {
     return ok(undefined);
   }
-  // An edit whose late steps failed left its marker: the sender's redelivery
-  // carries content that is already stored, so it is not an edit, and
-  // finishes that one's instead.
-  const pending = marker ? ok([]) : await listOwed(env.DB, stored.value.id);
-  if (pending.isErr()) {
-    return err(pending.error);
-  }
-  const resumed = pending.value.find((entry) => entry.kind === "Edited");
   return finishRemoteNote(env, identity, {
     kind: "Updated",
     actor: signer,
     raw: target.raw,
     status: stored.value,
     options,
-    edit: marker
-      ? { marker, resumed: false }
-      : resumed
-        ? { marker: resumed, resumed: true }
-        : undefined,
+    added,
+    edit: marker ?? pending,
   });
 };
 
