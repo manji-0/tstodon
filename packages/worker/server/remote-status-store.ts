@@ -113,15 +113,35 @@ const quotePolicyFromJson = (raw: string | null): QuoteInteractionPolicy =>
     ? QuoteInteractionPolicy.none
     : parseJsonColumn(QuoteInteractionPolicy.schema, raw).unwrapOr(QuoteInteractionPolicy.none);
 
+/**
+ * A stored remote status row that does not read as a status. Unlike a
+ * `RepositoryError`, reading it again gives the same answer, so a sender
+ * gains nothing by delivering again. `id` and `actorUri` are the row's.
+ */
+export type StoredRowInvalid = Readonly<{
+  kind: "StoredRowInvalid";
+  id: string;
+  actorUri: string;
+}>;
+
+/** The error of a reader that fails on a row it cannot use, whatever is wrong with it. */
+export const storedRowError = (_invalid: StoredRowInvalid): RepositoryError =>
+  toRepositoryError("invalid remote status row");
+
 export const remoteStatusFromRow = (
   row: RemoteStatusRow,
-): Result<RemoteStatus, RepositoryError> => {
+): Result<RemoteStatus, StoredRowInvalid> => {
+  const invalid: StoredRowInvalid = {
+    kind: "StoredRowInvalid",
+    id: row.id,
+    actorUri: row.actor_uri,
+  };
   const id = StatusId.parse(row.id);
   const publishedAt = IsoInstant.parse(row.published_at);
   const editedAt = IsoInstant.parse(row.edited_at ?? "").unwrapOr(undefined);
   const visibility = Visibility.fromMastodon(row.visibility);
   if (id.isErr() || publishedAt.isErr() || (row.edited_at && !editedAt) || visibility.isErr()) {
-    return err(toRepositoryError("invalid remote status row"));
+    return err(invalid);
   }
   return RemoteStatus.fromFetched({
     id: id.value,
@@ -142,7 +162,7 @@ export const remoteStatusFromRow = (
     emojis: emojisFromJson(row.emojis_json),
     quotePolicy: quotePolicyFromJson(row.quote_policy_json),
     ...(row.url ? { url: row.url } : {}),
-  }).mapErr(() => toRepositoryError("invalid remote status row"));
+  }).mapErr(() => invalid);
 };
 
 const readRemoteStatus = async (
@@ -151,7 +171,9 @@ const readRemoteStatus = async (
   if (queried.isErr()) {
     return err(queried.error);
   }
-  return queried.value === undefined ? ok(undefined) : remoteStatusFromRow(queried.value);
+  return queried.value === undefined
+    ? ok(undefined)
+    : remoteStatusFromRow(queried.value).mapErr(storedRowError);
 };
 
 export const findRemoteStatusById = async (
@@ -260,20 +282,40 @@ export const findRemoteStatusesByIds = async (
   );
 };
 
+const findRowByObjectUri = (
+  db: D1Database,
+  objectUri: string,
+): Promise<Result<RemoteStatusRow | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      findRemoteStatusByObjectUriSql(objectUri),
+      RemoteStatusRowSchema,
+    );
+    return rows[0];
+  });
+
 export const findRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  readRemoteStatus(
-    await runD1(async () => {
-      const rows = await queryTyped(
-        db,
-        findRemoteStatusByObjectUriSql(objectUri),
-        RemoteStatusRowSchema,
-      );
-      return rows[0];
-    }),
-  );
+  readRemoteStatus(await findRowByObjectUri(db, objectUri));
+
+/**
+ * The status an inbox `Create` or `Update` finds stored at its object URI.
+ * A row that does not read as a status is told apart from a failed read:
+ * the delivery replaces or drops it, where a failed read is retried.
+ */
+export const findDeliveredRemoteStatus = async (
+  db: D1Database,
+  objectUri: string,
+): Promise<Result<RemoteStatus | undefined, RepositoryError | StoredRowInvalid>> => {
+  const queried = await findRowByObjectUri(db, objectUri);
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  return queried.value === undefined ? ok(undefined) : remoteStatusFromRow(queried.value);
+};
 
 const StatusTagRow = z.object({ status_id: z.string(), tag: z.string() });
 
@@ -435,6 +477,26 @@ export const upsertRemoteStatus = async (
     return err(written.error);
   }
   return ok(written.value);
+};
+
+/**
+ * Replace the row of `status.id`, which did not read as a status
+ * (`StoredRowInvalid`), with `status` and its tags, in one batch. The upsert
+ * keeps a stored `edited_at` when the status has none, so it is cleared first.
+ */
+export const overwriteRemoteStatus = async (
+  db: D1Database,
+  status: RemoteStatus,
+  tags: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> => {
+  const written = await runD1Batch(db, [
+    db
+      .prepare("UPDATE remote_statuses SET edited_at = NULL WHERE id = ? AND actor_uri = ?")
+      .bind(status.id, status.actorUri),
+    remoteStatusRowStatement(db, status, undefined),
+    ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
+  ]);
+  return written.map(() => undefined);
 };
 
 /** Cached remote statuses' ids and authors, keyed by object URI. */

@@ -261,3 +261,83 @@ describe("an inbox activity whose write failed", () => {
     expect(mentions.filter((entry) => entry.status.id === id)).toHaveLength(1);
   });
 });
+
+describe("a delivery of a note whose stored row does not read as a status", () => {
+  /** A stored note, then made unreadable as a row written by older code could be. */
+  const unreadable = async (author: Remote, slug: string): Promise<string> => {
+    const original = note(author, slug, { content: "<p>stored</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare(
+      "UPDATE remote_statuses SET visibility = 'unreadable', edited_at = 'unreadable' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+    return id;
+  };
+
+  const storedRow = async (id: string) =>
+    parseRows(
+      z.object({ visibility: z.string(), content_html: z.string() }),
+      (
+        await env.DB.prepare("SELECT visibility, content_html FROM remote_statuses WHERE id = ?")
+          .bind(id)
+          .all()
+      ).results,
+    )[0];
+
+  it("answers the author's Create with 202 and replaces the row under its id", async () => {
+    const author = await remoteActor("invalid-row-create");
+    const id = await unreadable(author, "invalid-row-create");
+    const object = note(author, "invalid-row-create", { content: "<p>sent again</p>" });
+
+    expect(await author.send({ id: `${object.id}/create-again`, type: "Create", object })).toBe(
+      202,
+    );
+
+    expect(await storedId(object.id)).toBe(id);
+    expect(await status(id)).toMatchObject({
+      content: "<p>sent again</p>",
+      visibility: "public",
+      edited_at: null,
+    });
+  });
+
+  it("answers the author's Update with 202 and replaces the row, with no version kept", async () => {
+    const author = await remoteActor("invalid-row-update");
+    const id = await unreadable(author, "invalid-row-update");
+    const object = note(author, "invalid-row-update", {
+      content: "<p>edited</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+
+    expect(await author.send({ id: `${object.id}/update`, type: "Update", object })).toBe(202);
+
+    expect(await status(id)).toMatchObject({ content: "<p>edited</p>", visibility: "public" });
+    const history = expectContract(
+      z.array(ApiStatusEdit),
+      await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
+    );
+    expect(history.map((version) => version.content)).toEqual(["<p>edited</p>"]);
+  });
+
+  it("answers another actor's Update with 202 and leaves the row as it is", async () => {
+    const author = await remoteActor("invalid-row-author");
+    const other = await remoteActor("invalid-row-other");
+    const id = await unreadable(author, "invalid-row-author");
+    const object = note(author, "invalid-row-author", {
+      content: "<p>not mine</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+
+    expect(await other.send({ id: `${object.id}/update`, type: "Update", object })).toBe(202);
+
+    expect(await storedRow(id)).toEqual({
+      visibility: "unreadable",
+      content_html: "<p>stored</p>",
+    });
+  });
+});
