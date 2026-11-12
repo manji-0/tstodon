@@ -505,7 +505,10 @@ describe("two inbox activities that carry one note", () => {
     expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
   });
 
-  it("answers a QuoteRequest and a Create of one new note sent at once with 202, and stores one row", async () => {
+  // A smoke test, not the proof of the race: the test runtime does not run
+  // the two requests' reads before either write, so this passes without the
+  // fix too. The interleaved batch above is what fails without it.
+  it("smoke: answers a QuoteRequest and a Create of one new note sent together with 202, and stores one row", async () => {
     const quoted = await localAccount("inbox-retry-at-once@example.com");
     const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
       method: "POST",
