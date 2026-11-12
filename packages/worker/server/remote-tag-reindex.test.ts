@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
@@ -88,6 +88,14 @@ const runMigration = async (): Promise<void> => {
     .replace(/;$/, "");
   await env.DB.prepare(statement).run();
 };
+
+const QUEUED: QueueSendResponse = {
+  metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("the remote tag reindex", () => {
   it("indexes the stored statuses that can hold a non-ASCII tag again, from their HTML", async () => {
@@ -183,5 +191,34 @@ describe("the remote tag reindex", () => {
     expect(await tagNames(id)).toEqual(["rtrraceap"]);
     expect(await timelineIds("rtrracehtml")).toEqual([]);
     expect(await searchNames("rtrrace")).toEqual(["rtrraceap"]);
+  });
+
+  it("queues another pass after a full one, and none after a short one", async () => {
+    const author = await remoteActor("rtr-chain");
+    const first = await stored(author, "rtr-chain", "<p>#rtrchain</p>");
+    // 150 pending in all: a full pass of 100, then a short one.
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 149)
+       INSERT INTO remote_statuses
+         (id, actor_uri, object_uri, content_html, visibility, published_at, tags_indexed)
+       SELECT CAST(CAST(s.id AS INTEGER) - 1000 - i AS TEXT), s.actor_uri,
+              printf('https://remote.example/notes/rtr-chain-%03d', i),
+              s.content_html, s.visibility, s.published_at, 0
+       FROM n, (SELECT * FROM remote_statuses WHERE id = ?) s`,
+    )
+      .bind(first)
+      .run();
+    await env.DB.prepare("UPDATE remote_statuses SET tags_indexed = 0 WHERE id = ?")
+      .bind(first)
+      .run();
+    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+
+    expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
+    expect(send.mock.calls).toEqual([[{ kind: "BackfillRemoteTags" }]]);
+    expect(await pending("rtr-chain")).toEqual({ count: 50 });
+
+    expect(await processOutboxJob(env, { kind: "BackfillRemoteTags" })).toBe("ok");
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await pending("rtr-chain")).toEqual({ count: 0 });
   });
 });
