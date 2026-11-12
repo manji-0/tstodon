@@ -488,7 +488,8 @@ describe("a remote vote whose storage failed", () => {
     }
 
     expect(await castVote(voter, poll, "dogs", objectId)).toBe(202);
-    expect(await castVote(voter, poll, "dogs", objectId)).toBe(202);
+    // A new activity id, so the inbox does not drop it as seen: the vote itself is found counted.
+    expect(await castVote(voter, poll, "dogs")).toBe(202);
     const state = await pollState(poll);
     expect(state.options.map((option) => option.votes_count)).toEqual([0, 1, 0]);
     expect(state.voters_count).toBe(1);
