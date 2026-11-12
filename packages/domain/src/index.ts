@@ -385,6 +385,8 @@ export {
   type RateLimitCounterState,
   type RateLimitCounterTable,
   type RateLimitHit,
+  type RateLimitIncrement,
+  type RateLimitLocalCount,
   type RateLimitPolicy as RateLimitPolicyValue,
   type RateLimitRequest,
   type RateLimitRule,

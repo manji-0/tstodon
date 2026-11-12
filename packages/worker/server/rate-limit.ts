@@ -6,6 +6,7 @@ import {
   type RateLimitCaller,
   type RateLimitCheck,
   type RateLimitCounterState,
+  type RateLimitHit,
   RateLimitPolicy,
   type RateLimitPolicyValue,
   RateLimitSubject,
@@ -23,8 +24,11 @@ import { optionalEnvString } from "./runtime-config";
  * Enforcing rate limits (Mastodon's Rack::Attack throttles and `RateLimiter`
  * families; the policy is `RateLimit` in `@tstodon/domain`). Each subject a
  * request counts against (its client address, its token or account, a
- * sending server) is one `RateLimitCounter` Durable Object call. See "Rate
- * limits" in docs/reference/configuration.md.
+ * sending server) has its counters in one `RateLimitCounter` Durable Object.
+ * Each isolate counts the high-volume buckets on its own and calls the
+ * Durable Object only once `RateLimit.mayCountLocally` says no, handing over the hits
+ * it counted alone; the abuse-sensitive buckets call it on every hit. See
+ * "Rate limits" in docs/reference/configuration.md.
  *
  * The limits fail open: a counter that cannot be reached lets the request
  * through, as a D1 outage must not lock every client out.
@@ -78,12 +82,24 @@ export const durableObjectCounters =
     }
   };
 
-/** Counts checks and decides; it keeps its own memory of counters already over. */
+/**
+ * Counts checks and decides, counting in the isolate first and asking the
+ * Durable Object as `RateLimit.mayCountLocally` says.
+ */
 export type RateLimiter = Readonly<{
   run: (env: Env, checks: ReadonlyArray<RateLimitCheck>) => Promise<RateLimitVerdict>;
 }>;
 
-/** Counters remembered as over their limit, per isolate; beyond this many the oldest go. */
+/** This isolate's view of one counter in one window (see `RateLimitLocalCount`). */
+type LocalCounter = {
+  startMs: number;
+  resetAtMs: number;
+  seen: number;
+  unsent: number;
+  shared: number;
+};
+
+/** Counters remembered per isolate; beyond this many the least recently used go. */
 const MAX_REMEMBERED = 10_000;
 
 export const createRateLimiter = (
@@ -98,22 +114,25 @@ export const createRateLimiter = (
     ((env: Env) =>
       "RATE_LIMIT_COUNTER" in env ? durableObjectCounters(env.RATE_LIMIT_COUNTER) : undefined);
   const now = options.now ?? Date.now;
-  /**
-   * `subject key \n counter name` → when its window ends, for counters seen
-   * over their limit. Until then this isolate refuses without asking the
-   * Durable Object, so a flood from one client costs one call per window.
-   */
-  const over = new Map<string, number>();
+  /** `subject key \n counter name` → its counter in the current window. */
+  const local = new Map<string, LocalCounter>();
 
-  const remember = (key: string, resetAtMs: number): void => {
-    over.delete(key);
-    over.set(key, resetAtMs);
-    if (over.size > MAX_REMEMBERED) {
-      const oldest = over.keys().next();
+  const localCounter = (key: string, hit: RateLimitHit, nowMs: number): LocalCounter => {
+    const window = RateLimit.window(nowMs, hit.periodMs);
+    const known = local.get(key);
+    local.delete(key);
+    const counter =
+      known !== undefined && known.startMs === window.startMs && known.resetAtMs === window.endMs
+        ? known
+        : { startMs: window.startMs, resetAtMs: window.endMs, seen: 0, unsent: 0, shared: 0 };
+    local.set(key, counter);
+    if (local.size > MAX_REMEMBERED) {
+      const oldest = local.keys().next();
       if (!oldest.done) {
-        over.delete(oldest.value);
+        local.delete(oldest.value);
       }
     }
+    return counter;
   };
 
   const runCheck = async (
@@ -122,23 +141,59 @@ export const createRateLimiter = (
     nowMs: number,
   ): Promise<ReadonlyArray<RateLimitCounterState>> => {
     const subjectKey = RateLimitSubject.key(check.subject);
-    for (const hit of check.hits) {
-      const resetAtMs = over.get(`${subjectKey}\n${hit.name}`);
-      if (resetAtMs !== undefined && resetAtMs > nowMs) {
-        return [{ name: hit.name, limit: hit.limit, count: hit.limit + 1, resetAtMs }];
-      }
+    const counted = check.hits.map((hit) => ({
+      hit,
+      counter: localCounter(`${subjectKey}\n${hit.name}`, hit, nowMs),
+    }));
+    // A counter the Durable Object reported over stays refused here until its
+    // window ends, so a flood from one client costs nothing more.
+    const over = counted.find(({ hit, counter }) => counter.shared > hit.limit);
+    if (over !== undefined) {
+      const { hit, counter } = over;
+      return [
+        { name: hit.name, limit: hit.limit, count: counter.shared, resetAtMs: counter.resetAtMs },
+      ];
     }
-    const counted = await counters(subjectKey, check.hits, nowMs);
-    if (counted.isErr()) {
-      console.warn(`rate limit counter unavailable: ${counted.error.message}`);
+    const alone = counted.every(({ hit, counter }) => RateLimit.mayCountLocally(hit, counter));
+    if (alone) {
+      return counted.map(({ hit, counter }) => {
+        counter.seen += 1;
+        counter.unsent += 1;
+        return {
+          name: hit.name,
+          limit: hit.limit,
+          count: RateLimit.localEstimate(counter),
+          resetAtMs: counter.resetAtMs,
+        };
+      });
+    }
+    // One ask carries every counter of the subject and every hit counted
+    // alone; `unsent` is taken first so a concurrent request does not send it twice.
+    const handed = counted.map(({ hit, counter }) => {
+      const increment = { ...hit, by: counter.unsent + 1 };
+      counter.seen += 1;
+      counter.unsent = 0;
+      return { counter, increment };
+    });
+    const shared = await counters(
+      subjectKey,
+      handed.map(({ increment }) => increment),
+      nowMs,
+    );
+    if (shared.isErr()) {
+      console.warn(`rate limit counter unavailable: ${shared.error.message}`);
+      for (const { counter, increment } of handed) {
+        counter.unsent += increment.by;
+      }
       return [];
     }
-    for (const state of counted.value) {
-      if (state.count > state.limit) {
-        remember(`${subjectKey}\n${state.name}`, state.resetAtMs);
+    shared.value.forEach((state, index) => {
+      const counter = handed[index]?.counter;
+      if (counter !== undefined) {
+        counter.shared = Math.max(counter.shared, state.count);
       }
-    }
-    return counted.value;
+    });
+    return shared.value;
   };
 
   return {
