@@ -29,7 +29,7 @@ import {
   type QuotedDocument,
   type QuotedStatusAccess,
 } from "./quote-document";
-import { findQuotesByQuoting, quoteCountsByQuoted } from "./quote-store";
+import { findQuotesByQuoting } from "./quote-store";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
 import { findRemoteActorsByUris, remoteFollowerActorUris } from "./remote-actor-store";
 import { acceptedOutboundFollowActorUris } from "./outbound-follow-store";
@@ -297,27 +297,17 @@ const renderRemoteStatuses = async <Q>(
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
   const targets = statuses.map((status) => StatusTarget.remote(status.id));
-  const [
-    cards,
-    tags,
-    actors,
-    moderations,
-    pollVotes,
-    interactions,
-    relations,
-    quoteCounts,
-    quotes,
-  ] = await Promise.all([
-    listRemoteStatusCards(env.DB, ids),
-    listRemoteStatusTags(env.DB, ids),
-    findRemoteActorsByUris(env.DB, actorUris),
-    listRemoteActorModerations(env.DB, actorUris),
-    findRemotePollVotes(env.DB, viewerId, statuses),
-    statusInteractionCountsByIds(env.DB, ids, viewerId),
-    quoteViewerRelations(env.DB, viewerId, actorUris),
-    quoteCountsByQuoted(env.DB, targets),
-    findQuotesByQuoting(env.DB, targets),
-  ]);
+  const [cards, tags, actors, moderations, pollVotes, interactions, relations, quotes] =
+    await Promise.all([
+      listRemoteStatusCards(env.DB, ids),
+      listRemoteStatusTags(env.DB, ids),
+      findRemoteActorsByUris(env.DB, actorUris),
+      listRemoteActorModerations(env.DB, actorUris),
+      findRemotePollVotes(env.DB, viewerId, statuses),
+      statusInteractionCountsByIds(env.DB, ids, viewerId),
+      quoteViewerRelations(env.DB, viewerId, actorUris),
+      findQuotesByQuoting(env.DB, targets),
+    ]);
   if (actors.isErr()) {
     return err(actors.error);
   }
@@ -347,7 +337,6 @@ const renderRemoteStatuses = async <Q>(
       })),
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
-      quotesCount: quoteCounts.isOk() ? quoteCounts.value.get(status.id) : undefined,
       quoteApproval: QuoteInteractionPolicy.forViewer(
         status.quotePolicy,
         status.visibility,

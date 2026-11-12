@@ -189,17 +189,13 @@ export const getV1StatusesByIdContext = async (
   const refresh =
     start.kind === "Remote" ? await requestRemoteThreadBackfill(c.env, start.status) : undefined;
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
-  const ancestors = await listThreadAncestors(c.env.DB, identity.value, start, limits.depth);
+  const [ancestors, descendants] = await Promise.all([
+    listThreadAncestors(c.env.DB, identity.value, start, limits.depth),
+    listThreadDescendants(c.env.DB, identity.value, start, limits.descendants, limits.depth),
+  ]);
   if (ancestors.isErr()) {
     return jsonRepositoryError(c, ancestors.error.message);
   }
-  const descendants = await listThreadDescendants(
-    c.env.DB,
-    identity.value,
-    start,
-    limits.descendants,
-    limits.depth,
-  );
   if (descendants.isErr()) {
     return jsonRepositoryError(c, descendants.error.message);
   }

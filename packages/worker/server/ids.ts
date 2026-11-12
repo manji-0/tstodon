@@ -79,6 +79,10 @@ export const entityIdAt = (atMs: number): string => {
 
 export const newEntityId = (): string => entityIdAt(Date.now());
 
+/** The lowest id at `atMs`: every id drawn before that instant sorts under it. */
+export const firstEntityIdAt = (atMs: number): string =>
+  formatId(BigInt(Math.max(0, Math.trunc(atMs))) << LOW_BITS);
+
 /**
  * The same instant with fresh random low bits: for an id that collided with
  * one another isolate stored at that instant. The collided value counts as

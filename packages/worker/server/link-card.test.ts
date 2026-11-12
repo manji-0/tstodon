@@ -5,12 +5,13 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { cacheLinkCard, processLinkCardJob } from "./link-card";
 import { processOutboxJob } from "./outbox-job";
+import { runOrQueue } from "./inline-job";
 import { unsignedFetch } from "./federated-fetch";
 import { withHostAddresses } from "../test/host-resolver-fixture";
 
@@ -98,11 +99,24 @@ const statusCard = async (statusId: string): Promise<z.infer<typeof CardSchema> 
   return read(StatusSchema, response.body).card;
 };
 
+/** The status's card, once the unfurl its post started has stored it. */
+const cardOnceUnfurled = (statusId: string) =>
+  vi.waitFor(
+    async () => {
+      const card = await statusCard(statusId);
+      if (!card) {
+        throw new Error("no card yet");
+      }
+      return card;
+    },
+    { timeout: 10_000, interval: 50 },
+  );
+
 const unfurl = (statusId: string, url: string) =>
   processLinkCardJob(env, { kind: "ProcessLinkCard", target: "Status", id: statusId, url });
 
 describe("link cards", () => {
-  it("unfurls through the queue job, caches it, and renders the card", async () => {
+  it("unfurls after the response, caches it, and renders the card", async () => {
     const email = "card-author@example.com";
     const calls = await withFetchStub(
       (url) =>
@@ -110,28 +124,53 @@ describe("link cards", () => {
           ? new Response(OG_HTML, { headers: { "content-type": "text/html; charset=utf-8" } })
           : undefined,
       async () => {
-        // The request only queues the unfurl. The queue consumer may finish it
-        // before the response is rendered, so the card is checked after the job.
         const created = await postStatus(
           email,
           "please read https://news.example/story-one it is good",
         );
-
-        await unfurl(created.id, "https://news.example/story-one");
-        const card = await statusCard(created.id);
-        expect(card?.title).toBe("A Fine Article");
-        expect(card?.description).toBe("Plenty to say & more");
-        expect(card?.provider_name).toBe("Example News");
-        expect(card?.image).toBe("https://news.example/cover.jpg");
+        const card = await cardOnceUnfurled(created.id);
+        expect(card.title).toBe("A Fine Article");
+        expect(card.description).toBe("Plenty to say & more");
+        expect(card.provider_name).toBe("Example News");
+        expect(card.image).toBe("https://news.example/cover.jpg");
 
         // The URL is cached, so another post of the same link is unfurled
         // without another fetch.
         const second = await postStatus(email, "same link again https://news.example/story-one");
-        await unfurl(second.id, "https://news.example/story-one");
-        expect((await statusCard(second.id))?.title).toBe("A Fine Article");
+        expect((await cardOnceUnfurled(second.id)).title).toBe("A Fine Article");
       },
     );
     expect(calls).toBe(1);
+  });
+
+  it("queues the unfurl only when it failed for now", async () => {
+    const status = await postStatus("card-retry@example.com", "no link yet");
+    const job = {
+      kind: "ProcessLinkCard",
+      target: "Status",
+      id: status.id,
+      url: "https://flaky.example/story",
+    } as const;
+    const queued = async (answer: Response): Promise<unknown[]> => {
+      const sent: unknown[] = [];
+      const recording = new Proxy(env, {
+        get: (target, key) =>
+          key === "OUTBOX_PROCESS_QUEUE"
+            ? { send: async (message: unknown) => void sent.push(message) }
+            : Reflect.get(target, key),
+      });
+      await withFetchStub(
+        (url) => (url.hostname === "flaky.example" ? answer.clone() : undefined),
+        () => runOrQueue(recording, job, processLinkCardJob),
+      );
+      return sent;
+    };
+    expect(await queued(new Response("busy", { status: 503 }))).toEqual([job]);
+    expect(await statusCard(status.id)).toBeNull();
+    expect(
+      await queued(new Response(OG_HTML, { headers: { "content-type": "text/html" } })),
+    ).toEqual([]);
+    expect((await statusCard(status.id))?.title).toBe("A Fine Article");
   });
 
   it("does not reach into private hosts", async () => {
@@ -513,7 +552,7 @@ describe("link cards", () => {
   });
 
   it("stops after too many redirects", async () => {
-    const status = await postStatus("card-loop@example.com", "loop https://loop.example/0");
+    const status = await postStatus("card-loop@example.com", "loop");
     let hops = 0;
     await withFetchStub(
       (url) => {

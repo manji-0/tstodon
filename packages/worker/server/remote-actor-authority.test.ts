@@ -151,6 +151,10 @@ describe("a remote actor on a non-default port", () => {
     );
     const delivered = await deliveredCreate(author.id, note.uri);
     expect(delivered?.inboxes).toEqual([`${other.actorUri}/inbox`]);
+    // The post's queued fan-out to followers is still running: let it start
+    // its delivery Workflows before the file ends, as a teardown during that
+    // never completes.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 });
 

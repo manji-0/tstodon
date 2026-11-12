@@ -8,13 +8,15 @@ import {
   type StreamEventValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { afterResponse } from "./after-response";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
+import { runOrQueue } from "./inline-job";
 import { findListForAccount } from "./list-store";
 import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
 import { publishToAccount, publishToHub } from "./stream-publish";
-import { listHubStreamSubscriptions } from "./stream-subscription-store";
+import { listHubStreamSubscriptions, streamListeners } from "./stream-subscription-store";
 import { homeTimelineDocuments, listTimelineDocuments } from "./timeline-documents";
 import { queryTyped } from "./typed-sql";
 
@@ -36,12 +38,15 @@ type HomeEntryEvent = Pick<FanOutHome, "event" | "entryId">;
 export const HOME_FAN_OUT_PAGE_SIZE = 20;
 
 /**
- * Queue telling the author's local followers about a home timeline entry, as
+ * Tell the author's local followers about a home timeline entry, as
  * Mastodon's `FanOutOnWriteService` and `RemoveStatusService` do for the
- * `user` and `list` streams. Best effort: the entry is stored either way, and a follower
- * who misses the event still sees the entry on the next home timeline fetch.
+ * `user` and `list` streams. Nothing is done when no hub holds a `user` or
+ * `list` stream (one cached read); otherwise the first page of followers is
+ * told once the response is ready, and the queue takes later pages and a page to retry.
+ * Best effort: the entry is stored either way, and a follower who misses the
+ * event still sees the entry on the next home timeline fetch.
  */
-export const enqueueHomeFanOut = async (
+export const startHomeFanOut = async (
   env: Env,
   fanOut: Readonly<{
     event: FanOutHome["event"];
@@ -52,14 +57,14 @@ export const enqueueHomeFanOut = async (
   }>,
 ): Promise<void> => {
   const job = OutboxJob.parse({ kind: "FanOutHome", ...fanOut, afterAccountId: "" });
-  if (job.isErr()) {
+  if (job.isErr() || job.value.kind !== "FanOutHome") {
     return;
   }
-  try {
-    await env.OUTBOX_PROCESS_QUEUE.send(job.value);
-  } catch {
-    console.error(JSON.stringify({ kind: "HomeFanOutNotQueued", entryId: fanOut.entryId }));
+  if (!(await streamListeners(env.DB)).home) {
+    return;
   }
+  const fanOutJob = job.value;
+  afterResponse(fanOutJob.kind, () => runOrQueue(env, fanOutJob, processFanOutHomeJob));
 };
 
 /**
@@ -80,7 +85,7 @@ export const announceRemovedBoosts = async (
         console.error(JSON.stringify({ kind: "BoostRemovalNotPublished", entryId: boost.id }));
       }
     }
-    await enqueueHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event: "delete",
       entryId: boost.id,
       author: { kind: "LocalAccount", accountId: boost.accountId },
@@ -299,14 +304,18 @@ export const REMOVED_STATUSES_JOB_ENTRIES = 20;
 
 /**
  * Queue telling `accountIds` that the entries are gone, in jobs of bounded
- * size. For entries whose author is already purged, so the audience cannot be
- * looked up from the author. Best effort, like `enqueueHomeFanOut`.
+ * size, unless no hub holds a `user` or `list` stream. For entries whose
+ * author is already purged, so the audience cannot be looked up from the
+ * author. Best effort, like `startHomeFanOut`.
  */
 export const enqueueRemovedStatusesFanOut = async (
   env: Env,
   accountIds: ReadonlyArray<string>,
   statusIds: ReadonlyArray<string>,
 ): Promise<void> => {
+  if (accountIds.length === 0 || !(await streamListeners(env.DB)).home) {
+    return;
+  }
   for (let at = 0; at < accountIds.length; at += REMOVED_STATUSES_JOB_ACCOUNTS) {
     for (let from = 0; from < statusIds.length; from += REMOVED_STATUSES_JOB_ENTRIES) {
       const job = OutboxJob.parse({

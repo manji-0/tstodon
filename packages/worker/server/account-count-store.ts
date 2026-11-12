@@ -1,36 +1,27 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
-import { d1PrepareTyped, queryTyped } from "./typed-sql";
-import {
-  accountCounts as accountCountsSql,
-  countFollowersByAccountIdsJson as countFollowersByAccountIdsJsonSql,
-  countFollowingByAccountIdsJson as countFollowingByAccountIdsJsonSql,
-  countStatusesByAccountIdsJson as countStatusesByAccountIdsJsonSql,
-} from "./generated/prisma/sql";
-
-const CountsRowSchema = z.object({
-  followers: z.union([z.number(), z.bigint()]),
-  following: z.union([z.number(), z.bigint()]),
-  statuses: z.union([z.number(), z.bigint()]),
-});
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
+import { queryTyped } from "./typed-sql";
+import { accountStatsByIdsJson as accountStatsByIdsJsonSql } from "./generated/prisma/sql";
 
 export type AccountCounts = Readonly<{ followers: number; following: number; statuses: number }>;
+
+const NO_COUNTS: AccountCounts = { followers: 0, following: 0, statuses: 0 };
+
+const AccountStatsRow = z.object({
+  account_id: z.string(),
+  statuses_count: z.number(),
+  followers_count: z.number(),
+  following_count: z.number(),
+});
 
 export const accountCounts = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<AccountCounts, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, accountCountsSql(accountId), CountsRowSchema);
-    const row = rows[0];
-    return {
-      followers: Number(row?.followers ?? 0),
-      following: Number(row?.following ?? 0),
-      statuses: Number(row?.statuses ?? 0),
-    };
-  });
+  (await accountCountsByIds(db, [accountId])).map((counts) => counts.get(accountId) ?? NO_COUNTS);
 
+/** The counters triggers keep in `account_stats` (migration 0138); an account without a row has none. */
 export const accountCountsByIds = async (
   db: D1Database,
   accountIds: ReadonlyArray<string>,
@@ -39,31 +30,28 @@ export const accountCountsByIds = async (
   if (unique.length === 0) {
     return ok(new Map<string, AccountCounts>());
   }
-  const idsJson = jsonStringArray(unique);
-  const queried = await runD1Batch(db, [
-    d1PrepareTyped(db, countFollowersByAccountIdsJsonSql(idsJson)),
-    d1PrepareTyped(db, countFollowingByAccountIdsJsonSql(idsJson)),
-    d1PrepareTyped(db, countStatusesByAccountIdsJsonSql(idsJson)),
-  ]);
-  if (queried.isErr()) {
-    return err(queried.error);
+  const rows = await runD1(() =>
+    queryTyped(db, accountStatsByIdsJsonSql(jsonStringArray(unique)), AccountStatsRow),
+  );
+  if (rows.isErr()) {
+    return err(rows.error);
   }
-  const AccountCountRowSchema = z.object({ account_id: z.string(), count: z.number() });
-  const countsOf = (result: D1Result | undefined): ReadonlyMap<string, number> =>
-    new Map(
-      parseRows(AccountCountRowSchema, result?.results).map((row) => [row.account_id, row.count]),
-    );
-  const [followers, following, statuses] = queried.value.map(countsOf);
+  const byId = new Map(rows.value.map((row) => [row.account_id, row]));
   return ok(
     new Map(
-      unique.map((id) => [
-        id,
-        {
-          followers: followers?.get(id) ?? 0,
-          following: following?.get(id) ?? 0,
-          statuses: statuses?.get(id) ?? 0,
-        },
-      ]),
+      unique.map((id): [string, AccountCounts] => {
+        const row = byId.get(id);
+        return [
+          id,
+          row
+            ? {
+                followers: row.followers_count,
+                following: row.following_count,
+                statuses: row.statuses_count,
+              }
+            : NO_COUNTS,
+        ];
+      }),
     ),
   );
 };

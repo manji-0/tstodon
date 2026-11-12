@@ -8,7 +8,8 @@ import {
   streamAccess,
   streamRefusalError,
 } from "../stream-access";
-import { SOCKET_STATE_HEADER } from "../stream-hub";
+import { eventStreamResponse } from "../sse-bridge";
+import { EVENT_STREAM_HEADER, SOCKET_STATE_HEADER } from "../stream-hub";
 
 /**
  * The streaming API over WebSocket. A socket subscribes to the stream named
@@ -22,8 +23,9 @@ import { SOCKET_STATE_HEADER } from "../stream-hub";
  *
  * A request without an upgrade is Mastodon's SSE form: the path names the one
  * stream (`/api/v1/streaming/user`, `/public/local`, `/hashtag?tag=`, ...) and
- * the response is a `text/event-stream` the hub writes to. The same token and
- * scope rules apply; only `/api/v1/streaming/health` answers anyone.
+ * the response is a `text/event-stream` this request writes from a socket to
+ * the hub (see `eventStreamResponse`). The same token and scope rules apply;
+ * only `/api/v1/streaming/health` answers anyone.
  */
 export const getV1Streaming = async (c: Context<{ Bindings: Env }>) => {
   const subPath = c.req.path.replace(/^\/api\/v1\/streaming\/?/, "");
@@ -58,14 +60,23 @@ export const getV1Streaming = async (c: Context<{ Bindings: Env }>) => {
     }
     state.channels.push(channel.value);
   }
-  // Set here, never taken from the client: the hub trusts it.
+  // Set here, never taken from the client: the hub trusts them.
   const headers = new Headers(c.req.raw.headers);
   headers.set(SOCKET_STATE_HEADER, JSON.stringify(state));
+  headers.set("Upgrade", "websocket");
+  if (isUpgrade) {
+    headers.delete(EVENT_STREAM_HEADER);
+  } else {
+    headers.set(EVENT_STREAM_HEADER, "1");
+  }
   const stub = c.env.STREAM_HUB.get(c.env.STREAM_HUB.idFromName(accountId));
   const upstream = await stub.fetch(new Request(c.req.raw.url, { headers }));
   if (!isUpgrade) {
-    // The hub's response has immutable headers; middleware may add to these.
-    return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
+    if (upstream.status !== 101 || !upstream.webSocket) {
+      // The hub's response has immutable headers; middleware may add to these.
+      return new Response(upstream.body, { status: upstream.status, headers: upstream.headers });
+    }
+    return eventStreamResponse(upstream.webSocket);
   }
   const protocol = c.req.header("Sec-WebSocket-Protocol");
   if (upstream.status !== 101 || !protocol || !upstream.webSocket) {

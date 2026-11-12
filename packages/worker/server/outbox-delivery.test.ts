@@ -30,7 +30,7 @@ import {
 } from "./delivery-domain-health-store";
 import { type DeliverySteps, runOutboxDelivery } from "./outbox-delivery-run";
 import { outboxDeliveryRunDeps } from "./outbox-delivery-workflow";
-import { ensureOutboxTarget, insertOutboundActivity } from "./outbox-store";
+import { ensureOutboxTarget, ensureOutboxTargets, insertOutboundActivity } from "./outbox-store";
 import { postInbox } from "./routes/activitypub";
 import {
   type DeliveryWorkflowInstances,
@@ -63,7 +63,7 @@ const targetRow = async (job: DeliverTargetJob) => {
   return parsed.value;
 };
 
-/** An activity signed by the instance actor, and its (not yet inserted) target. */
+/** An activity signed by the instance actor, and its target (not inserted). */
 const deliveryJob = async (host: string): Promise<DeliverTargetJob> => {
   const inserted = await insertOutboundActivity(env.DB, {
     signer: { kind: "InstanceActor" },
@@ -74,19 +74,29 @@ const deliveryJob = async (host: string): Promise<DeliverTargetJob> => {
   return { kind: "DeliverTarget", activityId, inboxUrl: `https://${host}/inbox` };
 };
 
+/** {@link deliveryJob} with its target `Queued`, as fan-out leaves it. */
+const queuedJob = async (host: string): Promise<DeliverTargetJob> => {
+  const job = await deliveryJob(host);
+  (await ensureOutboxTarget(env.DB, job.activityId, job.inboxUrl))._unsafeUnwrap();
+  return job;
+};
+
+const scopeOf = (job: DeliverTargetJob) => ({ activityId: job.activityId, inboxUrl: null });
+
 /** Workflow steps on a fake clock: a step runs at once, a sleep moves the clock. */
-const fakeSteps = (clock: { now: number }) => {
+const fakeSteps = (clock: { now: number }, onSleep: () => Promise<void> = async () => {}) => {
   const names: string[] = [];
   const sleeps: number[] = [];
   const steps: DeliverySteps = {
-    run: async (name, _kind, work) => {
+    run: async (name, work) => {
       names.push(name);
       return work();
     },
-    sleep: async (name, ms) => {
+    sleepUntil: async (name, atMs) => {
       names.push(name);
-      sleeps.push(ms);
-      clock.now += ms;
+      sleeps.push(atMs - clock.now);
+      await onSleep();
+      clock.now = Math.max(clock.now, atMs);
     },
   };
   return { steps, names, sleeps };
@@ -102,7 +112,7 @@ const runWith = (
   let calls = 0;
   const deps = {
     ...outboxDeliveryRunDeps(env),
-    attempt: async (): Promise<InboxDeliveryAttempt> => {
+    prepare: async () => async (): Promise<InboxDeliveryAttempt> => {
       const outcome =
         outcomes[Math.min(calls, outcomes.length - 1)] ?? DeliveryAttemptOutcome.Success;
       calls += 1;
@@ -147,15 +157,15 @@ afterEach(() => {
 
 describe("delivery retries", () => {
   it("retries a failing inbox 17 times on Sidekiq's backoff, then gives up and logs it", async () => {
-    const job = await deliveryJob("retry-down.example");
+    const job = await queuedJob("retry-down.example");
     const clock = { now: START };
     const { steps, sleeps, names } = fakeSteps(clock);
     const run = runWith(clock, [DeliveryAttemptOutcome.forHttpStatus(502)]);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const result = await runOutboxDelivery(steps, run.deps, job);
+    const result = await runOutboxDelivery(steps, run.deps, scopeOf(job));
 
-    expect(result).toEqual({ kind: "Failed", reasonKind: "RetryExhausted", attemptCount: 17 });
+    expect(result).toEqual({ kind: "Settled", rounds: 17 });
     expect(run.calls()).toBe(DELIVERY_MAX_ATTEMPTS);
     expect(sleeps).toEqual(
       Array.from({ length: 16 }, (_, count) => OutboxDelivery.backoffMs(count, 0)),
@@ -163,10 +173,10 @@ describe("delivery retries", () => {
     expect(sleeps[0]).toBe(15_000);
     expect((clock.now - START) / 3_600_000).toBeGreaterThan(49);
     expect(names.slice(0, 4)).toEqual([
-      "attempt-0-load",
-      "attempt-0-post",
-      "attempt-0-save",
-      "attempt-0-backoff",
+      "round-0-chunk-0",
+      "round-0-wait",
+      "round-1-chunk-0",
+      "round-1-wait",
     ]);
     expect(await targetRow(job)).toEqual({
       kind: "Failed",
@@ -206,20 +216,17 @@ describe("delivery retries", () => {
   });
 
   it("stores the next attempt time while the target waits", async () => {
-    const job = await deliveryJob("retry-later.example");
+    const job = await queuedJob("retry-later.example");
     const clock = { now: START };
-    const sleeps: number[] = [];
     let rowWhileSleeping: z.infer<typeof TargetRowSchema> | undefined;
-    const steps: DeliverySteps = {
-      run: (_name, _kind, work) => work(),
-      sleep: async (_name, ms) => {
-        sleeps.push(ms);
-        rowWhileSleeping ??= await targetRow(job);
-        clock.now += ms;
-      },
-    };
+    const { steps, sleeps } = fakeSteps(clock, async () => {
+      rowWhileSleeping ??= await targetRow(job);
+    });
     const run = runWith(clock, [DeliveryAttemptOutcome.Network, DeliveryAttemptOutcome.Success]);
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({ kind: "Delivered" });
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toEqual({
+      kind: "Settled",
+      rounds: 2,
+    });
     expect(sleeps).toEqual([15_000]);
     expect(rowWhileSleeping).toEqual({
       kind: "Queued",
@@ -232,23 +239,21 @@ describe("delivery retries", () => {
   });
 
   it("stores a transient failure's HTTP status on the row while it waits, and clears it on success", async () => {
-    const job = await deliveryJob("retry-status.example");
+    const job = await queuedJob("retry-status.example");
     const clock = { now: START };
     const rows: Array<z.infer<typeof TargetRowSchema>> = [];
-    const steps: DeliverySteps = {
-      run: (_name, _kind, work) => work(),
-      sleep: async (_name, ms) => {
-        rows.push(await targetRow(job));
-        clock.now += ms;
-      },
-    };
+    const { steps } = fakeSteps(clock, async () => {
+      rows.push(await targetRow(job));
+    });
     const run = runWith(clock, [
       DeliveryAttemptOutcome.forHttpStatus(503),
       DeliveryAttemptOutcome.forHttpStatus(429, 1),
       DeliveryAttemptOutcome.Network,
       DeliveryAttemptOutcome.Success,
     ]);
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({ kind: "Delivered" });
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toMatchObject({
+      kind: "Settled",
+    });
     expect(rows.map((row) => [row.kind, row.attempt_count, row.http_status])).toEqual([
       ["Queued", 1, 503],
       ["Queued", 2, 429],
@@ -258,7 +263,7 @@ describe("delivery retries", () => {
   });
 
   it("honours Retry-After on a 429", async () => {
-    const job = await deliveryJob("retry-throttled.example");
+    const job = await queuedJob("retry-throttled.example");
     const clock = { now: START };
     const { steps, sleeps } = fakeSteps(clock);
     const run = runWith(clock, [
@@ -266,7 +271,10 @@ describe("delivery retries", () => {
       DeliveryAttemptOutcome.forHttpStatus(503, 1),
       DeliveryAttemptOutcome.Success,
     ]);
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({ kind: "Delivered" });
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toMatchObject({
+      kind: "Settled",
+    });
+    expect((await targetRow(job)).kind).toBe("Delivered");
     expect(sleeps).toEqual([1_800_000, OutboxDelivery.backoffMs(1, 0)]);
     expect(run.points.map((point) => point.blobs[0])).toEqual([
       "throttled",
@@ -276,26 +284,28 @@ describe("delivery retries", () => {
   });
 
   it("stops at a permanent failure without retrying", async () => {
-    const job = await deliveryJob("retry-gone.example");
+    const job = await queuedJob("retry-gone.example");
     const clock = { now: START };
     const { steps, sleeps } = fakeSteps(clock);
     const run = runWith(clock, [DeliveryAttemptOutcome.forHttpStatus(410)]);
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({
-      kind: "Failed",
-      reasonKind: "Permanent",
-      httpStatus: 410,
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toEqual({
+      kind: "Settled",
+      rounds: 1,
     });
     expect(run.calls()).toBe(1);
     expect(sleeps).toEqual([]);
-    expect(await targetRow(job)).toMatchObject({ kind: "Failed", http_status: 410 });
+    expect(await targetRow(job)).toMatchObject({
+      kind: "Failed",
+      reason_kind: "Permanent",
+      http_status: 410,
+    });
     // The remote answered, so nothing is held against its domain.
     expect(await healthOf("retry-gone.example")).toBeUndefined();
   });
 
   it("carries on from the row's attempt count after a restart", async () => {
-    const job = await deliveryJob("retry-restarted.example");
-    (await ensureOutboxTarget(env.DB, job.activityId, job.inboxUrl))._unsafeUnwrap();
+    const job = await queuedJob("retry-restarted.example");
     await env.DB.prepare(
       "UPDATE outbox_deliveries SET attempt_count = 15 WHERE activity_id = ? AND inbox_url = ?",
     )
@@ -305,16 +315,19 @@ describe("delivery retries", () => {
     const { steps } = fakeSteps(clock);
     const run = runWith(clock, [DeliveryAttemptOutcome.Network]);
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({
-      kind: "Failed",
-      reasonKind: "RetryExhausted",
-      attemptCount: 17,
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toMatchObject({
+      kind: "Settled",
     });
     expect(run.calls()).toBe(2);
+    expect(await targetRow(job)).toMatchObject({
+      kind: "Failed",
+      reason_kind: "RetryExhausted",
+      attempt_count: 17,
+    });
   });
 
   it("does not hold a local failure against the remote", async () => {
-    const job = await deliveryJob("retry-local.example");
+    const job = await queuedJob("retry-local.example");
     const clock = { now: START };
     const { steps } = fakeSteps(clock);
     const run = runWith(
@@ -322,8 +335,109 @@ describe("delivery retries", () => {
       [DeliveryAttemptOutcome.Local, DeliveryAttemptOutcome.Success],
       false,
     );
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({ kind: "Delivered" });
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toMatchObject({
+      kind: "Settled",
+    });
+    expect((await targetRow(job)).kind).toBe("Delivered");
     expect(await healthOf("retry-local.example")).toBeUndefined();
+  });
+});
+
+describe("delivery to many inboxes", () => {
+  it("attempts ten inboxes to a step and retries only the failed ones in the next round", async () => {
+    const job = await queuedJob("many-00.example");
+    const inboxes = Array.from(
+      { length: 12 },
+      (_, i) => `https://many-${String(i).padStart(2, "0")}.example/inbox`,
+    );
+    (await ensureOutboxTargets(env.DB, job.activityId, inboxes))._unsafeUnwrap();
+    const clock = { now: START };
+    const { steps, names } = fakeSteps(clock);
+    const posted: string[] = [];
+    const deps = {
+      ...runWith(clock, [DeliveryAttemptOutcome.Success]).deps,
+      prepare:
+        async () =>
+        async (inboxUrl: string): Promise<InboxDeliveryAttempt> => {
+          posted.push(inboxUrl);
+          const failing = inboxUrl.includes("many-03") || inboxUrl.includes("many-11");
+          const first = posted.filter((url) => url === inboxUrl).length === 1;
+          return {
+            outcome:
+              failing && first
+                ? DeliveryAttemptOutcome.forHttpStatus(503)
+                : DeliveryAttemptOutcome.Success,
+            remote: true,
+          };
+        },
+    };
+    expect(await runOutboxDelivery(steps, deps, scopeOf(job))).toEqual({
+      kind: "Settled",
+      rounds: 2,
+    });
+    expect(names).toEqual([
+      "round-0-chunk-0",
+      "round-0-chunk-1",
+      "round-0-wait",
+      "round-1-chunk-0",
+    ]);
+    expect(posted).toHaveLength(14);
+    expect(posted.slice(12).toSorted()).toEqual([inboxes[3], inboxes[11]]);
+    for (const inboxUrl of inboxes) {
+      expect((await targetRow({ ...job, inboxUrl })).kind).toBe("Delivered");
+    }
+  });
+
+  it("does not post again to a target a failed step already settled", async () => {
+    const job = await queuedJob("rerun.example");
+    const clock = { now: START };
+    const names: string[] = [];
+    const steps: DeliverySteps = {
+      run: async (name, work) => {
+        names.push(name);
+        try {
+          return await work();
+        } catch {
+          return work();
+        }
+      },
+      sleepUntil: async () => {},
+    };
+    const run = runWith(clock, [DeliveryAttemptOutcome.Success]);
+    let failures = 0;
+    const deps = {
+      ...run.deps,
+      nextDue: async (scope: Readonly<{ activityId: string; inboxUrl: string | null }>) => {
+        if (failures === 0) {
+          failures += 1;
+          throw new Error("D1 unavailable");
+        }
+        return run.deps.nextDue(scope);
+      },
+    };
+    expect(await runOutboxDelivery(steps, deps, scopeOf(job))).toEqual({
+      kind: "Settled",
+      rounds: 1,
+    });
+    expect(run.calls()).toBe(1);
+    expect((await targetRow(job)).kind).toBe("Delivered");
+  });
+
+  it("delivers only its own inbox in an instance started for one inbox", async () => {
+    const job = await queuedJob("legacy-mine.example");
+    const other = "https://legacy-other.example/inbox";
+    (await ensureOutboxTargets(env.DB, job.activityId, [other]))._unsafeUnwrap();
+    const clock = { now: START };
+    const { steps } = fakeSteps(clock);
+    const run = runWith(clock, [DeliveryAttemptOutcome.Success]);
+    expect(
+      await runOutboxDelivery(steps, run.deps, {
+        activityId: job.activityId,
+        inboxUrl: job.inboxUrl,
+      }),
+    ).toEqual({ kind: "Settled", rounds: 1 });
+    expect((await targetRow(job)).kind).toBe("Delivered");
+    expect((await targetRow({ ...job, inboxUrl: other })).kind).toBe("Queued");
   });
 });
 
@@ -378,15 +492,15 @@ describe("unavailable domains", () => {
   });
 
   it("skip an attempt when the domain became unavailable during the retries", async () => {
-    const job = await deliveryJob("skip-midway.example");
+    const job = await queuedJob("skip-midway.example");
     const clock = { now: START };
     const { steps } = fakeSteps(clock);
     const run = runWith(clock, [DeliveryAttemptOutcome.Network]);
     vi.spyOn(console, "log").mockImplementation(() => {});
     await saveHealth(unavailable("skip-midway.example"));
-    expect(await runOutboxDelivery(steps, run.deps, job)).toEqual({
-      kind: "Skipped",
-      reasonKind: "DomainUnavailable",
+    expect(await runOutboxDelivery(steps, run.deps, scopeOf(job))).toEqual({
+      kind: "Settled",
+      rounds: 1,
     });
     expect(run.calls()).toBe(0);
     expect(run.points.map((point) => point.blobs[0])).toEqual(["skipped"]);
@@ -453,6 +567,10 @@ describe("unavailable domains", () => {
       .bind(inbox, account.id)
       .first();
     expect(row).toEqual({ kind: "Skipped", reason_kind: "DomainUnavailable" });
+    // The post's queued fan-out to followers is still running: let it start
+    // its delivery Workflows before the file ends, as a teardown during that
+    // never completes.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 });
 
@@ -471,7 +589,7 @@ describe("stuck-delivery sweep", () => {
     const restarted: string[] = [];
     const workflows: DeliveryWorkflowInstances = {
       create: async ({ params }) => {
-        created.push(params.inboxUrl);
+        created.push(params.activityId);
       },
       get: async (id) => {
         const status = states[id];
@@ -506,8 +624,8 @@ describe("stuck-delivery sweep", () => {
     // Due 30 minutes ago: within the grace, not looked at.
     await overdue(fresh, at(180), at(30));
     const { workflows, created, restarted } = fakeWorkflows({
-      [await deliveryWorkflowId(errored.activityId, errored.inboxUrl)]: "errored",
-      [await deliveryWorkflowId(sleeping.activityId, sleeping.inboxUrl)]: "waiting",
+      [await deliveryWorkflowId(errored.activityId)]: "errored",
+      [await deliveryWorkflowId(sleeping.activityId)]: "waiting",
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -515,8 +633,8 @@ describe("stuck-delivery sweep", () => {
     const swept = await sweepStuckDeliveries(env, stuckDeliveryDeps(env, workflows), now);
 
     expect(swept._unsafeUnwrap()).toMatchObject({ restarted: 1, waiting: 1, givenUp: 1 });
-    expect(created).toContain(never.inboxUrl);
-    expect(restarted).toEqual([await deliveryWorkflowId(errored.activityId, errored.inboxUrl)]);
+    expect(created).toContain(never.activityId);
+    expect(restarted).toEqual([await deliveryWorkflowId(errored.activityId)]);
     expect(await targetRow(never)).toMatchObject({
       kind: "Queued",
       next_attempt_at: new Date(now).toISOString(),

@@ -90,24 +90,18 @@ export const mastodonSseFrame = (event: StreamEventValue): string => {
   return `event: ${wire.event}\ndata: ${"payload" in wire ? wire.payload : ""}\n\n`;
 };
 
-/** Mastodon sends a `:thump` comment this often so proxies keep an idle connection open. */
-export const SSE_HEARTBEAT_MS = 15_000;
-
-/** Frames queued for a client that stopped reading before its connection is dropped. */
-const MAX_SSE_BACKLOG = 256;
-
-/**
- * Open SSE connections per hub. Unlike a hibernating WebSocket, an SSE
- * response keeps the Durable Object awake and billed, so it is bounded.
- */
+/** Open SSE connections per hub; each holds a Worker request open. */
 export const MAX_EVENT_STREAMS = 32;
 
-/** One open `text/event-stream` response: the stream it holds and how to write to it. */
-type EventStreamConnection = Readonly<{
-  state: SocketState;
-  write: (text: string) => void;
-  close: () => void;
-}>;
+/**
+ * The header the streaming route sets on a socket that carries an SSE
+ * response: the hub sends it SSE frames, and counts it against
+ * {@link MAX_EVENT_STREAMS}.
+ */
+export const EVENT_STREAM_HEADER = "x-tstodon-event-stream";
+
+/** The hibernation tag of a socket that carries an SSE response. */
+const EVENT_STREAM_TAG = "event-stream";
 
 /** A client's `subscribe` / `unsubscribe` message, as Mastodon's streaming server reads it. */
 const StreamCommandSchema = z.object({
@@ -124,7 +118,10 @@ const parseJson = (text: string): unknown => parseJsonText(text).unwrapOr(undefi
 /**
  * One account's open streaming sockets. Each socket carries the streams it
  * subscribed to in its attachment, so they survive hibernation, and hears
- * only events for those streams.
+ * only events for those streams. An SSE client is a socket too: the
+ * streaming route holds its response and writes the SSE frames the hub sends
+ * on a socket tagged {@link EVENT_STREAM_TAG}, so the hub hibernates between
+ * events whichever way clients connect.
  *
  * The hub mirrors its sockets' subscriptions (all but `user:notification`)
  * into `stream_subscriptions`, one row per distinct channel, where fan-outs
@@ -140,16 +137,6 @@ export class StreamHub extends DurableObject<Env> {
   private queue: Promise<unknown> = Promise.resolve();
 
   /**
-   * Open SSE responses. They live in memory, not in a socket attachment: a
-   * response being streamed keeps the hub awake, so the hub is never
-   * hibernated or evicted while one is open (unlike WebSockets, which it
-   * hibernates when idle). A hub reset by a deploy drops them, and their
-   * `stream_subscriptions` rows are removed by the next fan-out that finds
-   * nobody behind them.
-   */
-  private readonly eventStreams = new Set<EventStreamConnection>();
-
-  /**
    * Deliver to this hub, which `publishToHub` names as `hub`. With
    * `fromRows`, the caller found the hub by its rows for the delivery's
    * channels, so a channel no socket holds has a row left behind to drop.
@@ -162,19 +149,18 @@ export class StreamHub extends DurableObject<Env> {
     const wanted = new Set(delivery.value.channels.map(StreamChannel.key));
     const { event } = delivery.value;
     for (const { socket, state } of this.openSockets()) {
-      for (const channel of state.channels) {
-        if (wanted.has(StreamChannel.key(channel)) && mayHear(state.access, event)) {
-          socket.send(mastodonStreamMessage(channel, event));
-        }
+      if (!mayHear(state.access, event)) {
+        continue;
       }
-    }
-    for (const connection of [...this.eventStreams]) {
-      const { state } = connection;
-      if (
-        mayHear(state.access, event) &&
-        state.channels.some((channel) => wanted.has(StreamChannel.key(channel)))
-      ) {
-        connection.write(mastodonSseFrame(event));
+      const heard = state.channels.filter((channel) => wanted.has(StreamChannel.key(channel)));
+      if (this.ctx.getTags(socket).includes(EVENT_STREAM_TAG)) {
+        if (heard.length > 0) {
+          socket.send(mastodonSseFrame(event));
+        }
+        continue;
+      }
+      for (const channel of heard) {
+        socket.send(mastodonStreamMessage(channel, event));
       }
     }
     if (!fromRows) {
@@ -197,9 +183,13 @@ export class StreamHub extends DurableObject<Env> {
     }
     const hub = state.value.accountId;
     if (request.headers.get("Upgrade") !== "websocket") {
-      return this.serially(() => this.openEventStream(hub, state.value));
+      return new Response("Expected WebSocket", { status: 426 });
     }
+    const eventStream = request.headers.get(EVENT_STREAM_HEADER) === "1";
     return this.serially(async () => {
+      if (eventStream && this.ctx.getWebSockets(EVENT_STREAM_TAG).length >= MAX_EVENT_STREAMS) {
+        return Response.json({ error: "Too many streaming connections" }, { status: 429 });
+      }
       const refusal = this.admit([], state.value.channels);
       if (refusal) {
         const error = streamRefusalError(refusal);
@@ -215,77 +205,8 @@ export class StreamHub extends DurableObject<Env> {
         const error = streamRefusalError({ kind: "Unavailable" });
         return Response.json(error, { status: error.status });
       }
-      this.ctx.acceptWebSocket(pair[1]);
+      this.ctx.acceptWebSocket(pair[1], eventStream ? [EVENT_STREAM_TAG] : []);
       return new Response(null, { status: 101, webSocket: pair[0] });
-    });
-  }
-
-  /** An SSE response for `state`'s one stream, which `publish` writes to until the client goes. */
-  private async openEventStream(hub: string, state: SocketState): Promise<Response> {
-    if (this.eventStreams.size >= MAX_EVENT_STREAMS) {
-      return Response.json({ error: "Too many streaming connections" }, { status: 429 });
-    }
-    const refusal = this.admit([], state.channels);
-    if (refusal) {
-      const error = streamRefusalError(refusal);
-      return Response.json(error, { status: error.status });
-    }
-    const written = await this.addRows(hub, state.channels);
-    if (written.isErr()) {
-      const error = streamRefusalError({ kind: "Unavailable" });
-      return Response.json(error, { status: error.status });
-    }
-    const encoder = new TextEncoder();
-    let connection: EventStreamConnection | undefined;
-    const release = (): void => {
-      if (connection && this.eventStreams.delete(connection)) {
-        const released = connection;
-        this.ctx.waitUntil(
-          this.serially(async () => {
-            for (const channel of released.state.channels) {
-              await this.dropRowIfUnheld(hub, channel);
-            }
-          }),
-        );
-      }
-    };
-    const body = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        const heartbeat = setInterval(() => connection?.write(":thump\n\n"), SSE_HEARTBEAT_MS);
-        const close = (): void => {
-          clearInterval(heartbeat);
-          release();
-          try {
-            controller.close();
-          } catch {
-            // The client already cancelled the stream.
-          }
-        };
-        const write = (text: string): void => {
-          if ((controller.desiredSize ?? 0) < -MAX_SSE_BACKLOG) {
-            close();
-            return;
-          }
-          try {
-            controller.enqueue(encoder.encode(text));
-          } catch {
-            close();
-          }
-        };
-        connection = { state, write, close };
-        this.eventStreams.add(connection);
-        write(":)\n\n");
-      },
-      cancel: () => {
-        connection?.close();
-      },
-    });
-    return new Response(body, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-store",
-        "X-Accel-Buffering": "no",
-      },
     });
   }
 
@@ -456,12 +377,9 @@ export class StreamHub extends DurableObject<Env> {
     return new Set(this.heldChannels().map(StreamChannel.key));
   }
 
-  /** Every channel a WebSocket or an SSE response holds. */
+  /** Every channel an open socket holds. */
   private heldChannels(): StreamChannelValue[] {
-    return [
-      ...this.openSockets().flatMap(({ state }) => state.channels),
-      ...[...this.eventStreams].flatMap((connection) => connection.state.channels),
-    ];
+    return this.openSockets().flatMap(({ state }) => state.channels);
   }
 
   /**

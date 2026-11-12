@@ -22,12 +22,10 @@ export type RemoteStatusExtras = Readonly<{
   /** Its hashtags; none when unset. */
   tags?: ReadonlyArray<ApiTagJSON> | undefined;
   pollVotes?: RemotePollVotes | undefined;
-  /** Local accounts' favourites and boosts only; remote totals are not kept. */
+  /** Favourites, boosts, quotes and replies seen on this instance; remote totals are not kept. */
   interactions?: StatusInteractionCounts | undefined;
   /** Whether the viewer may quote it; no viewer may when unset, as Mastodon answers an anonymous one. */
   quoteApproval?: QuoteApprovalForViewer | undefined;
-  /** Accepted quotes by statuses on this instance; remote totals are not kept. */
-  quotesCount?: number | undefined;
 }>;
 
 /** A remote status with `account`, its author as the reader is shown it. */
@@ -51,7 +49,7 @@ export const mastodonRemoteStatus = (
     language: status.language.kind === "Present" ? status.language.value : null,
     uri: status.objectUri,
     url,
-    replies_count: 0,
+    replies_count: interactions.replies,
     reblogs_count: interactions.reblogs,
     favourites_count: interactions.favourites,
     edited_at: status.editedAt.kind === "Edited" ? status.editedAt.at : null,
@@ -89,7 +87,7 @@ export const mastodonRemoteStatus = (
         ? null
         : remotePollJson(status.id, status.poll, pollVotes, status.emojis),
     quote: null,
-    quotes_count: extras.quotesCount ?? 0,
+    quotes_count: interactions.quotes,
     quote_approval: {
       automatic: status.quotePolicy.automatic,
       manual: status.quotePolicy.manual,

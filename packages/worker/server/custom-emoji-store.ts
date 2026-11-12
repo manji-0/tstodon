@@ -1,5 +1,5 @@
 import type { ApiAdminCustomEmojiJSON } from "@tstodon/api";
-import type { Result } from "neverthrow";
+import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
@@ -62,6 +62,39 @@ export const listCustomEmojiRows = async (
     return queryTyped(db, listCustomEmojiRowsSql(), CustomEmojiRowSchema);
   });
 
+/**
+ * How long one isolate reuses the rows `loadCustomEmojis` read: every status
+ * and account render needs them, and they change only on admin edits. A
+ * write through this module clears the copy at once in its own isolate;
+ * other isolates see it within this window.
+ */
+const CUSTOM_EMOJI_CACHE_TTL_MS = 60_000;
+
+let cachedRows: Readonly<{ db: D1Database; expiresAt: number; rows: CustomEmojiRow[] }> | undefined;
+
+const cachedCustomEmojiRows = async (
+  db: D1Database,
+): Promise<Result<CustomEmojiRow[], RepositoryError>> => {
+  const now = Date.now();
+  if (cachedRows && cachedRows.db === db && cachedRows.expiresAt > now) {
+    return ok(cachedRows.rows);
+  }
+  const rows = await listCustomEmojiRows(db);
+  if (rows.isOk()) {
+    cachedRows = { db, expiresAt: now + CUSTOM_EMOJI_CACHE_TTL_MS, rows: rows.value };
+  }
+  return rows;
+};
+
+/** Run a write, then drop this isolate's copy of the rows. */
+const thenForgetRows = async <T>(
+  write: Promise<Result<T, RepositoryError>>,
+): Promise<Result<T, RepositoryError>> => {
+  const result = await write;
+  cachedRows = undefined;
+  return result;
+};
+
 const findOne = async (
   db: D1Database,
   typed: { readonly sql: string; readonly values: ReadonlyArray<unknown> },
@@ -96,21 +129,23 @@ export const insertCustomEmoji = async (
     category: string | null;
   },
 ): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await runTyped(
-      db,
-      insertCustomEmojiSql(
-        input.id,
-        input.shortcode,
-        input.objectKey,
-        input.contentType,
-        input.visibleInPicker ? 1 : 0,
-        input.category,
-        nowIso(),
-        input.imageFileSize,
-      ),
-    );
-  });
+  thenForgetRows(
+    runD1(async () => {
+      await runTyped(
+        db,
+        insertCustomEmojiSql(
+          input.id,
+          input.shortcode,
+          input.objectKey,
+          input.contentType,
+          input.visibleInPicker ? 1 : 0,
+          input.category,
+          nowIso(),
+          input.imageFileSize,
+        ),
+      );
+    }),
+  );
 
 export const updateCustomEmojiAttributes = async (
   db: D1Database,
@@ -118,14 +153,16 @@ export const updateCustomEmojiAttributes = async (
   visibleInPicker: boolean,
   category: string | null,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      updateCustomEmojiAttributesSql(id, visibleInPicker ? 1 : 0, category, nowIso()),
-      IdRow,
-    );
-    return rows.length > 0;
-  });
+  thenForgetRows(
+    runD1(async () => {
+      const rows = await queryTyped(
+        db,
+        updateCustomEmojiAttributesSql(id, visibleInPicker ? 1 : 0, category, nowIso()),
+        IdRow,
+      );
+      return rows.length > 0;
+    }),
+  );
 
 export const replaceCustomEmojiImage = async (
   db: D1Database,
@@ -134,24 +171,28 @@ export const replaceCustomEmojiImage = async (
   contentType: string,
   imageFileSize: number,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      replaceCustomEmojiImageSql(id, objectKey, contentType, nowIso(), imageFileSize),
-      IdRow,
-    );
-    return rows.length > 0;
-  });
+  thenForgetRows(
+    runD1(async () => {
+      const rows = await queryTyped(
+        db,
+        replaceCustomEmojiImageSql(id, objectKey, contentType, nowIso(), imageFileSize),
+        IdRow,
+      );
+      return rows.length > 0;
+    }),
+  );
 
 /** Delete a custom emoji, returning its object key so the caller can drop the image. */
 export const deleteCustomEmoji = async (
   db: D1Database,
   id: string,
 ): Promise<Result<string | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, deleteCustomEmojiSql(id), ObjectKeyRow);
-    return rows[0]?.object_key;
-  });
+  thenForgetRows(
+    runD1(async () => {
+      const rows = await queryTyped(db, deleteCustomEmojiSql(id), ObjectKeyRow);
+      return rows[0]?.object_key;
+    }),
+  );
 
 /**
  * Custom emojis for this instance: the `CUSTOM_EMOJIS` var plus admin-managed
@@ -161,7 +202,7 @@ export const loadCustomEmojis = async (
   env: Env,
   mediaPublicBaseUrl: string,
 ): Promise<ReadonlyArray<CustomEmoji>> => {
-  const rows = await listCustomEmojiRows(env.DB);
+  const rows = await cachedCustomEmojiRows(env.DB);
   const byShortcode = new Map<string, CustomEmoji>([
     ...configuredCustomEmojis(env).map((emoji): [string, CustomEmoji] => [
       emoji.shortcode.toLowerCase(),

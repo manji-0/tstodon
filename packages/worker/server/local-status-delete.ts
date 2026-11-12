@@ -3,10 +3,10 @@ import { err, ok, type Result } from "neverthrow";
 import { noteDeleteActivity, noteDocument } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { enqueueLocalActivity } from "./delivery";
-import { announceRemovedBoosts, enqueueHomeFanOut } from "./home-fan-out";
+import { announceRemovedBoosts, startHomeFanOut } from "./home-fan-out";
 import { loadNoteMentions } from "./mention-resolve";
 import { reachesRemoteInboxes } from "./outbox-job";
-import { enqueuePublicFanOut } from "./public-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
 import { loadNoteReply } from "./reply-target";
 import { deleteStatus, type StatusMediaOnDelete } from "./status-store";
 import { deleteMediaObjects } from "./media-objects";
@@ -52,13 +52,13 @@ export const deleteLocalStatus = async (
   await deleteMediaObjects(env, deleted.value.mediaObjectKeys, { statusId: status.id });
   await announceRemovedBoosts(env, deleted.value.boosts);
   await publishToAccount(env, account.id, { kind: "delete", statusId: status.id });
-  await enqueueHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "delete",
     entryId: status.id,
     author: { kind: "LocalAccount", accountId: account.id },
   });
   if (status.kind === "LocalNote" && status.visibility.kind === "Public") {
-    await enqueuePublicFanOut(env, { event: "delete", entryId: status.id });
+    await startPublicFanOut(env, { event: "delete", entryId: status.id });
   }
   if (tombstone && reachesRemoteInboxes(tombstone, identity.domain)) {
     // The status is gone either way; a failed enqueue only leaves remote copies.

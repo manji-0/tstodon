@@ -36,9 +36,9 @@ import { findQuoteByQuoting, listQuotingTargets, saveQuoteState } from "../../qu
 import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
 import { nowIso } from "../../clock";
-import { enqueueHomeFanOut } from "../../home-fan-out";
+import { startHomeFanOut } from "../../home-fan-out";
 import { announceNoteUpdate } from "../../local-status-update";
-import { enqueuePublicFanOut } from "../../public-fan-out";
+import { startPublicFanOut } from "../../public-fan-out";
 
 const statusEngagementAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -201,13 +201,13 @@ const publishQuoteRevoke = async (
     }
     return;
   }
-  await enqueueHomeFanOut(env, {
+  await startHomeFanOut(env, {
     event: "status.update",
     entryId: quoting.status.id,
     author: { kind: "RemoteActor", actorUri: quoting.status.actorUri },
   });
   if (quoting.status.visibility.kind === "Public") {
-    await enqueuePublicFanOut(env, { event: "status.update", entryId: quoting.status.id });
+    await startPublicFanOut(env, { event: "status.update", entryId: quoting.status.id });
   }
 };
 

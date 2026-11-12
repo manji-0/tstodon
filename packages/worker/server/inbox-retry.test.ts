@@ -1,10 +1,11 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiStatus, ApiStatusEdit } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { type Heard, openStream } from "../test/stream-fixture";
 import { parseRows } from "./d1";
 import { unsignedFetch } from "./federated-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -63,6 +64,14 @@ const status = async (id: string) =>
     ApiStatus,
     await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).json(),
   );
+
+const PUBLIC_STREAM = { kind: "Public", origin: "All", onlyMedia: false } as const;
+
+/** The event a stream carried and the id of the status it is about. */
+const heardStatus = (heard: Heard) => ({
+  event: heard.event,
+  id: expectContract(z.object({ id: z.string() }), JSON.parse(heard.payload)).id,
+});
 
 /** The kinds of late work the stored note is still owed (`remote_status_owed`). */
 const owedKinds = async (statusId: string): Promise<string[]> =>
@@ -392,23 +401,11 @@ describe("an inbox activity that failed after its row was stored", () => {
       tag: [{ type: "Mention", href: elsewhere }],
       updated: "2026-10-21T00:00:00.000Z",
     });
-    const identity = parseInstanceIdentity(env);
-    const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
-      .unwrapOr(undefined)
-      ?.get(author.actorUri);
-    if (identity.isErr() || !signer) {
-      throw new Error("update fixture rejected");
-    }
-    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue({
-      metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+    const activity = { id: `${edited.id}/update`, type: "Update", object: edited };
+    const viewer = await openStream({
+      email: "inbox-retry-update-stream@example.com",
+      query: "?stream=public",
     });
-    const streamedEdits = (): number =>
-      parseRows(
-        z.object({ kind: z.literal("FanOutHome"), event: z.literal("status.update") }),
-        send.mock.calls.map(([body]) => body),
-      ).length;
-    const apply = () =>
-      applyRemoteUpdate(env, identity.value, signer, edited, { fetchSigner: unsignedFetch });
 
     const allow = await refuseInsert(
       "inbox_retry_update_stream",
@@ -417,16 +414,17 @@ describe("an inbox activity that failed after its row was stored", () => {
       elsewhere,
     );
     try {
-      expect((await apply()).isErr()).toBe(true);
-      expect(streamedEdits()).toBe(0);
-      await allow();
-      expect((await apply()).isOk()).toBe(true);
-      expect(streamedEdits()).toBe(1);
-      expect(await owedKinds(id)).toEqual([]);
+      expect(await author.send(activity)).toBe(500);
+      expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
     } finally {
-      vi.restoreAllMocks();
-      await env.DB.prepare("DROP TRIGGER IF EXISTS inbox_retry_update_stream").run();
+      await allow();
     }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "status.update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
   });
 });
 
@@ -483,14 +481,10 @@ describe("two inbox activities that carry one note", () => {
       published: new Date().toISOString(),
     });
     const deliver = (await deliverer(author))(object);
-    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue({
-      metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+    const viewer = await openStream({
+      email: "inbox-retry-create-stream@example.com",
+      query: "?stream=public",
     });
-    const streamed = (): number =>
-      parseRows(
-        z.object({ kind: z.literal("FanOutHome"), event: z.literal("update") }),
-        send.mock.calls.map(([body]) => body),
-      ).length;
 
     const allow = await refuseInsert(
       "inbox_retry_create_stream",
@@ -500,23 +494,23 @@ describe("two inbox activities that carry one note", () => {
     );
     try {
       expect((await deliver("Create")).isErr()).toBe(true);
-      await allow();
-      const id = (await storedId(object.id)) ?? "";
-      expect(streamed()).toBe(0);
-
-      // The QuoteRequest finishes the writes, but streaming is the Create's to do.
-      expect((await deliver("QuoteRequest")).isOk()).toBe(true);
-      expect(await remoteMentions(id)).toEqual([elsewhere]);
-      expect(streamed()).toBe(0);
-      expect(await owedKinds(id)).toEqual(["Created"]);
-
-      expect((await deliver("Create")).isOk()).toBe(true);
-      expect(streamed()).toBe(1);
-      expect(await owedKinds(id)).toEqual([]);
     } finally {
-      vi.restoreAllMocks();
-      await env.DB.prepare("DROP TRIGGER IF EXISTS inbox_retry_create_stream").run();
+      await allow();
     }
+    const id = (await storedId(object.id)) ?? "";
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+
+    // The QuoteRequest finishes the writes, but streaming is the Create's to do.
+    expect((await deliver("QuoteRequest")).isOk()).toBe(true);
+    expect(await remoteMentions(id)).toEqual([elsewhere]);
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual(["Created"]);
+
+    expect((await deliver("Create")).isOk()).toBe(true);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
   });
 });
 

@@ -55,7 +55,8 @@ import { findShownStatusAnywhere } from "../../found-status";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
 import { applyMediaAttributes } from "../../local-status-publish";
-import { checkAttachableMedia, queueLinkCard } from "./create";
+import { checkAttachableMedia } from "./create";
+import { startLinkCard } from "../../link-card";
 import { checkPollLimits, draftRefusal } from "./status-limits";
 import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
@@ -333,7 +334,7 @@ const editNote = async (
       statusId: edge.statusId,
     });
   }
-  await queueLinkCard(env, existing.id, revised.text);
+  startLinkCard(env, "Status", existing.id, revised.text);
   if (pollUpdate.value) {
     const poll = await replacePollOptions(env.DB, pollUpdate.value);
     if (poll.isErr()) {

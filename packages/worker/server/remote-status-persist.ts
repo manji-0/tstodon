@@ -17,17 +17,17 @@ import { isHashtagName, normalizeHashtag, schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant, nowIso } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
-import { enqueueLinkCard } from "./link-card";
+import { startLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemoteOnce } from "./notify";
-import { enqueueHomeFanOut } from "./home-fan-out";
-import { enqueuePublicFanOut } from "./public-fan-out";
+import { startHomeFanOut } from "./home-fan-out";
+import { startPublicFanOut } from "./public-fan-out";
 import {
   clearOwed,
   listOwed,
@@ -448,12 +448,7 @@ export const finishRemoteNote = async (
     return err(quote.error);
   }
   // Preview cards are built off the request path like for local posts.
-  const card = await runD1(() =>
-    enqueueLinkCard(env, "RemoteStatus", status.id, status.contentHtml),
-  );
-  if (card.isErr()) {
-    return err(card.error);
-  }
+  startLinkCard(env, "RemoteStatus", status.id, status.contentHtml);
   if (late.kind === "Updated" && late.edit) {
     // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
     // Quotes are skipped: a local account cannot yet quote a remote status.
@@ -475,15 +470,19 @@ export const finishRemoteNote = async (
   }
   // The stream events come last. A redelivery that got this far before it
   // failed sends them again, and a client drops a status it already holds.
+  // They are started here and run once the response is ready, best effort:
+  // a page that fails goes to the queue, and nothing they do can fail the
+  // delivery. So the marker stands for their start, not their end, and is
+  // deleted below without waiting for them.
   const event = streamEvent(late);
   if (event !== undefined) {
-    await enqueueHomeFanOut(env, {
+    await startHomeFanOut(env, {
       event,
       entryId: status.id,
       author: { kind: "RemoteActor", actorUri: actor.actorUri },
     });
     if (status.visibility.kind === "Public") {
-      await enqueuePublicFanOut(env, { event, entryId: status.id });
+      await startPublicFanOut(env, { event, entryId: status.id });
     }
   }
   const finished = finishedMarker(late);

@@ -109,6 +109,18 @@ const parseWindow = (raw: string | undefined, fallback: number, min: number): Re
 const cutoffOf = (window: RetentionWindow, nowMs: number): string | undefined =>
   window.kind === "Off" ? undefined : new Date(nowMs - window.days * DAY_MS).toISOString();
 
+export const RetentionWindow = {
+  schema: RetentionWindowSchema,
+  /**
+   * A retention var: empty or unset is `fallback` days, `0` / `off` is no
+   * pruning, a positive whole number is days (no fewer than `min`), anything
+   * else is `fallback`.
+   */
+  parse: parseWindow,
+  /** Rows older than this instant (ISO) are past the window; none for `Off`. */
+  cutoff: cutoffOf,
+};
+
 export const ActivityVacuum = {
   batch: BATCH,
   defaultDays: DEFAULT_DAYS,

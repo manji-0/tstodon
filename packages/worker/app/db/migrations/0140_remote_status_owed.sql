@@ -6,12 +6,19 @@
 -- `kind` is what the write was: `Created` (a note stored by an inbox
 -- activity) or `Edited` (an `Update` that changed its content). `token` names
 -- the delivery that wrote the marker, which is the only one that deletes it.
--- No payload: the redelivery carries the document.
+-- The redelivery carries the document, so the only payload is
+-- `mentions_json`: the local accounts an edit newly mentions, as a JSON array
+-- of account ids on its `Edited` marker. The redelivery that finishes the
+-- edit cannot work them out again, as the failed delivery may have written
+-- their mention rows, which is how a first delivery tells a new mention from
+-- one the note had. Empty for a `Created` marker, whose every mention is new.
+-- A marker goes with its status (remote status retention deletes stale ones).
 CREATE TABLE remote_status_owed (
   status_id TEXT NOT NULL REFERENCES remote_statuses(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('Created', 'Edited')),
   token TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  mentions_json TEXT NOT NULL DEFAULT '[]',
   PRIMARY KEY (status_id, kind)
 );
 

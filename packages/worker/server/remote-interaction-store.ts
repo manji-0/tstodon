@@ -5,8 +5,6 @@ import { newEntityId } from "./ids";
 import type { Result } from "neverthrow";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
-  countRemoteAnnounces as countRemoteAnnouncesSql,
-  countRemoteFavourites as countRemoteFavouritesSql,
   deleteRemoteAnnounce as deleteRemoteAnnounceSql,
   deleteRemoteFavourite as deleteRemoteFavouriteSql,
   listPollInteractorInboxes as listPollInteractorInboxesSql,
@@ -17,7 +15,6 @@ import {
 
 const IdRow = z.object({ id: z.string().nullable() });
 const IdCreatedAtRow = z.object({ id: z.string().nullable(), created_at: z.string() });
-const CountRow = z.object({ count: z.number() });
 const InboxUriRow = z.object({ inbox_uri: z.string() });
 
 /** Record a remote Like; `true` only when it is new (a redelivery answers `false`). */
@@ -69,24 +66,6 @@ export const deleteRemoteAnnounce = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, deleteRemoteAnnounceSql(remoteActorUri, statusId));
-  });
-
-export const countRemoteFavourites = async (
-  db: D1Database,
-  statusId: string,
-): Promise<Result<number, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, countRemoteFavouritesSql(statusId), CountRow);
-    return Number(rows[0]?.count ?? 0);
-  });
-
-export const countRemoteAnnounces = async (
-  db: D1Database,
-  statusId: string,
-): Promise<Result<number, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, countRemoteAnnouncesSql(statusId), CountRow);
-    return Number(rows[0]?.count ?? 0);
   });
 
 /**

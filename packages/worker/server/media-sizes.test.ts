@@ -394,8 +394,13 @@ describe("BackfillStoredMediaSizes", () => {
     expect(head).not.toHaveBeenCalled();
   });
 
-  it("is queued by the six-hourly cron, not the hourly one", async () => {
-    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+  it("is run by the six-hourly cron, not the hourly one", async () => {
+    await runBackfill();
+    const seeded = await seedUnsized(
+      await accountIdOf("sizes-cron@example.com"),
+      new Uint8Array(1234),
+    );
+    vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     const fire = async (cron: string) => {
       const ctx = createExecutionContext();
@@ -406,10 +411,9 @@ describe("BackfillStoredMediaSizes", () => {
       );
       await waitOnExecutionContext(ctx);
     };
-    const start = { kind: "BackfillStoredMediaSizes", source: "attachments", afterId: "" };
     await fire("17 * * * *");
-    expect(send).not.toHaveBeenCalledWith(start);
+    expect((await mediaSizes(seeded.id)).file_size).toBeNull();
     await fire("17 */6 * * *");
-    expect(send).toHaveBeenCalledWith(start);
+    expect((await mediaSizes(seeded.id)).file_size).toBe(1234);
   });
 });

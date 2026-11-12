@@ -344,9 +344,9 @@ describe("StripStoredMediaMetadata", () => {
     };
     const start = { kind: "StripStoredMediaMetadata", source: "attachments", afterId: "" };
     await fire("17 * * * *");
-    expect(send).not.toHaveBeenCalledWith(start);
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining(start));
     await fire("17 */6 * * *");
-    expect(send).toHaveBeenCalledWith(start);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining(start));
   });
 
   it("re-stripping already clean bytes is a no-op", () => {
