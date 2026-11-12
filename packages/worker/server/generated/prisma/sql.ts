@@ -480,6 +480,8 @@ export * from "./sql/insertRemotePollOwnVote";
 
 export * from "./sql/insertRemotePollVoteOrIgnore";
 
+export * from "./sql/insertRemoteStatus";
+
 export * from "./sql/insertRemoteStatusEdit";
 
 export * from "./sql/insertRemoteStatusMention";

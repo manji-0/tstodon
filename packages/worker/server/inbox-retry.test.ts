@@ -439,12 +439,107 @@ describe("two inbox activities that carry one note", () => {
       throw new Error("delivery fixture rejected");
     }
     return (object: Readonly<{ id: string } & Record<string, unknown>>) =>
-      (delivery: "Create" | "QuoteRequest") =>
-        persistRemoteObject(env, identity.value, signer, object, {
+      (delivery: "Create" | "QuoteRequest", running: Env = env) =>
+        persistRemoteObject(running, identity.value, signer, object, {
           fetchSigner: unsignedFetch,
           delivery,
         });
   };
+
+  /** `env` whose first D1 batch waits for `between` to run first, as another request would. */
+  const interleaving = (between: () => Promise<unknown>): Env => {
+    let ran = false;
+    const db = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key === "batch") {
+          return async (statements: D1PreparedStatement[]) => {
+            if (!ran) {
+              ran = true;
+              await between();
+            }
+            return target.batch(statements);
+          };
+        }
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    return new Proxy(env, {
+      get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)),
+    });
+  };
+
+  it("stores the note once when a QuoteRequest stores it between a Create's read of its URI and its write", async () => {
+    const mentioned = await localAccount("inbox-retry-raced@example.com");
+    const author = await remoteActor("retry-raced");
+    const object = note(author, "retry-raced", {
+      content: "<p>hi @you #raced</p>",
+      tag: [hashtag("raced"), { type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+    });
+    const deliver = (await deliverer(author))(object);
+    let first: Awaited<ReturnType<typeof deliver>> | undefined;
+
+    const second = await deliver(
+      "Create",
+      interleaving(async () => {
+        first = await deliver("QuoteRequest");
+      }),
+    );
+
+    const id = (await storedId(object.id)) ?? "";
+    expect(first?.isOk() && first.value?.id).toBe(id);
+    expect(second.isOk() && second.value?.id).toBe(id);
+    expect(
+      parseRows(
+        z.object({ id: z.string() }),
+        (
+          await env.DB.prepare("SELECT id FROM remote_statuses WHERE actor_uri = ?")
+            .bind(author.actorUri)
+            .all()
+        ).results,
+      ),
+    ).toEqual([{ id }]);
+    expect(await status(id)).toMatchObject({ tags: [{ name: "raced" }] });
+    expect(await owedKinds(id)).toEqual([]);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+  });
+
+  // A smoke test, not the proof of the race: the test runtime does not run
+  // the two requests' reads before either write, so this passes without the
+  // fix too. The interleaved batch above is what fails without it.
+  it("smoke: answers a QuoteRequest and a Create of one new note sent together with 202, and stores one row", async () => {
+    const quoted = await localAccount("inbox-retry-at-once@example.com");
+    const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...quoted.headers },
+      body: JSON.stringify({ status: "quote me" }),
+    });
+    const quotedUri = `${quoted.actorUrl}/statuses/${expectContract(ApiStatus, await posted.json()).id}`;
+    for (let round = 0; round < 6; round += 1) {
+      const author = await remoteActor(`retry-at-once-${round}`);
+      const object = note(author, `retry-at-once-${round}`, {
+        content: "<p>quoting #atonce</p>",
+        tag: [hashtag("atonce")],
+        quote: quotedUri,
+      });
+
+      const answers = await Promise.all([
+        author.send({
+          id: `${author.actorUri}/quote_requests/${round}`,
+          type: "QuoteRequest",
+          object: quotedUri,
+          instrument: object,
+        }),
+        author.send({ id: `${object.id}/create`, type: "Create", object }),
+      ]);
+
+      expect(answers).toEqual([202, 202]);
+      const id = (await storedId(object.id)) ?? "";
+      expect(await status(id)).toMatchObject({ tags: [{ name: "atonce" }] });
+      expect(await owedKinds(id)).toEqual([]);
+    }
+  });
 
   it("notifies a mentioned account once when a Create arrives while the QuoteRequest that stored the note is in its late steps", async () => {
     const counts: number[] = [];
@@ -854,5 +949,28 @@ describe("a delivery of a note whose stored row does not read as a status", () =
       visibility: "unreadable",
       content_html: "<p>stored</p>",
     });
+  });
+});
+
+describe("a note document that parses but does not read as a status", () => {
+  it("answers its Create and its Update with 202 and stores nothing of it, as a note that does not parse", async () => {
+    const author = await remoteActor("unreadable-document");
+    const stored = note(author, "unreadable-document", { content: "<p>stored</p>" });
+    expect(await author.send({ id: `${stored.id}/create`, type: "Create", object: stored })).toBe(
+      202,
+    );
+    const id = (await storedId(stored.id)) ?? "";
+    // `url` is any string in the document, and a URL in a status.
+    const broken = { url: "not a url", updated: "2026-10-21T00:00:00.000Z" };
+    const fresh = note(author, "unreadable-document-new", { content: "<p>new</p>", ...broken });
+    const edit = { ...stored, content: "<p>edited</p>", ...broken };
+
+    expect(await author.send({ id: `${fresh.id}/create`, type: "Create", object: fresh })).toBe(
+      202,
+    );
+    expect(await author.send({ id: `${edit.id}/update`, type: "Update", object: edit })).toBe(202);
+
+    expect(await storedId(fresh.id)).toBeUndefined();
+    expect(await status(id)).toMatchObject({ content: "<p>stored</p>", edited_at: null });
   });
 });

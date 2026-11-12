@@ -17,16 +17,17 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
 import {
+  foundRow,
   jsonStringArray,
   okValues,
   parseRows,
   type RepositoryError,
   runD1,
   runD1Batch,
+  type StoredRowInvalid,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonColumn, parseJsonText } from "./json-column";
-import { toRepositoryError } from "./d1";
 import { visibilitySql } from "./sql-enums";
 import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import {
@@ -47,11 +48,12 @@ import {
   markRemoteStatusesTagsIndexed as markRemoteStatusesTagsIndexedSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
+  insertRemoteStatus as insertRemoteStatusSql,
   refuseReplacedRemoteStatus as refuseReplacedRemoteStatusSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
 import { settleRemotePollVotesStatement } from "./remote-poll-vote-store";
-import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped, type TypedSqlLike } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
 const VisibilityRow = z.object({ visibility: z.string() });
@@ -114,26 +116,15 @@ const quotePolicyFromJson = (raw: string | null): QuoteInteractionPolicy =>
     ? QuoteInteractionPolicy.none
     : parseJsonColumn(QuoteInteractionPolicy.schema, raw).unwrapOr(QuoteInteractionPolicy.none);
 
-/**
- * A stored remote status row that does not read as a status. Unlike a
- * `RepositoryError`, reading it again gives the same answer, so a sender
- * gains nothing by delivering again. `id` and `actorUri` are the row's.
- */
-export type StoredRowInvalid = Readonly<{
-  kind: "StoredRowInvalid";
-  id: string;
-  actorUri: string;
-}>;
-
-/** The error of a reader that fails on a row it cannot use, whatever is wrong with it. */
-export const storedRowError = (_invalid: StoredRowInvalid): RepositoryError =>
-  toRepositoryError("invalid remote status row");
+/** A stored remote status row that does not read as a status, and the author it names. */
+export type InvalidRemoteStatusRow = StoredRowInvalid & Readonly<{ actorUri: string }>;
 
 export const remoteStatusFromRow = (
   row: RemoteStatusRow,
-): Result<RemoteStatus, StoredRowInvalid> => {
-  const invalid: StoredRowInvalid = {
+): Result<RemoteStatus, InvalidRemoteStatusRow> => {
+  const invalid: InvalidRemoteStatusRow = {
     kind: "StoredRowInvalid",
+    fault: "Values",
     id: row.id,
     actorUri: row.actor_uri,
   };
@@ -166,27 +157,56 @@ export const remoteStatusFromRow = (
   }).mapErr(() => invalid);
 };
 
-const readRemoteStatus = async (
-  queried: Result<RemoteStatusRow | undefined, RepositoryError>,
-): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
+const InvalidRowRef = z.object({ id: z.string(), actor_uri: z.string() });
+
+/**
+ * The status a stored row holds, as D1 returned it. A row whose shape does
+ * not parse (an empty `published_at`, a `sensitive` that is no number) is
+ * invalid as one whose values do not read: both are there, and neither is a
+ * status.
+ */
+const storedRemoteStatus = (raw: unknown): Result<RemoteStatus, InvalidRemoteStatusRow> => {
+  const row = parseRemoteStatusRow(raw);
+  if (row.isOk()) {
+    return remoteStatusFromRow(row.value);
+  }
+  const ref = schemaResult(InvalidRowRef)(raw);
+  return err({
+    kind: "StoredRowInvalid",
+    fault: "Shape",
+    id: ref.isOk() ? ref.value.id : "",
+    actorUri: ref.isOk() ? ref.value.actor_uri : "",
+  });
+};
+
+/** What a read of one stored remote status gives: the status, none, or a row that is no status. */
+export type RemoteStatusRead = Result<
+  RemoteStatus | undefined,
+  RepositoryError | InvalidRemoteStatusRow
+>;
+
+/** The first row of a query for one remote status, unparsed, or `undefined` for none. */
+const findRow = (db: D1Database, typed: TypedSqlLike): Promise<Result<unknown, RepositoryError>> =>
+  runD1(async () => (await queryTyped(db, typed, z.unknown()))[0]);
+
+const readRemoteStatus = (queried: Result<unknown, RepositoryError>): RemoteStatusRead => {
   if (queried.isErr()) {
     return err(queried.error);
   }
-  return queried.value === undefined
-    ? ok(undefined)
-    : remoteStatusFromRow(queried.value).mapErr(storedRowError);
+  return queried.value === undefined ? ok(undefined) : storedRemoteStatus(queried.value);
 };
+
+/** {@link findDeliveredRemoteStatus}, by id. */
+export const findDeliveredRemoteStatusById = async (
+  db: D1Database,
+  id: string,
+): Promise<RemoteStatusRead> => readRemoteStatus(await findRow(db, findRemoteStatusByIdSql(id)));
 
 export const findRemoteStatusById = async (
   db: D1Database,
   id: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  readRemoteStatus(
-    await runD1(async () => {
-      const rows = await queryTyped(db, findRemoteStatusByIdSql(id), RemoteStatusRowSchema);
-      return rows[0];
-    }),
-  );
+  foundRow(await findDeliveredRemoteStatusById(db, id));
 
 /**
  * Claim fetching the status's thread unless one was claimed within `ttlMs`.
@@ -283,40 +303,23 @@ export const findRemoteStatusesByIds = async (
   );
 };
 
-const findRowByObjectUri = (
+/**
+ * The status stored at an object URI, for a caller that tells a row that
+ * does not read as a status from a failed read: an inbox activity settles
+ * the first (it replaces the row, or goes on without it), where a failed
+ * read is retried.
+ */
+export const findDeliveredRemoteStatus = async (
   db: D1Database,
   objectUri: string,
-): Promise<Result<RemoteStatusRow | undefined, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      findRemoteStatusByObjectUriSql(objectUri),
-      RemoteStatusRowSchema,
-    );
-    return rows[0];
-  });
+): Promise<RemoteStatusRead> =>
+  readRemoteStatus(await findRow(db, findRemoteStatusByObjectUriSql(objectUri)));
 
 export const findRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,
 ): Promise<Result<RemoteStatus | undefined, RepositoryError>> =>
-  readRemoteStatus(await findRowByObjectUri(db, objectUri));
-
-/**
- * The status an inbox `Create` or `Update` finds stored at its object URI.
- * A row that does not read as a status is told apart from a failed read:
- * the delivery replaces or drops it, where a failed read is retried.
- */
-export const findDeliveredRemoteStatus = async (
-  db: D1Database,
-  objectUri: string,
-): Promise<Result<RemoteStatus | undefined, RepositoryError | StoredRowInvalid>> => {
-  const queried = await findRowByObjectUri(db, objectUri);
-  if (queried.isErr()) {
-    return err(queried.error);
-  }
-  return queried.value === undefined ? ok(undefined) : remoteStatusFromRow(queried.value);
-};
+  foundRow(await findDeliveredRemoteStatus(db, objectUri));
 
 const StatusTagRow = z.object({ status_id: z.string(), tag: z.string() });
 
@@ -364,43 +367,151 @@ const remoteStatusTagStatements = (
   ...recordTagNames(db, searchableTagNames(visibility, tags)),
 ];
 
-/** The statement that inserts a remote status row, or updates the row its object URI already holds. */
+/** The row `status` is stored as, without a card: what {@link remoteStatusFromRow} reads back. */
+const remoteStatusRowOf = (status: RemoteStatus): RemoteStatusRow => ({
+  id: status.id,
+  actor_uri: status.actorUri,
+  object_uri: status.objectUri,
+  url: status.url ?? null,
+  content_html: status.contentHtml,
+  spoiler_text: status.spoilerText,
+  visibility: visibilitySql(status.visibility),
+  sensitive: status.sensitive ? 1 : 0,
+  language: status.language.kind === "Present" ? status.language.value : null,
+  published_at: status.publishedAt,
+  edited_at: status.editedAt.kind === "Edited" ? status.editedAt.at : null,
+  media_json: JSON.stringify(status.media),
+  card_json: null,
+  poll_json: status.poll.kind === "NoPoll" ? null : JSON.stringify(status.poll),
+  emojis_json: JSON.stringify(status.emojis),
+  quote_policy_json:
+    status.quotePolicy.automatic.length === 0 && status.quotePolicy.manual.length === 0
+      ? null
+      : JSON.stringify(status.quotePolicy),
+});
+
+/**
+ * The statement that writes a remote status row. `Replace` updates the row
+ * its object URI holds (and inserts it when that row is gone). `Insert` is
+ * for a URI that was read as free, and fails on a row stored there since.
+ */
 const remoteStatusRowStatement = (
   db: D1Database,
-  row: RemoteStatus,
+  status: RemoteStatus,
   inReplyToUri: string | undefined,
-): D1PreparedStatement =>
-  d1PrepareTyped(
+  write: "Insert" | "Replace",
+): D1PreparedStatement => {
+  const row = remoteStatusRowOf(status);
+  const sql = write === "Insert" ? insertRemoteStatusSql : upsertRemoteStatusSql;
+  return d1PrepareTyped(
     db,
-    upsertRemoteStatusSql(
+    sql(
       row.id,
-      row.actorUri,
-      row.objectUri,
-      row.url ?? null,
-      row.contentHtml,
-      row.spoilerText,
-      visibilitySql(row.visibility),
-      row.sensitive ? 1 : 0,
-      row.language.kind === "Present" ? row.language.value : null,
-      row.publishedAt,
-      JSON.stringify(row.media),
+      row.actor_uri,
+      row.object_uri,
+      row.url,
+      row.content_html,
+      row.spoiler_text,
+      row.visibility,
+      row.sensitive,
+      row.language,
+      row.published_at,
+      row.media_json,
       nowIso(),
       nowIso(),
       inReplyToUri ?? null,
-      row.editedAt.kind === "Edited" ? row.editedAt.at : null,
-      row.poll.kind === "NoPoll" ? null : JSON.stringify(row.poll),
-      JSON.stringify(row.emojis),
-      row.quotePolicy.automatic.length === 0 && row.quotePolicy.manual.length === 0
-        ? null
-        : JSON.stringify(row.quotePolicy),
+      row.edited_at,
+      row.poll_json,
+      row.emojis_json,
+      row.quote_policy_json,
     ),
   );
+};
+
+const reads =
+  (parse: (value: string) => Result<unknown, unknown>) =>
+  (value: string): boolean =>
+    parse(value).isOk();
+
+/**
+ * The shape of a row that does not read as a status, with each column a
+ * rewrite replaces falling back to `fill`'s when it does not read on its
+ * own. A rewrite keeps the id, the author and the object URI, so they are
+ * read as they are.
+ */
+const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> => {
+  const column = RemoteStatusRowSchema.shape;
+  return z.object({
+    id: column.id,
+    actor_uri: column.actor_uri,
+    object_uri: column.object_uri,
+    url: z
+      .union([z.url(), z.literal("")])
+      .nullable()
+      .catch(fill.url),
+    content_html: column.content_html.catch(fill.content_html),
+    spoiler_text: column.spoiler_text.catch(fill.spoiler_text),
+    visibility: z.string().refine(reads(Visibility.fromMastodon)).catch(fill.visibility),
+    sensitive: column.sensitive.catch(fill.sensitive),
+    language: column.language.catch(fill.language),
+    published_at: z.string().refine(reads(IsoInstant.parse)).catch(fill.published_at),
+    // An unreadable date of the last edit is no edit: nothing orders against it.
+    edited_at: z
+      .union([z.literal(""), z.string().refine(reads(IsoInstant.parse))])
+      .nullable()
+      .catch(null),
+    media_json: column.media_json.catch(fill.media_json),
+    card_json: column.card_json.catch(null),
+    poll_json: column.poll_json.catch(fill.poll_json),
+    emojis_json: column.emojis_json.catch(fill.emojis_json),
+    quote_policy_json: column.quote_policy_json.catch(fill.quote_policy_json),
+  });
+};
+
+/**
+ * The status the row of `id` holds once the columns that do not read are
+ * taken from `fill`, the note as its author delivers it: what a rewrite of
+ * the row starts from, where every column that reads on its own is still the
+ * stored one. `undefined` when the row is gone, or does not read even so:
+ * the fault is then in a column a rewrite keeps.
+ */
+export const salvageRemoteStatus = async (
+  db: D1Database,
+  id: string,
+  fill: RemoteStatus,
+): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
+  const queried = await findRow(db, findRemoteStatusByIdSql(id));
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  const row = schemaResult(salvagedRowSchema(remoteStatusRowOf(fill)))(queried.value);
+  return ok(row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined);
+};
+
+/**
+ * The statement that settles the local votes on a remote poll when `after`
+ * carries a tally `before` did not: a changed tally is the author's count of
+ * every vote it has seen, ours included. It runs with the write of the row,
+ * as a retry reads the new tally as stored.
+ */
+const pollSettlement = (
+  db: D1Database,
+  before: RemoteStatus,
+  after: RemoteStatus,
+): D1PreparedStatement[] =>
+  after.poll.kind !== "NoPoll" && JSON.stringify(before.poll) !== JSON.stringify(after.poll)
+    ? [settleRemotePollVotesStatement(db, before.id)]
+    : [];
 
 /** Retries for a new remote status whose generated id is already taken. */
 const ID_COLLISION_RETRIES = 4;
 
 const isIdCollision = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
+
+const isObjectUriTaken = (error: unknown): boolean =>
+  error instanceof Error &&
+  /UNIQUE constraint failed: remote_statuses\.object_uri/.test(error.message);
 
 /** What the caller just read at an object URI: the cached status, or `undefined` for none. */
 export type KnownRemoteStatus = Readonly<{
@@ -409,9 +520,13 @@ export type KnownRemoteStatus = Readonly<{
 }>;
 
 /**
- * Store a remote status, or update the one cached at its object URI. A URI
- * cached as another actor's note is left alone and gives `undefined`: only
- * its author rewrites a note.
+ * Store a remote status, or update the one cached at its object URI. It
+ * gives `undefined` when it wrote nothing, as the URI holds a row that is
+ * not this write's to replace. One is another actor's note: only its author
+ * rewrites a note. The other is a row that another delivery stored after the
+ * URI was read as free: this write was computed for a new note, with no
+ * guard against the version it would replace, so the batch fails on the
+ * unique URI and leaves that row, its tags and its marker as they are.
  */
 export const upsertRemoteStatus = async (
   db: D1Database,
@@ -444,14 +559,7 @@ export const upsertRemoteStatus = async (
   let persisted = existing.value
     ? { ...status, id: existing.value.id, kind: "RemoteNote" as const }
     : status;
-  // A changed tally is the author's count of every vote it has seen, ours
-  // included. Settled with the row: a retry reads the new tally as stored.
-  const settled =
-    existing.value &&
-    persisted.poll.kind !== "NoPoll" &&
-    JSON.stringify(existing.value.poll) !== JSON.stringify(persisted.poll)
-      ? [settleRemotePollVotesStatement(db, existing.value.id)]
-      : [];
+  const settled = existing.value ? pollSettlement(db, existing.value, persisted) : [];
   // A row replaced since it was read (another `Update` was applied meanwhile)
   // fails the batch: this write was computed from a version that is gone, and
   // would undo the other. The sender's redelivery reads the row again.
@@ -475,16 +583,27 @@ export const upsertRemoteStatus = async (
         await db.batch([
           ...unreplaced,
           ...alongside,
-          remoteStatusRowStatement(db, persisted, inReplyToUri),
+          remoteStatusRowStatement(
+            db,
+            persisted,
+            inReplyToUri,
+            existing.value ? "Replace" : "Insert",
+          ),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
           ...settled,
           ...after.map((statement) => statement(persisted.id)),
         ]);
-        break;
+        return persisted;
       } catch (error) {
+        if (existing.value) {
+          throw error;
+        }
+        if (isObjectUriTaken(error)) {
+          return undefined;
+        }
         // A new row whose id another isolate already stored (same instant, same
         // random low bits): retry at the same instant with new random low bits.
-        if (existing.value || attempt >= ID_COLLISION_RETRIES || !isIdCollision(error)) {
+        if (attempt >= ID_COLLISION_RETRIES || !isIdCollision(error)) {
           throw error;
         }
         const rerolled = StatusId.parse(rerollEntityId(persisted.id));
@@ -494,7 +613,6 @@ export const upsertRemoteStatus = async (
         persisted = { ...persisted, id: rerolled.value };
       }
     }
-    return persisted;
   });
   if (written.isErr()) {
     return err(written.error);
@@ -503,12 +621,14 @@ export const upsertRemoteStatus = async (
 };
 
 /**
- * Replace the row of `status.id`, which did not read as a status
- * (`StoredRowInvalid`), with `status` and its tags, in one batch. The upsert
- * keeps a stored `edited_at` when the status has none, so it is cleared first.
+ * Replace the row of `status.id`, which did not read as a status, with
+ * `status` and its tags, in one batch. `before` is what the row still held
+ * ({@link salvageRemoteStatus}). The upsert keeps a stored `edited_at` when
+ * the status has none, so it is cleared first.
  */
 export const overwriteRemoteStatus = async (
   db: D1Database,
+  before: RemoteStatus,
   status: RemoteStatus,
   tags: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> => {
@@ -516,8 +636,9 @@ export const overwriteRemoteStatus = async (
     db
       .prepare("UPDATE remote_statuses SET edited_at = NULL WHERE id = ? AND actor_uri = ?")
       .bind(status.id, status.actorUri),
-    remoteStatusRowStatement(db, status, undefined),
+    remoteStatusRowStatement(db, status, undefined, "Replace"),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
+    ...pollSettlement(db, before, status),
   ]);
   return written.map(() => undefined);
 };

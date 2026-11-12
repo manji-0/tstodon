@@ -17,7 +17,7 @@ import { isHashtagName, normalizeHashtag, schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant, nowIso } from "./clock";
-import type { RepositoryError } from "./d1";
+import { readableRow, type RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
@@ -37,10 +37,8 @@ import {
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
 import {
-  findRemoteStatusByObjectUri,
+  findDeliveredRemoteStatus,
   type KnownRemoteStatus,
-  overwriteRemoteStatus,
-  type StoredRowInvalid,
   upsertRemoteStatus,
 } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
@@ -156,7 +154,7 @@ export const noteFromUnknown = (
   raw: unknown,
   author: QuotePolicyAuthor,
   idClock: IdClock = "Received",
-): Result<RemoteStatusValue, { kind: "InvalidObject" } | RepositoryError> => {
+): Result<RemoteStatusValue, { kind: "InvalidObject" }> => {
   const actorUri = author.actorUri;
   const document = parseNoteDocument(raw);
   if (document.isErr()) {
@@ -531,35 +529,6 @@ export const applyMediaPolicy = async (
   return RemoteActor.onAnyHost(actor, rejected) ? { ...status, media: [] } : status;
 };
 
-/**
- * Settle a `Create` or `Update` of a note whose stored row does not read as a
- * status. Delivering it again would find the same row, so the row is never a
- * reason to answer with an error. When `signer` wrote the note and `raw` is
- * its document, the row is replaced with the note as delivered, under the id
- * it holds: no history version, notification or stream event, as the row was
- * shown to nobody. Any other delivery is dropped, as Mastodon drops a
- * `RecordInvalid`. Only a failed write is an `Err`.
- */
-export const settleInvalidRemoteStatus = async (
-  env: Env,
-  signer: RemoteActor,
-  invalid: StoredRowInvalid,
-  raw: unknown,
-): Promise<Result<void, RepositoryError>> => {
-  const id = StatusId.parse(invalid.id);
-  const parsed = noteFromUnknown(raw, signer);
-  if (invalid.actorUri !== signer.actorUri || id.isErr() || parsed.isErr()) {
-    console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowKept", statusId: invalid.id }));
-    return ok(undefined);
-  }
-  const status = await applyMediaPolicy(env, signer, { ...parsed.value, id: id.value });
-  const replaced = await overwriteRemoteStatus(env.DB, status, noteHashtags(raw));
-  if (replaced.isOk()) {
-    console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowReplaced", statusId: invalid.id }));
-  }
-  return replaced;
-};
-
 type PersistOptions = FederatedFetchOptions &
   Readonly<{
     /**
@@ -584,23 +553,33 @@ type PersistOptions = FederatedFetchOptions &
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
 
 /**
- * The cached remote status for `objectUri`, or `Local` for one of this
- * instance's own; `known` is the caller's read of it, when it made one.
+ * What stands at a URI in place of a cached remote status: `Local` is one of
+ * this instance's own statuses, `Unreadable` a stored row that does not read
+ * as a status. Nothing is fetched or stored over either.
+ */
+type Uncacheable = Readonly<{ kind: "Local" | "Unreadable" }>;
+
+/**
+ * The cached remote status for `objectUri`, or why there can be none;
+ * `known` is the caller's read of it, when it made one. A row that does not
+ * read is settled here, as reading it again gives the same row: the callers
+ * drop what refers to it, where a failed read is an error.
  */
 const cachedRemoteStatus = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
   known: KnownRemoteStatus | undefined,
-): Promise<
-  Result<Readonly<{ kind: "Local" }> | RemoteStatusValue | undefined, RepositoryError>
-> => {
+): Promise<Result<Uncacheable | RemoteStatusValue | undefined, RepositoryError>> => {
   if (parseLocalStatusId(identity, objectUri)) {
     return ok({ kind: "Local" });
   }
-  return known?.objectUri === objectUri
-    ? ok(known.row)
-    : findRemoteStatusByObjectUri(env.DB, objectUri);
+  if (known?.objectUri === objectUri) {
+    return ok(known.row);
+  }
+  const read = await findDeliveredRemoteStatus(env.DB, objectUri);
+  const unreadable = read.isErr() && read.error.kind === "StoredRowInvalid";
+  return readableRow(read).map((status) => (unreadable ? { kind: "Unreadable" } : status));
 };
 
 export const persistRemoteObject = async (
@@ -617,7 +596,7 @@ export const persistRemoteObject = async (
     return err(cached.error);
   }
   if (cached.value) {
-    if (cached.value.kind === "Local") {
+    if (cached.value.kind !== "RemoteNote") {
       return ok(undefined);
     }
     const status = cached.value;
@@ -668,7 +647,7 @@ export const persistAnnouncedObject = async (
     return err(cached.error);
   }
   if (cached.value) {
-    return ok(cached.value.kind === "Local" ? undefined : cached.value);
+    return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
   }
   if (typeof object !== "string") {
     const embedded = parseNoteDocument(object);
@@ -778,9 +757,14 @@ export const remoteQuoteContext = (
     fetchOptions: options,
     mayFetch,
     resolveQuoted: async (uri, embedded) => {
-      const cached = await findRemoteStatusByObjectUri(env.DB, uri);
-      if (cached.isErr() || cached.value || !mayFetch) {
-        return cached;
+      const cached = await cachedRemoteStatus(env, identity, uri, undefined);
+      if (cached.isErr()) {
+        return err(cached.error);
+      }
+      // A quoted note whose row does not read is not fetched over it: the
+      // quote stays unresolved, as one whose note cannot be fetched.
+      if (cached.value || !mayFetch) {
+        return ok(cached.value?.kind === "RemoteNote" ? cached.value : undefined);
       }
       if (embedded) {
         const vouched = await persistVouchedQuoted(env, identity, actor, uri, embedded, nested);
@@ -816,14 +800,17 @@ const storeRemoteNote = async (
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const parsed = noteFromUnknown(raw, actor, options.idClock);
   if (parsed.isErr()) {
-    return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
+    return ok(undefined);
   }
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
-  const read = known ? ok(known.row) : await findRemoteStatusByObjectUri(env.DB, status.objectUri);
+  const read = await cachedRemoteStatus(env, identity, status.objectUri, known);
   if (read.isErr()) {
     return err(read.error);
+  }
+  if (read.value && read.value.kind !== "RemoteNote") {
+    return ok(undefined);
   }
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.
@@ -840,8 +827,13 @@ const storeRemoteNote = async (
     [],
     marker ? [(id) => owedStatement(env.DB, id, marker)] : [],
   );
-  if (stored.isErr() || stored.value === undefined) {
-    return stored;
+  if (stored.isErr()) {
+    return err(stored.error);
+  }
+  if (stored.value === undefined) {
+    return existing.row === undefined
+      ? storedMeanwhile(env, identity, actor, raw, status.objectUri, options)
+      : ok(undefined);
   }
   const finished = await finishRemoteNote(env, identity, {
     kind: "Created",
@@ -856,6 +848,33 @@ const storeRemoteNote = async (
 };
 
 /**
+ * The note `actor` wrote that another delivery stored at `objectUri` while
+ * this one, which read the URI as free, was about to. This delivery wrote
+ * nothing, so it is one that found the note cached: it leaves the row and
+ * writes no marker, and finishes what the other delivery owes as a
+ * redelivery would ({@link resumeCreated}).
+ */
+const storedMeanwhile = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  raw: unknown,
+  objectUri: string,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
+  if (cached.isErr()) {
+    return err(cached.error);
+  }
+  const status = cached.value;
+  if (status?.kind !== "RemoteNote" || status.actorUri !== actor.actorUri) {
+    return ok(undefined);
+  }
+  const resumed = await resumeCreated(env, identity, actor, raw, status, options);
+  return resumed.map(() => status);
+};
+
+/**
  * Finish what the delivery that stored `status` left owed, when `actor`
  * wrote the note and delivers it again in an inbox activity. The stored row
  * is kept as it is; only the late steps run, from the document delivered
@@ -867,7 +886,8 @@ const resumeCreated = async (
   env: Env,
   identity: InstanceIdentity,
   actor: RemoteActor,
-  object: ObjectReference,
+  /** The note's document, or its URI, which is fetched. */
+  object: unknown,
   status: RemoteStatusValue,
   options: PersistOptions,
 ): Promise<Result<void, RepositoryError>> => {

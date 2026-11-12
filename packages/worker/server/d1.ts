@@ -8,6 +8,64 @@ export const toRepositoryError = (message: string): RepositoryError => ({
   message,
 });
 
+/**
+ * A stored row that does not read as what its table holds; `id` is the row's.
+ * Unlike a `RepositoryError`, reading it again gives the same answer, so a
+ * sender gains nothing by delivering again. `fault` says what does not read:
+ * the `Shape` of the row (a column that is empty or of another type, which
+ * the row schema refuses), or its `Values` (a visibility that is none).
+ */
+export type StoredRowInvalid = Readonly<{
+  kind: "StoredRowInvalid";
+  id: string;
+  fault: "Shape" | "Values";
+}>;
+
+/** The error of a reader that fails on a row it cannot use, whatever is wrong with it. */
+export const storedRowError = (error: RepositoryError | StoredRowInvalid): RepositoryError =>
+  error.kind === "RepositoryError" ? error : toRepositoryError("invalid stored row");
+
+/**
+ * The answer of a finder that does not tell a row that does not read from a
+ * failed read. A row whose shape does not parse reads as none, as
+ * {@link parseRows} leaves it out; one whose values do not read is an error.
+ */
+export const foundRow = <T>(
+  read: Result<T | undefined, RepositoryError | StoredRowInvalid>,
+): Result<T | undefined, RepositoryError> => {
+  if (read.isOk()) {
+    return ok(read.value);
+  }
+  return read.error.kind === "StoredRowInvalid" && read.error.fault === "Shape"
+    ? ok(undefined)
+    : err(storedRowError(read.error));
+};
+
+/**
+ * The read of a caller that goes on without a row that does not read: the
+ * row is logged and counts as none, where a failed read stays an error. An
+ * inbox activity that refers to such a row is settled this way, as its
+ * redelivery would find the same row.
+ */
+export const readableRow = <T>(
+  read: Result<T | undefined, RepositoryError | StoredRowInvalid>,
+): Result<T | undefined, RepositoryError> => {
+  if (read.isOk()) {
+    return ok(read.value);
+  }
+  if (read.error.kind === "RepositoryError") {
+    return err(read.error);
+  }
+  console.warn(
+    JSON.stringify({
+      kind: "InvalidStoredRowSkipped",
+      rowId: read.error.id,
+      fault: read.error.fault,
+    }),
+  );
+  return ok(undefined);
+};
+
 export const parseRow = <T>(schema: z.ZodType<T>, value: unknown): Result<T, RepositoryError> =>
   schemaResult(schema)(value).mapErr(() => toRepositoryError("invalid row"));
 

@@ -8,17 +8,16 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseLocalStatusId } from "./activitypub";
-import { type RepositoryError, runD1 } from "./d1";
+import { readableRow, type RepositoryError, runD1, storedRowError } from "./d1";
 import {
   listLocalThreadAncestors as listLocalThreadAncestorsSql,
   listRemoteThreadAncestors as listRemoteThreadAncestorsSql,
   listThreadDescendantIds as listThreadDescendantIdsSql,
 } from "./generated/prisma/sql";
 import {
-  findRemoteStatusByObjectUri,
+  findDeliveredRemoteStatus,
   findRemoteStatusesByIds,
   remoteStatusFromRow,
-  storedRowError,
   RemoteStatusRowSchema,
 } from "./remote-status-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
@@ -77,7 +76,8 @@ export const findThreadParent = async (
     }
     return ok(parent.value ? { kind: "Local", status: parent.value } : undefined);
   }
-  const parent = await findRemoteStatusByObjectUri(db, parentUri);
+  // A parent whose row does not read is unknown, as one that was never stored.
+  const parent = readableRow(await findDeliveredRemoteStatus(db, parentUri));
   if (parent.isErr()) {
     return err(parent.error);
   }

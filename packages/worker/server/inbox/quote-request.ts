@@ -24,7 +24,7 @@ import {
 import { refId } from "../activitypub-wire";
 import { findBlock } from "../block-mute-store";
 import { publishConversationUpdate } from "../conversation-stream";
-import type { RepositoryError } from "../d1";
+import { readableRow, type RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
 import { isActorDomainBlocked } from "../domain-block-store";
 import { announceRemoteQuoteChange } from "../remote-quote-announce";
@@ -36,8 +36,8 @@ import { loadNoteQuotePolicy } from "../quote-policy-name";
 import { findQuoteByActivityUri, findQuoteByQuoting, saveQuoteState } from "../quote-store";
 import { remoteFollowerActorUris } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
-import { findRemoteStatusByObjectUri } from "../remote-status-store";
-import { findStatusById } from "../status-store";
+import { findDeliveredRemoteStatus } from "../remote-status-store";
+import { readStatusById } from "../status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
 import type { RemoteDelivery } from "./handler";
 
@@ -65,7 +65,7 @@ const quotedNote = async (
   if (id === undefined) {
     return ok(undefined);
   }
-  const note = await findStatusById(db, id);
+  const note = readableRow(await readStatusById(db, id));
   if (note.isErr()) {
     return err(note.error);
   }
@@ -226,7 +226,7 @@ const rejectQuoteRequest = async (
   signer: RemoteActor,
   request: QuoteRequestRef,
 ): Promise<Result<void, RepositoryError>> => {
-  const quoting = await findRemoteStatusByObjectUri(env.DB, request.instrument);
+  const quoting = readableRow(await findDeliveredRemoteStatus(env.DB, request.instrument));
   if (quoting.isErr()) {
     return err(quoting.error);
   }

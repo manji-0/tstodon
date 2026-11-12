@@ -11,14 +11,14 @@ import { findAccountById } from "../account-store";
 import { localNoteRef } from "../activitypub";
 import { refId } from "../activitypub-wire";
 import { nowIso } from "../clock";
-import type { RepositoryError } from "../d1";
+import { readableRow, type RepositoryError } from "../d1";
 import { announceRemoteQuoteChange } from "../remote-quote-announce";
 import { announceNoteUpdate } from "../local-status-update";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { forwardStampDelete } from "../quote-stamp-revoke";
 import { stampAuthorizes } from "../remote-quote-verify";
-import { findRemoteStatusById } from "../remote-status-store";
-import { findStatusById } from "../status-store";
+import { findDeliveredRemoteStatusById } from "../remote-status-store";
+import { readStatusById } from "../status-store";
 import type { RemoteDelivery } from "./handler";
 
 /** A local note quoting a status of the signer, as the quote's two ends. */
@@ -42,14 +42,14 @@ const signerQuote = async (
   if (quote.quoting.kind !== "LocalStatus" || quote.quoted.kind !== "RemoteStatus") {
     return ok(undefined);
   }
-  const quoted = await findRemoteStatusById(db, quote.quoted.statusId);
+  const quoted = readableRow(await findDeliveredRemoteStatusById(db, quote.quoted.statusId));
   if (quoted.isErr()) {
     return err(quoted.error);
   }
   if (quoted.value?.actorUri !== signer.actorUri) {
     return ok(undefined);
   }
-  const note = await findStatusById(db, quote.quoting.statusId);
+  const note = readableRow(await readStatusById(db, quote.quoting.statusId));
   if (note.isErr()) {
     return err(note.error);
   }
@@ -213,7 +213,7 @@ export const revokeQuoteStamp = async (
     if (quote.quoting.kind !== "RemoteStatus" || quote.quoted.kind !== "RemoteStatus") {
       continue;
     }
-    const quoted = await findRemoteStatusById(env.DB, quote.quoted.statusId);
+    const quoted = readableRow(await findDeliveredRemoteStatusById(env.DB, quote.quoted.statusId));
     if (quoted.isErr()) {
       return err(quoted.error);
     }
@@ -224,7 +224,9 @@ export const revokeQuoteStamp = async (
     if (saved.isErr()) {
       return err(saved.error);
     }
-    const remoteQuoting = await findRemoteStatusById(env.DB, quote.quoting.statusId);
+    const remoteQuoting = readableRow(
+      await findDeliveredRemoteStatusById(env.DB, quote.quoting.statusId),
+    );
     if (remoteQuoting.isErr()) {
       return err(remoteQuoting.error);
     }

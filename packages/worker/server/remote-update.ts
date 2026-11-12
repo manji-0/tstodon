@@ -1,6 +1,5 @@
 import {
   IsoInstant,
-  RemotePoll,
   type InstanceIdentity,
   type RemoteActor,
   type RemoteStatusValue,
@@ -14,7 +13,8 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
 import { findMoveTarget } from "./remote-move";
-import { remoteRevisionStatement } from "./remote-status-edit";
+import { contentChanged, isNewer, remoteRevisionStatement } from "./remote-status-edit";
+import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   applyMediaPolicy,
   finishRemoteNote,
@@ -22,7 +22,6 @@ import {
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
-  settleInvalidRemoteStatus,
 } from "./remote-status-persist";
 import { listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
@@ -62,20 +61,6 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
 };
 
 /**
- * Whether the author changed what the post says. Vote counts, which a
- * `Question` refreshes as people vote, are not an edit, as on Mastodon.
- */
-const contentChanged = (before: RemoteStatusValue, after: RemoteStatusValue): boolean =>
-  before.contentHtml !== after.contentHtml ||
-  before.spoilerText !== after.spoilerText ||
-  before.sensitive !== after.sensitive ||
-  JSON.stringify(before.media) !== JSON.stringify(after.media) ||
-  !RemotePoll.sameQuestion(before.poll, after.poll);
-
-const isNewer = (candidate: string, than: string): boolean =>
-  Date.parse(candidate) > Date.parse(than);
-
-/**
  * Apply an edit to a note that is already cached. Like Mastodon, an Update
  * for a status this server never stored is ignored, and so is one for a note
  * the signer did not write.
@@ -90,7 +75,10 @@ const applyNoteUpdate = async (
   const cached = await findDeliveredRemoteStatus(env.DB, target.objectUri);
   if (cached.isErr()) {
     return cached.error.kind === "StoredRowInvalid"
-      ? settleInvalidRemoteStatus(env, signer, cached.error, target.raw)
+      ? settleInvalidRemoteStatus(env, signer, cached.error, {
+          activity: "Update",
+          raw: target.raw,
+        })
       : err(cached.error);
   }
   if (!cached.value || cached.value.actorUri !== signer.actorUri) {
@@ -98,7 +86,7 @@ const applyNoteUpdate = async (
   }
   const parsed = noteFromUnknown(target.raw, signer);
   if (parsed.isErr()) {
-    return parsed.error.kind === "RepositoryError" ? err(parsed.error) : ok(undefined);
+    return ok(undefined);
   }
   const note = parseNoteDocument(target.raw);
   if (note.isErr()) {
