@@ -561,6 +561,23 @@ export const persistAnnouncedObject = async (
       });
     }
   }
+  return storeFetchedNote(env, identity, objectUri, options, announcer);
+};
+
+/**
+ * Fetch the note at `objectUri` and store it under its author. The document
+ * must name that URI as its id. `asker`, when it is the author, vouches for
+ * its own note; any other author must sit on the URI's host and is resolved
+ * first, as Mastodon's `FetchRemoteStatusService`. `undefined` when the fetch
+ * fails or the proof does not hold.
+ */
+const storeFetchedNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  objectUri: string,
+  options: PersistOptions,
+  asker?: RemoteActor,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const raw = await fetchActivityJson(identity, objectUri, options);
   if (raw.isErr()) {
     return ok(undefined);
@@ -570,8 +587,8 @@ export const persistAnnouncedObject = async (
     return ok(undefined);
   }
   const authorUri = note.value.attributedTo;
-  if (authorUri === announcer.actorUri) {
-    return storeRemoteNote(env, identity, announcer, raw.value, options);
+  if (asker !== undefined && authorUri === asker.actorUri) {
+    return storeRemoteNote(env, identity, asker, raw.value, options);
   }
   const authorHost = urlHost(authorUri);
   if (authorHost === undefined || authorHost !== urlHost(objectUri)) {
@@ -588,6 +605,30 @@ export const persistAnnouncedObject = async (
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
   return storeRemoteNote(env, identity, author.value, raw.value, options);
+};
+
+/**
+ * The remote status at `objectUri`, cached, for a lookup by URL (search with
+ * `resolve=true`): the stored one when there is one, else the note fetched
+ * from that URI, as Mastodon's `ResolveURLService`. Reading the stored one
+ * first also finds a followers-only or direct note this server was sent,
+ * which its URI does not serve to the instance actor. `undefined` for a
+ * local status's URI, a row that does not read, or a URI that serves no note.
+ */
+export const persistFetchedObject = async (
+  env: Env,
+  identity: InstanceIdentity,
+  objectUri: string,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
+  if (cached.isErr()) {
+    return err(cached.error);
+  }
+  if (cached.value) {
+    return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
+  }
+  return storeFetchedNote(env, identity, objectUri, options);
 };
 
 /**

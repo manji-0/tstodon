@@ -2,7 +2,15 @@ import { z } from "zod";
 import { type LocalAccount } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { jsonStringArray, okValues, parseRows, type RepositoryError, runD1 } from "./d1";
+import {
+  containsFolded,
+  jsonStringArray,
+  okValues,
+  parseRows,
+  type RepositoryError,
+  runD1,
+  startsWithFolded,
+} from "./d1";
 import { queryTyped } from "./typed-sql";
 import { listAdminAccountIds as listAdminAccountIdsSql } from "./generated/prisma/sql";
 import { accountFromRow, parseAccountRow, STATUS_SQL } from "./account-store";
@@ -72,16 +80,16 @@ export const listAdminAccounts = async (
       conditions.push("0");
     }
     if (filters.username) {
-      conditions.push("username LIKE ?");
-      binds.push(`%${filters.username}%`);
+      conditions.push(containsFolded("username"));
+      binds.push(filters.username);
     }
     if (filters.displayName) {
-      conditions.push("display_name LIKE ?");
-      binds.push(`%${filters.displayName}%`);
+      conditions.push(containsFolded("display_name"));
+      binds.push(filters.displayName);
     }
     if (filters.email) {
-      conditions.push("access_email LIKE ?");
-      binds.push(`${filters.email.toLowerCase()}%`);
+      conditions.push(startsWithFolded("access_email"));
+      binds.push(filters.email);
     }
     if (filters.byDomain || filters.invitedBy) {
       // No domain (local only), no invites.
@@ -172,12 +180,12 @@ export const listAdminRemoteActorUris = async (
     const conditions = [statusCondition[filters.status]];
     const binds: Array<string | number> = [];
     if (filters.username) {
-      conditions.push("a.username LIKE ?");
-      binds.push(`%${filters.username}%`);
+      conditions.push(containsFolded("a.username"));
+      binds.push(filters.username);
     }
     if (filters.displayName) {
-      conditions.push("a.display_name LIKE ?");
-      binds.push(`%${filters.displayName}%`);
+      conditions.push(containsFolded("a.display_name"));
+      binds.push(filters.displayName);
     }
     if (filters.byDomain) {
       conditions.push("(lower(a.domain) = ? OR a.host = ?)");

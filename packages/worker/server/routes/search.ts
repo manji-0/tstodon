@@ -20,6 +20,8 @@ import {
   mastodonRemoteAccount,
 } from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
+import { mastodonRemoteStatuses } from "../remote-status-documents";
+import { isUrlQuery, resolveStatusUrl } from "../search-url";
 import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
@@ -102,12 +104,30 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
+  // As Mastodon's `SearchService`, a URL with `resolve=true` is looked up, not
+  // searched for as text, and what it names joins only the first page. The
+  // status is looked up before the account: a post's URL then costs one fetch,
+  // and no failing text search stands between the URL and its status.
+  const urlLookup = resolve && isUrlQuery(query);
+  const urlStatus =
+    urlLookup && offset === 0 && type !== "accounts" && type !== "hashtags"
+      ? await resolveStatusUrl(c.env, identity.value, query, viewerId, {
+          allowHosts: await federationAllowHosts(c.env),
+          blockedHosts: await suspendedDomains(c.env.DB),
+          fetchSigner: instanceActorFetchSigner(c.env.DB, identity.value),
+        })
+      : ok(undefined);
+  if (urlStatus.isErr()) {
+    return jsonRepositoryError(c, urlStatus.error.message);
+  }
   const accountDocs: ApiAccountJSON[] = [];
   if (type !== "statuses" && type !== "hashtags") {
     // As Mastodon, the resolved account joins only the first page, first,
     // and counts inside `limit`.
     const resolved =
-      resolve && offset === 0 ? await resolveSearchActor(c.env, identity.value, query) : undefined;
+      resolve && offset === 0 && urlStatus.value === undefined
+        ? await resolveSearchActor(c.env, identity.value, query)
+        : undefined;
     const exact = await searchableRemoteActors(c.env, resolved ? [resolved] : []);
     if (exact.isErr()) {
       return jsonRepositoryError(c, exact.error.message);
@@ -143,6 +163,17 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     type === "accounts" || type === "hashtags"
       ? ok([])
       : await (async () => {
+          if (urlLookup) {
+            const found = urlStatus.value;
+            if (!found) {
+              return ok([]);
+            }
+            if (found.kind === "RemoteStatus") {
+              return mastodonRemoteStatuses(c.env, identity.value, [found.status], viewerId);
+            }
+            statusesById.set(found.status.id, found.status);
+            return mastodonStatuses(c.env, identity.value, [found.status], viewerId);
+          }
           const statuses = await searchStatuses(c.env.DB, viewerId, query, limit, offset);
           if (statuses.isErr()) {
             return statuses;

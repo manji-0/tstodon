@@ -103,6 +103,19 @@ export const D1_MAX_BOUND_PARAMETERS = 100;
 export const sqlInJsonEach = (): string => "IN (SELECT value FROM json_each(?))";
 
 /** JSON text array payload for {@link sqlInJsonEach}. */
+/**
+ * SQL for "`column` contains the bound text", for text a user typed. Not
+ * `column LIKE '%' || ? || '%'`: D1 refuses a LIKE pattern over 50 bytes
+ * (`LIKE or GLOB pattern too complex`), so a longer search term was a 500.
+ * `instr` takes no pattern, so it has no such limit. Case folds as LIKE's
+ * does: SQLite's `lower()` and its LIKE both fold ASCII letters only. Unlike
+ * LIKE, `%` and `_` in the text match themselves.
+ */
+export const containsFolded = (column: string): string => `instr(lower(${column}), lower(?)) > 0`;
+
+/** {@link containsFolded}, for "`column` starts with the bound text". */
+export const startsWithFolded = (column: string): string => `instr(lower(${column}), lower(?)) = 1`;
+
 export const jsonStringArray = (values: ReadonlyArray<string>): string =>
   JSON.stringify([...values]);
 

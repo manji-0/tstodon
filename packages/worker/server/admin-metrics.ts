@@ -186,13 +186,16 @@ const domainCondition = (
   includeSubdomains: boolean,
 ): Readonly<{ sql: string; binds: string[] }> => {
   const host = domain.trim().toLowerCase();
-  const exact = `(lower(${column}) = ? OR lower(${column}) LIKE ? || ':%')`;
+  // `host` or `host:port`. No LIKE: D1 refuses a pattern over 50 bytes, and a
+  // domain name may be longer.
+  const exact = `(lower(${column}) = ? OR substr(lower(${column}), 1, length(?) + 1) = ? || ':')`;
   if (!includeSubdomains) {
-    return { sql: exact, binds: [host, host] };
+    return { sql: exact, binds: [host, host, host] };
   }
+  // `….host` or `….host:port`.
   return {
-    sql: `(${exact} OR lower(${column}) LIKE '%.' || ? OR lower(${column}) LIKE '%.' || ? || ':%')`,
-    binds: [host, host, host, host],
+    sql: `(${exact} OR substr(lower(${column}), -length(?) - 1) = '.' || ? OR instr(lower(${column}), '.' || ? || ':') > 0)`,
+    binds: [host, host, host, host, host, host],
   };
 };
 

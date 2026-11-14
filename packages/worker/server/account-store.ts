@@ -191,7 +191,8 @@ export type LocalAccountSearchScope =
 /**
  * Local accounts whose username or display name contains `query`, by
  * username, leaving out those search may not list (pending approval or
- * suspended), so `offset` counts listed accounts.
+ * suspended), so `offset` counts listed accounts. The match is
+ * `containsFolded` (`server/d1.ts`): no pattern, so no length limit.
  */
 export const searchAccounts = async (
   db: D1Database,
@@ -201,13 +202,11 @@ export const searchAccounts = async (
   offset: number,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   runD1(async () => {
-    const usernameLike = `%${query.toLowerCase()}%`;
-    const displayNameLike = `%${query}%`;
     const results = await queryTyped(
       db,
       scope.kind === "Everyone"
-        ? searchAccountsSql(usernameLike, displayNameLike, limit, offset)
-        : searchFollowedAccountsSql(usernameLike, displayNameLike, scope.accountId, limit, offset),
+        ? searchAccountsSql(query, limit, offset)
+        : searchFollowedAccountsSql(query, scope.accountId, limit, offset),
       AccountRowSchema,
     );
     return results.flatMap((row) => {
@@ -222,11 +221,7 @@ export const countSearchAccounts = async (
   query: string,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      countSearchAccountsSql(`%${query.toLowerCase()}%`, `%${query}%`),
-      CountRow,
-    );
+    const rows = await queryTyped(db, countSearchAccountsSql(query), CountRow);
     return Number(rows[0]?.count ?? 0);
   });
 

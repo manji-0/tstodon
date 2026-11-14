@@ -5,30 +5,22 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
- * @param usernameLike
- * @param displayNameLike
+ * @param term
  * @param followerAccountId
  * @param limit
  * @param offset
  */
 export const searchFollowedAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text\nFROM accounts\nWHERE (username LIKE $1 OR display_name LIKE $2)\nAND id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)\nAND id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')\nAND id IN (SELECT target_account_id FROM follows WHERE follower_account_id = $3 AND kind = 'Accepted')\nORDER BY username\nLIMIT $4 OFFSET $5",
+  "SELECT id, username, access_email, display_name, locked, default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk, created_at, COALESCE(bio_text, '') AS bio_text\nFROM accounts\nWHERE (instr(lower(username), lower($1)) > 0 OR instr(lower(display_name), lower($1)) > 0)\nAND id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)\nAND id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')\nAND id IN (SELECT target_account_id FROM follows WHERE follower_account_id = $2 AND kind = 'Accepted')\nORDER BY username\nLIMIT $3 OFFSET $4",
 ) as (
-  usernameLike: string,
-  displayNameLike: string,
+  term: string,
   followerAccountId: string,
   limit: number,
   offset: number,
 ) => $runtime.TypedSql<searchFollowedAccounts.Parameters, searchFollowedAccounts.Result>;
 
 export namespace searchFollowedAccounts {
-  export type Parameters = [
-    usernameLike: string,
-    displayNameLike: string,
-    followerAccountId: string,
-    limit: number,
-    offset: number,
-  ];
+  export type Parameters = [term: string, followerAccountId: string, limit: number, offset: number];
   export type Result = {
     id: string | null;
     username: string;
