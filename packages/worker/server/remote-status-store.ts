@@ -498,6 +498,7 @@ const VersionedRow = z.object({
   version: z.string(),
   edited_at: z.unknown(),
   updated_at: z.unknown(),
+  poll_json: z.unknown(),
 });
 
 /**
@@ -514,13 +515,16 @@ export type SalvagedEdit =
 /**
  * What a rewrite of a row that does not read starts from. `status` is what
  * the row holds once the columns that do not read are filled; its `editedAt`
- * is none when `edit` is `Unknown`. `version` names the stored columns it
- * was read from ({@link ROW_VERSION_SQL}), so the rewrite replaces that row
- * and no other ({@link overwriteRemoteStatus}).
+ * is none when `edit` is `Unknown`. `pollFilled` says its poll is the
+ * document's, as the stored `poll_json` does not read as a column: the tally
+ * the row held is then unknown. `version` names the stored columns it was
+ * read from ({@link ROW_VERSION_SQL}), so the rewrite replaces that row and
+ * no other ({@link overwriteRemoteStatus}).
  */
 export type SalvagedRemoteStatus = Readonly<{
   status: RemoteStatus;
   edit: SalvagedEdit;
+  pollFilled: boolean;
   version: string;
 }>;
 
@@ -560,7 +564,13 @@ export const salvageRemoteStatus = async (
   const status = row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined;
   return ok(
     status && versioned.isOk()
-      ? { status, edit: salvagedEdit(versioned.value), version: versioned.value.version }
+      ? {
+          status,
+          edit: salvagedEdit(versioned.value),
+          pollFilled: !RemoteStatusRowSchema.shape.poll_json.safeParse(versioned.value.poll_json)
+            .success,
+          version: versioned.value.version,
+        }
       : undefined,
   );
 };
@@ -710,6 +720,13 @@ export const upsertRemoteStatus = async (
  * reads. A row that does not read may hold none to name, and two rewrites of
  * it may leave the same one, so this guard names every column the rewrite
  * replaces. The sender's redelivery reads the row again.
+ *
+ * The local votes are settled when the tally is new, as for a row that
+ * reads. When the stored poll did not read (`before.pollFilled`), the tally
+ * the row held is unknown and `before` holds the document's, which would
+ * compare as unchanged: the votes are then settled whenever the status has a
+ * poll, as the counts written are the author's and nothing says they were
+ * stored before.
  */
 export const overwriteRemoteStatus = async (
   db: D1Database,
@@ -730,7 +747,9 @@ export const overwriteRemoteStatus = async (
       .bind(status.id, status.actorUri),
     remoteStatusRowStatement(db, status, undefined, "Replace"),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
-    ...pollSettlement(db, before.status, status),
+    ...(before.pollFilled && status.poll.kind !== "NoPoll"
+      ? [settleRemotePollVotesStatement(db, status.id)]
+      : pollSettlement(db, before.status, status)),
   ]);
   return written.map(() => undefined);
 };

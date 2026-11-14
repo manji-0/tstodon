@@ -334,6 +334,32 @@ describe("remote polls", () => {
       expect(poll).toMatchObject({ own_votes: [1], voters_count: 5 });
     });
 
+    it("settles the local vote when the counts replace a row whose poll does not read", async () => {
+      const author = await remoteActor("poll-vote-heal-poll");
+      const id = await create(author, question(author, "vote-heal-poll"));
+      const email = "remote-poll-heal-poll@example.com";
+      expect((await vote(email, id, [1])).status).toBe(200);
+      await env.DB.prepare("UPDATE remote_statuses SET poll_json = X'00' WHERE id = ?")
+        .bind(id)
+        .run();
+      expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+
+      expect(
+        await update(
+          author,
+          "vote-heal-poll",
+          question(author, "vote-heal-poll", {
+            oneOf: choices(["cats", "dogs"], [3, 2]),
+            votersCount: 5,
+          }),
+        ),
+      ).toBe(202);
+
+      const { poll } = await statusAs(email, id);
+      expect(poll?.options.map((option) => option.votes_count)).toEqual([3, 2]);
+      expect(poll).toMatchObject({ own_votes: [1], voters_count: 5 });
+    });
+
     it("refuses a second vote", async () => {
       const author = await remoteActor("poll-vote-twice");
       const id = await create(author, question(author, "vote-twice"));
