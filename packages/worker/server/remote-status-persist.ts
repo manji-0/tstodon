@@ -34,8 +34,10 @@ import {
   owedStatement,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
+import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
+  type InvalidRemoteStatusRow,
   type KnownRemoteStatus,
   upsertRemoteStatus,
 } from "./remote-status-store";
@@ -377,15 +379,20 @@ type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown
 /**
  * What stands at a URI in place of a cached remote status: `Local` is one of
  * this instance's own statuses, `Unreadable` a stored row that does not read
- * as a status. Nothing is fetched or stored over either.
+ * as a status. Nothing is stored over a local status. An unreadable row is
+ * replaced only by its author's document ({@link healFromFetch}, or the
+ * author's own `Create` or `Update`).
  */
-type Uncacheable = Readonly<{ kind: "Local" | "Unreadable" }>;
+type Uncacheable =
+  | Readonly<{ kind: "Local" }>
+  | Readonly<{ kind: "Unreadable"; row: InvalidRemoteStatusRow }>;
 
 /**
  * The cached remote status for `objectUri`, or why there can be none;
  * `known` is the caller's read of it, when it made one. A row that does not
- * read is settled here, as reading it again gives the same row: the callers
- * drop what refers to it, where a failed read is an error.
+ * read is settled here, as reading it again gives the same row: a caller
+ * that fetches notes heals it from its author's document, and any other
+ * drops what refers to it, where a failed read is an error.
  */
 const cachedRemoteStatus = async (
   env: Env,
@@ -400,8 +407,54 @@ const cachedRemoteStatus = async (
     return ok(known.row);
   }
   const read = await findDeliveredRemoteStatus(env.DB, objectUri);
-  const unreadable = read.isErr() && read.error.kind === "StoredRowInvalid";
-  return readableRow(read).map((status) => (unreadable ? { kind: "Unreadable" } : status));
+  if (read.isErr() && read.error.kind === "StoredRowInvalid") {
+    const row = read.error;
+    return readableRow(read).map(() => ({ kind: "Unreadable", row }));
+  }
+  return readableRow(read);
+};
+
+/**
+ * Replace the row at `objectUri`, which does not read as a status, from the
+ * document its URI serves, and give the status it then reads as. The proof
+ * is the one a fetched note needs to be stored ({@link fetchedAsItself}): the
+ * document names `objectUri` as its id and sits on its author's host, and
+ * that author is the one the row names. `undefined` when the fetch fails,
+ * the proof does not hold, or the heal keeps the row
+ * ({@link settleInvalidRemoteStatus}): the caller goes on without the note.
+ * `asker` is the actor whose activity refers to the note, which spares
+ * resolving the author when it is the same.
+ */
+const healFromFetch = async (
+  env: Env,
+  identity: InstanceIdentity,
+  asker: RemoteActor,
+  objectUri: string,
+  row: InvalidRemoteStatusRow,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const raw = await fetchActivityJson(identity, objectUri, options);
+  if (raw.isErr() || !fetchedAsItself(raw.value, objectUri)) {
+    return ok(undefined);
+  }
+  const note = parseNoteDocument(raw.value);
+  if (note.isErr() || note.value.attributedTo !== row.actorUri) {
+    return ok(undefined);
+  }
+  const author =
+    asker.actorUri === row.actorUri
+      ? ok(asker)
+      : await resolveRemoteActor(
+          env.DB,
+          identity,
+          `${row.actorUri}#main-key`,
+          row.actorUri,
+          options,
+        );
+  if (author.isErr()) {
+    return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
+  }
+  return settleInvalidRemoteStatus(env, author.value, row, { activity: "Fetched", raw: raw.value });
 };
 
 export const persistRemoteObject = async (
@@ -467,6 +520,9 @@ export const persistAnnouncedObject = async (
   const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
   if (cached.isErr()) {
     return err(cached.error);
+  }
+  if (cached.value?.kind === "Unreadable") {
+    return healFromFetch(env, identity, announcer, objectUri, cached.value.row, options);
   }
   if (cached.value) {
     return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
@@ -583,8 +639,12 @@ export const remoteQuoteContext = (
       if (cached.isErr()) {
         return err(cached.error);
       }
-      // A quoted note whose row does not read is not fetched over it: the
-      // quote stays unresolved, as one whose note cannot be fetched.
+      // A quoted note whose row does not read is healed where a note is
+      // fetched, and else left: the quote stays unresolved, as one whose
+      // note cannot be fetched.
+      if (cached.value?.kind === "Unreadable" && mayFetch) {
+        return healFromFetch(env, identity, actor, uri, cached.value.row, nested);
+      }
       if (cached.value || !mayFetch) {
         return ok(cached.value?.kind === "RemoteNote" ? cached.value : undefined);
       }

@@ -356,6 +356,124 @@ describe("the author's delivery of a note whose stored row does not read, replac
   });
 });
 
+/** Answers the Worker's outbound GET of each URL in `documents` with its document while `run` runs. */
+const serving = async <T>(
+  documents: Record<string, unknown>,
+  run: () => Promise<T>,
+): Promise<T> => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return href in documents
+      ? new Response(JSON.stringify(documents[href]), {
+          headers: { "content-type": "application/activity+json" },
+        })
+      : original(input, init);
+  };
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+};
+
+describe("a fetch of a remote note whose stored row does not read", () => {
+  const announce = (booster: Remote, objectUri: string) =>
+    booster.send({
+      id: `${objectUri}/announced-by/${booster.actorUri.split("/").at(-1)}`,
+      type: "Announce",
+      object: objectUri,
+      published: "2026-10-21T00:00:00.000Z",
+      to: [PUBLIC],
+    });
+
+  const boosts = (booster: Remote) =>
+    count("SELECT COUNT(*) AS n FROM remote_boosts WHERE actor_uri = ?", booster.actorUri);
+
+  it.each(["value", "shape"] as const)(
+    "replaces the row from the document its author's host serves, and stores the Announce (%s)",
+    async (fault) => {
+      const author = await remoteActor(`fetch-heal-author-${fault}`);
+      const booster = await remoteActor(`fetch-heal-booster-${fault}`);
+      const target = await unreadable(author, `fetch-heal-${fault}`, fault);
+      const served = note(author, `fetch-heal-${fault}`);
+
+      expect(await serving({ [target.uri]: served }, () => announce(booster, target.uri))).toBe(
+        202,
+      );
+
+      expect(await status(target.id)).toMatchObject({
+        content: served.content,
+        visibility: "public",
+        created_at: "2026-10-20T00:00:00.000Z",
+        edited_at: null,
+      });
+      expect(await boosts(booster)).toBe(1);
+      expect(
+        await count("SELECT COUNT(*) AS n FROM remote_status_owed WHERE status_id = ?", target.id),
+      ).toBe(0);
+    },
+  );
+
+  it("replaces the row when a Create quotes the note, and resolves the quote", async () => {
+    const author = await remoteActor("fetch-heal-quoted");
+    const quoter = await remoteActor("fetch-heal-quoter");
+    const target = await unreadable(author, "fetch-heal-quoted");
+    const quoting = note(quoter, "fetch-heal-quoting", { quote: target.uri });
+
+    expect(
+      await serving({ [target.uri]: note(author, "fetch-heal-quoted") }, () =>
+        create(quoter, quoting),
+      ),
+    ).toBe(202);
+
+    expect(await status(target.id)).toMatchObject({ visibility: "public" });
+    expect(
+      await rows(
+        z.object({ quoted_remote_status_id: z.string().nullable() }),
+        "SELECT quoted_remote_status_id FROM status_quotes WHERE remote_status_id = ?",
+        (await storedId(quoting.id)) ?? "",
+      ),
+    ).toEqual([{ quoted_remote_status_id: target.id }]);
+  });
+
+  it("keeps the row when the document is attributed to another actor", async () => {
+    const author = await remoteActor("fetch-heal-not-author");
+    const other = await remoteActor("fetch-heal-other-author");
+    const booster = await remoteActor("fetch-heal-not-author-booster");
+    const target = await unreadable(author, "fetch-heal-not-author");
+
+    expect(
+      await serving({ [target.uri]: note(other, "fetch-heal-not-author") }, () =>
+        announce(booster, target.uri),
+      ),
+    ).toBe(202);
+
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${target.id}`)).status).not.toBe(
+      200,
+    );
+    expect(await boosts(booster)).toBe(0);
+  });
+
+  it("keeps the row when the note is not on its author's host", async () => {
+    const author = await remoteActor("fetch-heal-other-host");
+    const booster = await remoteActor("fetch-heal-other-host-booster");
+    const target = await unreadable(author, "fetch-heal-other-host");
+    const elsewhere = "https://elsewhere.example/notes/fetch-heal-other-host";
+    await env.DB.prepare("UPDATE remote_statuses SET object_uri = ? WHERE id = ?")
+      .bind(elsewhere, target.id)
+      .run();
+    const served = { ...note(author, "fetch-heal-other-host"), id: elsewhere };
+
+    expect(await serving({ [elsewhere]: served }, () => announce(booster, elsewhere))).toBe(202);
+
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${target.id}`)).status).not.toBe(
+      200,
+    );
+    expect(await boosts(booster)).toBe(0);
+  });
+});
+
 /** The ways a local status row stops reading as a status: by its values, or by its shape. */
 const LOCAL_FAULTS = {
   value: "visibility = 'unreadable'",

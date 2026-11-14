@@ -73,12 +73,14 @@ const applyNoteUpdate = async (
 ): Promise<Result<void, RepositoryError>> => {
   const cached = await findDeliveredRemoteStatus(env.DB, target.objectUri);
   if (cached.isErr()) {
-    return cached.error.kind === "StoredRowInvalid"
-      ? settleInvalidRemoteStatus(env, signer, cached.error, {
-          activity: "Update",
-          raw: target.raw,
-        })
-      : err(cached.error);
+    if (cached.error.kind !== "StoredRowInvalid") {
+      return err(cached.error);
+    }
+    const settled = await settleInvalidRemoteStatus(env, signer, cached.error, {
+      activity: "Update",
+      raw: target.raw,
+    });
+    return settled.map(() => undefined);
   }
   if (!cached.value || cached.value.actorUri !== signer.actorUri) {
     return ok(undefined);
