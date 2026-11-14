@@ -132,6 +132,21 @@ describe("Mastodon web app", () => {
     expect(note.headers.get("location")).toBe("/users/alice/statuses/123");
   });
 
+  it("serves the shell on the web app's paths, and a 404 on a path nothing answers", async () => {
+    const browser = { Accept: "text/html,application/xhtml+xml,*/*;q=0.8" };
+    for (const path of ["/home", "/deck/home", "/@a/1", "/statuses/new"]) {
+      const response = await SELF.fetch(`${ORIGIN}${path}`, { headers: browser });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get("content-type"), path).toContain("text/html");
+      expect(await response.text(), path).toContain('id="initial-state"');
+    }
+    // Client routes Mastodon's Rails does not route either: no static stub with status 200.
+    for (const path of ["/accounts/1", "/timelines/home", "/no-such-page"]) {
+      const response = await SELF.fetch(`${ORIGIN}${path}`, { headers: browser });
+      expect(response.status, path).toBe(404);
+    }
+  });
+
   it("answers /favicon.ico with the build's favicon", async () => {
     const response = await SELF.fetch(`${ORIGIN}/favicon.ico`, { redirect: "manual" });
     expect(response.status).toBe(302);
