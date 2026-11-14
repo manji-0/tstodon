@@ -1,0 +1,212 @@
+/** Sweep area INT-4: replies to posts a server never saw, deep threads, and context backfill. */
+import { A, signUp, type E2eUser } from "../lib.js";
+import {
+  bothWays,
+  call,
+  type Cast,
+  contextOf,
+  eventually,
+  follow,
+  knownGap,
+  notified,
+  post,
+  resolveStatus,
+  Status,
+  step,
+  StepFailure,
+} from "./sweep.js";
+
+const uris = (statuses: readonly Status[]): string[] => statuses.map((status) => status.uri);
+
+/** `viewer`'s context of its copy of `uri`, once `accept` takes it. */
+const contextBecomes = (
+  viewer: E2eUser,
+  statusId: string,
+  label: string,
+  accept: (context: { ancestors: string[]; descendants: string[] }) => boolean,
+) => {
+  let last = "";
+  return eventually(
+    label,
+    async () => {
+      const context = await contextOf(viewer, statusId);
+      const seen = { ancestors: uris(context.ancestors), descendants: uris(context.descendants) };
+      last = JSON.stringify(seen);
+      return accept(seen) ? seen : undefined;
+    },
+    30_000,
+  ).catch((error: unknown) => {
+    throw new StepFailure(`${error instanceof Error ? error.message : String(error)}; saw ${last}`);
+  });
+};
+
+const sameMembers = (actual: readonly string[], expected: readonly string[]): boolean =>
+  actual.length === expected.length && expected.every((uri) => actual.includes(uri));
+
+/** A chain of replies on one server: each author replies to the post before. */
+const localChain = async (stamp: string, authors: readonly E2eUser[]): Promise<Status[]> => {
+  const chain: Status[] = [];
+  for (const author of authors) {
+    const parent = chain.at(-1);
+    chain.push(
+      await post(author, {
+        status: `chain ${chain.length} ${stamp}`,
+        ...(parent ? { in_reply_to_id: parent.id } : {}),
+      }),
+    );
+  }
+  return chain;
+};
+
+export const threadScenarios = async ({
+  stamp,
+  mona,
+  carol,
+  erin,
+  longName,
+}: Cast): Promise<void> => {
+  const alice = await signUp(A, "thea");
+  const bob = await signUp(A, "theo");
+  const tina = await signUp(A, "tina");
+
+  await bothWays("follow → accept", alice, mona, async (from, to) => {
+    await follow(from, to);
+  });
+
+  await bothWays(
+    "a reply to a post the receiving server never saw brings its parent",
+    alice,
+    mona,
+    async (from, to) => {
+      const stranger = from === alice ? bob : carol;
+      const parent = await post(stranger, { status: `unseen parent ${stamp}` });
+      const reply = await post(from, {
+        status: `${to.acct} reply to an unseen parent ${stamp}`,
+        in_reply_to_id: parent.id,
+      });
+      const notification = await notified(to, "mention", from, reply.uri);
+      const copy = Status.parse(notification.status);
+      await contextBecomes(to, copy.id, "the reply's ancestors hold the parent", (context) =>
+        sameMembers(context.ancestors, [parent.uri]),
+      );
+      const now = await call(to, `/api/v1/statuses/${copy.id}`, Status);
+      if (now.in_reply_to_id === null) {
+        throw new StepFailure("the receiver's copy of the reply has no in_reply_to_id");
+      }
+    },
+  );
+
+  await step("a thread five posts deep across both servers shows whole on each", async () => {
+    const order = [alice, mona, bob, carol, alice];
+    const thread: Status[] = [];
+    for (const author of order) {
+      const parent = thread.at(-1);
+      if (!parent) {
+        thread.push(await post(author, { status: `deep root ${stamp}` }));
+        continue;
+      }
+      const parentAuthor = order[thread.length - 1];
+      const parentCopy = await resolveStatus(author, parent.uri);
+      thread.push(
+        await post(author, {
+          status: `${parentAuthor?.acct ?? ""} deep ${thread.length} ${stamp}`,
+          in_reply_to_id: parentCopy.id,
+        }),
+      );
+    }
+    const all = uris(thread);
+    for (const viewer of [alice, mona]) {
+      const root = await resolveStatus(viewer, all[0] ?? "");
+      await contextBecomes(
+        viewer,
+        root.id,
+        `${viewer.acct}'s descendants of the root are the four replies`,
+        (context) => sameMembers(context.descendants, all.slice(1)),
+      );
+      const leaf = await resolveStatus(viewer, all.at(-1) ?? "");
+      const context = await contextBecomes(
+        viewer,
+        leaf.id,
+        `${viewer.acct}'s ancestors of the leaf are the four posts above`,
+        (seen) => sameMembers(seen.ancestors, all.slice(0, -1)),
+      );
+      if (context.ancestors.join() !== all.slice(0, -1).join()) {
+        throw new StepFailure(
+          `${viewer.acct}'s ancestors are out of order: ${context.ancestors.join()}`,
+        );
+      }
+    }
+  });
+
+  const readers = [
+    ["tstodon reads a Mastodon thread", alice, [carol, erin, carol, erin]],
+    ["Mastodon reads a tstodon thread", mona, [bob, tina, bob, tina]],
+  ] as const;
+
+  for (const [direction, reader, authors] of readers) {
+    await step(`context backfills the ancestors of a resolved leaf: ${direction}`, async () => {
+      const chain = await localChain(`${stamp} up`, authors);
+      const leaf = await resolveStatus(reader, chain.at(-1)?.uri ?? "");
+      const context = await contextBecomes(
+        reader,
+        leaf.id,
+        "the leaf's ancestors are the three posts above it",
+        (seen) => sameMembers(seen.ancestors, uris(chain.slice(0, -1))),
+      );
+      if (context.ancestors.join() !== uris(chain.slice(0, -1)).join()) {
+        throw new StepFailure(`the ancestors are out of order: ${context.ancestors.join()}`);
+      }
+    });
+  }
+
+  /** A root with three direct replies: its author's own, and two by other accounts. */
+  const repliesOfRoot = async (reader: E2eUser, authors: readonly E2eUser[]): Promise<void> => {
+    const [author, second, third] = authors;
+    if (!author || !second || !third) {
+      throw new StepFailure("three authors are needed");
+    }
+    const root = await post(author, { status: `star root ${stamp}` });
+    const replies: Status[] = [];
+    for (const replier of [author, second, third]) {
+      replies.push(
+        await post(replier, {
+          status: `star reply ${replies.length} ${stamp}`,
+          in_reply_to_id: root.id,
+        }),
+      );
+    }
+    const copy = await resolveStatus(reader, root.uri);
+    await contextBecomes(reader, copy.id, "the root's descendants are its three replies", (seen) =>
+      sameMembers(seen.descendants, uris(replies)),
+    );
+  };
+
+  /** A chain below a root: only the first reply is in the root's `replies`. */
+  const repliesOfReplies = async (reader: E2eUser, authors: readonly E2eUser[]): Promise<void> => {
+    const chain = await localChain(`${stamp} down`, authors);
+    const root = await resolveStatus(reader, chain[0]?.uri ?? "");
+    await contextBecomes(reader, root.id, "the root's descendants are the three below it", (seen) =>
+      sameMembers(seen.descendants, uris(chain.slice(1))),
+    );
+  };
+
+  await step(
+    "context backfills the replies to a resolved root: tstodon reads a Mastodon thread",
+    () => repliesOfRoot(alice, [carol, erin, longName]),
+  );
+  await knownGap(
+    "context backfills the replies to a resolved root: Mastodon reads a tstodon thread",
+    "INT-4",
+    () => repliesOfRoot(mona, [bob, tina, alice]),
+  );
+  await knownGap(
+    "context backfills replies of replies: tstodon reads a Mastodon thread",
+    "INT-4",
+    () => repliesOfReplies(alice, [carol, erin, carol, erin]),
+  );
+  await knownGap(
+    "context backfills replies of replies: Mastodon reads a tstodon thread",
+    "INT-4",
+    () => repliesOfReplies(mona, [bob, tina, bob, tina]),
+  );
+};

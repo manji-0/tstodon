@@ -7,200 +7,37 @@
  * Needs the stack from `bootstrap.sh` and `.state/e2e.env`.
  */
 import { deflateSync, crc32 } from "node:zlib";
-import { z } from "zod";
-import { A, signUp, sleep, type E2eUser } from "../lib.js";
+import { A, signUp, type E2eUser } from "../lib.js";
 import { mastodonUser } from "./lib.js";
-
-const Account = z.looseObject({
-  id: z.string(),
-  username: z.string(),
-  uri: z.string(),
-  display_name: z.string(),
-  followers_count: z.number(),
-});
-const Poll = z.looseObject({
-  id: z.string(),
-  votes_count: z.number(),
-  options: z.array(z.looseObject({ title: z.string(), votes_count: z.number().nullable() })),
-});
-const BaseStatus = z.looseObject({
-  id: z.string(),
-  uri: z.string(),
-  content: z.string(),
-  visibility: z.string(),
-  in_reply_to_id: z.string().nullable(),
-  favourites_count: z.number(),
-  reblogs_count: z.number(),
-  edited_at: z.string().nullable(),
-  account: z.looseObject({ uri: z.string() }),
-  poll: Poll.nullish(),
-  media_attachments: z.array(
-    z.looseObject({ type: z.string(), description: z.string().nullable() }),
-  ),
-  mentions: z.array(z.looseObject({ acct: z.string() })),
-  tags: z.array(z.looseObject({ name: z.string() })),
-  emojis: z.array(z.looseObject({ shortcode: z.string() })),
-  quote: z
-    .looseObject({ state: z.string(), quoted_status: z.looseObject({ uri: z.string() }).nullish() })
-    .nullish(),
-});
-const Status = BaseStatus.extend({ reblog: BaseStatus.nullish() });
-type Status = z.infer<typeof Status>;
-const Statuses = z.array(Status);
-const Notifications = z.array(
-  z.looseObject({
-    type: z.string(),
-    account: z.looseObject({ uri: z.string() }),
-    status: z.looseObject({ uri: z.string() }).nullish(),
-  }),
-);
-const Context = z.looseObject({ ancestors: Statuses, descendants: Statuses });
-const Search = z.looseObject({ accounts: z.array(Account), statuses: Statuses });
-const Relationships = z.array(
-  z.looseObject({ following: z.boolean(), followed_by: z.boolean(), requested: z.boolean() }),
-);
-const Conversations = z.array(
-  z.looseObject({
-    last_status: z.looseObject({ uri: z.string(), visibility: z.string() }).nullish(),
-  }),
-);
-const Media = z.looseObject({ id: z.string(), url: z.string().nullable() });
-const Anything = z.unknown();
-
-class StepFailure extends Error {}
-
-/** Call a client API endpoint as `user`; a non-2xx answer or an unexpected body fails the step. */
-const call = async <T>(
-  user: E2eUser,
-  path: string,
-  schema: z.ZodType<T>,
-  init: { method?: string; body?: unknown; form?: FormData } = {},
-): Promise<T> => {
-  const method = init.method ?? "GET";
-  const request: RequestInit =
-    init.form !== undefined
-      ? { method, headers: user.headers, body: init.form }
-      : init.body !== undefined
-        ? {
-            method,
-            headers: { ...user.headers, "Content-Type": "application/json" },
-            body: JSON.stringify(init.body),
-          }
-        : { method, headers: user.headers };
-  const response = await fetch(`${user.origin}${path}`, request);
-  const text = await response.text();
-  if (!response.ok) {
-    throw new StepFailure(
-      `${init.method ?? "GET"} ${user.origin}${path} → ${response.status} ${text.slice(0, 300)}`,
-    );
-  }
-  const parsed = schema.safeParse(text.length > 0 ? JSON.parse(text) : undefined);
-  if (!parsed.success) {
-    throw new StepFailure(
-      `${path} on ${user.origin}: ${z.prettifyError(parsed.error)} in ${text.slice(0, 300)}`,
-    );
-  }
-  return parsed.data;
-};
-
-const eventually = async <T>(
-  label: string,
-  probe: () => Promise<T | undefined>,
-  timeoutMs = 20_000,
-): Promise<T> => {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = await probe();
-    if (value !== undefined) {
-      return value;
-    }
-    if (Date.now() > deadline) {
-      throw new StepFailure(`${label}: not within ${timeoutMs} ms`);
-    }
-    await sleep(500);
-  }
-};
-
-const results: Array<{ name: string; outcome: "ok" | "FAIL" | "skip"; detail: string }> = [];
-const step = async (name: string, run: () => Promise<void>): Promise<boolean> => {
-  try {
-    await run();
-    results.push({ name, outcome: "ok", detail: "" });
-    console.log(`ok   ${name}`);
-    return true;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    results.push({ name, outcome: "FAIL", detail });
-    console.log(`FAIL ${name}\n     ${detail}`);
-    return false;
-  }
-};
-
-const post = (user: E2eUser, body: Record<string, unknown>): Promise<Status> =>
-  call(user, "/api/v1/statuses", Status, {
-    method: "POST",
-    body: { visibility: "public", ...body },
-  });
-
-/** `viewer`'s copy of the status with this URI, resolved through search. */
-const resolveStatus = (viewer: E2eUser, uri: string): Promise<Status> =>
-  eventually(`${viewer.username} resolves ${uri}`, async () => {
-    const query = new URLSearchParams({ q: uri, resolve: "true", type: "statuses" });
-    const found = await call(viewer, `/api/v2/search?${query.toString()}`, Search);
-    return found.statuses.find((status) => status.uri === uri);
-  });
-
-/** `viewer`'s copy once it arrived by delivery: on the home timeline, never fetched. */
-const onHome = (viewer: E2eUser, uri: string, accept: (status: Status) => boolean = () => true) =>
-  eventually(`${uri} on ${viewer.username}'s home`, async () => {
-    const home = await call(viewer, "/api/v1/timelines/home?limit=40", Statuses);
-    return home.find((status) => status.uri === uri && accept(status));
-  });
-
-const notified = (user: E2eUser, type: string, from: E2eUser, statusUri?: string) =>
-  eventually(`${user.username} is notified of ${type}`, async () => {
-    const list = await call(user, `/api/v1/notifications?types[]=${type}&limit=40`, Notifications);
-    return list.find(
-      (item) =>
-        item.type === type &&
-        item.account.uri === from.uri &&
-        (statusUri === undefined || item.status?.uri === statusUri),
-    );
-  });
-
-const resolveAccount = async (viewer: E2eUser, target: E2eUser) => {
-  const query = new URLSearchParams({ q: target.acct, resolve: "true", type: "accounts" });
-  const found = await call(viewer, `/api/v2/search?${query.toString()}`, Search);
-  const account = found.accounts.find((candidate) => candidate.uri === target.uri);
-  if (!account) {
-    throw new StepFailure(`${viewer.username} cannot resolve ${target.acct}`);
-  }
-  return account;
-};
-
-const relationship = async (viewer: E2eUser, accountId: string) => {
-  const [state] = await call(
-    viewer,
-    `/api/v1/accounts/relationships?id[]=${encodeURIComponent(accountId)}`,
-    Relationships,
-  );
-  if (!state) {
-    throw new StepFailure("no relationship");
-  }
-  return state;
-};
-
-const follow = async (follower: E2eUser, followed: E2eUser): Promise<string> => {
-  const account = await resolveAccount(follower, followed);
-  await call(follower, `/api/v1/accounts/${account.id}/follow`, Anything, {
-    method: "POST",
-    body: {},
-  });
-  await eventually(`${followed.acct} accepts`, async () =>
-    (await relationship(follower, account.id)).following ? true : undefined,
-  );
-  return account.id;
-};
+import { authorizedFetchScenarios } from "./probe-authorized-fetch.js";
+import { directScenarios } from "./probe-direct.js";
+import { followScenarios } from "./probe-follows.js";
+import { searchScenarios } from "./probe-search.js";
+import { threadScenarios } from "./probe-threads.js";
+import {
+  Account,
+  Anything,
+  bothWays,
+  call,
+  type Cast,
+  Context,
+  Conversations,
+  eventually,
+  follow,
+  Media,
+  notified,
+  onHome,
+  Poll,
+  post,
+  relationship,
+  resolveAccount,
+  resolveStatus,
+  results,
+  Status,
+  Statuses,
+  step,
+  StepFailure,
+} from "./sweep.js";
 
 /** A 32×32 red PNG. */
 const png = (): Blob => {
@@ -241,24 +78,11 @@ const upload = async (user: E2eUser, description: string): Promise<string> => {
   return media.id;
 };
 
-/** The same interaction, sent from each server to the other. */
-const bothWays = async (
-  name: string,
-  alice: E2eUser,
-  mona: E2eUser,
-  run: (from: E2eUser, to: E2eUser) => Promise<void>,
-): Promise<void> => {
-  await step(`${name}: tstodon → Mastodon`, () => run(alice, mona));
-  await step(`${name}: Mastodon → tstodon`, () => run(mona, alice));
-};
-
-const main = async (): Promise<void> => {
+/** Every interaction once, in both directions, between a pair that follows each other. */
+const baseScenarios = async ({ stamp, mona, carol }: Cast): Promise<void> => {
   const alice = await signUp(A, "alice");
   const bob = await signUp(A, "bob");
-  const mona = await mastodonUser("mona");
-  const carol = await mastodonUser("carol");
   console.log(`users ${alice.acct}, ${mona.acct}`);
-  const stamp = Date.now().toString(36);
 
   const idOf = new Map<string, string>();
   await bothWays("follow → accept", alice, mona, async (from, to) => {
@@ -530,11 +354,55 @@ const main = async (): Promise<void> => {
     );
     await call(from, `/api/v1/accounts/${id}/unblock`, Anything, { method: "POST", body: {} });
   });
+};
 
+const areas: ReadonlyArray<readonly [name: string, run: (cast: Cast) => Promise<void>]> = [
+  ["base", baseScenarios],
+  ["search", searchScenarios],
+  ["direct", directScenarios],
+  ["threads", threadScenarios],
+  ["follows", followScenarios],
+  ["authorized-fetch", authorizedFetchScenarios],
+];
+
+/** `E2E_PROBE_AREAS=search,threads` runs those areas only. */
+const main = async (): Promise<void> => {
+  const only = process.env["E2E_PROBE_AREAS"]?.split(",").map((name) => name.trim());
+  const unknown = only?.filter((name) => !areas.some(([area]) => area === name)) ?? [];
+  if (unknown.length > 0) {
+    console.error(`unknown area ${unknown.join(", ")}: ${areas.map(([area]) => area).join(", ")}`);
+    process.exit(2);
+  }
+  const cast: Cast = {
+    stamp: Date.now().toString(36),
+    mona: await mastodonUser("mona"),
+    carol: await mastodonUser("carol"),
+    dana: await mastodonUser("dana"),
+    erin: await mastodonUser("erin"),
+    longName: await mastodonUser("long_username_for_interop_0123"),
+  };
+  for (const [name, run] of areas) {
+    if (only === undefined || only.includes(name)) {
+      console.log(`\n== ${name}`);
+      await run(cast);
+    }
+  }
+
+  const count = (outcome: (typeof results)[number]["outcome"]): number =>
+    results.filter((result) => result.outcome === outcome).length;
+  const ran = count("ok") + count("FAIL");
+  console.log(
+    `\n${count("ok")} of ${ran} steps passed` +
+      (count("gap") > 0 ? `, ${count("gap")} known gaps` : "") +
+      (count("skip") > 0 ? `, ${count("skip")} skipped` : ""),
+  );
   const failed = results.filter((result) => result.outcome === "FAIL");
-  console.log(`\n${results.length - failed.length} of ${results.length} steps passed`);
-  for (const result of failed) {
-    console.log(`FAIL ${result.name}: ${result.detail}`);
+  for (const result of results) {
+    if (result.outcome === "FAIL" || result.outcome === "gap") {
+      console.log(
+        `${result.outcome === "FAIL" ? "FAIL" : "gap "} ${result.name}: ${result.detail}`,
+      );
+    }
   }
   process.exit(failed.length === 0 ? 0 : 1);
 };
