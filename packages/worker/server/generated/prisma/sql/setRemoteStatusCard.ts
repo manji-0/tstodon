@@ -11,7 +11,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param onlyIfMissing
  */
 export const setRemoteStatusCard = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_statuses SET card_json = $2, card_url = $3, updated_at = CURRENT_TIMESTAMP\nWHERE id = $1 AND ($4 = 0 OR card_json IS NULL OR card_url IS NOT $3)\nRETURNING id",
+  "UPDATE remote_statuses SET card_json = $2, card_url = $3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')\nWHERE id = $1 AND ($4 = 0 OR card_json IS NULL OR card_url IS NOT $3)\nRETURNING id",
 ) as (
   id: string,
   cardJson: string,

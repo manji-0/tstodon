@@ -8,29 +8,39 @@ import {
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
-} from "./remote-status-persist";
+} from "./remote-note-document";
 import {
   type InvalidRemoteStatusRow,
   overwriteRemoteStatus,
   salvageRemoteStatus,
 } from "./remote-status-store";
 
+/**
+ * How a note document reaches a row that does not read. `Create` and `Update`
+ * are inbox activities the note's author signed. `Fetched` is the document
+ * read from the note's own URI on its author's host, for another activity
+ * that refers to the note.
+ */
+export type HealingDocument = Readonly<{ activity: "Create" | "Update" | "Fetched"; raw: unknown }>;
+
 /** The row stays as it is and the delivery is dropped, as Mastodon drops a `RecordInvalid`. */
 const kept = (
   statusId: string,
-  reason: "NotTheAuthorsNote" | "DocumentNotANote" | "RowNotRewritable" | "NotNewer",
-): Result<void, RepositoryError> => {
+  reason: "NotTheAuthorsNote" | "DocumentNotANote" | "RowNotRewritable" | "NotNewer" | "NotDated",
+): Result<undefined, RepositoryError> => {
   console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowKept", statusId, reason }));
   return ok(undefined);
 };
 
 /**
- * Settle a `Create` or `Update` of a note whose stored row does not read as a
- * status. Delivering it again would find the same row, so the row is never a
- * reason to answer with an error. When `signer` wrote the note and `raw` is
- * its document, the row is replaced under the id it holds: no history
- * version, notification or stream event, as the row was shown to nobody. Any
- * other delivery is dropped. Only a failed read or write is an `Err`.
+ * Settle a note document that arrives for a stored row which does not read
+ * as a status. Delivering it again would find the same row, so the row is
+ * never a reason to answer with an error. When `signer` wrote the note and
+ * `raw` is its document, the row is replaced under the id it holds, and the
+ * status it now reads as is returned: no history version, marker,
+ * notification or stream event, as the row was shown to nobody. Any other
+ * document is dropped, with `undefined`. Only a failed read or write is an
+ * `Err`.
  *
  * The replacement starts from what the row still holds
  * ({@link salvageRemoteStatus}): every column that reads on its own counts as
@@ -38,15 +48,30 @@ const kept = (
  * changes the content of a note edited since is dropped, as an ordinary
  * `Update` that is not newer: a `Create` carries the note as first
  * published, and a replayed `Update` an older edit. An `Update` keeps the
- * stored visibility, publication date and language. A new tally settles the
- * local votes, as it does for a row that reads.
+ * stored visibility, publication date and language, and so does a fetched
+ * document, which is the note as it reads now. A fetched document is dated
+ * by its `updated` only: it is no edit, so one without a date is not dated
+ * now. A new tally settles the local votes, as it does for a row that reads.
+ *
+ * A row whose `edited_at` does not read was edited at a time unknown, not
+ * never. A document that changes its content then replaces it only when its
+ * `updated` is later than the last write of the row (`updated_at`), which no
+ * edit the row holds was received after: a replayed older `Update` is dated
+ * before it, and so is the `Create` of a note edited since. A document
+ * without `updated` does not replace it, not even an `Update`, as dating it
+ * now would date its replay now too (`NotDated`). Nor does any document
+ * when `updated_at` does not read either. The cost is a real edit made
+ * before this server last wrote the row, or dated so by a clock that runs
+ * behind: it is dropped, and the row stays until a later edit. A document
+ * that changes nothing still replaces the row, and its `updated` is the date
+ * of the content both hold, so it becomes the row's.
  */
 export const settleInvalidRemoteStatus = async (
   env: Env,
   signer: RemoteActor,
   invalid: InvalidRemoteStatusRow,
-  delivery: Readonly<{ activity: "Create" | "Update"; raw: unknown }>,
-): Promise<Result<void, RepositoryError>> => {
+  delivery: HealingDocument,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
   const { activity, raw } = delivery;
   const parsed = noteFromUnknown(raw, signer);
   const note = parseNoteDocument(raw);
@@ -65,9 +90,9 @@ export const settleInvalidRemoteStatus = async (
   if (salvaged.value === undefined) {
     return kept(invalid.id, "RowNotRewritable");
   }
-  const stored = salvaged.value;
+  const stored = salvaged.value.status;
   const delivered: RemoteStatusValue =
-    activity === "Update"
+    activity !== "Create"
       ? {
           ...parsed.value,
           publishedAt: stored.publishedAt,
@@ -80,12 +105,20 @@ export const settleInvalidRemoteStatus = async (
     id: stored.id,
     editedAt: stored.editedAt,
   });
+  const dated = IsoInstant.parseRemote(note.value.updated ?? "").unwrapOr(undefined);
   // An `Update` without a date is dated now, as an ordinary one. A `Create`
   // without one is the note before any edit.
-  const updated = IsoInstant.parseRemote(note.value.updated ?? "").unwrapOr(
-    activity === "Update" ? nowInstant() : undefined,
-  );
+  const updated = dated ?? (activity === "Update" ? nowInstant() : undefined);
   const edited = contentChanged(stored, refreshed);
+  const { edit } = salvaged.value;
+  if (edited && edit.kind === "Unknown") {
+    if (dated === undefined) {
+      return kept(invalid.id, "NotDated");
+    }
+    if (edit.writtenAt === undefined || !isNewer(dated, edit.writtenAt)) {
+      return kept(invalid.id, "NotNewer");
+    }
+  }
   if (
     edited &&
     stored.editedAt.kind === "Edited" &&
@@ -93,13 +126,19 @@ export const settleInvalidRemoteStatus = async (
   ) {
     return kept(invalid.id, "NotNewer");
   }
+  // The date of the content the row is left with: the document's when it
+  // changes the content, or when the row has lost its own.
+  const editedAt = edited ? updated : edit.kind === "Unknown" ? dated : undefined;
   const status: RemoteStatusValue =
-    edited && updated !== undefined
-      ? { ...refreshed, editedAt: { kind: "Edited", at: updated } }
+    editedAt !== undefined
+      ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt } }
       : refreshed;
-  const replaced = await overwriteRemoteStatus(env.DB, stored, status, noteHashtags(raw));
-  if (replaced.isOk()) {
-    console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowReplaced", statusId: invalid.id }));
+  const replaced = await overwriteRemoteStatus(env.DB, salvaged.value, status, noteHashtags(raw));
+  if (replaced.isErr()) {
+    return err(replaced.error);
   }
-  return replaced;
+  console.warn(
+    JSON.stringify({ kind: "InvalidRemoteStatusRowReplaced", statusId: invalid.id, activity }),
+  );
+  return ok(status);
 };

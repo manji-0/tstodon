@@ -27,35 +27,109 @@ export type OwedMarker = Readonly<{
   mentions: ReadonlyArray<string>;
 }>;
 
+/**
+ * How long a delivery holds the late steps of a marker. A delivery that was
+ * cut off in them keeps the others away for this long.
+ */
+export const OWED_LEASE_SECONDS = 60;
+
+/**
+ * A marker whose late steps this delivery runs, and no other until
+ * `heldUntil` (`claimed_until`): it wrote the marker, or took the lease of
+ * one that nobody held ({@link claimOwed}).
+ */
+export type HeldOwed = OwedMarker & Readonly<{ heldUntil: string }>;
+
+const leaseEnd = (nowMs: number): string =>
+  new Date(nowMs + OWED_LEASE_SECONDS * 1000).toISOString();
+
 export const newOwedMarker = (
   kind: OwedMarker["kind"],
   mentions: ReadonlyArray<string> = [],
-): OwedMarker => ({
+): HeldOwed => ({
   kind,
   token: crypto.randomUUID(),
   createdAt: nowIso(),
   mentions,
+  heldUntil: leaseEnd(Date.now()),
 });
 
 /**
  * The statement that writes `marker` for `statusId`, for the batch that
  * writes the status row. A marker of the same kind left by an earlier
- * delivery is replaced: its token, time and mentions become this delivery's.
+ * delivery is replaced: its token, time, mentions and lease become this
+ * delivery's.
  */
 export const owedStatement = (
   db: D1Database,
   statusId: string,
-  marker: OwedMarker,
+  marker: HeldOwed,
 ): D1PreparedStatement =>
   db
     .prepare(
-      `INSERT INTO remote_status_owed (status_id, kind, token, created_at, mentions_json)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO remote_status_owed
+         (status_id, kind, token, created_at, mentions_json, claimed_until)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (status_id, kind) DO UPDATE
          SET token = excluded.token, created_at = excluded.created_at,
-             mentions_json = excluded.mentions_json`,
+             mentions_json = excluded.mentions_json, claimed_until = excluded.claimed_until`,
     )
-    .bind(statusId, marker.kind, marker.token, marker.createdAt, JSON.stringify(marker.mentions));
+    .bind(
+      statusId,
+      marker.kind,
+      marker.token,
+      marker.createdAt,
+      JSON.stringify(marker.mentions),
+      marker.heldUntil,
+    );
+
+/**
+ * Take the late steps of `marker`, which another delivery wrote, for this
+ * one. `undefined` when a delivery holds them now, or the marker is gone or
+ * replaced: they are not this delivery's to run. The check and the write are
+ * one statement, so of two deliveries that find the marker at the same
+ * moment one runs the steps. A lease that is past was a delivery's that was
+ * cut off, and is taken over.
+ */
+export const claimOwed = (
+  db: D1Database,
+  statusId: string,
+  marker: OwedMarker,
+  nowMs: number = Date.now(),
+): Promise<Result<HeldOwed | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const heldUntil = leaseEnd(nowMs);
+    const claimed = await db
+      .prepare(
+        `UPDATE remote_status_owed SET claimed_until = ?
+         WHERE status_id = ? AND kind = ? AND token = ?
+           AND (claimed_until IS NULL OR claimed_until < ?)
+         RETURNING token`,
+      )
+      .bind(heldUntil, statusId, marker.kind, marker.token, new Date(nowMs).toISOString())
+      .all();
+    return claimed.results.length > 0 ? { ...marker, heldUntil } : undefined;
+  });
+
+/**
+ * Give up the late steps of `held` without finishing them, so the next
+ * delivery of the note takes them at once. A lease another delivery has
+ * taken over since, or a marker that was replaced, is left as it is.
+ */
+export const releaseOwed = (
+  db: D1Database,
+  statusId: string,
+  held: HeldOwed,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        `UPDATE remote_status_owed SET claimed_until = NULL
+         WHERE status_id = ? AND kind = ? AND token = ? AND claimed_until = ?`,
+      )
+      .bind(statusId, held.kind, held.token, held.heldUntil)
+      .run();
+  });
 
 /** The markers of `statusId`: one per kind at most, none when nothing is owed. */
 export const listOwed = (

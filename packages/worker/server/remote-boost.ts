@@ -14,11 +14,11 @@ import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { parseLocalStatusId } from "./activitypub";
 import { nowIso } from "./clock";
-import type { RepositoryError } from "./d1";
+import { readableRow, type RepositoryError } from "./d1";
 import { stringList } from "./form-values";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { insertRemoteBoost } from "./remote-boost-store";
-import { findStatusById } from "./status-store";
+import { readStatusById } from "./status-store";
 
 const AnnounceEnvelopeSchema = z.object({
   to: z.union([z.string(), z.array(z.string())]).optional(),
@@ -51,7 +51,8 @@ const announcedTarget = async (
       },
     );
   }
-  const local = await findStatusById(db, localId);
+  // A local note whose row does not read is no target: the boost is dropped.
+  const local = readableRow(await readStatusById(db, localId));
   return local.map((status) =>
     status?.kind === "LocalNote"
       ? { target: { kind: "LocalStatus", statusId: status.id }, visibility: status.visibility }

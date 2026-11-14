@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { noteFromUnknown } from "./remote-status-persist";
+import { noteFromUnknown } from "./remote-note-document";
 
 const author = { actorUri: "https://remote.example/users/alice" };
 

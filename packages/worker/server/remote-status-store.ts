@@ -433,6 +433,11 @@ const reads =
   (value: string): boolean =>
     parse(value).isOk();
 
+/** An `edited_at` that reads: none (`NULL` or empty), or an instant. */
+const EditedAtColumn = z
+  .union([z.literal(""), z.string().refine(reads(IsoInstant.parse))])
+  .nullable();
+
 /**
  * The shape of a row that does not read as a status, with each column a
  * rewrite replaces falling back to `fill`'s when it does not read on its
@@ -455,11 +460,9 @@ const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> =>
     sensitive: column.sensitive.catch(fill.sensitive),
     language: column.language.catch(fill.language),
     published_at: z.string().refine(reads(IsoInstant.parse)).catch(fill.published_at),
-    // An unreadable date of the last edit is no edit: nothing orders against it.
-    edited_at: z
-      .union([z.literal(""), z.string().refine(reads(IsoInstant.parse))])
-      .nullable()
-      .catch(null),
+    // A date of the last edit that does not read is unknown, which the row
+    // cannot say: it reads as none here, and `SalvagedRemoteStatus.edit` tells.
+    edited_at: EditedAtColumn.catch(null),
     media_json: column.media_json.catch(fill.media_json),
     card_json: column.card_json.catch(null),
     poll_json: column.poll_json.catch(fill.poll_json),
@@ -467,6 +470,86 @@ const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> =>
     quote_policy_json: column.quote_policy_json.catch(fill.quote_policy_json),
   });
 };
+
+/** The columns a rewrite of a row replaces: the ones {@link salvageRemoteStatus} reads. */
+const REWRITTEN_COLUMNS = [
+  "url",
+  "content_html",
+  "spoiler_text",
+  "visibility",
+  "sensitive",
+  "language",
+  "published_at",
+  "edited_at",
+  "media_json",
+  "poll_json",
+  "emojis_json",
+  "quote_policy_json",
+] as const;
+
+/**
+ * SQL for one text that differs between any two versions of
+ * {@link REWRITTEN_COLUMNS}, whatever a column holds: each column's storage
+ * class and its bytes in hex. The text is read with the row and bound back
+ * to the guard, so it is ASCII: a column's own text does not survive that
+ * trip when it is not UTF-8 or holds a NUL, and would never compare equal.
+ */
+const ROW_VERSION_SQL = REWRITTEN_COLUMNS.map(
+  (column) => `typeof(${column}) || ':' || hex(CAST(${column} AS BLOB))`,
+).join(" || ',' || ");
+
+const VersionedRow = z.object({
+  version: z.string(),
+  edited_at: z.unknown(),
+  updated_at: z.unknown(),
+  poll_json: z.unknown(),
+});
+
+/**
+ * What the row says of the last edit of its content. `Known` is an
+ * `edited_at` that reads, which `status.editedAt` then holds. `Unknown` is
+ * one that does not: the content may have been edited at any time up to
+ * `writtenAt`, when this server last wrote the row (`updated_at`), which is
+ * absent when that does not read either.
+ */
+export type SalvagedEdit =
+  | Readonly<{ kind: "Known" }>
+  | Readonly<{ kind: "Unknown"; writtenAt: IsoInstant | undefined }>;
+
+/**
+ * What a rewrite of a row that does not read starts from. `status` is what
+ * the row holds once the columns that do not read are filled; its `editedAt`
+ * is none when `edit` is `Unknown`. `pollFilled` says its poll is the
+ * document's, as the stored `poll_json` does not read as a column: the tally
+ * the row held is then unknown. `version` names the stored columns it was
+ * read from ({@link ROW_VERSION_SQL}), so the rewrite replaces that row and
+ * no other ({@link overwriteRemoteStatus}).
+ */
+export type SalvagedRemoteStatus = Readonly<{
+  status: RemoteStatus;
+  edit: SalvagedEdit;
+  pollFilled: boolean;
+  version: string;
+}>;
+
+/**
+ * When the row was last written, from its `updated_at`. Most writers store an
+ * instant. A card write stored SQLite's `CURRENT_TIMESTAMP` until it was
+ * changed to do the same ('YYYY-MM-DD HH:MM:SS', in UTC), and rows written
+ * then still hold it.
+ */
+const writtenAt = (updatedAt: unknown): IsoInstant | undefined => {
+  if (typeof updatedAt !== "string") {
+    return undefined;
+  }
+  const sqlite = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(updatedAt);
+  return IsoInstant.parse(sqlite ? `${sqlite[1]}T${sqlite[2]}Z` : updatedAt).unwrapOr(undefined);
+};
+
+const salvagedEdit = (row: z.infer<typeof VersionedRow>): SalvagedEdit =>
+  EditedAtColumn.safeParse(row.edited_at).success
+    ? { kind: "Known" }
+    : { kind: "Unknown", writtenAt: writtenAt(row.updated_at) };
 
 /**
  * The status the row of `id` holds once the columns that do not read are
@@ -479,13 +562,30 @@ export const salvageRemoteStatus = async (
   db: D1Database,
   id: string,
   fill: RemoteStatus,
-): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
-  const queried = await findRow(db, findRemoteStatusByIdSql(id));
+): Promise<Result<SalvagedRemoteStatus | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
+      .prepare(`SELECT *, ${ROW_VERSION_SQL} AS version FROM remote_statuses WHERE id = ?`)
+      .bind(id)
+      .first(),
+  );
   if (queried.isErr()) {
     return err(queried.error);
   }
+  const versioned = schemaResult(VersionedRow)(queried.value);
   const row = schemaResult(salvagedRowSchema(remoteStatusRowOf(fill)))(queried.value);
-  return ok(row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined);
+  const status = row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined;
+  return ok(
+    status && versioned.isOk()
+      ? {
+          status,
+          edit: salvagedEdit(versioned.value),
+          pollFilled: !RemoteStatusRowSchema.shape.poll_json.safeParse(versioned.value.poll_json)
+            .success,
+          version: versioned.value.version,
+        }
+      : undefined,
+  );
 };
 
 /**
@@ -625,20 +725,44 @@ export const upsertRemoteStatus = async (
  * `status` and its tags, in one batch. `before` is what the row still held
  * ({@link salvageRemoteStatus}). The upsert keeps a stored `edited_at` when
  * the status has none, so it is cleared first.
+ *
+ * The batch fails when the row is no longer the one `before` was read from:
+ * another delivery replaced it meanwhile, and this write, computed from the
+ * row that is gone, would undo that one. It is the guard of
+ * `refuseReplacedRemoteStatus.sql`, which names the `edited_at` of a row that
+ * reads. A row that does not read may hold none to name, and two rewrites of
+ * it may leave the same one, so this guard names every column the rewrite
+ * replaces. The sender's redelivery reads the row again.
+ *
+ * The local votes are settled when the tally is new, as for a row that
+ * reads. When the stored poll did not read (`before.pollFilled`), the tally
+ * the row held is unknown and `before` holds the document's, which would
+ * compare as unchanged: the votes are then settled whenever the status has a
+ * poll, as the counts written are the author's and nothing says they were
+ * stored before.
  */
 export const overwriteRemoteStatus = async (
   db: D1Database,
-  before: RemoteStatus,
+  before: SalvagedRemoteStatus,
   status: RemoteStatus,
   tags: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1Batch(db, [
     db
+      .prepare(
+        `INSERT INTO remote_status_edits (id, status_id, snapshot_json, created_at)
+         SELECT 'refused', NULL, '', '' FROM remote_statuses
+         WHERE id = ? AND ${ROW_VERSION_SQL} IS NOT ?`,
+      )
+      .bind(status.id, before.version),
+    db
       .prepare("UPDATE remote_statuses SET edited_at = NULL WHERE id = ? AND actor_uri = ?")
       .bind(status.id, status.actorUri),
     remoteStatusRowStatement(db, status, undefined, "Replace"),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
-    ...pollSettlement(db, before, status),
+    ...(before.pollFilled && status.poll.kind !== "NoPoll"
+      ? [settleRemotePollVotesStatement(db, status.id)]
+      : pollSettlement(db, before.status, status)),
   ]);
   return written.map(() => undefined);
 };

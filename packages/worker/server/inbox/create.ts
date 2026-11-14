@@ -25,12 +25,14 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   const objectUri = typeof received.object === "string" ? received.object : received.object.id;
   const known = await findDeliveredRemoteStatus(env.DB, objectUri);
   if (known.isErr()) {
-    return known.error.kind === "StoredRowInvalid"
-      ? settleInvalidRemoteStatus(env, signer, known.error, {
-          activity: "Create",
-          raw: received.object,
-        })
-      : err(known.error);
+    if (known.error.kind !== "StoredRowInvalid") {
+      return err(known.error);
+    }
+    const settled = await settleInvalidRemoteStatus(env, signer, known.error, {
+      activity: "Create",
+      raw: received.object,
+    });
+    return settled.map(() => undefined);
   }
   const created = await persistRemoteObject(
     env,

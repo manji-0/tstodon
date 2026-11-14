@@ -1,43 +1,45 @@
 import {
   InstanceIdentity,
   RealtimeWindow,
-  IsoInstant,
-  RemoteEmojiSchema,
-  QuoteInteractionPolicy,
-  RemoteStatus,
-  StatusId,
   StatusTarget,
-  type RemoteEmoji,
-  RemoteActor,
+  type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
   type MentionedPost,
-  type QuotePolicyAuthor,
 } from "@tstodon/domain";
-import { isHashtagName, normalizeHashtag, schemaResult } from "@tstodon/core";
+import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
-import { nowInstant, nowIso } from "./clock";
+import { nowInstant } from "./clock";
 import { readableRow, type RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
-import { entityIdAt, type IdClock, newEntityId } from "./ids";
+import type { IdClock } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountByUsername } from "./account-store";
-import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { startLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemoteOnce } from "./notify";
 import { startHomeFanOut } from "./home-fan-out";
 import { startPublicFanOut } from "./public-fan-out";
 import {
+  applyMediaPolicy,
+  noteFromUnknown,
+  noteHashtags,
+  parseNoteDocument,
+} from "./remote-note-document";
+import {
+  claimOwed,
   clearOwed,
+  type HeldOwed,
   listOwed,
   newOwedMarker,
-  type OwedMarker,
   owedStatement,
+  releaseOwed,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
+import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
+  type InvalidRemoteStatusRow,
   type KnownRemoteStatus,
   upsertRemoteStatus,
 } from "./remote-status-store";
@@ -48,174 +50,8 @@ import {
   replaceRemoteStatusRemoteMentions,
 } from "./mention-store";
 import { listLocalBoosterAccountIds } from "./status-interaction-store";
-import { isTruthy, stringList } from "./form-values";
-import { NoteDocumentSchema } from "./activitypub-wire";
-import { remoteEmojisInTexts } from "./remote-emoji-document";
-import { remotePollFromDocument } from "./remote-poll-parse";
+import { stringList } from "./form-values";
 import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
-
-export const parseNoteDocument = schemaResult(NoteDocumentSchema);
-
-/** The note's language: the first `contentMap` key that is a language tag, as Mastodon reads it. */
-const noteLanguage = (
-  contentMap: Readonly<Record<string, unknown>> | undefined,
-): RemoteStatusValue["language"] => {
-  const tag = Object.keys(contentMap ?? {})
-    .map((key) => key.trim().toLowerCase())
-    .find((key) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(key));
-  return tag ? { kind: "Present", value: tag } : { kind: "None" };
-};
-
-const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
-
-const parseInteractionPolicy = schemaResult(z.object({ canQuote: z.unknown().optional() }));
-
-/** The `canQuote` of a note's `interactionPolicy`, when it has one. */
-const canQuoteOf = (interactionPolicy: unknown): unknown => {
-  const parsed = parseInteractionPolicy(interactionPolicy);
-  return parsed.isOk() ? parsed.value.canQuote : undefined;
-};
-
-const EmojiTagsSchema = z.object({
-  tag: z
-    .array(
-      z
-        .object({
-          type: z.string().optional(),
-          name: z.string().optional(),
-          icon: z.object({ url: z.string().optional() }).passthrough().optional(),
-        })
-        .passthrough(),
-    )
-    .optional(),
-});
-
-/** Mastodon caps a status's emoji far below this; it only bounds a hostile document. */
-const MAX_EMOJIS = 50;
-
-/**
- * The custom emoji a note declares in `Emoji` tags and actually uses in its
- * content, spoiler or poll option titles, as Mastodon keeps them.
- */
-export const noteEmojis = (
-  raw: unknown,
-  texts: ReadonlyArray<string>,
-): ReadonlyArray<RemoteEmoji> => {
-  const tags = schemaResult(EmojiTagsSchema)(raw);
-  const seen = new Set<string>();
-  const emojis: RemoteEmoji[] = [];
-  for (const tag of tags.isOk() ? (tags.value.tag ?? []) : []) {
-    const shortcode = tag.name?.replace(/^:|:$/g, "");
-    const url = tag.icon?.url;
-    if (tag.type !== "Emoji" || !shortcode || !url || seen.has(shortcode.toLowerCase())) {
-      continue;
-    }
-    seen.add(shortcode.toLowerCase());
-    const parsed = parseRemoteEmoji({ shortcode, url });
-    if (parsed.isOk()) {
-      emojis.push(parsed.value);
-    }
-  }
-  return remoteEmojisInTexts(texts, emojis).slice(0, MAX_EMOJIS);
-};
-
-const TaggedSchema = z.object({ tag: z.unknown().optional() });
-const HashtagTagSchema = z.object({
-  type: z.union([z.string(), z.array(z.unknown())]),
-  name: z.string(),
-});
-
-/**
- * A note's hashtags: the names of the `Hashtag` objects of its `tag`, as
- * Mastodon reads them (`ActivityPub::Activity::Create#process_hashtag`,
- * `ProcessStatusUpdateService#update_tags!`), not the hashtags its content
- * reads as. `tag` may be one object, and `type` a list that includes
- * `Hashtag`. Each name is stored as `normalizeHashtag` writes it (which drops
- * a leading `#`) and kept once, in the note's order, when it is a tag's name.
- */
-export const noteHashtags = (raw: unknown): ReadonlyArray<string> => {
-  const tagged = schemaResult(TaggedSchema)(raw);
-  const tag = tagged.isOk() ? tagged.value.tag : undefined;
-  const entries: ReadonlyArray<unknown> = Array.isArray(tag) ? tag : [tag];
-  const names = entries.flatMap((entry) => {
-    const hashtag = schemaResult(HashtagTagSchema)(entry);
-    if (hashtag.isErr()) {
-      return [];
-    }
-    const { type, name } = hashtag.value;
-    return (typeof type === "string" ? type === "Hashtag" : type.includes("Hashtag"))
-      ? [normalizeHashtag(name)]
-      : [];
-  });
-  return [...new Set(names.filter(isHashtagName))];
-};
-
-export const noteFromUnknown = (
-  raw: unknown,
-  author: QuotePolicyAuthor,
-  idClock: IdClock = "Received",
-): Result<RemoteStatusValue, { kind: "InvalidObject" }> => {
-  const actorUri = author.actorUri;
-  const document = parseNoteDocument(raw);
-  if (document.isErr()) {
-    return err({ kind: "InvalidObject" });
-  }
-  if (document.value.attributedTo !== actorUri) {
-    return err({ kind: "InvalidObject" });
-  }
-  const publishedAt = IsoInstant.parseRemote(document.value.published).orElse(() =>
-    IsoInstant.parse(nowIso()),
-  );
-  if (publishedAt.isErr()) {
-    return err({ kind: "InvalidObject" });
-  }
-  const id = StatusId.parse(
-    idClock === "Published" ? entityIdAt(Date.parse(publishedAt.value)) : newEntityId(),
-  );
-  if (id.isErr()) {
-    return err({ kind: "InvalidObject" });
-  }
-  const attachments = (document.value.attachment ?? []).flatMap((entry) => {
-    const url = entry.url;
-    if (!url || url.length === 0) {
-      return [];
-    }
-    return [
-      {
-        url,
-        mediaType: entry.mediaType ?? "",
-        description: entry.name ?? "",
-      },
-    ];
-  });
-  const poll = remotePollFromDocument(document.value);
-  return RemoteStatus.fromFetched({
-    id: id.value,
-    media: attachments,
-    actorUri,
-    objectUri: document.value.id,
-    contentHtml: document.value.content,
-    spoilerText: document.value.summary ?? "",
-    visibility: RemoteStatus.visibilityFromAudience(
-      stringList(document.value.to),
-      stringList(document.value.cc),
-    ),
-    sensitive: isTruthy(document.value.sensitive),
-    language: noteLanguage(document.value.contentMap),
-    publishedAt: publishedAt.value,
-    poll,
-    emojis: noteEmojis(raw, [
-      document.value.content,
-      document.value.summary ?? "",
-      ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
-    ]),
-    quotePolicy: QuoteInteractionPolicy.fromCanQuote(
-      canQuoteOf(document.value.interactionPolicy),
-      author,
-    ),
-    ...(document.value.url ? { url: document.value.url } : {}),
-  });
-};
 
 const MentionTagsSchema = z.object({
   tag: z
@@ -318,16 +154,17 @@ const remoteMentionedPost = async (
  * (`status`) and as delivered or fetched (`raw`).
  *
  * `Created` is a note stored from `raw`. `marker` is the one written with its
- * row, absent for a note that owes nothing (one that was fetched, or one
- * whose row existed). It is `resumed` when another delivery wrote it and
- * this one finishes its steps.
+ * row, or one another delivery wrote whose steps this one finishes; this
+ * delivery holds its lease. Absent for a note that owes nothing (one that
+ * was fetched, or one whose row existed).
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
  * the row was written). `edit` is the marker of a change to its content:
  * written by this delivery, or left by one whose late steps failed, which
  * this delivery finishes although the content it carries is already stored.
- * Absent for an `Update` that edits nothing.
+ * Absent for an `Update` that edits nothing, or whose pending edit another
+ * delivery is finishing.
  */
 export type LateSteps = Readonly<{
   actor: RemoteActor;
@@ -336,11 +173,11 @@ export type LateSteps = Readonly<{
   options: PersistOptions;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: OwedMarker | undefined; resumed: boolean }>
+    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined }>
     | Readonly<{
         kind: "Updated";
         added: ReadonlyArray<string>;
-        edit: OwedMarker | undefined;
+        edit: HeldOwed | undefined;
       }>
   );
 
@@ -394,8 +231,59 @@ const mentionsToNotify = (
  * writes replace what they wrote, a notification is sent once
  * (`notifyFromRemoteOnce`), and the stream events come last, where a client
  * drops a status it already holds.
+ *
+ * One delivery at a time runs them for a marker: the caller holds its lease
+ * (`HeldOwed`). The lease goes with the marker when the steps finish, and is
+ * given back when they fail, so the next delivery takes it at once. A
+ * delivery that was cut off gives nothing back: its lease expires.
  */
 export const finishRemoteNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  late: LateSteps,
+): Promise<Result<void, RepositoryError>> => {
+  const held = late.kind === "Created" ? late.marker : late.edit;
+  const finished = await runLateSteps(env, identity, late, held);
+  if (held !== undefined && finished.isErr()) {
+    // Best effort: a lease that is not given back expires.
+    await releaseOwed(env.DB, late.status.id, held);
+  }
+  return finished;
+};
+
+const runLateSteps = async (
+  env: Env,
+  identity: InstanceIdentity,
+  late: LateSteps,
+  held: HeldOwed | undefined,
+): Promise<Result<void, RepositoryError>> => {
+  const { actor, status } = late;
+  const written = await writeLateSteps(env, identity, late);
+  if (written.isErr()) {
+    return err(written.error);
+  }
+  // The stream events come last. A redelivery that got this far before it
+  // failed sends them again, and a client drops a status it already holds.
+  // They are started here and run once the response is ready, best effort:
+  // a page that fails goes to the queue, and nothing they do can fail the
+  // delivery. So the marker stands for their start, not their end, and is
+  // deleted below without waiting for them.
+  const event = streamEvent(late);
+  if (event !== undefined) {
+    await startHomeFanOut(env, {
+      event,
+      entryId: status.id,
+      author: { kind: "RemoteActor", actorUri: actor.actorUri },
+    });
+    if (status.visibility.kind === "Public") {
+      await startPublicFanOut(env, { event, entryId: status.id });
+    }
+  }
+  return clearOwed(env.DB, status.id, held ? [held] : []);
+};
+
+/** The steps of {@link finishRemoteNote} before the stream events: every write and notification. */
+const writeLateSteps = async (
   env: Env,
   identity: InstanceIdentity,
   late: LateSteps,
@@ -466,67 +354,28 @@ export const finishRemoteNote = async (
       }
     }
   }
-  // The stream events come last. A redelivery that got this far before it
-  // failed sends them again, and a client drops a status it already holds.
-  // They are started here and run once the response is ready, best effort:
-  // a page that fails goes to the queue, and nothing they do can fail the
-  // delivery. So the marker stands for their start, not their end, and is
-  // deleted below without waiting for them.
-  const event = streamEvent(late);
-  if (event !== undefined) {
-    await startHomeFanOut(env, {
-      event,
-      entryId: status.id,
-      author: { kind: "RemoteActor", actorUri: actor.actorUri },
-    });
-    if (status.visibility.kind === "Public") {
-      await startPublicFanOut(env, { event, entryId: status.id });
-    }
-  }
-  const finished = finishedMarker(late);
-  return clearOwed(env.DB, status.id, finished ? [finished] : []);
-};
-
-/**
- * The marker these steps leave nothing owed for. A `Created` marker that a
- * `QuoteRequest` resumes is not one: it cannot tell whether a `Create` wrote
- * it, which still owes the stream events, so it runs the other steps and
- * leaves the marker to the `Create`'s redelivery, or to the sweep.
- */
-const finishedMarker = (late: LateSteps): OwedMarker | undefined => {
-  if (late.kind === "Updated") {
-    return late.edit;
-  }
-  return late.resumed && late.options.delivery !== "Create" ? undefined : late.marker;
+  return ok(undefined);
 };
 
 /**
  * The stream event the finished note is sent with, if any. An edit is
- * `status.update`. A new note is `update` when a `Create` stored it and it
- * was published recently, as Mastodon's `Status::REAL_TIME_WINDOW`: an old
- * note arriving late would show up in clients as a new status. A marker read
- * back on a redelivery counts as stored now: the delivery that wrote it
- * never got this far, so the note was not streamed.
+ * `status.update`. A new note is `update` when an inbox activity stored it
+ * (it has a marker) and it was published recently, as Mastodon's
+ * `Status::REAL_TIME_WINDOW`: an old note arriving late would show up in
+ * clients as a new status. A `QuoteRequest` streams the note it stores as a
+ * `Create` does: Mastodon runs its instrument as a `Create`
+ * (`FetchRemoteStatusService`), which distributes it, and the `Create` that
+ * follows finds the status and distributes nothing. A marker read back on a
+ * redelivery counts as stored now: the delivery that wrote it never got
+ * this far, so the note was not streamed.
  */
 const streamEvent = (late: LateSteps): "update" | "status.update" | undefined => {
   if (late.kind === "Updated") {
     return late.edit ? "status.update" : undefined;
   }
-  return late.marker !== undefined &&
-    late.options.delivery === "Create" &&
-    RealtimeWindow.contains(late.status.publishedAt, nowInstant())
+  return late.marker !== undefined && RealtimeWindow.contains(late.status.publishedAt, nowInstant())
     ? "update"
     : undefined;
-};
-
-/** An admin block with `reject_media` keeps the post but not its attachments. */
-export const applyMediaPolicy = async (
-  env: Env,
-  actor: RemoteActor,
-  status: RemoteStatusValue,
-): Promise<RemoteStatusValue> => {
-  const rejected = await mediaRejectedDomains(env.DB);
-  return RemoteActor.onAnyHost(actor, rejected) ? { ...status, media: [] } : status;
 };
 
 type PersistOptions = FederatedFetchOptions &
@@ -536,8 +385,8 @@ type PersistOptions = FederatedFetchOptions &
      * are inbox activities its author signed, which the sender delivers again
      * after a 5xx: the local accounts a note stored from one mentions are
      * notified, and its late steps stay owed (`remote_status_owed`) until
-     * they finish, so the redelivery resumes them. A `Create` also streams
-     * the note as a new status.
+     * they finish, so the redelivery resumes them. Either streams the note
+     * as a new status.
      */
     delivery?: "Create" | "QuoteRequest" | "Fetched";
     /** Which instant a newly stored note's id sorts at; `Received` by default. */
@@ -555,15 +404,20 @@ type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown
 /**
  * What stands at a URI in place of a cached remote status: `Local` is one of
  * this instance's own statuses, `Unreadable` a stored row that does not read
- * as a status. Nothing is fetched or stored over either.
+ * as a status. Nothing is stored over a local status. An unreadable row is
+ * replaced only by its author's document ({@link healFromFetch}, or the
+ * author's own `Create` or `Update`).
  */
-type Uncacheable = Readonly<{ kind: "Local" | "Unreadable" }>;
+type Uncacheable =
+  | Readonly<{ kind: "Local" }>
+  | Readonly<{ kind: "Unreadable"; row: InvalidRemoteStatusRow }>;
 
 /**
  * The cached remote status for `objectUri`, or why there can be none;
  * `known` is the caller's read of it, when it made one. A row that does not
- * read is settled here, as reading it again gives the same row: the callers
- * drop what refers to it, where a failed read is an error.
+ * read is settled here, as reading it again gives the same row: a caller
+ * that fetches notes heals it from its author's document, and any other
+ * drops what refers to it, where a failed read is an error.
  */
 const cachedRemoteStatus = async (
   env: Env,
@@ -578,8 +432,54 @@ const cachedRemoteStatus = async (
     return ok(known.row);
   }
   const read = await findDeliveredRemoteStatus(env.DB, objectUri);
-  const unreadable = read.isErr() && read.error.kind === "StoredRowInvalid";
-  return readableRow(read).map((status) => (unreadable ? { kind: "Unreadable" } : status));
+  if (read.isErr() && read.error.kind === "StoredRowInvalid") {
+    const row = read.error;
+    return readableRow(read).map(() => ({ kind: "Unreadable", row }));
+  }
+  return readableRow(read);
+};
+
+/**
+ * Replace the row at `objectUri`, which does not read as a status, from the
+ * document its URI serves, and give the status it then reads as. The proof
+ * is the one a fetched note needs to be stored ({@link fetchedAsItself}): the
+ * document names `objectUri` as its id and sits on its author's host, and
+ * that author is the one the row names. `undefined` when the fetch fails,
+ * the proof does not hold, or the heal keeps the row
+ * ({@link settleInvalidRemoteStatus}): the caller goes on without the note.
+ * `asker` is the actor whose activity refers to the note, which spares
+ * resolving the author when it is the same.
+ */
+const healFromFetch = async (
+  env: Env,
+  identity: InstanceIdentity,
+  asker: RemoteActor,
+  objectUri: string,
+  row: InvalidRemoteStatusRow,
+  options: PersistOptions,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const raw = await fetchActivityJson(identity, objectUri, options);
+  if (raw.isErr() || !fetchedAsItself(raw.value, objectUri)) {
+    return ok(undefined);
+  }
+  const note = parseNoteDocument(raw.value);
+  if (note.isErr() || note.value.attributedTo !== row.actorUri) {
+    return ok(undefined);
+  }
+  const author =
+    asker.actorUri === row.actorUri
+      ? ok(asker)
+      : await resolveRemoteActor(
+          env.DB,
+          identity,
+          `${row.actorUri}#main-key`,
+          row.actorUri,
+          options,
+        );
+  if (author.isErr()) {
+    return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
+  }
+  return settleInvalidRemoteStatus(env, author.value, row, { activity: "Fetched", raw: raw.value });
 };
 
 export const persistRemoteObject = async (
@@ -645,6 +545,9 @@ export const persistAnnouncedObject = async (
   const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
   if (cached.isErr()) {
     return err(cached.error);
+  }
+  if (cached.value?.kind === "Unreadable") {
+    return healFromFetch(env, identity, announcer, objectUri, cached.value.row, options);
   }
   if (cached.value) {
     return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
@@ -761,8 +664,12 @@ export const remoteQuoteContext = (
       if (cached.isErr()) {
         return err(cached.error);
       }
-      // A quoted note whose row does not read is not fetched over it: the
-      // quote stays unresolved, as one whose note cannot be fetched.
+      // A quoted note whose row does not read is healed where a note is
+      // fetched, and else left: the quote stays unresolved, as one whose
+      // note cannot be fetched.
+      if (cached.value?.kind === "Unreadable" && mayFetch) {
+        return healFromFetch(env, identity, actor, uri, cached.value.row, nested);
+      }
       if (cached.value || !mayFetch) {
         return ok(cached.value?.kind === "RemoteNote" ? cached.value : undefined);
       }
@@ -842,7 +749,6 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
-    resumed: false,
   });
   return finished.map(() => stored.value);
 };
@@ -881,6 +787,20 @@ const storedMeanwhile = async (
  * now. A note edited since is left alone: the `Update` wrote its mentions
  * and quote from a newer document than a `Create` carries, so the marker
  * stays until the sweep deletes it.
+ *
+ * Only the delivery that gets the marker's lease runs the steps
+ * ({@link claimOwed}). One that does not has nothing of its own left to do
+ * and goes on, answered 202: every step, the stream event included, is the
+ * holder's, whose sender delivers again when it fails.
+ *
+ * A `QuoteRequest` is the exception for one step: it answers the quote the
+ * note makes, which the holder may not have stored yet, and a request
+ * answered 202 without one is never sent again. So it syncs the quote
+ * itself, outside the lease. That is safe beside the holder's own sync: both
+ * read the same document, a quote of the same status is kept as it is with
+ * the state it has (`syncRemoteQuote`), and of two that insert it at once
+ * one fails on the unique quoting status, is answered 5xx and finds the row
+ * when it is delivered again.
  */
 const resumeCreated = async (
   env: Env,
@@ -913,13 +833,27 @@ const resumeCreated = async (
   if (noteFromUnknown(raw, actor).isErr()) {
     return ok(undefined);
   }
+  const held = await claimOwed(env.DB, status.id, marker);
+  if (held.isErr()) {
+    return err(held.error);
+  }
+  if (held.value === undefined) {
+    return options.delivery === "QuoteRequest"
+      ? syncRemoteQuote(
+          env,
+          identity,
+          status,
+          raw,
+          remoteQuoteContext(env, identity, actor, options),
+        )
+      : ok(undefined);
+  }
   return finishRemoteNote(env, identity, {
     kind: "Created",
     actor,
     raw,
     status,
     options,
-    marker,
-    resumed: true,
+    marker: held.value,
   });
 };

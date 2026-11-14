@@ -17,13 +17,12 @@ import { contentChanged, isNewer, remoteRevisionStatement } from "./remote-statu
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   applyMediaPolicy,
-  finishRemoteNote,
-  newlyMentionedAccountIds,
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
-} from "./remote-status-persist";
-import { listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
+} from "./remote-note-document";
+import { finishRemoteNote, newlyMentionedAccountIds } from "./remote-status-persist";
+import { claimOwed, listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
 
 const UpdateObjectSchema = z
@@ -74,12 +73,14 @@ const applyNoteUpdate = async (
 ): Promise<Result<void, RepositoryError>> => {
   const cached = await findDeliveredRemoteStatus(env.DB, target.objectUri);
   if (cached.isErr()) {
-    return cached.error.kind === "StoredRowInvalid"
-      ? settleInvalidRemoteStatus(env, signer, cached.error, {
-          activity: "Update",
-          raw: target.raw,
-        })
-      : err(cached.error);
+    if (cached.error.kind !== "StoredRowInvalid") {
+      return err(cached.error);
+    }
+    const settled = await settleInvalidRemoteStatus(env, signer, cached.error, {
+      activity: "Update",
+      raw: target.raw,
+    });
+    return settled.map(() => undefined);
   }
   if (!cached.value || cached.value.actorUri !== signer.actorUri) {
     return ok(undefined);
@@ -147,6 +148,16 @@ const applyNoteUpdate = async (
   if (stored.value === undefined) {
     return ok(undefined);
   }
+  // A pending edit is finished by one delivery at a time. When another holds
+  // it, this `Update` runs the steps of its own document only and is done:
+  // the edit is that delivery's, which answers its own sender.
+  const resumed =
+    marker === undefined && pending !== undefined
+      ? await claimOwed(env.DB, stored.value.id, pending)
+      : ok(undefined);
+  if (resumed.isErr()) {
+    return err(resumed.error);
+  }
   return finishRemoteNote(env, identity, {
     kind: "Updated",
     actor: signer,
@@ -154,7 +165,7 @@ const applyNoteUpdate = async (
     status: stored.value,
     options,
     added,
-    edit: marker ?? pending,
+    edit: marker ?? resumed.value,
   });
 };
 

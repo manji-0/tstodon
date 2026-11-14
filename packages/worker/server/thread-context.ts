@@ -26,6 +26,7 @@ import {
   findStatusesByIds,
   hydrateStatusRows,
   listStatusReplyUris,
+  readStatusById,
   StatusRowSchema,
 } from "./status-store";
 import { queryTyped } from "./typed-sql";
@@ -68,15 +69,15 @@ export const findThreadParent = async (
   if (!parentUri) {
     return ok(undefined);
   }
+  // A parent whose row does not read is unknown, as one that was never stored.
   const localId = parseLocalStatusId(identity, parentUri);
   if (localId) {
-    const parent = await findStatusById(db, localId);
+    const parent = readableRow(await readStatusById(db, localId));
     if (parent.isErr()) {
       return err(parent.error);
     }
     return ok(parent.value ? { kind: "Local", status: parent.value } : undefined);
   }
-  // A parent whose row does not read is unknown, as one that was never stored.
   const parent = readableRow(await findDeliveredRemoteStatus(db, parentUri));
   if (parent.isErr()) {
     return err(parent.error);

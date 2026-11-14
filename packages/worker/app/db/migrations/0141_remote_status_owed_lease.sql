@@ -1,0 +1,12 @@
+-- One delivery at a time runs the late steps a marker stands for
+-- (`remote_status_owed`, migration 0140). The delivery that lost the write of
+-- a note and a redelivery that arrives at the same moment both found the
+-- marker and both ran the steps, so the fan-out, the conversation update and
+-- the quote sync started twice.
+-- `claimed_until` is the lease of the delivery that runs them: an instant, or
+-- NULL when nobody does. The delivery that writes the marker holds the lease
+-- from that batch. Another one takes it in one UPDATE, only when it is NULL
+-- or past, and goes without the steps when it does not get it. The holder
+-- clears it when it fails, so the redelivery resumes at once; a holder that
+-- was cut off leaves it to expire.
+ALTER TABLE remote_status_owed ADD COLUMN claimed_until TEXT;

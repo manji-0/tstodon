@@ -5,7 +5,13 @@ import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { ActivityId, IsoInstant } from "@tstodon/domain";
 import { parseRows } from "./d1";
+import { recordRemoteBoost } from "./remote-boost";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
+import { parseInstanceIdentity } from "./runtime-config";
+import { setRemoteStatusCard } from "./status-card-store";
+import { findThreadParent } from "./thread-context";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -330,6 +336,7 @@ describe("the author's delivery of a note whose stored row does not read, replac
       .bind(id)
       .run();
     expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+    const updated = new Date().toISOString();
 
     expect(
       await update(author, {
@@ -338,7 +345,7 @@ describe("the author's delivery of a note whose stored row does not read, replac
         to: [PUBLIC],
         cc: [],
         published: "2026-10-25T00:00:00.000Z",
-        updated: "2026-10-26T00:00:00.000Z",
+        updated,
       }),
     ).toBe(202);
 
@@ -346,8 +353,253 @@ describe("the author's delivery of a note whose stored row does not read, replac
       content: "<p>edited</p>",
       visibility: "unlisted",
       created_at: "2026-10-20T00:00:00.000Z",
-      edited_at: "2026-10-26T00:00:00.000Z",
+      edited_at: updated,
     });
+  });
+
+  /** A note edited at `EDITED`, whose row then lost the date of that edit. */
+  const EDITED = "2026-10-22T00:00:00.000Z";
+  const undatedEdit = async (author: Remote, slug: string) => {
+    const original = note(author, slug, { content: "<p>original</p>" });
+    const edit = (content: string, updated: string) => ({ ...original, content, updated });
+    expect(await create(author, original)).toBe(202);
+    expect(await update(author, edit("<p>second edit</p>", EDITED))).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare("UPDATE remote_statuses SET edited_at = 'unreadable' WHERE id = ?")
+      .bind(id)
+      .run();
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+    return { id, original, edit };
+  };
+
+  const editedAtColumn = async (id: string) =>
+    (
+      await rows(
+        z.object({ content_html: z.string(), edited_at: z.string().nullable() }),
+        "SELECT content_html, edited_at FROM remote_statuses WHERE id = ?",
+        id,
+      )
+    )[0];
+
+  it("keeps a row whose edit date does not read when a replayed Update or the Create would change its content", async () => {
+    const author = await remoteActor("unreadable-edit-date");
+    const { id, original, edit } = await undatedEdit(author, "unreadable-edit-date");
+    const kept = { content_html: "<p>second edit</p>", edited_at: "unreadable" };
+
+    expect(await update(author, edit("<p>first edit</p>", "2026-10-21T00:00:00.000Z"))).toBe(202);
+    expect(await editedAtColumn(id)).toEqual(kept);
+    expect(
+      await author.send({ id: `${original.id}/create-again`, type: "Create", object: original }),
+    ).toBe(202);
+    expect(await editedAtColumn(id)).toEqual(kept);
+    // An Update with no date would be dated now, and so would its replay.
+    expect(
+      await author.send({
+        id: `${original.id}/update/undated`,
+        type: "Update",
+        object: { ...original, content: "<p>undated edit</p>" },
+      }),
+    ).toBe(202);
+    expect(await editedAtColumn(id)).toEqual(kept);
+  });
+
+  it("replaces a row whose edit date does not read with an Update dated after the row was last written", async () => {
+    const author = await remoteActor("unreadable-edit-date-current");
+    const { id, edit } = await undatedEdit(author, "unreadable-edit-date-current");
+    const updated = new Date().toISOString();
+
+    expect(await update(author, edit("<p>third edit</p>", updated))).toBe(202);
+
+    expect(await status(id)).toMatchObject({ content: "<p>third edit</p>", edited_at: updated });
+  });
+
+  it("reads the last write of such a row in SQLite's form, which older card writes left", async () => {
+    const author = await remoteActor("unreadable-edit-date-sqlite");
+    const { id, edit } = await undatedEdit(author, "unreadable-edit-date-sqlite");
+    await env.DB.prepare(
+      "UPDATE remote_statuses SET updated_at = datetime('now', '-1 minute') WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    const before = new Date(Date.now() - 3_600_000).toISOString();
+    const updated = new Date().toISOString();
+
+    expect(await update(author, edit("<p>older edit</p>", before))).toBe(202);
+    expect(await editedAtColumn(id)).toEqual({
+      content_html: "<p>second edit</p>",
+      edited_at: "unreadable",
+    });
+
+    expect(await update(author, edit("<p>third edit</p>", updated))).toBe(202);
+    expect(await status(id)).toMatchObject({ content: "<p>third edit</p>", edited_at: updated });
+  });
+
+  it.each([
+    ["a real and a blob", "sensitive = 0.1, url = X'00FF', media_json = 1e300"],
+    ["text that is not UTF-8", "spoiler_text = CAST(X'C328' AS TEXT)"],
+    ["text with a NUL", "spoiler_text = CAST(X'610062' AS TEXT)"],
+  ])("replaces a row that also holds %s", async (label, fault) => {
+    const author = await remoteActor(`unreadable-raw-${label.length}`);
+    const original = note(author, `unreadable-raw-${label.length}`);
+    expect(await create(author, original)).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare(
+      `UPDATE remote_statuses SET visibility = 'unreadable', ${fault} WHERE id = ?`,
+    )
+      .bind(id)
+      .run();
+
+    expect(
+      await author.send({ id: `${original.id}/create-again`, type: "Create", object: original }),
+    ).toBe(202);
+
+    expect(await status(id)).toMatchObject({ visibility: "public", spoiler_text: "" });
+  });
+
+  it("dates the row as an instant when a link card is stored for it", async () => {
+    const author = await remoteActor("unreadable-card-date");
+    const original = note(author, "unreadable-card-date");
+    expect(await create(author, original)).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+
+    expect((await setRemoteStatusCard(env.DB, id, "{}", "https://x.example/")).isOk()).toBe(true);
+
+    const [row] = await rows(
+      z.object({ updated_at: z.string() }),
+      "SELECT updated_at FROM remote_statuses WHERE id = ?",
+      id,
+    );
+    expect(IsoInstant.parse(row?.updated_at ?? "").isOk()).toBe(true);
+  });
+
+  it("takes the edit date from a document that changes nothing in a row whose edit date does not read", async () => {
+    const author = await remoteActor("unreadable-edit-date-same");
+    const { id, edit } = await undatedEdit(author, "unreadable-edit-date-same");
+    const same = edit("<p>second edit</p>", EDITED);
+
+    expect(await author.send({ id: `${same.id}/update-again`, type: "Update", object: same })).toBe(
+      202,
+    );
+
+    expect(await status(id)).toMatchObject({ content: "<p>second edit</p>", edited_at: EDITED });
+  });
+});
+
+/** Answers the Worker's outbound GET of each URL in `documents` with its document while `run` runs. */
+const serving = async <T>(
+  documents: Record<string, unknown>,
+  run: () => Promise<T>,
+): Promise<T> => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return href in documents
+      ? new Response(JSON.stringify(documents[href]), {
+          headers: { "content-type": "application/activity+json" },
+        })
+      : original(input, init);
+  };
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+};
+
+describe("a fetch of a remote note whose stored row does not read", () => {
+  const announce = (booster: Remote, objectUri: string) =>
+    booster.send({
+      id: `${objectUri}/announced-by/${booster.actorUri.split("/").at(-1)}`,
+      type: "Announce",
+      object: objectUri,
+      published: "2026-10-21T00:00:00.000Z",
+      to: [PUBLIC],
+    });
+
+  const boosts = (booster: Remote) =>
+    count("SELECT COUNT(*) AS n FROM remote_boosts WHERE actor_uri = ?", booster.actorUri);
+
+  it.each(["value", "shape"] as const)(
+    "replaces the row from the document its author's host serves, and stores the Announce (%s)",
+    async (fault) => {
+      const author = await remoteActor(`fetch-heal-author-${fault}`);
+      const booster = await remoteActor(`fetch-heal-booster-${fault}`);
+      const target = await unreadable(author, `fetch-heal-${fault}`, fault);
+      const served = note(author, `fetch-heal-${fault}`);
+
+      expect(await serving({ [target.uri]: served }, () => announce(booster, target.uri))).toBe(
+        202,
+      );
+
+      expect(await status(target.id)).toMatchObject({
+        content: served.content,
+        visibility: "public",
+        created_at: "2026-10-20T00:00:00.000Z",
+        edited_at: null,
+      });
+      expect(await boosts(booster)).toBe(1);
+      expect(
+        await count("SELECT COUNT(*) AS n FROM remote_status_owed WHERE status_id = ?", target.id),
+      ).toBe(0);
+    },
+  );
+
+  it("replaces the row when a Create quotes the note, and resolves the quote", async () => {
+    const author = await remoteActor("fetch-heal-quoted");
+    const quoter = await remoteActor("fetch-heal-quoter");
+    const target = await unreadable(author, "fetch-heal-quoted");
+    const quoting = note(quoter, "fetch-heal-quoting", { quote: target.uri });
+
+    expect(
+      await serving({ [target.uri]: note(author, "fetch-heal-quoted") }, () =>
+        create(quoter, quoting),
+      ),
+    ).toBe(202);
+
+    expect(await status(target.id)).toMatchObject({ visibility: "public" });
+    expect(
+      await rows(
+        z.object({ quoted_remote_status_id: z.string().nullable() }),
+        "SELECT quoted_remote_status_id FROM status_quotes WHERE remote_status_id = ?",
+        (await storedId(quoting.id)) ?? "",
+      ),
+    ).toEqual([{ quoted_remote_status_id: target.id }]);
+  });
+
+  it("keeps the row when the document is attributed to another actor", async () => {
+    const author = await remoteActor("fetch-heal-not-author");
+    const other = await remoteActor("fetch-heal-other-author");
+    const booster = await remoteActor("fetch-heal-not-author-booster");
+    const target = await unreadable(author, "fetch-heal-not-author");
+
+    expect(
+      await serving({ [target.uri]: note(other, "fetch-heal-not-author") }, () =>
+        announce(booster, target.uri),
+      ),
+    ).toBe(202);
+
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${target.id}`)).status).not.toBe(
+      200,
+    );
+    expect(await boosts(booster)).toBe(0);
+  });
+
+  it("keeps the row when the note is not on its author's host", async () => {
+    const author = await remoteActor("fetch-heal-other-host");
+    const booster = await remoteActor("fetch-heal-other-host-booster");
+    const target = await unreadable(author, "fetch-heal-other-host");
+    const elsewhere = "https://elsewhere.example/notes/fetch-heal-other-host";
+    await env.DB.prepare("UPDATE remote_statuses SET object_uri = ? WHERE id = ?")
+      .bind(elsewhere, target.id)
+      .run();
+    const served = { ...note(author, "fetch-heal-other-host"), id: elsewhere };
+
+    expect(await serving({ [elsewhere]: served }, () => announce(booster, elsewhere))).toBe(202);
+
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${target.id}`)).status).not.toBe(
+      200,
+    );
+    expect(await boosts(booster)).toBe(0);
   });
 });
 
@@ -385,6 +637,49 @@ describe.each(["value", "shape"] as const)(
           booster.actorUri,
         ),
       ).toBe(0);
+    });
+
+    it("stores a reply to the note with 202", async () => {
+      const local = await localNote(`ul-parent-${fault}@example.com`);
+      const replier = await remoteActor(`unreadable-local-replier-${fault}`);
+      await breakLocal(local.id, fault);
+      const reply = note(replier, `unreadable-local-reply-${fault}`, {
+        inReplyTo: local.uri,
+        cc: [local.actorUri],
+        tag: [{ type: "Mention", href: local.actorUri }],
+      });
+
+      expect(await create(replier, reply)).toBe(202);
+
+      const id = (await storedId(reply.id)) ?? "";
+      expect(await status(id, local.headers)).toMatchObject({ content: reply.content });
+    });
+
+    it("reads the note as no parent of a remote reply, and as no target of a boost", async () => {
+      const local = await localNote(`ul-read-${fault}@example.com`);
+      const replier = await remoteActor(`unreadable-local-read-${fault}`);
+      const reply = note(replier, `unreadable-local-read-${fault}`, { inReplyTo: local.uri });
+      expect(await create(replier, reply)).toBe(202);
+      const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+      const stored = (await findRemoteStatusByObjectUri(env.DB, reply.id))._unsafeUnwrap();
+      const announceId = ActivityId.parse(`${replier.actorUri}/announces/read-${fault}`);
+      if (stored === undefined || announceId.isErr()) {
+        throw new Error("reply fixture rejected");
+      }
+      await breakLocal(local.id, fault);
+
+      const parent = await findThreadParent(env.DB, identity, { kind: "Remote", status: stored });
+      const boost = await recordRemoteBoost(
+        env.DB,
+        identity,
+        replier.actorUri,
+        { id: announceId.value, object: local.uri },
+        {},
+        undefined,
+      );
+
+      expect(parent.isOk() && parent.value).toBe(undefined);
+      expect(boost.isOk() && boost.value).toBe(undefined);
     });
 
     it("stores a Create that quotes the note, without the quote", async () => {
