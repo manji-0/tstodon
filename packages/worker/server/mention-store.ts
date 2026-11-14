@@ -13,6 +13,8 @@ import {
   insertStatusMention as insertStatusMentionSql,
   insertStatusRemoteMention as insertStatusRemoteMentionSql,
   listRemoteStatusMentions as listRemoteStatusMentionsSql,
+  listRemoteStatusRemoteMentions as listRemoteStatusRemoteMentionsSql,
+  listShownRemoteStatusMentions as listShownRemoteStatusMentionsSql,
   listStatusMentionsByIds as listStatusMentionsByIdsSql,
   listStatusRemoteMentions as listStatusRemoteMentionsSql,
 } from "./generated/prisma/sql";
@@ -154,19 +156,24 @@ export type StatusMentions = Readonly<{
   actorUris: ReadonlyArray<string>;
 }>;
 
-/** Local accounts and remote actors each local note mentions, keyed by status id. */
-export const listStatusMentions = async (
+/** The mentions of each of `statusIds`, keyed by status id, read by the two queries given. */
+const groupMentions = async (
   db: D1Database,
   statusIds: ReadonlyArray<string>,
+  query: Readonly<{
+    locals: (idsJson: string) => Parameters<typeof queryTyped>[1];
+    remotes: (idsJson: string) => Parameters<typeof queryTyped>[1];
+  }>,
 ): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> => {
   const unique = [...new Set(statusIds)];
   if (unique.length === 0) {
     return ok(new Map<string, StatusMentions>());
   }
+  const idsJson = jsonStringArray(unique);
   const queried = await runD1(async () =>
     Promise.all([
-      queryTyped(db, listStatusMentionsByIdsSql(jsonStringArray(unique)), StatusIdAccountIdRow),
-      queryTyped(db, listStatusRemoteMentionsSql(jsonStringArray(unique)), StatusIdActorUriRow),
+      queryTyped(db, query.locals(idsJson), StatusIdAccountIdRow),
+      queryTyped(db, query.remotes(idsJson), StatusIdActorUriRow),
     ]),
   );
   if (queried.isErr()) {
@@ -188,3 +195,27 @@ export const listStatusMentions = async (
     ),
   );
 };
+
+/** Local accounts and remote actors each local note mentions, keyed by status id. */
+export const listStatusMentions = (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> =>
+  groupMentions(db, statusIds, {
+    locals: listStatusMentionsByIdsSql,
+    remotes: listStatusRemoteMentionsSql,
+  });
+
+/**
+ * Local accounts and remote actors each cached remote note shows as its
+ * mentions, keyed by status id, each list in stored order. A silent mention,
+ * which only lets the account see the note, is not shown.
+ */
+export const listShownRemoteStatusMentions = (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> =>
+  groupMentions(db, statusIds, {
+    locals: listShownRemoteStatusMentionsSql,
+    remotes: listRemoteStatusRemoteMentionsSql,
+  });

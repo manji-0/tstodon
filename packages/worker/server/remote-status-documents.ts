@@ -1,4 +1,5 @@
 import type {
+  ApiMentionJSON,
   ApiOriginalStatusJSON,
   ApiQuoteJSON,
   ApiQuotedStatusJSON,
@@ -36,6 +37,9 @@ import { acceptedOutboundFollowActorUris } from "./outbound-follow-store";
 import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { mastodonRemoteStatus } from "./remote-status-document";
+import { findAccountsByIds } from "./account-store";
+import { mentionEntities } from "./mention-documents";
+import { listShownRemoteStatusMentions } from "./mention-store";
 import { documentsById } from "./documents-by-id";
 import {
   findRemoteStatusesByIds,
@@ -297,10 +301,11 @@ const renderRemoteStatuses = async <Q>(
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
   const targets = statuses.map((status) => StatusTarget.remote(status.id));
-  const [cards, tags, actors, moderations, pollVotes, interactions, relations, quotes] =
+  const [cards, tags, mentions, actors, moderations, pollVotes, interactions, relations, quotes] =
     await Promise.all([
       listRemoteStatusCards(env.DB, ids),
       listRemoteStatusTags(env.DB, ids),
+      listShownRemoteStatusMentions(env.DB, ids),
       findRemoteActorsByUris(env.DB, actorUris),
       listRemoteActorModerations(env.DB, actorUris),
       findRemotePollVotes(env.DB, viewerId, statuses),
@@ -318,10 +323,35 @@ const renderRemoteStatuses = async <Q>(
   if (renderQuote.isErr()) {
     return err(renderQuote.error);
   }
-  const presented = await presentedAccounts(env, identity, [], [...actors.value.values()]);
+  // One read per page for the mentioned accounts, as for the tags and cards.
+  const mentioned = mentions.isOk() ? [...mentions.value.values()] : [];
+  const [presented, mentionedAccounts, mentionedActors] = await Promise.all([
+    presentedAccounts(env, identity, [], [...actors.value.values()]),
+    findAccountsByIds(
+      env.DB,
+      mentioned.flatMap((entry) => entry.accountIds),
+    ),
+    findRemoteActorsByUris(
+      env.DB,
+      mentioned.flatMap((entry) => entry.actorUris).filter((uri) => !actors.value.has(uri)),
+    ),
+  ]);
   if (presented.isErr()) {
     return err(presented.error);
   }
+  const mentionsOf = (statusId: string): ApiMentionJSON[] => {
+    const entry = mentions.isOk() ? mentions.value.get(statusId) : undefined;
+    return entry
+      ? mentionEntities(
+          identity,
+          entry,
+          (id) => (mentionedAccounts.isOk() ? mentionedAccounts.value.get(id) : undefined),
+          (uri) =>
+            actors.value.get(uri) ??
+            (mentionedActors.isOk() ? mentionedActors.value.get(uri) : undefined),
+        )
+      : [];
+  };
   const documents = statuses.flatMap((status) => {
     const author = presented.value.get(RemoteAccountId.encode(status.actorUri));
     if (!author || !authors(author.presentation)) {
@@ -335,6 +365,7 @@ const renderRemoteStatuses = async <Q>(
         name,
         url: tagUrl(identity, name),
       })),
+      mentions: mentionsOf(status.id),
       pollVotes: pollVotes.get(status.id),
       interactions: interactions.isOk() ? interactions.value.get(status.id) : undefined,
       quoteApproval: QuoteInteractionPolicy.forViewer(
