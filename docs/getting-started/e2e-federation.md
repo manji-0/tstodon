@@ -71,6 +71,10 @@ Behind an HTTP proxy (`HTTPS_PROXY` set), start the instances with `NO_PROXY=127
 
 The loopback pair speaks plain HTTP. To sign and verify through `https://a.tstodon.localhost` and `https://b.tstodon.localhost`, follow [Federation e2e over portless](./e2e-federation-portless.md). That run uses `e2e/portless-a.wrangler.jsonc` and `e2e/portless-b.wrangler.jsonc` and the same persist dirs. Leave these loopback configs as they are.
 
+### A real Mastodon
+
+The suites above pair tstodon with tstodon. [Interop e2e against a real Mastodon](../../e2e/mastodon/README.md) runs Mastodon v4.7.5 in Docker next to one local Worker, over HTTPS, with `pnpm e2e:mastodon` (follow and a post each way) and `pnpm e2e:mastodon:probe` (a sweep of the other interactions).
+
 ### Not covered locally
 
 - Outbox paging: tstodon serves its outbox as one `OrderedCollection` without `next` links, so the instances cannot exercise the deeper backfill (`OUTBOX_BACKFILL_PAGE_LIMIT`). Vitest covers it with served page documents (`server/remote-outbox-backfill.test.ts`).

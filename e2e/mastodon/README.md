@@ -4,7 +4,7 @@
 <!-- constrained-by ../../docs/getting-started/e2e-federation-portless.md -->
 <!-- constrained-by ../../docs/reference/configuration.md#limited-federation -->
 
-Draft. This harness runs one real Mastodon (v4.7.5) next to a local tstodon Worker and federates them over HTTPS. The other federation suites pair tstodon with tstodon, so they cannot catch a disagreement with Mastodon itself. CI does not run this yet.
+This harness runs one real Mastodon (v4.7.5) next to a local tstodon Worker and federates them over HTTPS. The other federation suites pair tstodon with tstodon, so they cannot catch a disagreement with Mastodon itself. CI does not run this yet.
 
 ## What runs
 
@@ -94,13 +94,17 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - Mastodon's default notification policy filters a private mention from an account the receiver does not follow. The direct message arrives and has a conversation, but no notification.
 - Mastodon leaves a boost out of a home feed that already holds the boosted post. To see a boost arrive, boost a post from an account the receiver does not follow.
 
-## Known gaps the sweep reports
+## What the sweep found
 
-As of this draft the sweep passes 37 of 41 steps. The four failures are three tstodon bugs:
+<!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-1. `GET /api/v2/search` answers 500 (`LIKE or GLOB pattern too complex`) for any `q` longer than 48 bytes, which includes most post URLs.
-2. A remote status's `mentions` is always `[]` in the REST API.
-3. A note URL the requester may not read answers `200 text/html` to Mastodon's `Accept` header. Mastodon expects 401, 403 or 404 and then falls back to its stored copy.
+The sweep passes 41 of 41 steps. Its first run found three tstodon bugs, each now fixed and covered by a Worker test:
+
+1. `GET /api/v2/search` answered 500 (`LIKE or GLOB pattern too complex`) for any `q` longer than 48 bytes, which includes most post URLs, and did not look up a post URL (`server/search-url-resolve.test.ts`).
+2. A remote status's `mentions` was always `[]` in the REST API (`server/remote-status-mentions.test.ts`).
+3. A note URL the requester may not read answered `200 text/html` to Mastodon's `Accept` header. Mastodon expects 401, 403 or 404 and then falls back to its stored copy (`server/activitypub-negotiation.test.ts`).
+
+The scenarios still to automate are the `INT-*` rows in [open TODOs](../../docs/planning/open-todos.md#interop-with-real-mastodon-open).
 
 ## Not covered yet
 

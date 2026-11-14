@@ -21,3 +21,4 @@ worker-configuration.d.ts
 # Vite/Vitest caches beside the frontend's own package.json
 /packages/worker/src/node_modules
 /.wrangler/e2e-web
+/e2e/.dev.vars
