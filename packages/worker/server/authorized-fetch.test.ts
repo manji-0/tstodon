@@ -125,6 +125,19 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
     }
   });
 
+  it("refuses an unsigned GET of a note sent with Mastodon's Accept header with 401", async () => {
+    const response = await secure(
+      new Request(new URL(notePath, ORIGIN), {
+        headers: {
+          Accept:
+            'application/ld+json; profile="https://www.w3.org/ns/activitystreams", application/activity+json, text/html;q=0.1',
+        },
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toContain("application/json");
+  });
+
   it("serves an unsigned GET of an actor the restricted document, with its key", async () => {
     const response = await secure(`/users/${USERNAME}`);
     expect(response.status).toBe(200);

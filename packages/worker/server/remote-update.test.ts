@@ -264,8 +264,9 @@ describe("remote Update of a note", () => {
 
     await update(author, "remote-mentions-1", mentioning([dave], "2026-10-21T00:00:00.000Z"));
     expect(await remoteMentions()).toEqual([dave]);
-    // The local mention is left alone, as `remote_status_mentions` always was.
-    expect(await localMentions()).toEqual([{ account_id: account.id, silent: 0 }]);
+    // The edit dropped the local account's tag and kept it in `cc`: the row
+    // stays, silent, as Mastodon's `update_mentions!`.
+    expect(await localMentions()).toEqual([{ account_id: account.id, silent: 1 }]);
   });
 });
 

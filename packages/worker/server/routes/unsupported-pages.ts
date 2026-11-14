@@ -4,8 +4,8 @@ import { instanceName } from "./account-settings";
 
 /**
  * Rails pages of Mastodon that its web app links to and this server has no
- * counterpart for. Each answers a page that says so, with status 200: Void's
- * SPA fallback replaces a 404 to a browser navigation with `index.html`.
+ * counterpart for. Each answers a page that says so, with status 200, where
+ * a 404 would leave the reader with a JSON body.
  */
 const NOTICES = {
   administration: {

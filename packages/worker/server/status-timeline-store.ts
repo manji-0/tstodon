@@ -1,7 +1,7 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import { containsFolded, type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import {
   EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL,
@@ -200,7 +200,7 @@ export const searchStatuses = async (
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' ${MODERATED_ACCOUNTS_SQL} AND content_text LIKE ?
+         WHERE kind = 'LocalNote' ${MODERATED_ACCOUNTS_SQL} AND ${containsFolded("content_text")}
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            AND (
              visibility IN ('public', 'unlisted')
@@ -214,7 +214,7 @@ export const searchStatuses = async (
            )
          ORDER BY id DESC LIMIT ? OFFSET ?`,
       )
-      .bind(`%${query}%`, ...suppressedBinds(viewerId), viewer, viewer, viewer, limit, offset)
+      .bind(query, ...suppressedBinds(viewerId), viewer, viewer, viewer, limit, offset)
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

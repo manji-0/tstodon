@@ -5,18 +5,16 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
- * @param usernameLike
- * @param displayNameLike
+ * @param term
  */
 export const countSearchAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT COUNT(*) AS count\nFROM accounts\nWHERE (username LIKE $1 OR display_name LIKE $2)\nAND id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)\nAND id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')",
+  "SELECT COUNT(*) AS count\nFROM accounts\nWHERE (instr(lower(username), lower($1)) > 0 OR instr(lower(display_name), lower($1)) > 0)\nAND id NOT IN (SELECT account_id FROM account_flags WHERE pending <> 0)\nAND id NOT IN (SELECT account_id FROM account_moderation WHERE moderation = 'Suspended')",
 ) as (
-  usernameLike: string,
-  displayNameLike: string,
+  term: string,
 ) => $runtime.TypedSql<countSearchAccounts.Parameters, countSearchAccounts.Result>;
 
 export namespace countSearchAccounts {
-  export type Parameters = [usernameLike: string, displayNameLike: string];
+  export type Parameters = [term: string];
   export type Result = {
     count: bigint;
   };

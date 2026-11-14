@@ -1,5 +1,6 @@
 import type {
   ApiAccountJSON,
+  ApiMentionJSON,
   ApiOriginalStatusJSON,
   ApiPreviewCardJSON,
   ApiTagJSON,
@@ -21,6 +22,8 @@ export type RemoteStatusExtras = Readonly<{
   card?: ApiPreviewCardJSON | null | undefined;
   /** Its hashtags; none when unset. */
   tags?: ReadonlyArray<ApiTagJSON> | undefined;
+  /** The accounts it mentions; none when unset. */
+  mentions?: ReadonlyArray<ApiMentionJSON> | undefined;
   pollVotes?: RemotePollVotes | undefined;
   /** Favourites, boosts, quotes and replies seen on this instance; remote totals are not kept. */
   interactions?: StatusInteractionCounts | undefined;
@@ -78,7 +81,7 @@ export const mastodonRemoteStatus = (
             },
           ],
     ),
-    mentions: [],
+    mentions: [...(extras.mentions ?? [])],
     tags: [...(extras.tags ?? [])],
     emojis: remoteEmojisJson(status.emojis),
     card,

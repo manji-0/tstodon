@@ -27,6 +27,7 @@ import { boostedStatusAuthors, StatusAuthors } from "./account-presentation";
 import { findAccountsByIds } from "./account-store";
 import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import { findQuotesByQuoting, findStatusQuotePolicies, type QuotePolicy } from "./quote-store";
+import { mentionEntities } from "./mention-documents";
 import { listStatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -464,34 +465,9 @@ const renderLocalStatuses = async (
     if (!document) {
       continue;
     }
-    document.mentions = [
-      ...entry.accountIds.flatMap((id) => {
-        const account = mentionedAccount(id);
-        return account
-          ? [
-              {
-                id: account.id,
-                username: account.username,
-                url: InstanceIdentity.actorUrl(identity, account.username),
-                acct: account.username,
-              },
-            ]
-          : [];
-      }),
-      ...entry.actorUris.flatMap((actorUri) => {
-        const actor = mentionedActors.isOk() ? mentionedActors.value.get(actorUri) : undefined;
-        return actor
-          ? [
-              {
-                id: RemoteAccountId.encode(actor.actorUri),
-                username: actor.username,
-                url: actor.actorUri,
-                acct: `${actor.username}@${actor.domain}`,
-              },
-            ]
-          : [];
-      }),
-    ];
+    document.mentions = mentionEntities(identity, entry, mentionedAccount, (actorUri) =>
+      mentionedActors.isOk() ? mentionedActors.value.get(actorUri) : undefined,
+    );
   }
 
   // Boosts wrap the boosted status as the viewer sees it, a suspended author's

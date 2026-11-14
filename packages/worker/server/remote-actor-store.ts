@@ -644,7 +644,7 @@ export const searchRemoteActors = async (
     const results = await queryTyped(
       db,
       searchRemoteActorsSql(
-        `%${query}%`,
+        query,
         jsonStringArray([...hosts.suspended]),
         jsonStringArray([...hosts.allow]),
         limit,

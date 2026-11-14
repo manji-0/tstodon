@@ -690,6 +690,8 @@ export * from "./sql/listRemoteStatusEditSnapshots";
 
 export * from "./sql/listRemoteStatusMentions";
 
+export * from "./sql/listRemoteStatusRemoteMentions";
+
 export * from "./sql/listRemoteStatusRetentionSlice";
 
 export * from "./sql/listRemoteStatusTags";
@@ -701,6 +703,8 @@ export * from "./sql/listRestrictedDomains";
 export * from "./sql/listRestrictedTagNames";
 
 export * from "./sql/listSensitizedAccountIds";
+
+export * from "./sql/listShownRemoteStatusMentions";
 
 export * from "./sql/listStaleLinkCards";
 
@@ -875,6 +879,8 @@ export * from "./sql/setRemoteStatusCard";
 export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
+
+export * from "./sql/silenceRemoteStatusMentionsExcept";
 
 export * from "./sql/startPollUpdate";
 
