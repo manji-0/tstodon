@@ -14,7 +14,12 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { parseLocalStatusId } from "./activitypub";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { findRemoteActorByUri } from "./remote-actor-store";
-import { firstCollectionPage, firstPageOf, parseCollection } from "./remote-collection";
+import {
+  fetchCollectionPage,
+  firstCollectionPage,
+  firstPageOf,
+  parseCollection,
+} from "./remote-collection";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
 import { persistAnnouncedObject } from "./remote-status-persist";
 import {
@@ -38,8 +43,15 @@ export const THREAD_BACKFILL_TTL_MS = 60 * 60 * 1000;
  */
 export const THREAD_BACKFILL_ANCESTOR_LIMIT = 5;
 
-/** Replies stored from the status's `replies` collection: its first page. */
+/** Replies stored from the status's `replies` collection. */
 export const THREAD_BACKFILL_REPLY_LIMIT = 20;
+
+/**
+ * Pages of `replies` read, the first one included. Mastodon's first page
+ * holds the author's own replies only; every other account's are on the
+ * pages its `next` links (`?only_other_accounts=true&page=true`).
+ */
+export const THREAD_BACKFILL_REPLY_PAGES = 3;
 
 /**
  * How long a claimed fetch counts as running when its job never closed it (it
@@ -161,16 +173,15 @@ const backfillAncestors = async (
 };
 
 /**
- * Store the replies the status's origin lists, from the first page of its
- * `replies`. Resolves to how many were not cached before.
+ * The replies the status's origin lists: the items of the first pages of its
+ * `replies`, up to the limits. A `next` link is followed only on the status's
+ * own origin.
  */
-const backfillReplies = async (
-  env: Env,
+const listedReplies = async (
   identity: InstanceIdentity,
-  actor: RemoteActor,
   status: RemoteStatus,
   options: FederatedFetchOptions,
-): Promise<number> => {
+): Promise<ReadonlyArray<unknown>> => {
   const raw = await fetchActivityJson(identity, status.objectUri, options);
   const holder = raw.isOk() ? parseRepliesHolder(raw.value) : undefined;
   const replies = holder?.isOk() ? holder.value.replies : undefined;
@@ -183,8 +194,37 @@ const backfillReplies = async (
       ? await firstPageOf(identity, collection.value, status.objectUri, options)
       : undefined;
   }
+  const origin = URL.parse(status.objectUri)?.origin;
+  const items: unknown[] = [];
+  for (let pages = 1; page !== undefined; pages += 1) {
+    items.push(...page.items);
+    const next = page.next;
+    if (
+      next === undefined ||
+      pages === THREAD_BACKFILL_REPLY_PAGES ||
+      items.length >= THREAD_BACKFILL_REPLY_LIMIT ||
+      URL.parse(next)?.origin !== origin
+    ) {
+      break;
+    }
+    page = await fetchCollectionPage(identity, next, options);
+  }
+  return items.slice(0, THREAD_BACKFILL_REPLY_LIMIT);
+};
+
+/**
+ * Store the replies the status's origin lists ({@link listedReplies}).
+ * Resolves to how many were not cached before.
+ */
+const backfillReplies = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  status: RemoteStatus,
+  options: FederatedFetchOptions,
+): Promise<number> => {
   let stored = 0;
-  for (const item of (page?.items ?? []).slice(0, THREAD_BACKFILL_REPLY_LIMIT)) {
+  for (const item of await listedReplies(identity, status, options)) {
     const reference = parseReplyReference(item);
     if (reference.isErr()) {
       continue;

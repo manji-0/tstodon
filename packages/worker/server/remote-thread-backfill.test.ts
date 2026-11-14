@@ -184,6 +184,85 @@ describe("opening a remote status", () => {
     ]);
   });
 
+  it("reads the replies of other accounts from the pages after the first, as Mastodon serves them", async () => {
+    const author = await remoteActor("paged-author", "paged.example");
+    const other = await remoteActor("paged-other", "paged.example");
+    const opened = noteUri(author, "paged-opened");
+    const replies = `${opened}/replies`;
+    const secondPage = `${replies}?only_other_accounts=true&page=true`;
+    const thirdPage = `${replies}?min_id=2&only_other_accounts=true&page=true`;
+    const fourthPage = `${replies}?min_id=3&only_other_accounts=true&page=true`;
+    const elsewhere = "https://elsewhere.example/replies?page=true";
+    // Mastodon 4.7's shape: the author's own replies inline, the rest behind `next`.
+    const openedNote = noteDocument(author, "paged-opened", {
+      replies: {
+        id: replies,
+        type: "Collection",
+        first: {
+          type: "CollectionPage",
+          next: secondPage,
+          partOf: replies,
+          items: [noteUri(author, "paged-own-reply")],
+        },
+      },
+    });
+    await deliver(author, openedNote);
+    const openedId = await statusIdOf(opened);
+    const reply = (remote: Remote, slug: string): [string, unknown] => [
+      noteUri(remote, slug),
+      noteDocument(remote, slug, { inReplyTo: opened }),
+    ];
+    const page = (id: string, items: string[], next?: string) => ({
+      id,
+      type: "CollectionPage",
+      partOf: replies,
+      items,
+      ...(next ? { next } : {}),
+    });
+    const documents = new Map<string, unknown>([
+      [opened, openedNote],
+      reply(author, "paged-own-reply"),
+      reply(other, "paged-other-reply-1"),
+      reply(other, "paged-other-reply-2"),
+      reply(other, "paged-beyond-the-pages"),
+      [secondPage, page(secondPage, [noteUri(other, "paged-other-reply-1")], thirdPage)],
+      [thirdPage, page(thirdPage, [noteUri(other, "paged-other-reply-2")], fourthPage)],
+      [fourthPage, page(fourthPage, [noteUri(other, "paged-beyond-the-pages")])],
+    ]);
+    const recording = recordingEnv();
+
+    await requested(openedId, recording.env);
+    await serving(documents, () => runQueued(recording));
+
+    expect((await contextOf(openedId)).descendants.map((entry) => entry.uri)).toEqual([
+      noteUri(author, "paged-own-reply"),
+      noteUri(other, "paged-other-reply-1"),
+      noteUri(other, "paged-other-reply-2"),
+    ]);
+
+    // A `next` on another origin is not followed.
+    const strayAuthor = await remoteActor("paged-stray", "paged.example");
+    const stray = noteUri(strayAuthor, "paged-stray-opened");
+    const strayNote = noteDocument(strayAuthor, "paged-stray-opened", {
+      replies: {
+        id: `${stray}/replies`,
+        type: "Collection",
+        first: { type: "CollectionPage", next: elsewhere, items: [] },
+      },
+    });
+    await deliver(strayAuthor, strayNote);
+    const strayId = await statusIdOf(stray);
+    await requested(strayId, recording.env);
+    await serving(
+      new Map<string, unknown>([
+        [stray, strayNote],
+        [elsewhere, page(elsewhere, [noteUri(other, "paged-beyond-the-pages")])],
+      ]),
+      () => runQueued(recording),
+    );
+    expect((await contextOf(strayId)).descendants).toEqual([]);
+  });
+
   it(`walks at most ${THREAD_BACKFILL_ANCESTOR_LIMIT} notes up`, async () => {
     const author = await remoteActor("thread-deep", "thread.example");
     const depth = THREAD_BACKFILL_ANCESTOR_LIMIT + 2;
