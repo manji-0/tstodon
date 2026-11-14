@@ -528,15 +528,24 @@ export type SalvagedRemoteStatus = Readonly<{
   version: string;
 }>;
 
+/**
+ * When the row was last written, from its `updated_at`. Most writers store an
+ * instant. A card write stored SQLite's `CURRENT_TIMESTAMP` until it was
+ * changed to do the same ('YYYY-MM-DD HH:MM:SS', in UTC), and rows written
+ * then still hold it.
+ */
+const writtenAt = (updatedAt: unknown): IsoInstant | undefined => {
+  if (typeof updatedAt !== "string") {
+    return undefined;
+  }
+  const sqlite = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(updatedAt);
+  return IsoInstant.parse(sqlite ? `${sqlite[1]}T${sqlite[2]}Z` : updatedAt).unwrapOr(undefined);
+};
+
 const salvagedEdit = (row: z.infer<typeof VersionedRow>): SalvagedEdit =>
   EditedAtColumn.safeParse(row.edited_at).success
     ? { kind: "Known" }
-    : {
-        kind: "Unknown",
-        writtenAt: IsoInstant.parse(
-          typeof row.updated_at === "string" ? row.updated_at : "",
-        ).unwrapOr(undefined),
-      };
+    : { kind: "Unknown", writtenAt: writtenAt(row.updated_at) };
 
 /**
  * The status the row of `id` holds once the columns that do not read are

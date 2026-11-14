@@ -5,11 +5,12 @@ import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
-import { ActivityId } from "@tstodon/domain";
+import { ActivityId, IsoInstant } from "@tstodon/domain";
 import { parseRows } from "./d1";
 import { recordRemoteBoost } from "./remote-boost";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
 import { parseInstanceIdentity } from "./runtime-config";
+import { setRemoteStatusCard } from "./status-card-store";
 import { findThreadParent } from "./thread-context";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -410,6 +411,43 @@ describe("the author's delivery of a note whose stored row does not read, replac
     expect(await update(author, edit("<p>third edit</p>", updated))).toBe(202);
 
     expect(await status(id)).toMatchObject({ content: "<p>third edit</p>", edited_at: updated });
+  });
+
+  it("reads the last write of such a row in SQLite's form, which older card writes left", async () => {
+    const author = await remoteActor("unreadable-edit-date-sqlite");
+    const { id, edit } = await undatedEdit(author, "unreadable-edit-date-sqlite");
+    await env.DB.prepare(
+      "UPDATE remote_statuses SET updated_at = datetime('now', '-1 minute') WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    const before = new Date(Date.now() - 3_600_000).toISOString();
+    const updated = new Date().toISOString();
+
+    expect(await update(author, edit("<p>older edit</p>", before))).toBe(202);
+    expect(await editedAtColumn(id)).toEqual({
+      content_html: "<p>second edit</p>",
+      edited_at: "unreadable",
+    });
+
+    expect(await update(author, edit("<p>third edit</p>", updated))).toBe(202);
+    expect(await status(id)).toMatchObject({ content: "<p>third edit</p>", edited_at: updated });
+  });
+
+  it("dates the row as an instant when a link card is stored for it", async () => {
+    const author = await remoteActor("unreadable-card-date");
+    const original = note(author, "unreadable-card-date");
+    expect(await create(author, original)).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+
+    expect((await setRemoteStatusCard(env.DB, id, "{}", "https://x.example/")).isOk()).toBe(true);
+
+    const [row] = await rows(
+      z.object({ updated_at: z.string() }),
+      "SELECT updated_at FROM remote_statuses WHERE id = ?",
+      id,
+    );
+    expect(IsoInstant.parse(row?.updated_at ?? "").isOk()).toBe(true);
   });
 
   it("takes the edit date from a document that changes nothing in a row whose edit date does not read", async () => {
