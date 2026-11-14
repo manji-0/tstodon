@@ -26,5 +26,7 @@ export CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=../../e2e/mastodon/tstodon.wrangler.
 export VOID_INSPECTOR_PORT=false
 export TSTODON_PERSIST_TO=$persist
 
-# The proxy container reaches the host through the Docker bridge, not loopback.
-exec pnpm exec vp -C packages/worker dev --port 8791 --strictPort --host 0.0.0.0
+# Listen only on the host's address on the Compose network's bridge, where the
+# proxy forwards. This Worker trusts the committed test Access key, so it must
+# not listen on an address the LAN reaches (never 0.0.0.0).
+exec pnpm exec vp -C packages/worker dev --port 8791 --strictPort --host 172.30.47.1

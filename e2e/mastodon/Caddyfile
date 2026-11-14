@@ -8,8 +8,9 @@ https://mastodon.test {
 	reverse_proxy web:3000
 }
 
-# The tstodon Worker runs on the host (`vp dev`, port 8791).
+# The tstodon Worker runs on the host (`vp dev`), listening on the Compose
+# network's gateway address only (compose.yaml, start-tstodon.sh).
 https://tstodon.localhost {
 	tls /certs/leaf.crt /certs/leaf.key
-	reverse_proxy host.docker.internal:8791
+	reverse_proxy 172.30.47.1:8791
 }

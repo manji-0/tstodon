@@ -32,8 +32,10 @@ if [ ! -f "$certs/leaf.crt" ]; then
     >"$certs/leaf.ext"
   openssl x509 -req -in "$certs/leaf.csr" -CA "$certs/ca.crt" -CAkey "$certs/ca.key" \
     -CAcreateserial -days 30 -extfile "$certs/leaf.ext" -out "$certs/leaf.crt" 2>/dev/null
-  # Caddy runs as root in its container, Mastodon as uid 991.
-  chmod 644 "$certs/leaf.key" "$certs/ca.crt" "$certs/leaf.crt"
+  # Mastodon (uid 991) reads the CA certificate. The keys stay private: Caddy
+  # runs as root in its container and reads the leaf key through its mount.
+  chmod 644 "$certs/ca.crt" "$certs/leaf.crt"
+  chmod 600 "$certs/leaf.key" "$certs/ca.key"
   # Running containers still mount the old files.
   recreate=(--force-recreate)
 fi

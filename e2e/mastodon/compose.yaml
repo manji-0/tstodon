@@ -63,11 +63,10 @@ services:
     image: caddy:2-alpine
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./.state/certs:/certs:ro
+      - ./.state/certs/leaf.crt:/certs/leaf.crt:ro
+      - ./.state/certs/leaf.key:/certs/leaf.key:ro
     ports:
       - "127.0.0.1:443:443"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       interop:
         aliases:
@@ -78,5 +77,9 @@ networks:
   interop:
     ipam:
       config:
-        # mastodon.env lists this subnet in ALLOWED_PRIVATE_ADDRESSES.
+        # mastodon.env lists this subnet in ALLOWED_PRIVATE_ADDRESSES. The
+        # gateway is the host's address on this network's bridge: the Worker
+        # listens there (start-tstodon.sh) and the proxy forwards to it
+        # (Caddyfile). The bridge is not routed from the LAN.
         - subnet: 172.30.47.0/24
+          gateway: 172.30.47.1

@@ -14,7 +14,7 @@ This harness runs one real Mastodon (v4.7.5) next to a local tstodon Worker and 
 | Mastodon Sidekiq          | container `sidekiq`                             |                             |
 | PostgreSQL 16, Redis 7    | containers `db` (tmpfs data), `redis`           |                             |
 | TLS proxy (Caddy)         | container `proxy`, published on `127.0.0.1:443` | both names                  |
-| tstodon Worker (`vp dev`) | the host, port 8791                             | `https://tstodon.localhost` |
+| tstodon Worker (`vp dev`) | the host, `172.30.47.1:8791`                    | `https://tstodon.localhost` |
 
 Mastodon's streaming server is not started. The scripts use the REST API only.
 
@@ -69,7 +69,7 @@ Mastodon in production mode builds `https://` URLs for itself and fetches WebFin
 - Mastodon trusts the CA through `SSL_CERT_FILE=/certs/ca.crt`. Ruby's OpenSSL reads that variable, and Mastodon's HTTP client uses the default store.
 - The Worker trusts the CA through `NODE_EXTRA_CA_CERTS`. Miniflare passes that file to workerd. Node takes one file there, so `bootstrap.sh` writes `.state/certs/node-extra-ca.pem` with the caller's existing extra CAs and the harness CA together.
 - The proxy container has the network aliases `mastodon.test` and `tstodon.localhost`, so Mastodon resolves both names to the proxy. On the host, `/etc/hosts` maps both names to `127.0.0.1`, where the proxy is published.
-- The proxy reaches the Worker at `host.docker.internal:8791` (`host-gateway`). That is why `vp dev` listens on `0.0.0.0` here and not on `127.0.0.1`.
+- The proxy reaches the Worker at `172.30.47.1:8791`, the host's address on the Compose network's bridge, and `vp dev` listens on that address only. This Worker accepts the committed test Access key, so anyone who can reach its port can sign in: it must not listen on `0.0.0.0`. Run `bootstrap.sh` first, because the address exists once the network does.
 
 The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up through the test Access key (`packages/worker/test/access-jwt-fixture.ts`), and `isLocalAccessHost` (`packages/worker/server/access-jwt.ts`) accepts that key only on a local host name. With `tstodon.test`, `/auth/sign_in` answers 200 without a session and the consent post is a 403. Vite also allows `.localhost` hosts without configuration.
 
