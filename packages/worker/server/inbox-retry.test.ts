@@ -463,6 +463,30 @@ describe("an inbox activity that failed after its row was stored", () => {
   });
 });
 
+/** The states of the quotes the remote note `statusId` makes: one at most. */
+const quoteStates = async (statusId: string): Promise<string[]> =>
+  parseRows(
+    z.object({ state: z.string() }),
+    (
+      await env.DB.prepare("SELECT state FROM status_quotes WHERE remote_status_id = ?")
+        .bind(statusId)
+        .all()
+    ).results,
+  ).map((row) => row.state);
+
+/** The answers to quote requests queued for the local account `accountId`. */
+const answersOf = async (accountId: string): Promise<string[]> =>
+  parseRows(
+    z.object({ kind: z.string() }),
+    (
+      await env.DB.prepare(
+        "SELECT kind FROM outbound_activities WHERE account_id = ? AND kind IN ('Accept', 'Reject')",
+      )
+        .bind(accountId)
+        .all()
+    ).results,
+  ).map((row) => row.kind);
+
 describe("two inbox activities that carry one note", () => {
   /** What `persistRemoteObject` takes to store `author`'s note as an inbox activity delivers it. */
   const deliverer = async (author: Remote) => {
@@ -550,7 +574,67 @@ describe("two inbox activities that carry one note", () => {
       const id = (await storedId(object.id)) ?? "";
       expect(await status(id)).toMatchObject({ tags: [{ name: "atonce" }] });
       expect(await owedKinds(id)).toEqual([]);
+      // Whichever ran the late steps, the request is answered.
+      expect(await quoteStates(id)).toEqual(["accepted"]);
+      expect(await answersOf(quoted.id)).toHaveLength(round + 1);
     }
+  });
+
+  it("answers a QuoteRequest that arrives while a Create holds the note's late steps and has not stored the quote", async () => {
+    const quoted = await localAccount("inbox-retry-held-quote@example.com");
+    const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...quoted.headers },
+      body: JSON.stringify({ status: "quote me" }),
+    });
+    const quotedUri = `${quoted.actorUrl}/statuses/${expectContract(ApiStatus, await posted.json()).id}`;
+    const elsewhere = "https://elsewhere.example/users/retry-held-quote";
+    const author = await remoteActor("retry-held-quote");
+    const object = note(author, "retry-held-quote", {
+      content: "<p>quoting</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+      quote: quotedUri,
+    });
+    const create = { id: `${object.id}/create`, type: "Create", object };
+    // The Create stopped in its late steps before the quote sync, and holds their lease.
+    const allow = await refuseInsert(
+      "inbox_retry_held_quote",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect(await author.send(create)).toBe(500);
+    } finally {
+      await allow();
+    }
+    const id = (await storedId(object.id)) ?? "";
+    expect(await quoteStates(id)).toEqual([]);
+    const lease = (until: number) =>
+      env.DB.prepare("UPDATE remote_status_owed SET claimed_until = ? WHERE status_id = ?")
+        .bind(new Date(until).toISOString(), id)
+        .run();
+    await lease(Date.now() + 30_000);
+
+    expect(
+      await author.send({
+        id: `${author.actorUri}/quote_requests/held`,
+        type: "QuoteRequest",
+        object: quotedUri,
+        instrument: object,
+      }),
+    ).toBe(202);
+
+    expect(await quoteStates(id)).toEqual(["accepted"]);
+    expect(await answersOf(quoted.id)).toEqual(["Accept"]);
+    expect(await owedKinds(id)).toEqual(["Created"]);
+
+    // The holder's steps run later, and keep the quote as answered.
+    await lease(Date.now() - 1000);
+    expect(await author.send(create)).toBe(202);
+    expect(await quoteStates(id)).toEqual(["accepted"]);
+    expect(await answersOf(quoted.id)).toEqual(["Accept"]);
+    expect(await owedKinds(id)).toEqual([]);
   });
 
   it("notifies a mentioned account once when a Create arrives while the QuoteRequest that stored the note is in its late steps", async () => {

@@ -792,6 +792,15 @@ const storedMeanwhile = async (
  * ({@link claimOwed}). One that does not has nothing of its own left to do
  * and goes on, answered 202: every step, the stream event included, is the
  * holder's, whose sender delivers again when it fails.
+ *
+ * A `QuoteRequest` is the exception for one step: it answers the quote the
+ * note makes, which the holder may not have stored yet, and a request
+ * answered 202 without one is never sent again. So it syncs the quote
+ * itself, outside the lease. That is safe beside the holder's own sync: both
+ * read the same document, a quote of the same status is kept as it is with
+ * the state it has (`syncRemoteQuote`), and of two that insert it at once
+ * one fails on the unique quoting status, is answered 5xx and finds the row
+ * when it is delivered again.
  */
 const resumeCreated = async (
   env: Env,
@@ -829,7 +838,15 @@ const resumeCreated = async (
     return err(held.error);
   }
   if (held.value === undefined) {
-    return ok(undefined);
+    return options.delivery === "QuoteRequest"
+      ? syncRemoteQuote(
+          env,
+          identity,
+          status,
+          raw,
+          remoteQuoteContext(env, identity, actor, options),
+        )
+      : ok(undefined);
   }
   return finishRemoteNote(env, identity, {
     kind: "Created",
