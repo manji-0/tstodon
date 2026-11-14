@@ -44,6 +44,9 @@ const noteDocument = (remote: Remote, slug: string, extra: Record<string, unknow
   ...extra,
 });
 
+/** A URL whose server does not answer: `serving` gives it a 503. */
+const DOWN = Symbol("down");
+
 /** Run `body` while `fetch` serves `documents` by URL and 404s anything else. */
 const serving = async <T>(
   documents: ReadonlyMap<string, unknown>,
@@ -53,6 +56,9 @@ const serving = async <T>(
   const fetched: typeof fetch = async (input) => {
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const document = documents.get(href);
+    if (document === DOWN) {
+      return new Response("unavailable", { status: 503 });
+    }
     return document === undefined
       ? new Response("not found", { status: 404 })
       : new Response(JSON.stringify(document), {
@@ -112,13 +118,17 @@ const requested = async (statusId: string, target: Env) => {
   await requestRemoteThreadBackfill(target, status.value);
 };
 
-const runQueued = async (recording: ReturnType<typeof recordingEnv>) => {
-  const message = recording.sent.shift();
+const runQueued = async (
+  recording: ReturnType<typeof recordingEnv>,
+  outcome: "ok" | "retry" = "ok",
+) => {
+  // A retried job stays queued, as the queue redelivers it.
+  const message = outcome === "retry" ? recording.sent[0] : recording.sent.shift();
   const job = OutboxJob.parse(message);
   if (job.isErr()) {
     throw new Error("queued job rejected");
   }
-  expect(await processOutboxJob(recording.env, job.value)).toBe("ok");
+  expect(await processOutboxJob(recording.env, job.value)).toBe(outcome);
 };
 
 describe("opening a remote status", () => {
@@ -181,6 +191,145 @@ describe("opening a remote status", () => {
     expect((await contextOf(openedId)).descendants.map((entry) => entry.uri)).toEqual([
       noteUri(author, "thread-reply-embedded"),
       noteUri(author, "thread-reply-link"),
+    ]);
+  });
+
+  it("reads the replies of other accounts from the pages after the first, as Mastodon serves them", async () => {
+    const author = await remoteActor("paged-author", "paged.example");
+    const other = await remoteActor("paged-other", "paged.example");
+    const opened = noteUri(author, "paged-opened");
+    const replies = `${opened}/replies`;
+    const secondPage = `${replies}?only_other_accounts=true&page=true`;
+    const thirdPage = `${replies}?min_id=2&only_other_accounts=true&page=true`;
+    const fourthPage = `${replies}?min_id=3&only_other_accounts=true&page=true`;
+    const elsewhere = "https://elsewhere.example/replies?page=true";
+    // Mastodon 4.7's shape: the author's own replies inline, the rest behind `next`.
+    const openedNote = noteDocument(author, "paged-opened", {
+      replies: {
+        id: replies,
+        type: "Collection",
+        first: {
+          type: "CollectionPage",
+          next: secondPage,
+          partOf: replies,
+          items: [noteUri(author, "paged-own-reply")],
+        },
+      },
+    });
+    await deliver(author, openedNote);
+    const openedId = await statusIdOf(opened);
+    const reply = (remote: Remote, slug: string): [string, unknown] => [
+      noteUri(remote, slug),
+      noteDocument(remote, slug, { inReplyTo: opened }),
+    ];
+    const page = (id: string, items: string[], next?: string) => ({
+      id,
+      type: "CollectionPage",
+      partOf: replies,
+      items,
+      ...(next ? { next } : {}),
+    });
+    const documents = new Map<string, unknown>([
+      [opened, openedNote],
+      reply(author, "paged-own-reply"),
+      reply(other, "paged-other-reply-1"),
+      reply(other, "paged-other-reply-2"),
+      reply(other, "paged-beyond-the-pages"),
+      [secondPage, page(secondPage, [noteUri(other, "paged-other-reply-1")], thirdPage)],
+      [thirdPage, page(thirdPage, [noteUri(other, "paged-other-reply-2")], fourthPage)],
+      [fourthPage, page(fourthPage, [noteUri(other, "paged-beyond-the-pages")])],
+    ]);
+    const recording = recordingEnv();
+
+    await requested(openedId, recording.env);
+    await serving(documents, () => runQueued(recording));
+
+    expect((await contextOf(openedId)).descendants.map((entry) => entry.uri)).toEqual([
+      noteUri(author, "paged-own-reply"),
+      noteUri(other, "paged-other-reply-1"),
+      noteUri(other, "paged-other-reply-2"),
+    ]);
+
+    // A `next` on another origin is not followed.
+    const strayAuthor = await remoteActor("paged-stray", "paged.example");
+    const stray = noteUri(strayAuthor, "paged-stray-opened");
+    const strayNote = noteDocument(strayAuthor, "paged-stray-opened", {
+      replies: {
+        id: `${stray}/replies`,
+        type: "Collection",
+        first: { type: "CollectionPage", next: elsewhere, items: [] },
+      },
+    });
+    await deliver(strayAuthor, strayNote);
+    const strayId = await statusIdOf(stray);
+    await requested(strayId, recording.env);
+    await serving(
+      new Map<string, unknown>([
+        [stray, strayNote],
+        [elsewhere, page(elsewhere, [noteUri(other, "paged-beyond-the-pages")])],
+      ]),
+      () => runQueued(recording),
+    );
+    expect((await contextOf(strayId)).descendants).toEqual([]);
+  });
+
+  it("retries, and does not close the fetch, while a page of replies does not answer", async () => {
+    const author = await remoteActor("down-author", "down.example");
+    const other = await remoteActor("down-other", "down.example");
+    const opened = noteUri(author, "down-opened");
+    const replies = `${opened}/replies`;
+    const secondPage = `${replies}?only_other_accounts=true&page=true`;
+    const openedNote = noteDocument(author, "down-opened", {
+      replies: {
+        id: replies,
+        type: "Collection",
+        first: {
+          type: "CollectionPage",
+          next: secondPage,
+          items: [noteUri(author, "down-own-reply")],
+        },
+      },
+    });
+    await deliver(author, openedNote);
+    const openedId = await statusIdOf(opened);
+    const documents = new Map<string, unknown>([
+      [opened, openedNote],
+      [
+        noteUri(author, "down-own-reply"),
+        noteDocument(author, "down-own-reply", { inReplyTo: opened }),
+      ],
+      [
+        noteUri(other, "down-other-reply"),
+        noteDocument(other, "down-other-reply", { inReplyTo: opened }),
+      ],
+    ]);
+    const finished = async () =>
+      (
+        await env.DB.prepare("SELECT context_refreshed_at FROM remote_statuses WHERE id = ?")
+          .bind(openedId)
+          .first<{ context_refreshed_at: string | null }>()
+      )?.context_refreshed_at;
+    const recording = recordingEnv();
+    await requested(openedId, recording.env);
+
+    await serving(new Map([...documents, [secondPage, DOWN]]), () => runQueued(recording, "retry"));
+    expect(await finished()).toBeNull();
+    expect((await contextOf(openedId)).descendants).toEqual([]);
+
+    await serving(
+      new Map<string, unknown>([
+        ...documents,
+        [
+          secondPage,
+          { id: secondPage, type: "CollectionPage", items: [noteUri(other, "down-other-reply")] },
+        ],
+      ]),
+      () => runQueued(recording),
+    );
+    expect(await finished()).not.toBeNull();
+    expect((await contextOf(openedId)).descendants.map((entry) => entry.uri)).toEqual([
+      noteUri(author, "down-own-reply"),
+      noteUri(other, "down-other-reply"),
     ]);
   });
 

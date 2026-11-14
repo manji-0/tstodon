@@ -111,6 +111,46 @@ describe("inbox claims", () => {
     expect(await remote.send(unknown)).toBe(202);
   });
 
+  it("applies a second Undo(Follow) that carries the id of an earlier one, as Mastodon sends them", async () => {
+    const remote = await remoteActor("claim-undo-twice");
+    const { id, username } = await signedInAccount("claim-undo-twice@example.com");
+    const target = `https://example.com/users/${username}`;
+    const followersCount = async (): Promise<number> => {
+      const response = await SELF.fetch(`https://example.com/api/v1/accounts/${id}`);
+      return schemaResult(z.object({ followers_count: z.number() }))(
+        await response.json(),
+      )._unsafeUnwrap().followers_count;
+    };
+    const follow = (uuid: string) => ({
+      id: `https://remote.example/${uuid}`,
+      type: "Follow",
+      actor: remote.actorUri,
+      object: target,
+    });
+    // Mastodon's id for both: `#follows/<n>/undo`, where `n` is the pending
+    // follow request's id the first time and the accepted follow's the second.
+    const undo = (uuid: string) => ({
+      id: `${remote.actorUri}#follows/21/undo`,
+      type: "Undo",
+      object: follow(uuid),
+    });
+
+    expect(await remote.send(follow("first-follow"))).toBe(202);
+    expect(await followersCount()).toBe(1);
+    expect(await remote.send(undo("first-follow"))).toBe(202);
+    expect(await followersCount()).toBe(0);
+
+    expect(await remote.send(follow("second-follow"))).toBe(202);
+    expect(await followersCount()).toBe(1);
+    expect(await remote.send(undo("second-follow"))).toBe(202);
+    expect(await followersCount()).toBe(0);
+
+    // The same Undo again is still a redelivery: answered, not applied.
+    expect(await remote.send(follow("third-follow"))).toBe(202);
+    expect(await remote.send(undo("second-follow"))).toBe(202);
+    expect(await followersCount()).toBe(1);
+  });
+
   it("releases the claims left unfinished for over 15 minutes", async () => {
     const nowMs = Date.parse("2001-06-01T12:00:00.000Z");
     const insert = (id: string, minutesAgo: number, rowState: string) =>

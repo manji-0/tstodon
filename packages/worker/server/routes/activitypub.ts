@@ -36,7 +36,12 @@ import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
 import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fetch";
-import { claimInboxActivity, completeInboxActivity, releaseInboxActivity } from "../inbox-store";
+import {
+  claimInboxActivity,
+  completeInboxActivity,
+  inboxClaimKey,
+  releaseInboxActivity,
+} from "../inbox-store";
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
@@ -616,8 +621,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   // Claimed before it is applied and marked handled only after: a failed
   // apply gives the claim back, so the sender's retry is applied, not
   // answered as a duplicate.
+  const claimKey = inboxClaimKey(activityId.value, activityJson.value);
   const claim = await claimInboxActivity(c.env.DB, {
-    activityId: activityId.value,
+    activityId: claimKey,
     payload: activityJson.value,
   });
   if (claim.isErr()) {
@@ -645,7 +651,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       signer: signerUri,
       detail: received.error.kind,
     });
-    await completeInboxActivity(c.env.DB, activityId.value, received.error.kind);
+    await completeInboxActivity(c.env.DB, claimKey, received.error.kind);
     return c.json(received.error, 400);
   }
   const applied = await dispatchInbox(
@@ -662,12 +668,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     signer,
   );
   if (applied.isErr()) {
-    await releaseInboxActivity(c.env.DB, activityId.value);
+    await releaseInboxActivity(c.env.DB, claimKey);
     return jsonRepositoryError(c, applied.error.message);
   }
   // Applied: 202 even if marking it handled fails, as a retry would apply it
   // twice. The claim then goes stale and the hourly cron releases it.
-  await completeInboxActivity(c.env.DB, activityId.value, received.activity.kind);
+  await completeInboxActivity(c.env.DB, claimKey, received.activity.kind);
   return c.body(null, 202);
 };
 

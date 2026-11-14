@@ -21,45 +21,33 @@ import {
 } from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonRemoteStatuses } from "../remote-status-documents";
-import { isUrlQuery, resolveStatusUrl } from "../search-url";
+import { isUrlQuery, localHandleUsername, resolveSearchUrl } from "../search-url";
 import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
-import { resolveRemoteActor, resolveRemoteActorByHandle } from "../remote-actor-fetch";
+import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
+import { findAccountByUsername } from "../account-store";
+import type { FederatedFetchOptions } from "../federated-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
-import { searchableRemoteActors } from "../account-presentation";
+import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
 import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { listFeaturedTags, listFollowedTags, searchTags, tagDailyHistories } from "../tag-store";
 import type { Context } from "hono";
 import { instanceActorFetchSigner } from "../instance-actor";
 
-/** The remote actor a `resolve=true` query names by handle or actor URL, fetched if not cached. */
-const resolveSearchActor = async (
+/** The remote actor a `resolve=true` query names by its `user@domain` handle, fetched if not cached. */
+const resolveSearchHandle = async (
   env: Env,
   identity: InstanceIdentity,
   query: string,
+  options: FederatedFetchOptions,
 ): Promise<RemoteActor | undefined> => {
   const bare = query.replace(/^@/, "").trim();
-  const allowHosts = await federationAllowHosts(env);
-  const blockedHosts = await suspendedDomains(env.DB);
-  const fetchSigner = instanceActorFetchSigner(env.DB, identity);
-  if (/^[^\s@]+@[^\s@]+$/.test(bare)) {
-    const actor = await resolveRemoteActorByHandle(env.DB, identity, bare, {
-      allowHosts,
-      blockedHosts,
-      fetchSigner,
-    });
-    return actor.isOk() ? actor.value : undefined;
+  if (!/^[^\s@]+@[^\s@]+$/.test(bare)) {
+    return undefined;
   }
-  if (bare.startsWith("http://") || bare.startsWith("https://")) {
-    const actor = await resolveRemoteActor(env.DB, identity, `${bare}#main-key`, bare, {
-      allowHosts,
-      blockedHosts,
-      fetchSigner,
-    });
-    return actor.isOk() ? actor.value : undefined;
-  }
-  return undefined;
+  const actor = await resolveRemoteActorByHandle(env.DB, identity, bare, options);
+  return actor.isOk() ? actor.value : undefined;
 };
 
 const search = async (c: Context<{ Bindings: Env }>) => {
@@ -104,46 +92,77 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
+  const fetchOptions = async (): Promise<FederatedFetchOptions> => ({
+    allowHosts: await federationAllowHosts(c.env),
+    blockedHosts: await suspendedDomains(c.env.DB),
+    fetchSigner: instanceActorFetchSigner(c.env.DB, identity.value),
+  });
   // As Mastodon's `SearchService`, a URL with `resolve=true` is looked up, not
   // searched for as text: the answer is the one status or account it names,
-  // on the first page, and nothing else. The status is looked up before the
-  // account, so a post's URL costs one fetch.
+  // on the first page, and nothing else. It is looked up once whatever `type`
+  // asks for, and a resource of another type is left out.
   const urlLookup = resolve && isUrlQuery(query);
-  const urlStatus =
-    urlLookup && offset === 0 && type !== "accounts" && type !== "hashtags"
-      ? await resolveStatusUrl(c.env, identity.value, query, viewerId, {
-          allowHosts: await federationAllowHosts(c.env),
-          blockedHosts: await suspendedDomains(c.env.DB),
-          fetchSigner: instanceActorFetchSigner(c.env.DB, identity.value),
-        })
+  const urlResource =
+    urlLookup && offset === 0
+      ? await resolveSearchUrl(c.env, identity.value, query, viewerId, await fetchOptions())
       : ok(undefined);
-  if (urlStatus.isErr()) {
-    return jsonRepositoryError(c, urlStatus.error.message);
+  if (urlResource.isErr()) {
+    return jsonRepositoryError(c, urlResource.error.message);
   }
+  const named = urlResource.value;
   const accountDocs: ApiAccountJSON[] = [];
   if (type !== "statuses" && type !== "hashtags") {
+    // `user@this-domain` names a local account: it is never looked up remotely.
+    const localUsername = urlLookup ? undefined : localHandleUsername(identity.value, query);
+    const localExact =
+      named?.kind === "LocalAccount"
+        ? ok(named.account)
+        : localUsername !== undefined && offset === 0
+          ? await findAccountByUsername(c.env.DB, localUsername)
+          : ok(undefined);
+    if (localExact.isErr()) {
+      return jsonRepositoryError(c, localExact.error.message);
+    }
+    const exactLocal = await searchableLocalAccounts(
+      c.env.DB,
+      localExact.value ? [localExact.value] : [],
+    );
+    if (exactLocal.isErr()) {
+      return jsonRepositoryError(c, exactLocal.error.message);
+    }
     // As Mastodon, the resolved account joins only the first page, first,
     // and counts inside `limit`.
     const resolved =
-      resolve && offset === 0 && urlStatus.value === undefined
-        ? await resolveSearchActor(c.env, identity.value, query)
-        : undefined;
+      named?.kind === "RemoteAccount"
+        ? named.actor
+        : resolve && offset === 0 && !urlLookup && localUsername === undefined
+          ? await resolveSearchHandle(c.env, identity.value, query, await fetchOptions())
+          : undefined;
     const exact = await searchableRemoteActors(c.env, resolved ? [resolved] : []);
     if (exact.isErr()) {
       return jsonRepositoryError(c, exact.error.message);
     }
     const page = await searchAccountsPage(
       c.env,
-      { localTerms: query, remoteTerms: query.replace(/^@/, ""), scope: { kind: "Everyone" } },
-      urlLookup ? 0 : limit - exact.value.length,
+      {
+        localTerms: localUsername ?? query,
+        remoteTerms: query.replace(/^@/, ""),
+        scope: { kind: "Everyone" },
+      },
+      urlLookup ? 0 : limit - exact.value.length - exactLocal.value.length,
       offset,
     );
     if (page.isErr()) {
       return jsonRepositoryError(c, page.error.message);
     }
-    const rendered = await mastodonAccountDocuments(c.env, identity.value, page.value.local);
+    const local = [...exactLocal.value, ...page.value.local];
+    const rendered = await mastodonAccountDocuments(c.env, identity.value, local);
     const seen = new Set<string>();
     for (const document of [
+      ...documentsInOrder(
+        exactLocal.value.map((account) => account.id),
+        rendered,
+      ),
       ...exact.value.map((actor) => mastodonRemoteAccount(identity.value, actor)),
       ...documentsInOrder(
         page.value.local.map((account) => account.id),
@@ -164,7 +183,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       ? ok([])
       : await (async () => {
           if (urlLookup) {
-            const found = urlStatus.value;
+            const found = named?.kind === "Status" ? named.status : undefined;
             if (!found) {
               return ok([]);
             }

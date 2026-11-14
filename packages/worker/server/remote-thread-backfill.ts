@@ -14,7 +14,12 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { parseLocalStatusId } from "./activitypub";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { findRemoteActorByUri } from "./remote-actor-store";
-import { firstCollectionPage, firstPageOf, parseCollection } from "./remote-collection";
+import {
+  firstCollectionPage,
+  firstPageOf,
+  parseCollection,
+  readCollectionPage,
+} from "./remote-collection";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
 import { persistAnnouncedObject } from "./remote-status-persist";
 import {
@@ -38,8 +43,22 @@ export const THREAD_BACKFILL_TTL_MS = 60 * 60 * 1000;
  */
 export const THREAD_BACKFILL_ANCESTOR_LIMIT = 5;
 
-/** Replies stored from the status's `replies` collection: its first page. */
+/** Replies stored from the status's `replies` collection. */
 export const THREAD_BACKFILL_REPLY_LIMIT = 20;
+
+/**
+ * Pages of `replies` read, the first one included. Mastodon's first page
+ * holds the author's own replies only; every other account's are on the
+ * pages its `next` links (`?only_other_accounts=true&page=true`).
+ *
+ * With the two limits above this bounds one job's fetches. A stored note
+ * costs its document and, for an author not cached, that actor's at most
+ * thirteen requests (`remote-actor-refresh.ts`): 5 ancestors and 20 replies
+ * are at most 350, and the status's document and these pages 4 more. That is
+ * inside the Workers Paid limit this server is sized for, not the Free
+ * plan's 50, which the ancestors alone can pass.
+ */
+export const THREAD_BACKFILL_REPLY_PAGES = 3;
 
 /**
  * How long a claimed fetch counts as running when its job never closed it (it
@@ -161,17 +180,21 @@ const backfillAncestors = async (
 };
 
 /**
- * Store the replies the status's origin lists, from the first page of its
- * `replies`. Resolves to how many were not cached before.
+ * The replies the status's origin lists: the items of the first pages of its
+ * `replies`, up to the limits. A `next` link is followed only on the status's
+ * own origin. `Unavailable` when the status's document or a page after the
+ * first did not answer: the list would be cut short, and a later try may
+ * read it whole.
  */
-const backfillReplies = async (
-  env: Env,
+const listedReplies = async (
   identity: InstanceIdentity,
-  actor: RemoteActor,
   status: RemoteStatus,
   options: FederatedFetchOptions,
-): Promise<number> => {
+): Promise<ReadonlyArray<unknown> | "Unavailable"> => {
   const raw = await fetchActivityJson(identity, status.objectUri, options);
+  if (raw.isErr() && raw.error.kind === "VerificationUnavailable") {
+    return "Unavailable";
+  }
   const holder = raw.isOk() ? parseRepliesHolder(raw.value) : undefined;
   const replies = holder?.isOk() ? holder.value.replies : undefined;
   let page;
@@ -183,8 +206,46 @@ const backfillReplies = async (
       ? await firstPageOf(identity, collection.value, status.objectUri, options)
       : undefined;
   }
+  const origin = URL.parse(status.objectUri)?.origin;
+  const items: unknown[] = [];
+  for (let pages = 1; page !== undefined; pages += 1) {
+    items.push(...page.items);
+    const next = page.next;
+    if (
+      next === undefined ||
+      pages === THREAD_BACKFILL_REPLY_PAGES ||
+      items.length >= THREAD_BACKFILL_REPLY_LIMIT ||
+      URL.parse(next)?.origin !== origin
+    ) {
+      break;
+    }
+    const following = await readCollectionPage(identity, next, options);
+    if (following === "Unavailable") {
+      return "Unavailable";
+    }
+    page = following;
+  }
+  return items.slice(0, THREAD_BACKFILL_REPLY_LIMIT);
+};
+
+/**
+ * Store the replies the status's origin lists ({@link listedReplies}).
+ * Resolves to how many were not cached before, or `Unavailable` when the
+ * list could not be read whole: nothing of it is stored then.
+ */
+const backfillReplies = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  status: RemoteStatus,
+  options: FederatedFetchOptions,
+): Promise<number | "Unavailable"> => {
+  const listed = await listedReplies(identity, status, options);
+  if (listed === "Unavailable") {
+    return "Unavailable";
+  }
   let stored = 0;
-  for (const item of (page?.items ?? []).slice(0, THREAD_BACKFILL_REPLY_LIMIT)) {
+  for (const item of listed) {
     const reference = parseReplyReference(item);
     if (reference.isErr()) {
       continue;
@@ -258,5 +319,7 @@ const backfillRemoteThreadPass = async (
     options,
   );
   const replies = await backfillReplies(env, identity.value, actor.value, status.value, options);
-  return ancestors + replies;
+  // Retried, with the claim left running: finishing here would keep a thread
+  // cut short by an outage for the whole TTL. What a try stored stays.
+  return replies === "Unavailable" ? undefined : ancestors + replies;
 };

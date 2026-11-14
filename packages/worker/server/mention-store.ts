@@ -99,34 +99,6 @@ export const isActiveRemoteStatusMention = async (
   return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
 };
 
-/** Local account ids each remote status addresses, keyed by status id. */
-export const listRemoteStatusMentions = async (
-  db: D1Database,
-  statusIds: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, ReadonlyArray<string>>, RepositoryError>> => {
-  if (statusIds.length === 0) {
-    return ok(new Map<string, string[]>());
-  }
-  const rows = await runD1(async () =>
-    queryTyped(
-      db,
-      listRemoteStatusMentionsSql(jsonStringArray([...new Set(statusIds)])),
-      StatusIdAccountIdRow,
-    ),
-  );
-  if (rows.isErr()) {
-    return err(rows.error);
-  }
-  return ok(
-    new Map(
-      [...Map.groupBy(rows.value, (row) => row.status_id)].map(([statusId, mentioned]) => [
-        statusId,
-        mentioned.map((row) => row.account_id),
-      ]),
-    ),
-  );
-};
-
 export const replaceStatusMentions = async (
   db: D1Database,
   statusId: string,
@@ -226,5 +198,19 @@ export const listShownRemoteStatusMentions = (
 ): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> =>
   groupMentions(db, statusIds, {
     locals: listShownRemoteStatusMentionsSql,
+    remotes: listRemoteStatusRemoteMentionsSql,
+  });
+
+/**
+ * Local accounts and remote actors each cached remote note addresses, keyed
+ * by status id: every mention, the silent ones included, as a direct note's
+ * conversation counts them (Mastodon's `participants_from_status`).
+ */
+export const listRemoteStatusMentions = (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, StatusMentions>, RepositoryError>> =>
+  groupMentions(db, statusIds, {
+    locals: listRemoteStatusMentionsSql,
     remotes: listRemoteStatusRemoteMentionsSql,
   });

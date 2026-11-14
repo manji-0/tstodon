@@ -18,10 +18,19 @@ pnpm exec wrangler d1 migrations apply tstodon-e2e-mastodon --local \
 
 # Void's dev fallback secret applies only on localhost and 127.0.0.1. The
 # Worker reads bindings, not this process's environment, so the secret goes
-# in the untracked `.dev.vars` beside the Worker config.
-if [ ! -f "$here/.dev.vars" ]; then
-  echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >"$here/.dev.vars"
+# in the untracked `.dev.vars` beside the Worker config. So does secure mode:
+# `TSTODON_AUTHORIZED_FETCH=true ./start-tstodon.sh` (off by default).
+# Every other line of the file is kept.
+vars=$here/.dev.vars
+touch "$vars"
+if ! grep -q '^BETTER_AUTH_SECRET=' "$vars"; then
+  echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >>"$vars"
 fi
+{
+  grep -v '^AUTHORIZED_FETCH=' "$vars" || true
+  echo "AUTHORIZED_FETCH=${TSTODON_AUTHORIZED_FETCH:-false}"
+} >"$vars.tmp"
+mv "$vars.tmp" "$vars"
 export CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=../../e2e/mastodon/tstodon.wrangler.jsonc
 export VOID_INSPECTOR_PORT=false
 export TSTODON_PERSIST_TO=$persist
