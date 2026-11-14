@@ -36,9 +36,7 @@ const releaseStaleClaims = async (env: Env): Promise<void> => {
 /**
  * Delete the markers of late work on a remote note that no redelivery
  * finished within the retention (`remote_status_owed`). The warning is the
- * record that this work stays undone. A note a `QuoteRequest` stored that no
- * `Create` delivered (`unstreamed`) left none undone, and alone warns of
- * nothing.
+ * record that this work stays undone.
  */
 const sweepAbandonedOwed = async (env: Env): Promise<void> => {
   const abandoned = await deleteAbandonedOwed(env.DB);

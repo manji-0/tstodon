@@ -9,7 +9,6 @@ const OwedRowSchema = z.object({
   token: z.string().min(1),
   created_at: z.string().min(1),
   mentions_json: z.string(),
-  stream_only: z.number(),
 });
 
 /**
@@ -20,21 +19,17 @@ const OwedRowSchema = z.object({
  * and the edit is streamed. `token` names the delivery that wrote the marker.
  * `mentions` are the local accounts an edit newly mentions, which only the
  * delivery that wrote the marker could tell; none for a `Created` marker.
- * `streamOnly` is a `Created` marker whose every step has run but the
- * `update` stream event ({@link leaveStreamOwed}).
  */
 export type OwedMarker = Readonly<{
   kind: z.infer<typeof OwedRowSchema>["kind"];
   token: string;
   createdAt: string;
   mentions: ReadonlyArray<string>;
-  streamOnly: boolean;
 }>;
 
 /**
- * How long a delivery holds the late steps of a marker. It is also the
- * `Retry-After` of a delivery that did not get them: a holder that was cut
- * off has lost them by the time that delivery comes again.
+ * How long a delivery holds the late steps of a marker. A delivery that was
+ * cut off in them keeps the others away for this long.
  */
 export const OWED_LEASE_SECONDS = 60;
 
@@ -44,12 +39,6 @@ export const OWED_LEASE_SECONDS = 60;
  * one that nobody held ({@link claimOwed}).
  */
 export type HeldOwed = OwedMarker & Readonly<{ heldUntil: string }>;
-
-/**
- * Another delivery holds the late steps of the note this one carries, and
- * this one cannot answer for them: the sender is asked to deliver again.
- */
-export type LateStepsInFlight = Readonly<{ kind: "LateStepsInFlight" }>;
 
 const leaseEnd = (nowMs: number): string =>
   new Date(nowMs + OWED_LEASE_SECONDS * 1000).toISOString();
@@ -62,7 +51,6 @@ export const newOwedMarker = (
   token: crypto.randomUUID(),
   createdAt: nowIso(),
   mentions,
-  streamOnly: false,
   heldUntil: leaseEnd(Date.now()),
 });
 
@@ -70,7 +58,7 @@ export const newOwedMarker = (
  * The statement that writes `marker` for `statusId`, for the batch that
  * writes the status row. A marker of the same kind left by an earlier
  * delivery is replaced: its token, time, mentions and lease become this
- * delivery's, and every step is owed again.
+ * delivery's.
  */
 export const owedStatement = (
   db: D1Database,
@@ -84,8 +72,7 @@ export const owedStatement = (
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (status_id, kind) DO UPDATE
          SET token = excluded.token, created_at = excluded.created_at,
-             mentions_json = excluded.mentions_json, claimed_until = excluded.claimed_until,
-             stream_only = 0`,
+             mentions_json = excluded.mentions_json, claimed_until = excluded.claimed_until`,
     )
     .bind(
       statusId,
@@ -144,29 +131,6 @@ export const releaseOwed = (
       .run();
   });
 
-/**
- * Record that every late step of `held` has run but the `update` stream
- * event, and give its lease back: the delivery was a `QuoteRequest`, and the
- * event is the `Create`'s to send. A lease another delivery has taken over
- * since stays that delivery's.
- */
-export const leaveStreamOwed = (
-  db: D1Database,
-  statusId: string,
-  held: HeldOwed,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await db
-      .prepare(
-        `UPDATE remote_status_owed
-         SET stream_only = 1,
-             claimed_until = CASE WHEN claimed_until = ? THEN NULL ELSE claimed_until END
-         WHERE status_id = ? AND kind = ? AND token = ?`,
-      )
-      .bind(held.heldUntil, statusId, held.kind, held.token)
-      .run();
-  });
-
 /** The markers of `statusId`: one per kind at most, none when nothing is owed. */
 export const listOwed = (
   db: D1Database,
@@ -175,8 +139,7 @@ export const listOwed = (
   runD1(async () => {
     const rows = await db
       .prepare(
-        `SELECT kind, token, created_at, mentions_json, stream_only
-         FROM remote_status_owed WHERE status_id = ?`,
+        "SELECT kind, token, created_at, mentions_json FROM remote_status_owed WHERE status_id = ?",
       )
       .bind(statusId)
       .all();
@@ -185,7 +148,6 @@ export const listOwed = (
       token: row.token,
       createdAt: row.created_at,
       mentions: parseJsonColumn(z.array(z.string()), row.mentions_json).unwrapOr([]),
-      streamOnly: row.stream_only === 1,
     }));
   });
 
@@ -225,29 +187,22 @@ export const OWED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * Delete the markers older than {@link OWED_RETENTION_MS}: their sender gave
  * up, so the work they name stays undone. The counts of what was abandoned,
- * by marker kind. `unstreamed` are apart: the notes a `QuoteRequest` stored
- * that no `Create` delivered, whose every step ran but a stream event nobody
- * was owed. They are no abandoned work.
+ * by marker kind.
  */
 export const deleteAbandonedOwed = (
   db: D1Database,
   nowMs: number = Date.now(),
-): Promise<
-  Result<Readonly<{ created: number; edited: number; unstreamed: number }>, RepositoryError>
-> =>
+): Promise<Result<Readonly<{ created: number; edited: number }>, RepositoryError>> =>
   runD1(async () => {
     const deleted = await db
       .prepare(
-        `DELETE FROM remote_status_owed WHERE created_at < ?
-         RETURNING kind, token, created_at, mentions_json, stream_only`,
+        "DELETE FROM remote_status_owed WHERE created_at < ? RETURNING kind, token, created_at, mentions_json",
       )
       .bind(new Date(nowMs - OWED_RETENTION_MS).toISOString())
       .all();
-    const rows = parseRows(OwedRowSchema, deleted.results);
-    const unstreamed = rows.filter((row) => row.stream_only === 1).length;
+    const kinds = parseRows(OwedRowSchema, deleted.results).map((row) => row.kind);
     return {
-      created: rows.filter((row) => row.kind === "Created").length - unstreamed,
-      edited: rows.filter((row) => row.kind === "Edited").length,
-      unstreamed,
+      created: kinds.filter((kind) => kind === "Created").length,
+      edited: kinds.filter((kind) => kind === "Edited").length,
     };
   });

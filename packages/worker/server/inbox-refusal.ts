@@ -35,8 +35,6 @@ export type InboxRefusalReason =
   | "KeyUnavailable"
   /** 503: another delivery of the activity is being applied (`Retry-After` sent). */
   | "ActivityInFlight"
-  /** 503: another delivery is finishing the note this `Create` carries (`Retry-After` sent). */
-  | "NoteInFlight"
   /** 403: the signer's domain is suspended here. */
   | "DomainSuspended"
   /** 403: limited federation, and the signer's domain is not allowed. */

@@ -10,7 +10,6 @@ import type { z } from "zod";
 import type { ActivityJsonSchema } from "../activitypub-wire";
 import type { RepositoryError } from "../d1";
 import type { FetchSigner } from "../federated-fetch";
-import type { LateStepsInFlight } from "../remote-status-owed";
 
 /** Who signed a verified inbox request: a local account, or a fetched remote actor. */
 export type InboxSigner =
@@ -42,14 +41,7 @@ export type RemoteDelivery<K extends ActivityValue["kind"]> = InboxDelivery<Remo
 export type LocalDelivery<K extends ActivityValue["kind"]> = InboxDelivery<LocalAccount, K>;
 
 /**
- * Why an activity was not applied and its sender should deliver it again: a
- * storage failure (5xx), or late steps of its note that another delivery
- * holds (503 with `Retry-After`).
+ * Applies one activity kind for one kind of signer. An `Err` is a storage
+ * failure the sender should retry; anything the server declines is `Ok`.
  */
-export type InboxError = RepositoryError | LateStepsInFlight;
-
-/**
- * Applies one activity kind for one kind of signer. An `Err` is a reason
- * for the sender to retry; anything the server declines is `Ok`.
- */
-export type InboxHandler<Delivery> = (delivery: Delivery) => Promise<Result<void, InboxError>>;
+export type InboxHandler<Delivery> = (delivery: Delivery) => Promise<Result<void, RepositoryError>>;
