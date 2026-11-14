@@ -15,7 +15,7 @@ import {
   upsertConversationHide as upsertConversationHideSql,
 } from "./generated/prisma/sql";
 import { parseLocalStatusId } from "./activitypub";
-import { listStatusMentions, type StatusMentions } from "./mention-store";
+import { listRemoteStatusMentions, listStatusMentions, type StatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import {
   findRemoteStatusReplyTargets,
@@ -23,7 +23,6 @@ import {
   type RemoteReplyTarget,
 } from "./remote-reply-store";
 import { listRemoteDirectStatusesForAccount } from "./remote-status-timeline-store";
-import { listRemoteStatusMentions } from "./mention-store";
 import { CONTEXT_ANCESTOR_LIMIT } from "./status-store";
 import {
   listDirectStatusesForAccount,
@@ -229,7 +228,7 @@ export const listConversationsForAccount = async (
   // conversation is its last one, and conversations turn up in list order.
   const byRoot = new Map<string, ConversationStatus[]>();
   const localMentions = new Map<string, StatusMentions>();
-  const remoteMentions = new Map<string, ReadonlyArray<string>>();
+  const remoteMentions = new Map<string, StatusMentions>();
   const listed: string[] = [];
   let scanned = 0;
   let before: string | undefined;
@@ -320,17 +319,18 @@ export const listConversationsForAccount = async (
     if (!lastStatus) {
       continue;
     }
+    // Mastodon's `participants_from_status`: each message's author and
+    // everyone it mentions, local or remote, but the viewer.
     const participantIds = new Set(
       thread.flatMap((entry) => {
-        if (entry.kind === "Remote") {
-          return [
-            RemoteAccountId.encode(entry.status.actorUri),
-            ...(remoteMentions.get(entry.status.id) ?? []),
-          ];
-        }
-        const mentions = localMentions.get(entry.status.id);
+        const mentions =
+          entry.kind === "Remote"
+            ? remoteMentions.get(entry.status.id)
+            : localMentions.get(entry.status.id);
         return [
-          entry.status.accountId,
+          entry.kind === "Remote"
+            ? RemoteAccountId.encode(entry.status.actorUri)
+            : entry.status.accountId,
           ...(mentions?.accountIds ?? []),
           ...(mentions?.actorUris ?? []).map((actorUri) => RemoteAccountId.encode(actorUri)),
         ];

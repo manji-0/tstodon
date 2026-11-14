@@ -88,6 +88,32 @@ const sendDirect = async (
 };
 
 describe("remote direct messages", () => {
+  it("list every account a message mentions as a participant, remote ones too", async () => {
+    const email = "remote-dm-group@example.com";
+    const account = await me(email);
+    const other = await me("remote-dm-group-other@example.com");
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const otherUrl = `https://example.com/users/${other.username}`;
+    const sender = await remoteActor("dm-group-sender");
+    const third = await remoteActor("dm-group-third");
+
+    // A Mastodon direct message to two accounts here and one on its own server.
+    const audience = [actorUrl, otherUrl, third.actorUri];
+    await sendDirect(sender, "dm-group-first", actorUrl, {
+      to: audience,
+      tag: audience.map((href) => ({ type: "Mention", href })),
+    });
+
+    const [conversation] = await conversations(email);
+    expect(conversation?.accounts.map((entry) => entry.id).toSorted()).toEqual(
+      [
+        RemoteAccountId.encode(sender.actorUri),
+        RemoteAccountId.encode(third.actorUri),
+        other.id,
+      ].toSorted(),
+    );
+  });
+
   it("land in the direct timeline and one conversation per thread", async () => {
     const email = "remote-dm-recipient@example.com";
     const account = await me(email);
