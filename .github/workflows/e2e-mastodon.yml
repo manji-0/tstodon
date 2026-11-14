@@ -1,0 +1,105 @@
+name: e2e-mastodon
+
+# Interop e2e against a real Mastodon (e2e/mastodon/README.md): Mastodon in
+# Docker Compose next to a tstodon Worker in `vp dev`, federating over HTTPS.
+# A workflow of its own, not a job in ci.yml, because it has its own triggers:
+# a run takes about ten minutes per mode, so a pull request runs it only when
+# it touches what the two servers say to each other, and a nightly run covers
+# the rest (a dependency update, a change outside the paths below).
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - packages/worker/server/**
+      - packages/worker/app/**
+      - packages/worker/vite.config.ts
+      - packages/worker/void-plugins.ts
+      - packages/worker/package.json
+      - packages/api/**
+      - packages/domain/**
+      - packages/core/**
+      - e2e/mastodon/**
+      - e2e/lib.ts
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/e2e-mastodon.yml
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-mastodon:
+    name: e2e-mastodon (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Secure mode (authorized fetch) is one switch per server. The sweep
+        # has steps that run only when a server is in it.
+        include:
+          - mode: open
+            tstodon_authorized_fetch: "false"
+            mastodon_authorized_fetch: "false"
+          - mode: tstodon-secure
+            tstodon_authorized_fetch: "true"
+            mastodon_authorized_fetch: "false"
+          - mode: both-secure
+            tstodon_authorized_fetch: "true"
+            mastodon_authorized_fetch: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The harness scripts call `pnpm` (and the workspace's own `vp` through
+      # it), as a developer's shell does. The version is package.json's
+      # `packageManager`.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The runner has what the harness needs: Docker with Compose v2, port
+      # 443 free, and `sudo` without a password for the two /etc/hosts lines.
+      # The images are pulled, not cached: a cache of them restores no faster
+      # than ghcr.io and Docker Hub serve them.
+      - name: Versions
+        run: |
+          docker version --format 'docker {{.Server.Version}}'
+          docker compose version
+          node --version
+          pnpm --version
+
+      # From nothing to nothing: the stack, the Worker, `pnpm e2e:mastodon`,
+      # `pnpm e2e:mastodon:probe`, the logs, the teardown. The script generates
+      # every secret it needs (the certificates, Mastodon's keys,
+      # BETTER_AUTH_SECRET); the workflow reads none from the repository.
+      - name: Interop e2e
+        env:
+          TSTODON_AUTHORIZED_FETCH: ${{ matrix.tstodon_authorized_fetch }}
+          MASTODON_AUTHORIZED_FETCH: ${{ matrix.mastodon_authorized_fetch }}
+        run: e2e/mastodon/ci.sh
+
+      - name: Upload the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-mastodon-logs-${{ matrix.mode }}
+          path: .cache/e2e-mastodon
+          include-hidden-files: true
+          retention-days: 7
