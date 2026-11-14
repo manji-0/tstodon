@@ -1,4 +1,5 @@
 import { InboxClaim, type InboxClaimValue } from "@tstodon/domain";
+import { schemaResult } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
@@ -12,6 +13,25 @@ import {
 } from "./generated/prisma/sql";
 
 const StateRow = z.object({ state: z.literal(["Processing", "Processed"]) });
+
+const parseEmbeddedUndo = schemaResult(
+  z.looseObject({ type: z.literal("Undo"), object: z.looseObject({ id: z.string().min(1) }) }),
+);
+
+/**
+ * What a delivery is claimed under, so its redelivery is a duplicate: the
+ * activity's id, and for an `Undo` that embeds what it undoes, that
+ * activity's id as well. An `Undo`'s own id does not tell two of them apart:
+ * Mastodon's `Undo(Follow)` is `<actor>#follows/<n>/undo`, where `n` is the
+ * id of the follow request while the follow is pending and of the follow once
+ * it is accepted. Those are two tables, so an actor's undo of a pending
+ * request and its later undo of a follow can carry one id, and Mastodon does
+ * not match an `Undo` by its id either (`Undo#undo_follow`).
+ */
+export const inboxClaimKey = (activityId: string, payload: unknown): string => {
+  const undo = parseEmbeddedUndo(payload);
+  return undo.isOk() ? `${activityId} undoes ${undo.value.object.id}` : activityId;
+};
 
 /** The stored state of an activity id, `undefined` when the inbox holds no row for it. */
 export const inboxActivityState = async (
