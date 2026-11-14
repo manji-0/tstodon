@@ -1,0 +1,82 @@
+# One real Mastodon (web + sidekiq, no streaming) next to a local tstodon
+# Worker. See README.md. Start it with ./bootstrap.sh, which writes .state/.
+name: tstodon-mastodon-interop
+
+x-mastodon: &mastodon
+  image: ghcr.io/mastodon/mastodon:${MASTODON_VERSION:-v4.7.5}
+  env_file:
+    - mastodon.env
+    - .state/secrets.env
+  environment:
+    # Secure mode: `MASTODON_AUTHORIZED_FETCH=true ./bootstrap.sh`.
+    AUTHORIZED_FETCH: ${MASTODON_AUTHORIZED_FETCH:-false}
+  volumes:
+    - ./.state/certs/ca.crt:/certs/ca.crt:ro
+    - ./provision.rb:/provision.rb:ro
+  networks:
+    - interop
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 1s
+      retries: 60
+    networks:
+      - interop
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      retries: 60
+    networks:
+      - interop
+
+  web:
+    <<: *mastodon
+    command: bundle exec puma -C config/puma.rb
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 2s
+      retries: 90
+
+  sidekiq:
+    <<: *mastodon
+    command: bundle exec sidekiq -c 5
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # Terminates TLS for both names. Mastodon reaches tstodon through the
+  # `tstodon.localhost` alias; the host reaches both through 127.0.0.1:443.
+  proxy:
+    image: caddy:2-alpine
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.state/certs:/certs:ro
+    ports:
+      - "127.0.0.1:443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      interop:
+        aliases:
+          - mastodon.test
+          - tstodon.localhost
+
+networks:
+  interop:
+    ipam:
+      config:
+        # mastodon.env lists this subnet in ALLOWED_PRIVATE_ADDRESSES.
+        - subnet: 172.30.47.0/24

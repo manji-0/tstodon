@@ -1,0 +1,15 @@
+{
+	auto_https off
+	admin off
+}
+
+https://mastodon.test {
+	tls /certs/leaf.crt /certs/leaf.key
+	reverse_proxy web:3000
+}
+
+# The tstodon Worker runs on the host (`vp dev`, port 8791).
+https://tstodon.localhost {
+	tls /certs/leaf.crt /certs/leaf.key
+	reverse_proxy host.docker.internal:8791
+}
