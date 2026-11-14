@@ -27,11 +27,14 @@ import {
   parseNoteDocument,
 } from "./remote-note-document";
 import {
+  claimOwed,
   clearOwed,
+  type HeldOwed,
+  type LateStepsInFlight,
   listOwed,
   newOwedMarker,
-  type OwedMarker,
   owedStatement,
+  releaseOwed,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
@@ -154,14 +157,15 @@ const remoteMentionedPost = async (
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, absent for a note that owes nothing (one that was fetched, or one
  * whose row existed). It is `resumed` when another delivery wrote it and
- * this one finishes its steps.
+ * this one finishes its steps. Either way this delivery holds its lease.
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
  * the row was written). `edit` is the marker of a change to its content:
  * written by this delivery, or left by one whose late steps failed, which
  * this delivery finishes although the content it carries is already stored.
- * Absent for an `Update` that edits nothing.
+ * Absent for an `Update` that edits nothing, or whose pending edit another
+ * delivery is finishing.
  */
 export type LateSteps = Readonly<{
   actor: RemoteActor;
@@ -170,11 +174,11 @@ export type LateSteps = Readonly<{
   options: PersistOptions;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: OwedMarker | undefined; resumed: boolean }>
+    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined; resumed: boolean }>
     | Readonly<{
         kind: "Updated";
         added: ReadonlyArray<string>;
-        edit: OwedMarker | undefined;
+        edit: HeldOwed | undefined;
       }>
   );
 
@@ -228,8 +232,28 @@ const mentionsToNotify = (
  * writes replace what they wrote, a notification is sent once
  * (`notifyFromRemoteOnce`), and the stream events come last, where a client
  * drops a status it already holds.
+ *
+ * One delivery at a time runs them for a marker: the caller holds its lease
+ * (`HeldOwed`). The lease goes with the marker when the steps finish, and is
+ * given back when they fail or leave the marker, so the next delivery takes
+ * it at once. A delivery that was cut off gives nothing back: its lease
+ * expires, and until then a `Create` of the note is asked to come again.
  */
 export const finishRemoteNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  late: LateSteps,
+): Promise<Result<void, RepositoryError>> => {
+  const held = late.kind === "Created" ? late.marker : late.edit;
+  const finished = await runLateSteps(env, identity, late);
+  if (held !== undefined && (finished.isErr() || finishedMarker(late) === undefined)) {
+    // Best effort: a lease that is not given back expires.
+    await releaseOwed(env.DB, late.status.id, held);
+  }
+  return finished;
+};
+
+const runLateSteps = async (
   env: Env,
   identity: InstanceIdentity,
   late: LateSteps,
@@ -327,7 +351,7 @@ export const finishRemoteNote = async (
  * it, which still owes the stream events, so it runs the other steps and
  * leaves the marker to the `Create`'s redelivery, or to the sweep.
  */
-const finishedMarker = (late: LateSteps): OwedMarker | undefined => {
+const finishedMarker = (late: LateSteps): HeldOwed | undefined => {
   if (late.kind === "Updated") {
     return late.edit;
   }
@@ -457,6 +481,12 @@ const healFromFetch = async (
   return settleInvalidRemoteStatus(env, author.value, row, { activity: "Fetched", raw: raw.value });
 };
 
+/**
+ * The note `actor` wrote, stored or found cached. An inbox activity that
+ * carries it (`options.delivery`) also finishes the late steps the note is
+ * owed. `LateStepsInFlight` is a `Create` of a note whose steps another
+ * delivery holds: see {@link resumeCreated}.
+ */
 export const persistRemoteObject = async (
   env: Env,
   identity: InstanceIdentity,
@@ -464,7 +494,7 @@ export const persistRemoteObject = async (
   object: ObjectReference,
   options: PersistOptions,
   known?: KnownRemoteStatus,
-): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError | LateStepsInFlight>> => {
   const objectUri = typeof object === "string" ? object : object.id;
   const cached = await cachedRemoteStatus(env, identity, objectUri, known);
   if (cached.isErr()) {
@@ -530,7 +560,7 @@ export const persistAnnouncedObject = async (
   if (typeof object !== "string") {
     const embedded = parseNoteDocument(object);
     if (embedded.isOk() && embedded.value.attributedTo === announcer.actorUri) {
-      return storeRemoteNote(env, identity, announcer, object, options, {
+      return storeFetchedNote(env, identity, announcer, object, options, {
         objectUri,
         row: undefined,
       });
@@ -546,7 +576,7 @@ export const persistAnnouncedObject = async (
   }
   const authorUri = note.value.attributedTo;
   if (authorUri === announcer.actorUri) {
-    return storeRemoteNote(env, identity, announcer, raw.value, options);
+    return storeFetchedNote(env, identity, announcer, raw.value, options);
   }
   const authorHost = urlHost(authorUri);
   if (authorHost === undefined || authorHost !== urlHost(objectUri)) {
@@ -562,7 +592,7 @@ export const persistAnnouncedObject = async (
   if (author.isErr()) {
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
-  return storeRemoteNote(env, identity, author.value, raw.value, options);
+  return storeFetchedNote(env, identity, author.value, raw.value, options);
 };
 
 /**
@@ -600,7 +630,7 @@ const persistVouchedQuoted = async (
     return ok(undefined);
   }
   if (embedded.vouchedBy === actor.actorUri) {
-    return storeRemoteNote(env, identity, actor, embedded.object, options);
+    return storeFetchedNote(env, identity, actor, embedded.object, options);
   }
   const author = await resolveRemoteActor(
     env.DB,
@@ -612,7 +642,7 @@ const persistVouchedQuoted = async (
   if (author.isErr()) {
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
-  return storeRemoteNote(env, identity, author.value, embedded.object, options);
+  return storeFetchedNote(env, identity, author.value, embedded.object, options);
 };
 
 /**
@@ -679,7 +709,7 @@ const storeRemoteNote = async (
   raw: unknown,
   options: PersistOptions,
   known?: KnownRemoteStatus,
-): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError | LateStepsInFlight>> => {
   const parsed = noteFromUnknown(raw, actor, options.idClock);
   if (parsed.isErr()) {
     return ok(undefined);
@@ -730,6 +760,26 @@ const storeRemoteNote = async (
 };
 
 /**
+ * {@link storeRemoteNote} for a note no inbox activity of its author carries:
+ * one that was fetched, announced or vouched for. It resumes no late steps,
+ * so they are never another delivery's.
+ */
+const storeFetchedNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  raw: unknown,
+  options: PersistOptions,
+  known?: KnownRemoteStatus,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const fetched: PersistOptions = { ...options, delivery: "Fetched" };
+  const stored = await storeRemoteNote(env, identity, actor, raw, fetched, known);
+  return stored.orElse((error) =>
+    error.kind === "LateStepsInFlight" ? ok(undefined) : err(error),
+  );
+};
+
+/**
  * The note `actor` wrote that another delivery stored at `objectUri` while
  * this one, which read the URI as free, was about to. This delivery wrote
  * nothing, so it is one that found the note cached: it leaves the row and
@@ -743,7 +793,7 @@ const storedMeanwhile = async (
   raw: unknown,
   objectUri: string,
   options: PersistOptions,
-): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError | LateStepsInFlight>> => {
   const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
   if (cached.isErr()) {
     return err(cached.error);
@@ -763,6 +813,14 @@ const storedMeanwhile = async (
  * now. A note edited since is left alone: the `Update` wrote its mentions
  * and quote from a newer document than a `Create` carries, so the marker
  * stays until the sweep deletes it.
+ *
+ * Only the delivery that gets the marker's lease runs the steps
+ * ({@link claimOwed}). One that does not goes without them. A `QuoteRequest`
+ * then goes on: the marker stays, and is not its to finish. A `Create` is
+ * `LateStepsInFlight`, answered 503 with `Retry-After`, not 202: the holder
+ * may be a `QuoteRequest`, which leaves the stream event to a `Create`, or
+ * may fail, and a `Create` answered 202 does not come again. When it does
+ * come again the marker is gone, or its lease was given back or has expired.
  */
 const resumeCreated = async (
   env: Env,
@@ -772,7 +830,7 @@ const resumeCreated = async (
   object: unknown,
   status: RemoteStatusValue,
   options: PersistOptions,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<void, RepositoryError | LateStepsInFlight>> => {
   if ((options.delivery ?? "Fetched") === "Fetched" || status.actorUri !== actor.actorUri) {
     return ok(undefined);
   }
@@ -795,13 +853,20 @@ const resumeCreated = async (
   if (noteFromUnknown(raw, actor).isErr()) {
     return ok(undefined);
   }
+  const held = await claimOwed(env.DB, status.id, marker);
+  if (held.isErr()) {
+    return err(held.error);
+  }
+  if (held.value === undefined) {
+    return options.delivery === "Create" ? err({ kind: "LateStepsInFlight" }) : ok(undefined);
+  }
   return finishRemoteNote(env, identity, {
     kind: "Created",
     actor,
     raw,
     status,
     options,
-    marker,
+    marker: held.value,
     resumed: true,
   });
 };

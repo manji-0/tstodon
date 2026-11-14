@@ -536,17 +536,23 @@ describe("two inbox activities that carry one note", () => {
         quote: quotedUri,
       });
 
-      const answers = await Promise.all([
+      const create = { id: `${object.id}/create`, type: "Create", object };
+      const [requested, created] = await Promise.all([
         author.send({
           id: `${author.actorUri}/quote_requests/${round}`,
           type: "QuoteRequest",
           object: quotedUri,
           instrument: object,
         }),
-        author.send({ id: `${object.id}/create`, type: "Create", object }),
+        author.send(create),
       ]);
 
-      expect(answers).toEqual([202, 202]);
+      // A Create that finds the QuoteRequest in the note's late steps is asked to come again.
+      expect(requested).toBe(202);
+      expect([202, 503]).toContain(created);
+      if (created === 503) {
+        expect(await author.send(create)).toBe(202);
+      }
       const id = (await storedId(object.id)) ?? "";
       expect(await status(id)).toMatchObject({ tags: [{ name: "atonce" }] });
       expect(await owedKinds(id)).toEqual([]);
@@ -570,9 +576,12 @@ describe("two inbox activities that carry one note", () => {
       while (id === undefined || (await owedKinds(id)).length === 0) {
         id = await storedId(object.id);
       }
-      const delivered = await Promise.all([first, deliver("Create")]);
+      const [requested, created] = await Promise.all([first, deliver("Create")]);
 
-      expect(delivered.every((result) => result.isOk())).toBe(true);
+      // The Create finds the late steps held and is asked to come again, or finds them finished.
+      expect(requested.isOk()).toBe(true);
+      expect(created.isOk() || created.error.kind === "LateStepsInFlight").toBe(true);
+      expect((await deliver("Create")).isOk()).toBe(true);
       counts.push(await notifiedOf(mentioned.headers, "mention", id));
     }
     expect(counts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
@@ -614,6 +623,84 @@ describe("two inbox activities that carry one note", () => {
     expect(await owedKinds(id)).toEqual(["Created"]);
 
     expect((await deliver("Create")).isOk()).toBe(true);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
+  });
+});
+
+describe("the late steps a failed Create left owed", () => {
+  /** A Create of a note published now, which failed after its row was stored. */
+  const failedCreate = async (slug: string) => {
+    const elsewhere = `https://elsewhere.example/users/${slug}`;
+    const author = await remoteActor(slug);
+    // Published now: inside the real-time window, so the Create streams it.
+    const object = note(author, slug, {
+      content: "<p>hi @them</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+      published: new Date().toISOString(),
+    });
+    const activity = { id: `${object.id}/create`, type: "Create", object };
+    const viewer = await openStream({ email: `${slug}@example.com`, query: "?stream=public" });
+    const allow = await refuseInsert(
+      slug.replaceAll("-", "_"),
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect(await author.send(activity)).toBe(500);
+    } finally {
+      await allow();
+    }
+    const id = (await storedId(object.id)) ?? "";
+    expect(await owedKinds(id)).toEqual(["Created"]);
+    return { author, object, activity, viewer, id };
+  };
+
+  it("start the fan-out once when two deliveries resume them at the same moment", async () => {
+    const { author, object, viewer, id } = await failedCreate("inbox-retry-lease");
+    const { identity, signer } = await signerOf(author);
+    const resume = (running: Env) =>
+      persistRemoteObject(running, identity, signer, object, {
+        fetchSigner: unsignedFetch,
+        delivery: "Create",
+      });
+
+    // The second delivery arrives while the first is in the late steps.
+    let second: Awaited<ReturnType<typeof resume>> | undefined;
+    const first = await resume(
+      interleaving(async () => {
+        second = await resume(env);
+      }),
+    );
+
+    expect(first.isOk()).toBe(true);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(second?.isErr() && second.error).toEqual({ kind: "LateStepsInFlight" });
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
+  });
+
+  it("are another delivery's while its lease stands, and are taken over once it is past", async () => {
+    const { author, activity, viewer, id } = await failedCreate("inbox-retry-lease-past");
+    const lease = (until: number) =>
+      env.DB.prepare("UPDATE remote_status_owed SET claimed_until = ? WHERE status_id = ?")
+        .bind(new Date(until).toISOString(), id)
+        .run();
+
+    // A delivery that was cut off in the late steps left its lease.
+    await lease(Date.now() + 30_000);
+    const held = await SELF.fetch(await author.delivery(activity));
+    expect(held.status).toBe(503);
+    expect(held.headers.get("Retry-After")).toBe("60");
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual(["Created"]);
+
+    await lease(Date.now() - 1000);
+    expect(await author.send(activity)).toBe(202);
     expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
     expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
     expect(await owedKinds(id)).toEqual([]);

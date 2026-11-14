@@ -22,7 +22,7 @@ import {
   parseNoteDocument,
 } from "./remote-note-document";
 import { finishRemoteNote, newlyMentionedAccountIds } from "./remote-status-persist";
-import { listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
+import { claimOwed, listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
 
 const UpdateObjectSchema = z
@@ -148,6 +148,16 @@ const applyNoteUpdate = async (
   if (stored.value === undefined) {
     return ok(undefined);
   }
+  // A pending edit is finished by one delivery at a time. When another holds
+  // it, this `Update` runs the steps of its own document only and is done:
+  // the edit is that delivery's, which answers its own sender.
+  const resumed =
+    marker === undefined && pending !== undefined
+      ? await claimOwed(env.DB, stored.value.id, pending)
+      : ok(undefined);
+  if (resumed.isErr()) {
+    return err(resumed.error);
+  }
   return finishRemoteNote(env, identity, {
     kind: "Updated",
     actor: signer,
@@ -155,7 +165,7 @@ const applyNoteUpdate = async (
     status: stored.value,
     options,
     added,
-    edit: marker ?? pending,
+    edit: marker ?? resumed.value,
   });
 };
 

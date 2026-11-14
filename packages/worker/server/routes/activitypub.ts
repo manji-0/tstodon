@@ -39,6 +39,7 @@ import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fet
 import { claimInboxActivity, completeInboxActivity, releaseInboxActivity } from "../inbox-store";
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
+import { OWED_LEASE_SECONDS } from "../remote-status-owed";
 import type { InboxSigner } from "../inbox/handler";
 import { listPublicOutboxActivities } from "../outbox-store";
 import { resolveRemoteActor } from "../remote-actor-fetch";
@@ -663,6 +664,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   );
   if (applied.isErr()) {
     await releaseInboxActivity(c.env.DB, activityId.value);
+    if (applied.error.kind === "LateStepsInFlight") {
+      // Another delivery is finishing the note this one carries. The retry
+      // finds that work done, or takes it over.
+      refuse({ reason: "NoteInFlight", status: 503, actor: actorUri, signer: signerUri });
+      c.header("Retry-After", String(OWED_LEASE_SECONDS));
+      return c.json({ error: "This note is being processed", kind: "NoteInFlight" }, 503);
+    }
     return jsonRepositoryError(c, applied.error.message);
   }
   // Applied: 202 even if marking it handled fails, as a retry would apply it

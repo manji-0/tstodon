@@ -1,7 +1,6 @@
 import { assertNever } from "@tstodon/core";
 import type { LocalAccount, RemoteActor } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
-import type { RepositoryError } from "../d1";
 import { receiveRemoteFlag } from "../remote-flag";
 import { applyRemoteMove } from "../remote-move";
 import { applyRemoteUpdate } from "../remote-update";
@@ -11,12 +10,12 @@ import { receiveRemoteBlock } from "./block";
 import { receiveRemoteCreate } from "./create";
 import { receiveRemoteDelete } from "./delete";
 import { receiveLocalFollow, receiveRemoteFollow } from "./follow";
-import type { InboxReceipt, InboxSigner } from "./handler";
+import type { InboxError, InboxReceipt, InboxSigner } from "./handler";
 import { receiveLocalLike, receiveRemoteLike } from "./like";
 import { receiveQuoteRequest } from "./quote-request";
 import { receiveLocalUndo, receiveRemoteUndo } from "./undo";
 
-type Dispatched = Promise<Result<void, RepositoryError>>;
+type Dispatched = Promise<Result<void, InboxError>>;
 
 const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispatched => {
   const { activity, env, identity } = receipt;

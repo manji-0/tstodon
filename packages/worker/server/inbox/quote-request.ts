@@ -39,7 +39,7 @@ import { persistRemoteObject } from "../remote-status-persist";
 import { findDeliveredRemoteStatus } from "../remote-status-store";
 import { readStatusById } from "../status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
-import type { RemoteDelivery } from "./handler";
+import type { InboxError, RemoteDelivery } from "./handler";
 
 const urlHost = (href: string): string | undefined => {
   try {
@@ -137,7 +137,7 @@ const cacheInstrument = async (
     fetchSigner,
   }: RemoteDelivery<"QuoteRequest">,
   uri: string,
-): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+): Promise<Result<RemoteStatusValue | undefined, InboxError>> => {
   const inline = schemaResult(InlineInstrumentSchema)(received.instrument);
   const embedded =
     inline.isOk() && urlHost(inline.value.id) === urlHost(signer.actorUri) ? inline.value : uri;
@@ -274,7 +274,7 @@ const rejectQuoteRequest = async (
  */
 export const receiveQuoteRequest = async (
   delivery: RemoteDelivery<"QuoteRequest">,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<void, InboxError>> => {
   const { env, identity, signer, activity, received } = delivery;
   if (urlHost(activity.id) !== urlHost(signer.actorUri)) {
     return ok(undefined);
