@@ -46,15 +46,32 @@ const pageOf = (page: z.infer<typeof CollectionPageSchema>, pageUri: string): Co
   next: page.next === undefined ? undefined : resolveLink(page.next, pageUri),
 });
 
+/**
+ * A collection page by its link. `Unavailable` when its server did not answer
+ * (a timeout, a 5xx, a fetch the runtime refused), which a later try may
+ * read; undefined when what it answered is no page.
+ */
+export const readCollectionPage = async (
+  identity: InstanceIdentity,
+  pageUri: string,
+  options: FederatedFetchOptions,
+): Promise<CollectionPage | "Unavailable" | undefined> => {
+  const raw = await fetchActivityJson(identity, pageUri, options);
+  if (raw.isErr()) {
+    return raw.error.kind === "VerificationUnavailable" ? "Unavailable" : undefined;
+  }
+  const parsed = parseCollectionPage(raw.value);
+  return parsed.isOk() ? pageOf(parsed.value, pageUri) : undefined;
+};
+
 /** A collection page by its link. Undefined when it could not be read. */
 export const fetchCollectionPage = async (
   identity: InstanceIdentity,
   pageUri: string,
   options: FederatedFetchOptions,
 ): Promise<CollectionPage | undefined> => {
-  const raw = await fetchActivityJson(identity, pageUri, options);
-  const parsed = raw.isOk() ? parseCollectionPage(raw.value) : undefined;
-  return parsed?.isOk() ? pageOf(parsed.value, pageUri) : undefined;
+  const page = await readCollectionPage(identity, pageUri, options);
+  return page === "Unavailable" ? undefined : page;
 };
 
 /**
