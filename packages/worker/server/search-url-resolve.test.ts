@@ -434,38 +434,75 @@ describe("search for a URL whose document names another id (a page URL)", () => 
   });
 });
 
-describe("search for a profile URL of this instance", () => {
-  const VIEWER = "search-local-url-viewer@example.com";
+describe("search for an account of this instance by its full handle or URL", () => {
+  const VIEWER = "search-local-handle-viewer@example.com";
 
-  it("answers the local account and fetches nothing", async () => {
-    const target = await signedInAccount("searchlocalurl@example.com");
-    const urls = [
-      "https://example.com/users/searchlocalurl",
-      "https://example.com/@searchlocalurl",
-    ];
-    await withRemoteDocuments(
-      Object.fromEntries(urls.map((url) => [url, null])),
-      async (fetched) => {
-        for (const q of urls) {
-          const found = read(ApiSearchResults, (await search(VIEWER, { q, resolve: "true" })).body);
+  /** Fail the test's outbound fetches to this instance: a local account is never looked up. */
+  const withoutSelfFetch = async (run: (selfFetches: string[]) => Promise<void>) => {
+    const original = globalThis.fetch;
+    const selfFetches: string[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(href).host === "example.com") {
+        selfFetches.push(href);
+        return new Response("{}", { status: 404 });
+      }
+      return original(input, init);
+    };
+    try {
+      await run(selfFetches);
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+
+  it("answers the local account, first, and fetches nothing", async () => {
+    const target = await signedInAccount("searchlocalhandle@example.com");
+    await withoutSelfFetch(async (selfFetches) => {
+      for (const q of [
+        "@searchlocalhandle@example.com",
+        "searchlocalhandle@example.com",
+        "SearchLocalHandle@EXAMPLE.com",
+        "https://example.com/users/searchlocalhandle",
+        "https://example.com/@searchlocalhandle",
+      ]) {
+        for (const type of ["accounts", ""]) {
+          const found = read(
+            ApiSearchResults,
+            (await search(VIEWER, { q, resolve: "true", ...(type ? { type } : {}) })).body,
+          );
           expect(
             found.accounts.map((account) => account.id),
-            `q=${q}`,
+            `q=${q} type=${type}`,
           ).toEqual([target.id]);
-          expect(found.accounts[0]?.acct, `q=${q}`).toBe("searchlocalurl");
+          expect(found.accounts[0]?.acct, `q=${q}`).toBe("searchlocalhandle");
           expect(found.statuses, `q=${q}`).toEqual([]);
         }
-        expect(fetched).toEqual([]);
-      },
-    );
+      }
+      expect(selfFetches).toEqual([]);
+    });
   });
 
-  it("answers nothing for a profile URL that names no account", async () => {
-    const q = "https://example.com/@nosuchlocalurlaccount";
-    await withRemoteDocuments({ [q]: null }, async (fetched) => {
-      const found = read(ApiSearchResults, (await search(VIEWER, { q, resolve: "true" })).body);
-      expect(found.accounts).toEqual([]);
-      expect(fetched).toEqual([]);
+  it("finds the local account by its full handle without resolve", async () => {
+    const target = await signedInAccount("searchlocalplain@example.com");
+    const found = read(
+      ApiSearchResults,
+      (await search(VIEWER, { q: "@searchlocalplain@example.com", type: "accounts" })).body,
+    );
+    expect(found.accounts.map((account) => account.id)).toEqual([target.id]);
+  });
+
+  it("answers nothing for a handle or URL of this instance that names no account", async () => {
+    await withoutSelfFetch(async (selfFetches) => {
+      for (const q of [
+        "nosuchlocalaccount@example.com",
+        "https://example.com/@nosuchlocalaccount",
+      ]) {
+        const found = read(ApiSearchResults, (await search(VIEWER, { q, resolve: "true" })).body);
+        expect(found.accounts, `q=${q}`).toEqual([]);
+      }
+      expect(selfFetches).toEqual([]);
     });
   });
 });

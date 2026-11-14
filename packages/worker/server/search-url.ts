@@ -37,6 +37,26 @@ const localRef = (path: string): LocalRef | undefined => {
   return account?.[1] ? { kind: "Account", username: account[1] } : undefined;
 };
 
+/**
+ * The username of a `user@domain` (or `@user@domain`) query whose domain is
+ * this instance's: such a handle names a local account, as Mastodon's
+ * `AccountSearchService` (`domain_is_local?`), and is never looked up over
+ * WebFinger.
+ */
+export const localHandleUsername = (
+  identity: InstanceIdentity,
+  query: string,
+): string | undefined => {
+  const match = /^@?([^\s@]+)@([^\s@]+)$/.exec(query.trim());
+  if (!match?.[1] || !match[2]) {
+    return undefined;
+  }
+  const domain = match[2].toLowerCase();
+  return domain === identity.domain || domain === URL.parse(identity.publicOrigin)?.host
+    ? match[1]
+    : undefined;
+};
+
 /** A URL on this instance is read here and never fetched (`ResolveURLService#process_local_url`). */
 const resolveLocalUrl = async (env: Env, path: string): Resolved => {
   const ref = localRef(path);

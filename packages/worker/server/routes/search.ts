@@ -21,10 +21,11 @@ import {
 } from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonRemoteStatuses } from "../remote-status-documents";
-import { isUrlQuery, resolveSearchUrl } from "../search-url";
+import { isUrlQuery, localHandleUsername, resolveSearchUrl } from "../search-url";
 import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
+import { findAccountByUsername } from "../account-store";
 import type { FederatedFetchOptions } from "../federated-fetch";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
@@ -111,9 +112,20 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   const named = urlResource.value;
   const accountDocs: ApiAccountJSON[] = [];
   if (type !== "statuses" && type !== "hashtags") {
+    // `user@this-domain` names a local account: it is never looked up remotely.
+    const localUsername = urlLookup ? undefined : localHandleUsername(identity.value, query);
+    const localExact =
+      named?.kind === "LocalAccount"
+        ? ok(named.account)
+        : localUsername !== undefined && offset === 0
+          ? await findAccountByUsername(c.env.DB, localUsername)
+          : ok(undefined);
+    if (localExact.isErr()) {
+      return jsonRepositoryError(c, localExact.error.message);
+    }
     const exactLocal = await searchableLocalAccounts(
       c.env.DB,
-      named?.kind === "LocalAccount" ? [named.account] : [],
+      localExact.value ? [localExact.value] : [],
     );
     if (exactLocal.isErr()) {
       return jsonRepositoryError(c, exactLocal.error.message);
@@ -123,7 +135,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     const resolved =
       named?.kind === "RemoteAccount"
         ? named.actor
-        : resolve && offset === 0 && !urlLookup
+        : resolve && offset === 0 && !urlLookup && localUsername === undefined
           ? await resolveSearchHandle(c.env, identity.value, query, await fetchOptions())
           : undefined;
     const exact = await searchableRemoteActors(c.env, resolved ? [resolved] : []);
@@ -132,7 +144,11 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     }
     const page = await searchAccountsPage(
       c.env,
-      { localTerms: query, remoteTerms: query.replace(/^@/, ""), scope: { kind: "Everyone" } },
+      {
+        localTerms: localUsername ?? query,
+        remoteTerms: query.replace(/^@/, ""),
+        scope: { kind: "Everyone" },
+      },
       urlLookup ? 0 : limit - exact.value.length - exactLocal.value.length,
       offset,
     );
