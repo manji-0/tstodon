@@ -5,7 +5,12 @@ import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { ActivityId } from "@tstodon/domain";
 import { parseRows } from "./d1";
+import { recordRemoteBoost } from "./remote-boost";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
+import { parseInstanceIdentity } from "./runtime-config";
+import { findThreadParent } from "./thread-context";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -385,6 +390,49 @@ describe.each(["value", "shape"] as const)(
           booster.actorUri,
         ),
       ).toBe(0);
+    });
+
+    it("stores a reply to the note with 202", async () => {
+      const local = await localNote(`ul-parent-${fault}@example.com`);
+      const replier = await remoteActor(`unreadable-local-replier-${fault}`);
+      await breakLocal(local.id, fault);
+      const reply = note(replier, `unreadable-local-reply-${fault}`, {
+        inReplyTo: local.uri,
+        cc: [local.actorUri],
+        tag: [{ type: "Mention", href: local.actorUri }],
+      });
+
+      expect(await create(replier, reply)).toBe(202);
+
+      const id = (await storedId(reply.id)) ?? "";
+      expect(await status(id, local.headers)).toMatchObject({ content: reply.content });
+    });
+
+    it("reads the note as no parent of a remote reply, and as no target of a boost", async () => {
+      const local = await localNote(`ul-read-${fault}@example.com`);
+      const replier = await remoteActor(`unreadable-local-read-${fault}`);
+      const reply = note(replier, `unreadable-local-read-${fault}`, { inReplyTo: local.uri });
+      expect(await create(replier, reply)).toBe(202);
+      const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+      const stored = (await findRemoteStatusByObjectUri(env.DB, reply.id))._unsafeUnwrap();
+      const announceId = ActivityId.parse(`${replier.actorUri}/announces/read-${fault}`);
+      if (stored === undefined || announceId.isErr()) {
+        throw new Error("reply fixture rejected");
+      }
+      await breakLocal(local.id, fault);
+
+      const parent = await findThreadParent(env.DB, identity, { kind: "Remote", status: stored });
+      const boost = await recordRemoteBoost(
+        env.DB,
+        identity,
+        replier.actorUri,
+        { id: announceId.value, object: local.uri },
+        {},
+        undefined,
+      );
+
+      expect(parent.isOk() && parent.value).toBe(undefined);
+      expect(boost.isOk() && boost.value).toBe(undefined);
     });
 
     it("stores a Create that quotes the note, without the quote", async () => {
