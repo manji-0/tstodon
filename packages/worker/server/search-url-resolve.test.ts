@@ -493,6 +493,34 @@ describe("search for an account of this instance by its full handle or URL", () 
     expect(found.accounts.map((account) => account.id)).toEqual([target.id]);
   });
 
+  it("leaves out an account pending approval, as the text search does", async () => {
+    const pending = await signedInAccount("searchlocalpending@example.com", { pending: true });
+    for (const q of [
+      "@searchlocalpending@example.com",
+      "searchlocalpending",
+      "https://example.com/@searchlocalpending",
+      "https://example.com/users/searchlocalpending",
+    ]) {
+      const found = read(ApiSearchResults, (await search(VIEWER, { q, resolve: "true" })).body);
+      expect(found.accounts, `q=${q}`).toEqual([]);
+    }
+    const byAccountsSearch = await SELF.fetch(
+      "https://example.com/api/v1/accounts/search?q=searchlocalpending@example.com",
+      { headers: await authHeaders(VIEWER) },
+    );
+    expect(await byAccountsSearch.json()).toEqual([]);
+
+    // Approved, the same queries name it.
+    await env.DB.prepare("UPDATE account_flags SET pending = 0 WHERE account_id = ?")
+      .bind(pending.id)
+      .run();
+    const found = read(
+      ApiSearchResults,
+      (await search(VIEWER, { q: "@searchlocalpending@example.com" })).body,
+    );
+    expect(found.accounts.map((account) => account.id)).toEqual([pending.id]);
+  });
+
   it("answers nothing for a handle or URL of this instance that names no account", async () => {
     await withoutSelfFetch(async (selfFetches) => {
       for (const q of [

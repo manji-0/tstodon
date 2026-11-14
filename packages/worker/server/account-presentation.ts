@@ -5,10 +5,11 @@ import {
   Hostname,
   type InstanceIdentity,
   type LocalAccount,
+  LocalAccountModeration,
   RemoteActor,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { listAccountStandings } from "./account-moderation-store";
+import { listAccountStandings, listLocalAccountModerations } from "./account-moderation-store";
 import type { AccountRef } from "./account-ref";
 import { findAccountsByIds } from "./account-store";
 import { suspendedDomains } from "./admin-domain-block-store";
@@ -135,18 +136,29 @@ export const availableAccountIds = async (
   );
 };
 
-/** The local accounts account search may list, in order. */
+/**
+ * The local accounts account search may list, in order: those the search
+ * SQL lists (`searchAccounts`), so an exact match by handle or URL shows no
+ * account a text search hides. An account pending approval is left out, as
+ * is one that is not available.
+ */
 export const searchableLocalAccounts = async (
   db: D1Database,
   accounts: ReadonlyArray<LocalAccount>,
 ): Promise<Result<LocalAccount[], RepositoryError>> =>
   (
-    await localAccountPresentations(
+    await listLocalAccountModerations(
       db,
       accounts.map((account) => account.id),
     )
-  ).map((presentations) =>
-    accounts.filter((account) => isAvailable(presentations.get(account.id))),
+  ).map((moderations) =>
+    accounts.filter((account) => {
+      const moderation = moderations.get(account.id) ?? LocalAccountModeration.inGoodStanding;
+      return (
+        moderation.approval.kind === "Approved" &&
+        AccountPresentation.available(AccountPresentation.ofLocal(moderation.standing))
+      );
+    }),
   );
 
 /** The cached remote actors account search may list, in order. */
