@@ -576,30 +576,27 @@ export const persistAnnouncedObject = async (
 };
 
 /**
- * Fetch the note at `objectUri` and store it under its author. The document
- * must name that URI as its id. `asker`, when it is the author, vouches for
- * its own note; any other author must sit on the URI's host and is resolved
- * first, as Mastodon's `FetchRemoteStatusService`. `undefined` when the fetch
- * fails or the proof does not hold.
+ * Store the document `objectUri` served as the note it is, under its author.
+ * The document must name that URI as its id. `asker`, when it is the author,
+ * vouches for its own note; any other author must sit on the URI's host and
+ * is resolved first, as Mastodon's `FetchRemoteStatusService`. `undefined`
+ * when the document is no note or the proof does not hold.
  */
-const storeFetchedNote = async (
+export const storeNoteDocument = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
+  raw: unknown,
   options: PersistOptions,
   asker?: RemoteActor,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const raw = await fetchActivityJson(identity, objectUri, options);
-  if (raw.isErr()) {
-    return ok(undefined);
-  }
-  const note = parseNoteDocument(raw.value);
+  const note = parseNoteDocument(raw);
   if (note.isErr() || note.value.id !== objectUri) {
     return ok(undefined);
   }
   const authorUri = note.value.attributedTo;
   if (asker !== undefined && authorUri === asker.actorUri) {
-    return storeRemoteNote(env, identity, asker, raw.value, options);
+    return storeRemoteNote(env, identity, asker, raw, options);
   }
   const authorHost = urlHost(authorUri);
   if (authorHost === undefined || authorHost !== urlHost(objectUri)) {
@@ -615,32 +612,42 @@ const storeFetchedNote = async (
   if (author.isErr()) {
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
-  return storeRemoteNote(env, identity, author.value, raw.value, options);
+  return storeRemoteNote(env, identity, author.value, raw, options);
 };
 
-/**
- * The remote status at `objectUri`, cached, for a lookup by URL (search with
- * `resolve=true`): the stored one when there is one, else the note fetched
- * from that URI, as Mastodon's `ResolveURLService`. Reading the stored one
- * first also finds a followers-only or direct note this server was sent,
- * which its URI does not serve to the instance actor. `undefined` for a
- * local status's URI, a row that does not read, or a URI that serves no note.
- */
-export const persistFetchedObject = async (
+/** Fetch the note at `objectUri` and store it ({@link storeNoteDocument}). `undefined` when the fetch fails. */
+const storeFetchedNote = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
   options: PersistOptions,
+  asker?: RemoteActor,
 ): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
-  const cached = await cachedRemoteStatus(env, identity, objectUri, undefined);
-  if (cached.isErr()) {
-    return err(cached.error);
-  }
-  if (cached.value) {
-    return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
-  }
-  return storeFetchedNote(env, identity, objectUri, options);
+  const raw = await fetchActivityJson(identity, objectUri, options);
+  return raw.isErr()
+    ? ok(undefined)
+    : storeNoteDocument(env, identity, objectUri, raw.value, options, asker);
 };
+
+/**
+ * What is stored for `objectUri`, for a lookup by URL (search with
+ * `resolve=true`), which reads it before it fetches anything: that also finds
+ * a followers-only or direct note this server was sent, which its URI does
+ * not serve to the instance actor. `note` is `undefined` for a local status's
+ * URI and for a row that is no readable note: such a URL names no remote
+ * status and is not fetched. The whole answer is `undefined` when nothing is
+ * stored.
+ */
+export const findStoredNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  objectUri: string,
+): Promise<
+  Result<Readonly<{ note: RemoteStatusValue | undefined }> | undefined, RepositoryError>
+> =>
+  (await cachedRemoteStatus(env, identity, objectUri, undefined)).map(
+    (cached) => cached && { note: cached.kind === "RemoteNote" ? cached : undefined },
+  );
 
 /**
  * How deep quoted notes are fetched below the note that arrived, as

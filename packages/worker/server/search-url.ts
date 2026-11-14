@@ -1,81 +1,183 @@
-import type { InstanceIdentity } from "@tstodon/domain";
+import type { InstanceIdentity, LocalAccount, RemoteActor } from "@tstodon/domain";
+import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import type { RepositoryError } from "./d1";
-import type { FederatedFetchOptions } from "./federated-fetch";
+import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { type FoundStatus, showsFoundStatus } from "./found-status";
-import { persistFetchedObject } from "./remote-status-persist";
+import { cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import { findStoredNote, storeNoteDocument } from "./remote-status-persist";
 import { findStatusById } from "./status-store";
 
 /** Whether a search query is a URL, which `resolve=true` looks up instead of searching text. */
 export const isUrlQuery = (query: string): boolean => /^https?:\/\/\S+$/.test(query);
 
-/** The author's username and the id in a local status's URI (`/users/alice/statuses/1`) or page URL (`/@alice/1`). */
-const localStatusRef = (
-  identity: InstanceIdentity,
-  url: string,
-): Readonly<{ username: string; id: string }> | undefined => {
-  const origin = identity.publicOrigin.replace(/\/$/, "");
-  if (!url.startsWith(`${origin}/`)) {
-    return undefined;
-  }
-  const path = url.slice(origin.length);
-  const match =
+/** What a URL names, for search: Mastodon's `ResolveURLService` answers a status or an account. */
+export type UrlResource =
+  | Readonly<{ kind: "Status"; status: FoundStatus }>
+  | Readonly<{ kind: "LocalAccount"; account: LocalAccount }>
+  | Readonly<{ kind: "RemoteAccount"; actor: RemoteActor }>;
+
+type Resolved = Promise<Result<UrlResource | undefined, RepositoryError>>;
+
+/** What a path on this instance names: a status (`/users/alice/statuses/1`, `/@alice/1`) or an account (`/users/alice`, `/@alice`). */
+type LocalRef =
+  | Readonly<{ kind: "Status"; username: string; id: string }>
+  | Readonly<{ kind: "Account"; username: string }>;
+
+const localRef = (path: string): LocalRef | undefined => {
+  const status =
     /^\/users\/([^/]+)\/statuses\/([^/]+)\/?$/.exec(path) ?? /^\/@([^/@]+)\/([^/]+)\/?$/.exec(path);
-  return match?.[1] && match[2] ? { username: match[1], id: match[2] } : undefined;
+  if (status?.[1] && status[2]) {
+    return { kind: "Status", username: status[1], id: status[2] };
+  }
+  const account = /^\/users\/([^/]+)\/?$/.exec(path) ?? /^\/@([^/@]+)\/?$/.exec(path);
+  return account?.[1] ? { kind: "Account", username: account[1] } : undefined;
 };
 
-/** Whether `url` is on this instance: such a URL is never fetched. */
-const isLocalUrl = (identity: InstanceIdentity, url: string): boolean =>
-  URL.parse(url)?.origin === URL.parse(identity.publicOrigin)?.origin;
+/** A URL on this instance is read here and never fetched (`ResolveURLService#process_local_url`). */
+const resolveLocalUrl = async (env: Env, path: string): Resolved => {
+  const ref = localRef(path);
+  if (!ref) {
+    return ok(undefined);
+  }
+  const account = await findAccountByUsername(env.DB, ref.username);
+  if (account.isErr()) {
+    return err(account.error);
+  }
+  if (!account.value) {
+    return ok(undefined);
+  }
+  if (ref.kind === "Account") {
+    return ok({ kind: "LocalAccount", account: account.value });
+  }
+  const status = await findStatusById(env.DB, ref.id);
+  if (status.isErr()) {
+    return err(status.error);
+  }
+  // The URL names its author: `/@bob/<alice's id>` is no status, as the route answers 404.
+  return ok(
+    status.value?.kind === "LocalNote" && status.value.accountId === account.value.id
+      ? { kind: "Status", status: { kind: "LocalStatus", status: status.value } }
+      : undefined,
+  );
+};
+
+/** What is already stored under a remote URI: a note this server holds, or a cached actor. */
+const storedRemote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  uri: string,
+): Promise<
+  Result<Readonly<{ resource: UrlResource | undefined }> | undefined, RepositoryError>
+> => {
+  const stored = await findStoredNote(env, identity, uri);
+  if (stored.isErr()) {
+    return err(stored.error);
+  }
+  if (stored.value) {
+    const note = stored.value.note;
+    return ok({
+      resource: note && { kind: "Status", status: { kind: "RemoteStatus", status: note } },
+    });
+  }
+  return (await findRemoteActorByUri(env.DB, uri)).map(
+    (actor) => actor && { resource: { kind: "RemoteAccount", actor } },
+  );
+};
+
+const parseIdentified = schemaResult(z.looseObject({ id: z.string().min(1) }));
+
+/** Store the document `uri` served, whose id is `uri`, as the note or the actor it is. */
+const storeDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  uri: string,
+  raw: unknown,
+  options: FederatedFetchOptions,
+): Resolved => {
+  const actor = remoteActorFromDocument(raw, uri);
+  if (actor.isOk()) {
+    const cached = await cacheFetchedActor(env.DB, identity, actor.value, options);
+    if (cached.isErr()) {
+      return cached.error.kind === "RepositoryError" ? err(cached.error) : ok(undefined);
+    }
+    return ok({ kind: "RemoteAccount", actor: cached.value });
+  }
+  return (await storeNoteDocument(env, identity, uri, raw, options)).map(
+    (note) => note && { kind: "Status", status: { kind: "RemoteStatus", status: note } },
+  );
+};
 
 /**
- * The status a URL names, for the viewer: Mastodon's `ResolveURLService`. A
- * local status is read here. A remote one is the cached status, or the note
- * fetched from the URL and stored. `undefined` when the URL names no status,
- * or one the viewer may not see (`StatusPolicy#show?`).
+ * A remote URL, as Mastodon's `FetchResourceService`: what is stored under it
+ * is used as it is, else the URL is fetched once. A document that names
+ * another id (a page URL such as `https://host/@user/123` serves the note
+ * whose id is its URI) is not trusted for that id: the id is looked up in
+ * turn, stored or fetched once, and must then name itself.
  */
-export const resolveStatusUrl = async (
+const resolveRemoteUrl = async (
+  env: Env,
+  identity: InstanceIdentity,
+  url: string,
+  options: FederatedFetchOptions,
+): Resolved => {
+  let uri = url;
+  for (const terminal of [false, true]) {
+    const stored = await storedRemote(env, identity, uri);
+    if (stored.isErr()) {
+      return err(stored.error);
+    }
+    if (stored.value) {
+      return ok(stored.value.resource);
+    }
+    const raw = await fetchActivityJson(identity, uri, options);
+    const identified = raw.isOk() ? parseIdentified(raw.value) : undefined;
+    if (raw.isErr() || !identified?.isOk()) {
+      return ok(undefined);
+    }
+    const id = identified.value.id;
+    if (id === uri) {
+      return storeDocument(env, identity, uri, raw.value, options);
+    }
+    if (terminal || !isUrlQuery(id) || URL.parse(id)?.origin === originOf(identity)) {
+      return ok(undefined);
+    }
+    uri = id;
+  }
+  return ok(undefined);
+};
+
+const originOf = (identity: InstanceIdentity): string | undefined =>
+  URL.parse(identity.publicOrigin)?.origin;
+
+/**
+ * The status or account a URL names, for the viewer: Mastodon's
+ * `ResolveURLService`. A status the viewer may not see (`StatusPolicy#show?`)
+ * is `undefined`, as is a URL that names neither.
+ */
+export const resolveSearchUrl = async (
   env: Env,
   identity: InstanceIdentity,
   url: string,
   viewerId: string | undefined,
   options: FederatedFetchOptions,
-): Promise<Result<FoundStatus | undefined, RepositoryError>> => {
-  let found: FoundStatus | undefined;
-  if (isLocalUrl(identity, url)) {
-    const ref = localStatusRef(identity, url);
-    if (!ref) {
-      return ok(undefined);
-    }
-    const local = await findStatusById(env.DB, ref.id);
-    if (local.isErr()) {
-      return err(local.error);
-    }
-    if (local.value?.kind !== "LocalNote") {
-      return ok(undefined);
-    }
-    // The URL names its author: `/@bob/<alice's id>` is no status, as the route answers 404.
-    const author = await findAccountByUsername(env.DB, ref.username);
-    if (author.isErr()) {
-      return err(author.error);
-    }
-    if (author.value?.id !== local.value.accountId) {
-      return ok(undefined);
-    }
-    found = { kind: "LocalStatus", status: local.value };
-  } else {
-    const remote = await persistFetchedObject(env, identity, url, options);
-    if (remote.isErr()) {
-      return err(remote.error);
-    }
-    found = remote.value && { kind: "RemoteStatus", status: remote.value };
-  }
-  if (!found) {
+): Resolved => {
+  const parsed = URL.parse(url);
+  if (!parsed) {
     return ok(undefined);
   }
-  const status = found;
-  return (await showsFoundStatus(env, status, viewerId)).map((shown) =>
-    shown ? status : undefined,
+  const found =
+    parsed.origin === originOf(identity)
+      ? await resolveLocalUrl(env, parsed.pathname)
+      : await resolveRemoteUrl(env, identity, url, options);
+  if (found.isErr() || found.value?.kind !== "Status") {
+    return found;
+  }
+  const resource = found.value;
+  return (await showsFoundStatus(env, resource.status, viewerId)).map((shown) =>
+    shown ? resource : undefined,
   );
 };

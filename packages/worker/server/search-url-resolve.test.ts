@@ -5,6 +5,7 @@ import { ApiSearchResults, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { generateAccountKeys } from "./keys";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -34,7 +35,10 @@ const post = async (email: string, status: string, visibility: string = "public"
   return read(ApiStatus, await response.json());
 };
 
-/** Serve `documents` by URL to the Worker's outbound fetches for the duration of `run`. */
+/**
+ * Serve `documents` by URL to the Worker's outbound fetches for the duration
+ * of `run`. A `null` document is a URL that answers 404.
+ */
 const withRemoteDocuments = async (
   documents: Readonly<Record<string, unknown>>,
   run: (fetched: string[]) => Promise<void>,
@@ -48,6 +52,9 @@ const withRemoteDocuments = async (
       return original(input, init);
     }
     fetched.push(href);
+    if (document === null) {
+      return new Response("{}", { status: 404 });
+    }
     return new Response(JSON.stringify(document), {
       headers: { "content-type": "application/activity+json" },
     });
@@ -237,16 +244,38 @@ describe("a URL that must resolve to nothing", () => {
     read(ApiSearchResults, (await search(email, { q, resolve: "true", type: "statuses" })).body)
       .statuses;
 
-  it("when the fetched document names another id", async () => {
+  it("when the fetched document names another id, which serves nothing", async () => {
     const author = await remoteActor("searchurlmismatch", "refused-id.example");
     const asked = "https://refused-id.example/notes/asked-for";
     const served = "https://refused-id.example/notes/another-note";
-    await withRemoteDocuments({ [asked]: note(served, author.actorUri) }, async (fetched) => {
-      expect(await statusesFor(VIEWER, asked)).toEqual([]);
-      expect(fetched).toEqual([asked]);
-    });
+    await withRemoteDocuments(
+      { [asked]: note(served, author.actorUri), [served]: null },
+      async (fetched) => {
+        expect(await statusesFor(VIEWER, asked)).toEqual([]);
+        expect(fetched).toEqual([asked, served]);
+      },
+    );
     expect(await stored(asked)).toBe(0);
     expect(await stored(served)).toBe(0);
+  });
+
+  it("when the id the document names serves a third id", async () => {
+    const author = await remoteActor("searchurlchain", "chained-id.example");
+    const asked = "https://chained-id.example/@searchurlchain/1";
+    const second = "https://chained-id.example/notes/second";
+    const third = "https://chained-id.example/notes/third";
+    await withRemoteDocuments(
+      {
+        [asked]: note(second, author.actorUri),
+        [second]: note(third, author.actorUri),
+        [third]: note(third, author.actorUri),
+      },
+      async (fetched) => {
+        expect(await statusesFor(VIEWER, asked)).toEqual([]);
+        expect(fetched).toEqual([asked, second]);
+      },
+    );
+    expect(await stored(third)).toBe(0);
   });
 
   it("when the note's author is on another host", async () => {
@@ -287,6 +316,156 @@ describe("a URL that must resolve to nothing", () => {
     expect(await stored(uri)).toBe(1);
     await withRemoteDocuments({}, async () => {
       expect(await statusesFor(VIEWER, uri)).toEqual([]);
+    });
+  });
+});
+
+describe("search for a URL whose document names another id (a page URL)", () => {
+  const VIEWER = "search-page-url-viewer@example.com";
+  const HOST = "page-url.example";
+
+  const actorDocument = async (username: string) => {
+    const actorUri = `https://${HOST}/ap/users/${username}`;
+    const keys = await generateAccountKeys();
+    return {
+      actorUri,
+      pageUrl: `https://${HOST}/@${username}`,
+      webfinger: `https://${HOST}/.well-known/webfinger?resource=${encodeURIComponent(`acct:${username}@${HOST}`)}`,
+      document: {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: actorUri,
+        type: "Person",
+        preferredUsername: username,
+        name: `Page ${username}`,
+        url: `https://${HOST}/@${username}`,
+        inbox: `${actorUri}/inbox`,
+        publicKey: { id: `${actorUri}#main-key`, owner: actorUri, publicKeyPem: keys.publicKeyPem },
+      },
+      webfingerAnswer: {
+        subject: `acct:${username}@${HOST}`,
+        links: [{ rel: "self", type: "application/activity+json", href: actorUri }],
+      },
+    };
+  };
+
+  it("returns the post a page URL serves, fetched from the id it names", async () => {
+    const author = await remoteActor("pageurlauthor", HOST);
+    const pageUrl = `https://${HOST}/@pageurlauthor/117616726056328386`;
+    const noteUri = `${author.actorUri}/statuses/117616726056328386`;
+    const note = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: noteUri,
+      type: "Note",
+      attributedTo: author.actorUri,
+      url: pageUrl,
+      content: "<p>found by its page URL</p>",
+      published: "2026-11-14T00:00:00.000Z",
+      to: [PUBLIC],
+      cc: [],
+    };
+    await withRemoteDocuments({ [pageUrl]: note, [noteUri]: note }, async (fetched) => {
+      const found = read(
+        ApiSearchResults,
+        (await search(VIEWER, { q: pageUrl, resolve: "true" })).body,
+      );
+      expect(found.statuses.map((status) => status.uri)).toEqual([noteUri]);
+      expect(found.accounts).toEqual([]);
+      expect(fetched).toEqual([pageUrl, noteUri]);
+
+      // Stored under its id: the page URL costs one fetch more, the id none.
+      const again = read(
+        ApiSearchResults,
+        (await search(VIEWER, { q: pageUrl, resolve: "true" })).body,
+      );
+      expect(again.statuses.map((status) => status.uri)).toEqual([noteUri]);
+      expect(fetched).toEqual([pageUrl, noteUri, pageUrl]);
+    });
+  });
+
+  it("returns the account a profile page URL serves, with no type", async () => {
+    const actor = await actorDocument("pageprofile");
+    await withRemoteDocuments(
+      {
+        [actor.pageUrl]: actor.document,
+        [actor.actorUri]: actor.document,
+        [actor.webfinger]: actor.webfingerAnswer,
+      },
+      async (fetched) => {
+        const found = read(
+          ApiSearchResults,
+          (await search(VIEWER, { q: actor.pageUrl, resolve: "true" })).body,
+        );
+        expect(found.accounts.map((account) => account.acct)).toEqual([`pageprofile@${HOST}`]);
+        expect(found.statuses).toEqual([]);
+        expect(fetched.filter((href) => href === actor.pageUrl)).toEqual([actor.pageUrl]);
+        expect(fetched.filter((href) => href === actor.actorUri)).toEqual([actor.actorUri]);
+      },
+    );
+  });
+
+  it("fetches an actor URI once, with no type", async () => {
+    const actor = await actorDocument("onefetchprofile");
+    await withRemoteDocuments(
+      { [actor.actorUri]: actor.document, [actor.webfinger]: actor.webfingerAnswer },
+      async (fetched) => {
+        const found = read(
+          ApiSearchResults,
+          (await search(VIEWER, { q: actor.actorUri, resolve: "true" })).body,
+        );
+        expect(found.accounts.map((account) => account.acct)).toEqual([`onefetchprofile@${HOST}`]);
+        expect(fetched.filter((href) => href === actor.actorUri)).toEqual([actor.actorUri]);
+      },
+    );
+  });
+
+  it("looks the URL up for another type too, and leaves the resource out", async () => {
+    const actor = await actorDocument("typedprofile");
+    await withRemoteDocuments(
+      { [actor.actorUri]: actor.document, [actor.webfinger]: actor.webfingerAnswer },
+      async () => {
+        const found = read(
+          ApiSearchResults,
+          (await search(VIEWER, { q: actor.actorUri, resolve: "true", type: "statuses" })).body,
+        );
+        expect(found.accounts).toEqual([]);
+        expect(found.statuses).toEqual([]);
+      },
+    );
+  });
+});
+
+describe("search for a profile URL of this instance", () => {
+  const VIEWER = "search-local-url-viewer@example.com";
+
+  it("answers the local account and fetches nothing", async () => {
+    const target = await signedInAccount("searchlocalurl@example.com");
+    const urls = [
+      "https://example.com/users/searchlocalurl",
+      "https://example.com/@searchlocalurl",
+    ];
+    await withRemoteDocuments(
+      Object.fromEntries(urls.map((url) => [url, null])),
+      async (fetched) => {
+        for (const q of urls) {
+          const found = read(ApiSearchResults, (await search(VIEWER, { q, resolve: "true" })).body);
+          expect(
+            found.accounts.map((account) => account.id),
+            `q=${q}`,
+          ).toEqual([target.id]);
+          expect(found.accounts[0]?.acct, `q=${q}`).toBe("searchlocalurl");
+          expect(found.statuses, `q=${q}`).toEqual([]);
+        }
+        expect(fetched).toEqual([]);
+      },
+    );
+  });
+
+  it("answers nothing for a profile URL that names no account", async () => {
+    const q = "https://example.com/@nosuchlocalurlaccount";
+    await withRemoteDocuments({ [q]: null }, async (fetched) => {
+      const found = read(ApiSearchResults, (await search(VIEWER, { q, resolve: "true" })).body);
+      expect(found.accounts).toEqual([]);
+      expect(fetched).toEqual([]);
     });
   });
 });
