@@ -587,6 +587,38 @@ describe("two inbox activities that carry one note", () => {
     expect(counts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
   });
 
+  it("streams a new note once when its Create arrives after the QuoteRequest that stored it", async () => {
+    const mentioned = await localAccount("inbox-retry-quote-first@example.com");
+    const author = await remoteActor("retry-quote-first");
+    // Published now: inside the real-time window, so the Create streams it.
+    const object = note(author, "retry-quote-first", {
+      content: "<p>hi @you</p>",
+      tag: [{ type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+      published: new Date().toISOString(),
+    });
+    const deliver = (await deliverer(author))(object);
+    const viewer = await openStream({
+      email: "inbox-retry-quote-first-viewer@example.com",
+      query: "?stream=public",
+    });
+
+    expect((await deliver("QuoteRequest")).isOk()).toBe(true);
+    const id = (await storedId(object.id)) ?? "";
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+
+    expect((await deliver("Create")).isOk()).toBe(true);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
+    expect(await owedKinds(id)).toEqual([]);
+
+    // Nothing is owed any more: the Create sent again streams nothing.
+    expect((await deliver("Create")).isOk()).toBe(true);
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    viewer.close();
+  });
+
   it("streams a new note once when a QuoteRequest resumes the Create that failed before the Create is redelivered", async () => {
     const elsewhere = "https://elsewhere.example/users/retry-create-stream";
     const author = await remoteActor("retry-create-stream");

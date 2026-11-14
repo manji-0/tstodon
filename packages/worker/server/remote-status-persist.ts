@@ -31,6 +31,7 @@ import {
   clearOwed,
   type HeldOwed,
   type LateStepsInFlight,
+  leaveStreamOwed,
   listOwed,
   newOwedMarker,
   owedStatement,
@@ -157,7 +158,9 @@ const remoteMentionedPost = async (
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, absent for a note that owes nothing (one that was fetched, or one
  * whose row existed). It is `resumed` when another delivery wrote it and
- * this one finishes its steps. Either way this delivery holds its lease.
+ * this one finishes its steps. Either way this delivery holds its lease. A
+ * marker that is `streamOnly` owes the stream event alone: a `QuoteRequest`
+ * ran the other steps.
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
@@ -238,6 +241,12 @@ const mentionsToNotify = (
  * given back when they fail or leave the marker, so the next delivery takes
  * it at once. A delivery that was cut off gives nothing back: its lease
  * expires, and until then a `Create` of the note is asked to come again.
+ *
+ * A new note is streamed by a `Create` only. A `QuoteRequest` that stores
+ * the note, or finishes the steps a `Create` failed in, leaves the `Created`
+ * marker with the stream event alone still owed (`leaveStreamOwed`), and the
+ * `Create` that comes after sends the event and deletes the marker. When no
+ * `Create` comes, the sweep deletes it.
  */
 export const finishRemoteNote = async (
   env: Env,
@@ -245,8 +254,8 @@ export const finishRemoteNote = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const held = late.kind === "Created" ? late.marker : late.edit;
-  const finished = await runLateSteps(env, identity, late);
-  if (held !== undefined && (finished.isErr() || finishedMarker(late) === undefined)) {
+  const finished = await runLateSteps(env, identity, late, held);
+  if (held !== undefined && finished.isErr()) {
     // Best effort: a lease that is not given back expires.
     await releaseOwed(env.DB, late.status.id, held);
   }
@@ -254,6 +263,45 @@ export const finishRemoteNote = async (
 };
 
 const runLateSteps = async (
+  env: Env,
+  identity: InstanceIdentity,
+  late: LateSteps,
+  held: HeldOwed | undefined,
+): Promise<Result<void, RepositoryError>> => {
+  const { actor, status } = late;
+  if (!(late.kind === "Created" && late.marker?.streamOnly)) {
+    const written = await writeLateSteps(env, identity, late);
+    if (written.isErr()) {
+      return err(written.error);
+    }
+  }
+  // The stream events come last. A redelivery that got this far before it
+  // failed sends them again, and a client drops a status it already holds.
+  // They are started here and run once the response is ready, best effort:
+  // a page that fails goes to the queue, and nothing they do can fail the
+  // delivery. So the marker stands for their start, not their end, and is
+  // settled below without waiting for them.
+  const event = streamEvent(late);
+  if (event !== undefined) {
+    await startHomeFanOut(env, {
+      event,
+      entryId: status.id,
+      author: { kind: "RemoteActor", actorUri: actor.actorUri },
+    });
+    if (status.visibility.kind === "Public") {
+      await startPublicFanOut(env, { event, entryId: status.id });
+    }
+  }
+  if (held === undefined) {
+    return ok(undefined);
+  }
+  return late.kind === "Created" && late.options.delivery !== "Create"
+    ? leaveStreamOwed(env.DB, status.id, held)
+    : clearOwed(env.DB, status.id, [held]);
+};
+
+/** The steps of {@link finishRemoteNote} before the stream events: every write and notification. */
+const writeLateSteps = async (
   env: Env,
   identity: InstanceIdentity,
   late: LateSteps,
@@ -324,38 +372,7 @@ const runLateSteps = async (
       }
     }
   }
-  // The stream events come last. A redelivery that got this far before it
-  // failed sends them again, and a client drops a status it already holds.
-  // They are started here and run once the response is ready, best effort:
-  // a page that fails goes to the queue, and nothing they do can fail the
-  // delivery. So the marker stands for their start, not their end, and is
-  // deleted below without waiting for them.
-  const event = streamEvent(late);
-  if (event !== undefined) {
-    await startHomeFanOut(env, {
-      event,
-      entryId: status.id,
-      author: { kind: "RemoteActor", actorUri: actor.actorUri },
-    });
-    if (status.visibility.kind === "Public") {
-      await startPublicFanOut(env, { event, entryId: status.id });
-    }
-  }
-  const finished = finishedMarker(late);
-  return clearOwed(env.DB, status.id, finished ? [finished] : []);
-};
-
-/**
- * The marker these steps leave nothing owed for. A `Created` marker that a
- * `QuoteRequest` resumes is not one: it cannot tell whether a `Create` wrote
- * it, which still owes the stream events, so it runs the other steps and
- * leaves the marker to the `Create`'s redelivery, or to the sweep.
- */
-const finishedMarker = (late: LateSteps): HeldOwed | undefined => {
-  if (late.kind === "Updated") {
-    return late.edit;
-  }
-  return late.resumed && late.options.delivery !== "Create" ? undefined : late.marker;
+  return ok(undefined);
 };
 
 /**
@@ -821,6 +838,8 @@ const storedMeanwhile = async (
  * may be a `QuoteRequest`, which leaves the stream event to a `Create`, or
  * may fail, and a `Create` answered 202 does not come again. When it does
  * come again the marker is gone, or its lease was given back or has expired.
+ * A `QuoteRequest` that finds a marker with the stream event alone owed has
+ * nothing to do.
  */
 const resumeCreated = async (
   env: Env,
@@ -840,6 +859,9 @@ const resumeCreated = async (
   }
   const marker = owed.value.find((entry) => entry.kind === "Created");
   if (marker === undefined || status.editedAt.kind === "Edited") {
+    return ok(undefined);
+  }
+  if (marker.streamOnly && options.delivery !== "Create") {
     return ok(undefined);
   }
   let raw: unknown = object;
