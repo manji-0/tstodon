@@ -489,10 +489,14 @@ const REWRITTEN_COLUMNS = [
 
 /**
  * SQL for one text that differs between any two versions of
- * {@link REWRITTEN_COLUMNS}, whatever a column holds: `quote` writes a text,
- * a number, a blob and `NULL` each in a form no other value has.
+ * {@link REWRITTEN_COLUMNS}, whatever a column holds: each column's storage
+ * class and its bytes in hex. The text is read with the row and bound back
+ * to the guard, so it is ASCII: a column's own text does not survive that
+ * trip when it is not UTF-8 or holds a NUL, and would never compare equal.
  */
-const ROW_VERSION_SQL = REWRITTEN_COLUMNS.map((column) => `quote(${column})`).join(" || ',' || ");
+const ROW_VERSION_SQL = REWRITTEN_COLUMNS.map(
+  (column) => `typeof(${column}) || ':' || hex(CAST(${column} AS BLOB))`,
+).join(" || ',' || ");
 
 const VersionedRow = z.object({
   version: z.string(),

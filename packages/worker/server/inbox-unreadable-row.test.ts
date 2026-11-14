@@ -434,6 +434,28 @@ describe("the author's delivery of a note whose stored row does not read, replac
     expect(await status(id)).toMatchObject({ content: "<p>third edit</p>", edited_at: updated });
   });
 
+  it.each([
+    ["a real and a blob", "sensitive = 0.1, url = X'00FF', media_json = 1e300"],
+    ["text that is not UTF-8", "spoiler_text = CAST(X'C328' AS TEXT)"],
+    ["text with a NUL", "spoiler_text = CAST(X'610062' AS TEXT)"],
+  ])("replaces a row that also holds %s", async (label, fault) => {
+    const author = await remoteActor(`unreadable-raw-${label.length}`);
+    const original = note(author, `unreadable-raw-${label.length}`);
+    expect(await create(author, original)).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare(
+      `UPDATE remote_statuses SET visibility = 'unreadable', ${fault} WHERE id = ?`,
+    )
+      .bind(id)
+      .run();
+
+    expect(
+      await author.send({ id: `${original.id}/create-again`, type: "Create", object: original }),
+    ).toBe(202);
+
+    expect(await status(id)).toMatchObject({ visibility: "public", spoiler_text: "" });
+  });
+
   it("dates the row as an instant when a link card is stored for it", async () => {
     const author = await remoteActor("unreadable-card-date");
     const original = note(author, "unreadable-card-date");
