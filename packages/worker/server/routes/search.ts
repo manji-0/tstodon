@@ -105,9 +105,9 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
   // As Mastodon's `SearchService`, a URL with `resolve=true` is looked up, not
-  // searched for as text, and what it names joins only the first page. The
-  // status is looked up before the account: a post's URL then costs one fetch,
-  // and no failing text search stands between the URL and its status.
+  // searched for as text: the answer is the one status or account it names,
+  // on the first page, and nothing else. The status is looked up before the
+  // account, so a post's URL costs one fetch.
   const urlLookup = resolve && isUrlQuery(query);
   const urlStatus =
     urlLookup && offset === 0 && type !== "accounts" && type !== "hashtags"
@@ -135,7 +135,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     const page = await searchAccountsPage(
       c.env,
       { localTerms: query, remoteTerms: query.replace(/^@/, ""), scope: { kind: "Everyone" } },
-      limit - exact.value.length,
+      urlLookup ? 0 : limit - exact.value.length,
       offset,
     );
     if (page.isErr()) {
@@ -203,7 +203,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   let hashtags: ApiHashtagJSON[] = [];
-  if (type !== "accounts" && type !== "statuses") {
+  if (type !== "accounts" && type !== "statuses" && !urlLookup) {
     const found = await searchTags(c.env.DB, query, limit, offset);
     if (found.isErr()) {
       return jsonRepositoryError(c, found.error.message);

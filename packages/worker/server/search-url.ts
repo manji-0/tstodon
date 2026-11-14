@@ -1,6 +1,6 @@
 import type { InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { parseLocalStatusId } from "./activitypub";
+import { findAccountByUsername } from "./account-store";
 import type { RepositoryError } from "./d1";
 import type { FederatedFetchOptions } from "./federated-fetch";
 import { type FoundStatus, showsFoundStatus } from "./found-status";
@@ -10,18 +10,24 @@ import { findStatusById } from "./status-store";
 /** Whether a search query is a URL, which `resolve=true` looks up instead of searching text. */
 export const isUrlQuery = (query: string): boolean => /^https?:\/\/\S+$/.test(query);
 
-/** The id in a local status's URI (`/users/alice/statuses/1`) or page URL (`/@alice/1`). */
-const localStatusId = (identity: InstanceIdentity, url: string): string | undefined => {
-  const byUri = parseLocalStatusId(identity, url);
-  if (byUri !== undefined) {
-    return byUri;
-  }
+/** The author's username and the id in a local status's URI (`/users/alice/statuses/1`) or page URL (`/@alice/1`). */
+const localStatusRef = (
+  identity: InstanceIdentity,
+  url: string,
+): Readonly<{ username: string; id: string }> | undefined => {
   const origin = identity.publicOrigin.replace(/\/$/, "");
-  if (!url.startsWith(`${origin}/@`)) {
+  if (!url.startsWith(`${origin}/`)) {
     return undefined;
   }
-  return /^\/@[^/@]+\/(?:statuses\/)?([^/]+)\/?$/.exec(url.slice(origin.length))?.[1];
+  const path = url.slice(origin.length);
+  const match =
+    /^\/users\/([^/]+)\/statuses\/([^/]+)\/?$/.exec(path) ?? /^\/@([^/@]+)\/([^/]+)\/?$/.exec(path);
+  return match?.[1] && match[2] ? { username: match[1], id: match[2] } : undefined;
 };
+
+/** Whether `url` is on this instance: such a URL is never fetched. */
+const isLocalUrl = (identity: InstanceIdentity, url: string): boolean =>
+  URL.parse(url)?.origin === URL.parse(identity.publicOrigin)?.origin;
 
 /**
  * The status a URL names, for the viewer: Mastodon's `ResolveURLService`. A
@@ -36,15 +42,28 @@ export const resolveStatusUrl = async (
   viewerId: string | undefined,
   options: FederatedFetchOptions,
 ): Promise<Result<FoundStatus | undefined, RepositoryError>> => {
-  const localId = localStatusId(identity, url);
   let found: FoundStatus | undefined;
-  if (localId !== undefined) {
-    const local = await findStatusById(env.DB, localId);
+  if (isLocalUrl(identity, url)) {
+    const ref = localStatusRef(identity, url);
+    if (!ref) {
+      return ok(undefined);
+    }
+    const local = await findStatusById(env.DB, ref.id);
     if (local.isErr()) {
       return err(local.error);
     }
-    found =
-      local.value?.kind === "LocalNote" ? { kind: "LocalStatus", status: local.value } : undefined;
+    if (local.value?.kind !== "LocalNote") {
+      return ok(undefined);
+    }
+    // The URL names its author: `/@bob/<alice's id>` is no status, as the route answers 404.
+    const author = await findAccountByUsername(env.DB, ref.username);
+    if (author.isErr()) {
+      return err(author.error);
+    }
+    if (author.value?.id !== local.value.accountId) {
+      return ok(undefined);
+    }
+    found = { kind: "LocalStatus", status: local.value };
   } else {
     const remote = await persistFetchedObject(env, identity, url, options);
     if (remote.isErr()) {

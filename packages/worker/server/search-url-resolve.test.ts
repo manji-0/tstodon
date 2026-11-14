@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { z } from "zod";
 import { ApiSearchResults, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -166,6 +166,51 @@ describe("search for a post URL with resolve=true", () => {
     expect(read(ApiSearchResults, found.body).statuses).toEqual([]);
     const own = await search(author, { q: status.uri, resolve: "true" });
     expect(read(ApiSearchResults, own.body).statuses.map((entry) => entry.id)).toEqual([status.id]);
+  });
+
+  it("finds a local post by its page URL, under its author's name only", async () => {
+    const email = "search-url-page-author@example.com";
+    const author = await signedInAccount(email);
+    const other = await signedInAccount("search-url-page-other@example.com");
+    const status = await post(email, "a local post behind its page URL");
+    const ids = async (q: string) =>
+      read(
+        ApiSearchResults,
+        (await search("search-url-viewer@example.com", { q, resolve: "true" })).body,
+      ).statuses.map((entry) => entry.id);
+    expect(await ids(`https://example.com/@${author.username}/${status.id}`)).toEqual([status.id]);
+    expect(await ids(`https://example.com/@${other.username}/${status.id}`)).toEqual([]);
+    expect(await ids(`https://example.com/users/${other.username}/statuses/${status.id}`)).toEqual(
+      [],
+    );
+  });
+
+  it("returns only what the URL names, with no text search beside it", async () => {
+    const email = "search-url-only-author@example.com";
+    const status = await post(email, "the only result of a URL search");
+    // A post whose text contains the URL: a text search for the URL would find it.
+    await post(email, `quoting ${status.uri} in another post`);
+    const found = read(
+      ApiSearchResults,
+      (await search("search-url-viewer@example.com", { q: status.uri, resolve: "true" })).body,
+    );
+    expect(found.statuses.map((entry) => entry.id)).toEqual([status.id]);
+    expect(found.accounts).toEqual([]);
+    expect(found.hashtags).toEqual([]);
+
+    // A type the resource is not: nothing, as Mastodon's `SearchService`.
+    const asAccounts = read(
+      ApiSearchResults,
+      (
+        await search("search-url-viewer@example.com", {
+          q: status.uri,
+          resolve: "true",
+          type: "accounts",
+        })
+      ).body,
+    );
+    expect(asAccounts.accounts).toEqual([]);
+    expect(asAccounts.statuses).toEqual([]);
   });
 });
 
