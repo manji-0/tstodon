@@ -159,3 +159,68 @@ describe("a remote note's mentions", () => {
     expect(status.mentions).toEqual([]);
   });
 });
+
+const mentionNotified = async (email: string, statusId: string): Promise<boolean> =>
+  expectContract(
+    z.array(z.object({ type: z.string(), status: ApiStatus.nullish() })),
+    await call(email, "/api/v1/notifications?types[]=mention"),
+  ).some((entry) => entry.status?.id === statusId);
+
+const statusAs = async (email: string, id: string): Promise<Response> =>
+  SELF.fetch(`https://example.com/api/v1/statuses/${id}`, { headers: await authHeaders(email) });
+
+describe("an account a remote note only addresses", () => {
+  // Mastodon's `Create#process_audience`: an audience member with no Mention tag is a silent mention.
+  it("is not listed in a public note's mentions, and is not notified", async () => {
+    const email = "rsm-audience@example.com";
+    const addressed = await signedInAccount(email);
+    const author = await remoteActor("rsmaudience", "mentions.example");
+    const noteUri = "https://mentions.example/notes/rsm-audience-only";
+    expect(
+      await author.send({
+        id: `${noteUri}/create`,
+        type: "Create",
+        object: {
+          id: noteUri,
+          type: "Note",
+          attributedTo: author.actorUri,
+          content: "<p>public, and cc'd</p>",
+          published: new Date().toISOString(),
+          to: [PUBLIC],
+          cc: [`https://example.com/users/${addressed.username}`],
+        },
+      }),
+    ).toBe(202);
+    const id = await storedId(noteUri);
+    const status = expectContract(ApiStatus, await call(email, `/api/v1/statuses/${id}`));
+    expect(status.mentions).toEqual([]);
+    expect(await mentionNotified(email, id)).toBe(false);
+  });
+
+  it("reads a direct note sent to it, without a mention or a notification", async () => {
+    const email = "rsm-direct-audience@example.com";
+    const addressed = await signedInAccount(email);
+    const author = await remoteActor("rsmdirect", "mentions.example");
+    const noteUri = "https://mentions.example/notes/rsm-direct-audience";
+    expect(
+      await author.send({
+        id: `${noteUri}/create`,
+        type: "Create",
+        object: {
+          id: noteUri,
+          type: "Note",
+          attributedTo: author.actorUri,
+          content: "<p>to you, with no tag</p>",
+          published: new Date().toISOString(),
+          to: [`https://example.com/users/${addressed.username}`],
+        },
+      }),
+    ).toBe(202);
+    const id = await storedId(noteUri);
+    const read = await statusAs(email, id);
+    expect(read.status).toBe(200);
+    expect(expectContract(ApiStatus, await read.json()).mentions).toEqual([]);
+    expect(await mentionNotified(email, id)).toBe(false);
+    expect((await statusAs("rsm-direct-stranger@example.com", id)).status).toBe(404);
+  });
+});

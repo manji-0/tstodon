@@ -23,23 +23,27 @@ const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.str
 const StatusIdActorUriRow = z.object({ status_id: z.string(), actor_uri: z.string() });
 
 /**
- * Record the local accounts a cached remote note addresses. A silent mention
- * written so the account can see the note becomes a real one.
+ * Record the local accounts a cached remote note names. `mentioned` are its
+ * mentions; one written silent before becomes a real one. `addressed` only
+ * may read the note: a silent mention, which never replaces a real one.
  */
 export const recordRemoteStatusMentions = async (
   db: D1Database,
   statusId: string,
-  accountIds: ReadonlyArray<string>,
+  accounts: Readonly<{ mentioned: ReadonlyArray<string>; addressed: ReadonlyArray<string> }>,
 ): Promise<Result<void, RepositoryError>> => {
-  if (accountIds.length === 0) {
-    return ok(undefined);
-  }
-  const batched = await runD1Batch(
-    db,
-    accountIds.map((accountId) =>
+  const statements = [
+    ...accounts.mentioned.map((accountId) =>
       d1PrepareTyped(db, insertRemoteStatusMentionSql(statusId, accountId)),
     ),
-  );
+    ...accounts.addressed.map((accountId) =>
+      d1PrepareTyped(db, insertSilentRemoteStatusMentionSql(statusId, accountId)),
+    ),
+  ];
+  if (statements.length === 0) {
+    return ok(undefined);
+  }
+  const batched = await runD1Batch(db, statements);
   return batched.isErr() ? err(batched.error) : ok(undefined);
 };
 

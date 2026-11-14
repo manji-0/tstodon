@@ -474,6 +474,8 @@ describe("notifications from remote actors", () => {
           content: "<p>hi</p>",
           published: "2026-10-20T00:00:00.000Z",
           to: [actorUrl],
+          // The tag is the mention; the audience alone notifies nobody.
+          tag: [{ type: "Mention", href: actorUrl }],
         },
       }),
     ).toBe(202);

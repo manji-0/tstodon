@@ -67,25 +67,15 @@ const mentionHrefs = (raw: unknown): string[] => {
   );
 };
 
-/**
- * Local accounts a remote note addresses: its `Mention` tags plus its
- * `to`/`cc` audience, kept to exact local actor URLs.
- */
-const mentionedLocalUsernames = (identity: InstanceIdentity, raw: unknown): string[] => {
-  const note = parseNoteDocument(raw);
-  const candidates = [
-    ...mentionHrefs(raw),
-    ...(note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : []),
-  ];
-  return [
-    ...new Set(
-      candidates.flatMap((uri) => {
-        const username = parseLocalActorUsername(identity, uri);
-        return username && InstanceIdentity.actorUrl(identity, username) === uri ? [username] : [];
-      }),
-    ),
-  ];
-};
+/** The usernames of the exact local actor URLs among `uris`, each once. */
+const localUsernames = (identity: InstanceIdentity, uris: ReadonlyArray<string>): string[] => [
+  ...new Set(
+    uris.flatMap((uri) => {
+      const username = parseLocalActorUsername(identity, uri);
+      return username && InstanceIdentity.actorUrl(identity, username) === uri ? [username] : [];
+    }),
+  ),
+];
 
 /**
  * The remote actors a remote note's `Mention` tags name: http(s) URIs off
@@ -110,27 +100,47 @@ const mentionedRemoteActorUris = (identity: InstanceIdentity, raw: unknown): str
 };
 
 /**
- * Record the local accounts a newly stored remote note addresses, so it can
- * reach their conversations, and notify them when asked.
+ * The local accounts a remote note names, as Mastodon's
+ * `ActivityPub::Activity::Create` sorts them. `mentioned` are the ones its
+ * `Mention` tags name (`process_mention`): the note's mentions, shown and
+ * notified. `addressed` are the ones only its `to`/`cc` name
+ * (`process_audience`): silent mentions, which let the account read the note
+ * and nothing more.
  */
-const mentionedLocalAccountIds = async (
+type LocalAddressees = Readonly<{
+  mentioned: ReadonlyArray<string>;
+  addressed: ReadonlyArray<string>;
+}>;
+
+const localAddressees = async (
   env: Env,
   identity: InstanceIdentity,
   raw: unknown,
-): Promise<string[]> => {
-  const accountIds: string[] = [];
-  for (const username of mentionedLocalUsernames(identity, raw)) {
-    const account = await findAccountByUsername(env.DB, username);
-    if (account.isOk() && account.value) {
-      accountIds.push(account.value.id);
+): Promise<LocalAddressees> => {
+  const accountIds = async (usernames: ReadonlyArray<string>): Promise<string[]> => {
+    const ids: string[] = [];
+    for (const username of usernames) {
+      const account = await findAccountByUsername(env.DB, username);
+      if (account.isOk() && account.value) {
+        ids.push(account.value.id);
+      }
     }
-  }
-  return accountIds;
+    return ids;
+  };
+  const note = parseNoteDocument(raw);
+  const mentioned = await accountIds(localUsernames(identity, mentionHrefs(raw)));
+  const audience = await accountIds(
+    localUsernames(
+      identity,
+      note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : [],
+    ),
+  );
+  return { mentioned, addressed: audience.filter((id) => !mentioned.includes(id)) };
 };
 
 /**
  * The `MentionedPost` of a stored remote note: the local accounts it
- * addresses, the actors its `Mention` tags name, and the author of the
+ * mentions, the actors its `Mention` tags name, and the author of the
  * stored status it replies to.
  */
 const remoteMentionedPost = async (
@@ -195,7 +205,7 @@ export const newlyMentionedAccountIds = async (
   statusId: string,
 ): Promise<ReadonlyArray<string>> => {
   const added: string[] = [];
-  for (const accountId of await mentionedLocalAccountIds(env, identity, raw)) {
+  for (const accountId of (await localAddressees(env, identity, raw)).mentioned) {
     const already = await isActiveRemoteStatusMention(env.DB, statusId, accountId);
     if (already.isOk() && !already.value) {
       added.push(accountId);
@@ -289,9 +299,9 @@ const writeLateSteps = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const mentioned = await mentionedLocalAccountIds(env, identity, raw);
+  const { mentioned, addressed } = await localAddressees(env, identity, raw);
   const notified = mentionsToNotify(late, mentioned);
-  const recorded = await recordRemoteStatusMentions(env.DB, status.id, mentioned);
+  const recorded = await recordRemoteStatusMentions(env.DB, status.id, { mentioned, addressed });
   if (recorded.isErr()) {
     return err(recorded.error);
   }
@@ -321,7 +331,8 @@ const writeLateSteps = async (
     return err(remote.error);
   }
   if (late.kind === "Created" && status.visibility.kind === "Direct") {
-    await publishConversationUpdate(env, identity, mentioned, status.id);
+    // Everyone the note reaches here: the conversation lists it for each.
+    await publishConversationUpdate(env, identity, [...mentioned, ...addressed], status.id);
   }
   const quote = await syncRemoteQuote(
     env,
