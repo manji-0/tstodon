@@ -335,6 +335,7 @@ describe("the author's delivery of a note whose stored row does not read, replac
       .bind(id)
       .run();
     expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+    const updated = new Date().toISOString();
 
     expect(
       await update(author, {
@@ -343,7 +344,7 @@ describe("the author's delivery of a note whose stored row does not read, replac
         to: [PUBLIC],
         cc: [],
         published: "2026-10-25T00:00:00.000Z",
-        updated: "2026-10-26T00:00:00.000Z",
+        updated,
       }),
     ).toBe(202);
 
@@ -351,8 +352,76 @@ describe("the author's delivery of a note whose stored row does not read, replac
       content: "<p>edited</p>",
       visibility: "unlisted",
       created_at: "2026-10-20T00:00:00.000Z",
-      edited_at: "2026-10-26T00:00:00.000Z",
+      edited_at: updated,
     });
+  });
+
+  /** A note edited at `EDITED`, whose row then lost the date of that edit. */
+  const EDITED = "2026-10-22T00:00:00.000Z";
+  const undatedEdit = async (author: Remote, slug: string) => {
+    const original = note(author, slug, { content: "<p>original</p>" });
+    const edit = (content: string, updated: string) => ({ ...original, content, updated });
+    expect(await create(author, original)).toBe(202);
+    expect(await update(author, edit("<p>second edit</p>", EDITED))).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    await env.DB.prepare("UPDATE remote_statuses SET edited_at = 'unreadable' WHERE id = ?")
+      .bind(id)
+      .run();
+    expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
+    return { id, original, edit };
+  };
+
+  const editedAtColumn = async (id: string) =>
+    (
+      await rows(
+        z.object({ content_html: z.string(), edited_at: z.string().nullable() }),
+        "SELECT content_html, edited_at FROM remote_statuses WHERE id = ?",
+        id,
+      )
+    )[0];
+
+  it("keeps a row whose edit date does not read when a replayed Update or the Create would change its content", async () => {
+    const author = await remoteActor("unreadable-edit-date");
+    const { id, original, edit } = await undatedEdit(author, "unreadable-edit-date");
+    const kept = { content_html: "<p>second edit</p>", edited_at: "unreadable" };
+
+    expect(await update(author, edit("<p>first edit</p>", "2026-10-21T00:00:00.000Z"))).toBe(202);
+    expect(await editedAtColumn(id)).toEqual(kept);
+    expect(
+      await author.send({ id: `${original.id}/create-again`, type: "Create", object: original }),
+    ).toBe(202);
+    expect(await editedAtColumn(id)).toEqual(kept);
+    // An Update with no date would be dated now, and so would its replay.
+    expect(
+      await author.send({
+        id: `${original.id}/update/undated`,
+        type: "Update",
+        object: { ...original, content: "<p>undated edit</p>" },
+      }),
+    ).toBe(202);
+    expect(await editedAtColumn(id)).toEqual(kept);
+  });
+
+  it("replaces a row whose edit date does not read with an Update dated after the row was last written", async () => {
+    const author = await remoteActor("unreadable-edit-date-current");
+    const { id, edit } = await undatedEdit(author, "unreadable-edit-date-current");
+    const updated = new Date().toISOString();
+
+    expect(await update(author, edit("<p>third edit</p>", updated))).toBe(202);
+
+    expect(await status(id)).toMatchObject({ content: "<p>third edit</p>", edited_at: updated });
+  });
+
+  it("takes the edit date from a document that changes nothing in a row whose edit date does not read", async () => {
+    const author = await remoteActor("unreadable-edit-date-same");
+    const { id, edit } = await undatedEdit(author, "unreadable-edit-date-same");
+    const same = edit("<p>second edit</p>", EDITED);
+
+    expect(await author.send({ id: `${same.id}/update-again`, type: "Update", object: same })).toBe(
+      202,
+    );
+
+    expect(await status(id)).toMatchObject({ content: "<p>second edit</p>", edited_at: EDITED });
   });
 });
 

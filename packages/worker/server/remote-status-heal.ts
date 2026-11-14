@@ -26,7 +26,7 @@ export type HealingDocument = Readonly<{ activity: "Create" | "Update" | "Fetche
 /** The row stays as it is and the delivery is dropped, as Mastodon drops a `RecordInvalid`. */
 const kept = (
   statusId: string,
-  reason: "NotTheAuthorsNote" | "DocumentNotANote" | "RowNotRewritable" | "NotNewer",
+  reason: "NotTheAuthorsNote" | "DocumentNotANote" | "RowNotRewritable" | "NotNewer" | "NotDated",
 ): Result<undefined, RepositoryError> => {
   console.warn(JSON.stringify({ kind: "InvalidRemoteStatusRowKept", statusId, reason }));
   return ok(undefined);
@@ -52,6 +52,19 @@ const kept = (
  * document, which is the note as it reads now. A fetched document is dated
  * by its `updated` only: it is no edit, so one without a date is not dated
  * now. A new tally settles the local votes, as it does for a row that reads.
+ *
+ * A row whose `edited_at` does not read was edited at a time unknown, not
+ * never. A document that changes its content then replaces it only when its
+ * `updated` is later than the last write of the row (`updated_at`), which no
+ * edit the row holds was received after: a replayed older `Update` is dated
+ * before it, and so is the `Create` of a note edited since. A document
+ * without `updated` does not replace it, not even an `Update`, as dating it
+ * now would date its replay now too (`NotDated`). Nor does any document
+ * when `updated_at` does not read either. The cost is a real edit made
+ * before this server last wrote the row, or dated so by a clock that runs
+ * behind: it is dropped, and the row stays until a later edit. A document
+ * that changes nothing still replaces the row, and its `updated` is the date
+ * of the content both hold, so it becomes the row's.
  */
 export const settleInvalidRemoteStatus = async (
   env: Env,
@@ -92,12 +105,20 @@ export const settleInvalidRemoteStatus = async (
     id: stored.id,
     editedAt: stored.editedAt,
   });
+  const dated = IsoInstant.parseRemote(note.value.updated ?? "").unwrapOr(undefined);
   // An `Update` without a date is dated now, as an ordinary one. A `Create`
   // without one is the note before any edit.
-  const updated = IsoInstant.parseRemote(note.value.updated ?? "").unwrapOr(
-    activity === "Update" ? nowInstant() : undefined,
-  );
+  const updated = dated ?? (activity === "Update" ? nowInstant() : undefined);
   const edited = contentChanged(stored, refreshed);
+  const { edit } = salvaged.value;
+  if (edited && edit.kind === "Unknown") {
+    if (dated === undefined) {
+      return kept(invalid.id, "NotDated");
+    }
+    if (edit.writtenAt === undefined || !isNewer(dated, edit.writtenAt)) {
+      return kept(invalid.id, "NotNewer");
+    }
+  }
   if (
     edited &&
     stored.editedAt.kind === "Edited" &&
@@ -105,9 +126,12 @@ export const settleInvalidRemoteStatus = async (
   ) {
     return kept(invalid.id, "NotNewer");
   }
+  // The date of the content the row is left with: the document's when it
+  // changes the content, or when the row has lost its own.
+  const editedAt = edited ? updated : edit.kind === "Unknown" ? dated : undefined;
   const status: RemoteStatusValue =
-    edited && updated !== undefined
-      ? { ...refreshed, editedAt: { kind: "Edited", at: updated } }
+    editedAt !== undefined
+      ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt } }
       : refreshed;
   const replaced = await overwriteRemoteStatus(env.DB, salvaged.value, status, noteHashtags(raw));
   if (replaced.isErr()) {

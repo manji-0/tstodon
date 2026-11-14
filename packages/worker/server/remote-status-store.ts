@@ -433,6 +433,11 @@ const reads =
   (value: string): boolean =>
     parse(value).isOk();
 
+/** An `edited_at` that reads: none (`NULL` or empty), or an instant. */
+const EditedAtColumn = z
+  .union([z.literal(""), z.string().refine(reads(IsoInstant.parse))])
+  .nullable();
+
 /**
  * The shape of a row that does not read as a status, with each column a
  * rewrite replaces falling back to `fill`'s when it does not read on its
@@ -455,11 +460,9 @@ const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> =>
     sensitive: column.sensitive.catch(fill.sensitive),
     language: column.language.catch(fill.language),
     published_at: z.string().refine(reads(IsoInstant.parse)).catch(fill.published_at),
-    // An unreadable date of the last edit is no edit: nothing orders against it.
-    edited_at: z
-      .union([z.literal(""), z.string().refine(reads(IsoInstant.parse))])
-      .nullable()
-      .catch(null),
+    // A date of the last edit that does not read is unknown, which the row
+    // cannot say: it reads as none here, and `SalvagedRemoteStatus.edit` tells.
+    edited_at: EditedAtColumn.catch(null),
     media_json: column.media_json.catch(fill.media_json),
     card_json: column.card_json.catch(null),
     poll_json: column.poll_json.catch(fill.poll_json),
@@ -491,15 +494,45 @@ const REWRITTEN_COLUMNS = [
  */
 const ROW_VERSION_SQL = REWRITTEN_COLUMNS.map((column) => `quote(${column})`).join(" || ',' || ");
 
-const VersionedRow = z.object({ version: z.string() });
+const VersionedRow = z.object({
+  version: z.string(),
+  edited_at: z.unknown(),
+  updated_at: z.unknown(),
+});
+
+/**
+ * What the row says of the last edit of its content. `Known` is an
+ * `edited_at` that reads, which `status.editedAt` then holds. `Unknown` is
+ * one that does not: the content may have been edited at any time up to
+ * `writtenAt`, when this server last wrote the row (`updated_at`), which is
+ * absent when that does not read either.
+ */
+export type SalvagedEdit =
+  | Readonly<{ kind: "Known" }>
+  | Readonly<{ kind: "Unknown"; writtenAt: IsoInstant | undefined }>;
 
 /**
  * What a rewrite of a row that does not read starts from. `status` is what
- * the row holds once the columns that do not read are filled. `version`
- * names the stored columns it was read from ({@link ROW_VERSION_SQL}), so the
- * rewrite replaces that row and no other ({@link overwriteRemoteStatus}).
+ * the row holds once the columns that do not read are filled; its `editedAt`
+ * is none when `edit` is `Unknown`. `version` names the stored columns it
+ * was read from ({@link ROW_VERSION_SQL}), so the rewrite replaces that row
+ * and no other ({@link overwriteRemoteStatus}).
  */
-export type SalvagedRemoteStatus = Readonly<{ status: RemoteStatus; version: string }>;
+export type SalvagedRemoteStatus = Readonly<{
+  status: RemoteStatus;
+  edit: SalvagedEdit;
+  version: string;
+}>;
+
+const salvagedEdit = (row: z.infer<typeof VersionedRow>): SalvagedEdit =>
+  EditedAtColumn.safeParse(row.edited_at).success
+    ? { kind: "Known" }
+    : {
+        kind: "Unknown",
+        writtenAt: IsoInstant.parse(
+          typeof row.updated_at === "string" ? row.updated_at : "",
+        ).unwrapOr(undefined),
+      };
 
 /**
  * The status the row of `id` holds once the columns that do not read are
@@ -525,7 +558,11 @@ export const salvageRemoteStatus = async (
   const versioned = schemaResult(VersionedRow)(queried.value);
   const row = schemaResult(salvagedRowSchema(remoteStatusRowOf(fill)))(queried.value);
   const status = row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined;
-  return ok(status && versioned.isOk() ? { status, version: versioned.value.version } : undefined);
+  return ok(
+    status && versioned.isOk()
+      ? { status, edit: salvagedEdit(versioned.value), version: versioned.value.version }
+      : undefined,
+  );
 };
 
 /**

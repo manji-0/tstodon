@@ -892,9 +892,7 @@ describe("a delivery of a note whose stored row does not read as a status", () =
       await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
     ).toBe(202);
     const id = (await storedId(original.id)) ?? "";
-    await env.DB.prepare(
-      "UPDATE remote_statuses SET visibility = 'unreadable', edited_at = 'unreadable' WHERE id = ?",
-    )
+    await env.DB.prepare("UPDATE remote_statuses SET visibility = 'unreadable' WHERE id = ?")
       .bind(id)
       .run();
     expect((await SELF.fetch(`https://example.com/api/v1/statuses/${id}`)).status).not.toBe(200);
