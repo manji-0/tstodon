@@ -135,15 +135,18 @@ const notifiedOf = async (
     ).json(),
   ).filter((entry) => entry.status.id === id).length;
 
-/** `env` whose first D1 batch waits for `between` to run first, as another request would. */
-const interleaving = (between: () => Promise<unknown>): Env => {
-  let ran = false;
+/**
+ * `env` whose D1 batch number `at` (the first by default) waits for `between`
+ * to run first, as another request would.
+ */
+const interleaving = (between: () => Promise<unknown>, at: number = 1): Env => {
+  let batches = 0;
   const db = new Proxy(env.DB, {
     get: (target, key) => {
       if (key === "batch") {
         return async (statements: D1PreparedStatement[]) => {
-          if (!ran) {
-            ran = true;
+          batches += 1;
+          if (batches === at) {
             await between();
           }
           return target.batch(statements);
@@ -637,29 +640,39 @@ describe("two inbox activities that carry one note", () => {
     expect(await owedKinds(id)).toEqual([]);
   });
 
-  it("notifies a mentioned account once when a Create arrives while the QuoteRequest that stored the note is in its late steps", async () => {
-    const counts: number[] = [];
-    for (let round = 0; round < 8; round += 1) {
-      const mentioned = await localAccount(`inbox-retry-concurrent-${round}@example.com`);
-      const author = await remoteActor(`retry-concurrent-${round}`);
-      const object = note(author, `retry-concurrent-${round}`, {
-        content: "<p>hi @you</p>",
-        tag: [{ type: "Mention", href: mentioned.actorUrl }],
-        cc: [mentioned.actorUrl],
-      });
-      const deliver = (await deliverer(author))(object);
+  it("runs the late steps once when a Create arrives while the QuoteRequest that stored the note is in them", async () => {
+    const mentioned = await localAccount("inbox-retry-concurrent@example.com");
+    const author = await remoteActor("retry-concurrent");
+    // Published now: inside the real-time window, so it is streamed as new.
+    const object = note(author, "retry-concurrent", {
+      content: "<p>hi @you</p>",
+      tag: [{ type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+      published: new Date().toISOString(),
+    });
+    const deliver = (await deliverer(author))(object);
+    const viewer = await openStream({
+      email: "inbox-retry-concurrent-viewer@example.com",
+      query: "?stream=public",
+    });
 
-      const first = deliver("QuoteRequest");
-      let id = await storedId(object.id);
-      while (id === undefined || (await owedKinds(id)).length === 0) {
-        id = await storedId(object.id);
-      }
-      const delivered = await Promise.all([first, deliver("Create")]);
+    // The QuoteRequest's first batch stores the note, with its marker and its
+    // lease. Its second is the first of the late steps: the Create runs there.
+    let created: Awaited<ReturnType<typeof deliver>> | undefined;
+    const requested = await deliver(
+      "QuoteRequest",
+      interleaving(async () => {
+        created = await deliver("Create");
+      }, 2),
+    );
 
-      expect(delivered.every((result) => result.isOk())).toBe(true);
-      counts.push(await notifiedOf(mentioned.headers, "mention", id));
-    }
-    expect(counts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+    const id = (await storedId(object.id)) ?? "";
+    expect(requested.isOk() && created?.isOk()).toBe(true);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
   });
 
   it("streams a new note when a QuoteRequest stores it, and not again when its Create arrives", async () => {
@@ -782,6 +795,59 @@ describe("the late steps a failed Create left owed", () => {
     expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
     expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
     expect(second?.isOk()).toBe(true);
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
+  });
+
+  it("of an edit are another delivery's while its lease stands, and are taken over once it is past", async () => {
+    const elsewhere = "https://elsewhere.example/users/retry-edit-lease";
+    const author = await remoteActor("retry-edit-lease");
+    const original = note(author, "retry-edit-lease", { content: "<p>before</p>" });
+    expect(
+      await author.send({ id: `${original.id}/create`, type: "Create", object: original }),
+    ).toBe(202);
+    const id = (await storedId(original.id)) ?? "";
+    const edited = note(author, "retry-edit-lease", {
+      content: "<p>after</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+      updated: "2026-10-21T00:00:00.000Z",
+    });
+    const update = (slug: string) =>
+      author.send({ id: `${edited.id}/update/${slug}`, type: "Update", object: edited });
+    const viewer = await openStream({
+      email: "inbox-retry-edit-lease@example.com",
+      query: "?stream=public",
+    });
+    const allow = await refuseInsert(
+      "inbox_retry_edit_lease",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    try {
+      expect(await update("failed")).toBe(500);
+    } finally {
+      await allow();
+    }
+    expect(await owedKinds(id)).toEqual(["Edited"]);
+    const lease = (until: number) =>
+      env.DB.prepare("UPDATE remote_status_owed SET claimed_until = ? WHERE status_id = ?")
+        .bind(new Date(until).toISOString(), id)
+        .run();
+
+    // A delivery that was cut off in the edit's late steps left its lease.
+    // Another Update with the stored content is no edit: it runs the steps
+    // of its own document and leaves the edit's to the holder.
+    await lease(Date.now() + 30_000);
+    expect(await update("held")).toBe(202);
+    expect(await remoteMentions(id)).toEqual([elsewhere]);
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual(["Edited"]);
+
+    await lease(Date.now() - 1000);
+    expect(await update("past")).toBe(202);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "status.update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
     expect(await owedKinds(id)).toEqual([]);
     viewer.close();
   });
