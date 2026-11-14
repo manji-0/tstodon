@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import type { z } from "zod";
 import { ApiSearchResults, ApiStatus } from "@tstodon/api";
@@ -166,5 +166,82 @@ describe("search for a post URL with resolve=true", () => {
     expect(read(ApiSearchResults, found.body).statuses).toEqual([]);
     const own = await search(author, { q: status.uri, resolve: "true" });
     expect(read(ApiSearchResults, own.body).statuses.map((entry) => entry.id)).toEqual([status.id]);
+  });
+});
+
+describe("a URL that must resolve to nothing", () => {
+  const VIEWER = "search-url-refused-viewer@example.com";
+  const note = (id: string, attributedTo: string, extra: Record<string, unknown> = {}) => ({
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id,
+    type: "Note",
+    attributedTo,
+    content: "<p>should not be stored</p>",
+    published: "2026-11-14T00:00:00.000Z",
+    to: [PUBLIC],
+    cc: [],
+    ...extra,
+  });
+  const stored = async (objectUri: string): Promise<number> =>
+    (
+      await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+        .bind(objectUri)
+        .all()
+    ).results.length;
+  const statusesFor = async (email: string, q: string) =>
+    read(ApiSearchResults, (await search(email, { q, resolve: "true", type: "statuses" })).body)
+      .statuses;
+
+  it("when the fetched document names another id", async () => {
+    const author = await remoteActor("searchurlmismatch", "refused-id.example");
+    const asked = "https://refused-id.example/notes/asked-for";
+    const served = "https://refused-id.example/notes/another-note";
+    await withRemoteDocuments({ [asked]: note(served, author.actorUri) }, async (fetched) => {
+      expect(await statusesFor(VIEWER, asked)).toEqual([]);
+      expect(fetched).toEqual([asked]);
+    });
+    expect(await stored(asked)).toBe(0);
+    expect(await stored(served)).toBe(0);
+  });
+
+  it("when the note's author is on another host", async () => {
+    const author = await remoteActor("searchurlvictim", "victim-host.example");
+    const uri = "https://attacker-host.example/notes/claims-another-author";
+    await withRemoteDocuments({ [uri]: note(uri, author.actorUri) }, async (fetched) => {
+      expect(await statusesFor(VIEWER, uri)).toEqual([]);
+      expect(fetched).toEqual([uri]);
+    });
+    expect(await stored(uri)).toBe(0);
+  });
+
+  it("when the URL's domain is suspended, without a fetch", async () => {
+    const author = await remoteActor("searchurlblocked", "suspended-url.example");
+    await env.DB.prepare(
+      "INSERT INTO domain_blocks (id, domain, severity) VALUES ('search-url-block', ?, 'suspend')",
+    )
+      .bind("suspended-url.example")
+      .run();
+    const uri = "https://suspended-url.example/notes/from-a-suspended-domain";
+    await withRemoteDocuments({ [uri]: note(uri, author.actorUri) }, async (fetched) => {
+      expect(await statusesFor(VIEWER, uri)).toEqual([]);
+      expect(fetched).toEqual([]);
+    });
+    expect(await stored(uri)).toBe(0);
+  });
+
+  it("when the viewer may not see the cached note (followers-only, not following)", async () => {
+    const author = await remoteActor("searchurlprivate", "private-url.example");
+    const uri = "https://private-url.example/notes/followers-only";
+    expect(
+      await author.send({
+        id: `${uri}/create`,
+        type: "Create",
+        object: note(uri, author.actorUri, { to: [`${author.actorUri}/followers`] }),
+      }),
+    ).toBe(202);
+    expect(await stored(uri)).toBe(1);
+    await withRemoteDocuments({}, async () => {
+      expect(await statusesFor(VIEWER, uri)).toEqual([]);
+    });
   });
 });
