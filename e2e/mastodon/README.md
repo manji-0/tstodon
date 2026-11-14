@@ -27,7 +27,7 @@ Mastodon's streaming server is not started. The scripts use the REST API only.
 ## Run it
 
 ```sh
-# 1. Mastodon, the proxy, the certificates, and the users mona and carol (about 25 s).
+# 1. Mastodon, the proxy, the certificates, and five users (about 25 s).
 e2e/mastodon/bootstrap.sh
 
 # 2. The tstodon Worker, in the foreground (about 90 s to the first answer).
@@ -39,7 +39,32 @@ pnpm e2e:mastodon          # follow both ways, a post each way; the gate
 pnpm e2e:mastodon:probe    # the sweep; reports every gap, exits 1 if any
 ```
 
-`bootstrap.sh` is safe to rerun. A rerun gives each user a new token and rewrites `.state/e2e.env`. `MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/bootstrap.sh` restarts Mastodon in secure mode. `MASTODON_VERSION` selects another image tag.
+`bootstrap.sh` is safe to rerun. A rerun gives each user a new token and rewrites `.state/e2e.env`. `MASTODON_VERSION` selects another image tag.
+
+`E2E_PROBE_AREAS=search,threads pnpm e2e:mastodon:probe` runs only those areas of the sweep. The areas are `base`, `search`, `direct`, `threads`, `follows` and `authorized-fetch`.
+
+### Secure mode
+
+Each server has its own switch. Run the sweep in each combination:
+
+```sh
+MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/bootstrap.sh       # Mastodon: restarts web and Sidekiq
+TSTODON_AUTHORIZED_FETCH=true e2e/mastodon/start-tstodon.sh    # tstodon: AUTHORIZED_FETCH in .dev.vars
+```
+
+The sweep reads which mode each server is in from an unsigned fetch of an actor. The `authorized-fetch` area then checks that a server in secure mode refuses unsigned fetches, and skips that step for a server that is not.
+
+### The Mastodon users
+
+`bootstrap.sh` provisions five users. They outlive a sweep, so each has one job, and a scenario must not change that:
+
+| User                             | Job                                                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `mona`                           | Follows the tstodon users of a run, and they follow her                                               |
+| `carol`                          | No tstodon user keeps a follow of her: tstodon sees her posts only when it fetches them               |
+| `dana`                           | The follow scenarios lock her and leave her tstodon followers; her notification policy is the default |
+| `erin`                           | No tstodon user ever follows her                                                                      |
+| `long_username_for_interop_0123` | The longest username Mastodon allows (30 characters); no tstodon user ever follows it                 |
 
 To start over, remove both sides' state. Mastodon generates new actor keys, and tstodon would keep the old ones cached.
 
@@ -50,10 +75,22 @@ rm -rf e2e/mastodon/.state e2e/mastodon/.dev.vars .wrangler/e2e-mastodon
 
 ## Scripts
 
-| Script                | Command                   | Coverage                                                                                                                                                                                                                                                                                                                    |
-| --------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `follow-both-ways.ts` | `pnpm e2e:mastodon`       | Alice on tstodon resolves and follows Mona on Mastodon, Mastodon accepts, Mona's post reaches Alice's home timeline. Mona resolves and follows Alice, Alice's post reaches Mona's home timeline.                                                                                                                            |
-| `probe.ts`            | `pnpm e2e:mastodon:probe` | Each interaction in both directions: follow, public and followers-only posts, mentions, direct messages, URL search, replies, favourites, boosts, edits, polls and votes, media, hashtags, quote posts, custom emoji (Mastodon to tstodon only), profile updates, deletes, unfollow, block. A failed step does not stop it. |
+| Script                | Command                   | Coverage                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `follow-both-ways.ts` | `pnpm e2e:mastodon`       | Alice on tstodon resolves and follows Mona on Mastodon, Mastodon accepts, Mona's post reaches Alice's home timeline. Mona resolves and follows Alice, Alice's post reaches Mona's home timeline.                                                                                                                                                             |
+| `probe.ts`            | `pnpm e2e:mastodon:probe` | The sweep. Its `base` area sends each interaction in both directions: follow, public and followers-only posts, mentions, direct messages, URL search, replies, favourites, boosts, edits, polls and votes, media, hashtags, quote posts, custom emoji (Mastodon to tstodon only), profile updates, deletes, unfollow, block. A failed step does not stop it. |
+
+The other areas of the sweep are one file each, and `sweep.ts` holds what they share:
+
+| File                        | Area               | Coverage                                                                                                                                                                                                                                                         |
+| --------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `probe-search.ts`           | `search`           | Search with `resolve=true`: a profile page URL and an actor URI (one fetch each, counted in Mastodon's log), a post's page URL (`/@user/id`), `@user@host` and `user@host`, `accounts/lookup`, `accounts/search`, a local account by its full acct, a long acct. |
+| `probe-direct.ts`           | `direct`           | A direct message to three recipients on both servers, a reply chain of three in one conversation, and a stranger's direct message under the receiver's notification policy.                                                                                      |
+| `probe-threads.ts`          | `threads`          | A reply whose parent the receiving server never saw, a thread five posts deep across both servers, and context backfill of ancestors and replies.                                                                                                                |
+| `probe-follows.ts`          | `follows`          | A locked account on each side: a follow request authorized, one rejected, and a follow again after the reject. Remove a follower. A follow and an unfollow at once.                                                                                              |
+| `probe-authorized-fetch.ts` | `authorized-fetch` | Signed fetches of an actor with its collection counts and of a note, each way. For a server in secure mode: unsigned fetches are refused.                                                                                                                        |
+
+A step that fails for a tracked gap is a `knownGap` step. It is listed as `gap`, does not fail the sweep, and fails it once it passes, so the marker goes away with the fix.
 
 Both scripts sign up a fresh tstodon user per run, so they rerun against the same state.
 
@@ -84,28 +121,51 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 ### tstodon
 
 - `FEDERATION_ALLOW_HOSTS=tstodon.localhost,mastodon.test` (`tstodon.wrangler.jsonc`). A listed host skips the private-address refusal and the DNS check, which would ask a public resolver for `mastodon.test`.
-- `BETTER_AUTH_SECRET` goes in the untracked `e2e/mastodon/.dev.vars`. The Worker reads bindings. A variable exported to the `vp dev` process did not reach it.
+- `BETTER_AUTH_SECRET` goes in the untracked `e2e/mastodon/.dev.vars`. The Worker reads bindings. A variable exported to the `vp dev` process did not reach it. `start-tstodon.sh` writes `AUTHORIZED_FETCH` there too, from `TSTODON_AUTHORIZED_FETCH`.
 - `NO_PROXY` names both hosts. With `HTTPS_PROXY` set, the Worker's fetches and `curl` go to the proxy otherwise, and it cannot reach these names.
 
 ## What a Mastodon peer does differently from a tstodon peer
 
 - A new account's actor URI is `https://mastodon.test/ap/users/<id>`, not `/users/<name>`. Take the URI from the account's `uri` field.
 - Mastodon signs its fetches as the instance actor (`/actor`).
-- Mastodon's default notification policy filters a private mention from an account the receiver does not follow. The direct message arrives and has a conversation, but no notification.
+- Mastodon's default notification policy (`for_private_mentions: filter`) files a private mention from an account the receiver does not follow under a notification request. The status is stored, but there is no notification and no conversation until the receiver accepts the request (`NotifyService`, `UnfilterNotificationsWorker`). A reply in a thread where the receiver mentioned the sender is exempt.
 - Mastodon leaves a boost out of a home feed that already holds the boosted post. To see a boost arrive, boost a post from an account the receiver does not follow.
+- Mastodon leaves a reply out of a home feed unless the reader follows the account replied to. To see a reply arrive, mention the reader.
+- A page URL (`https://mastodon.test/@carol`, `/@carol/<id>`) serves the actor or the note under another id (`/ap/users/<id>`, `/ap/users/<id>/statuses/<id>`). Mastodon's own lookup (`FetchResourceService`) fetches the URL, then the id it names, once.
+- A note's `replies` collection embeds a first page with the author's own replies only. Every other account's replies are on the page its `next` links (`?only_other_accounts=true&page=true`).
+- When Mastodon stores a note it fetches up to five replies of the same host from the note's embedded `replies` page (`FetchRepliesService`). It fetches the whole reply tree only for a note older than five minutes (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`).
+- The id of an `Undo(Follow)` is `<actor>#follows/<n>/undo`. `n` is the follow request's id while the follow is pending, and the follow's id once it is accepted. Those are two sequences, so two different `Undo`s of one actor can carry one id.
+- Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
+- Mastodon allows a user 1500 API requests per five minutes. A second sweep right after the first reaches that as mona. `sweep.ts` waits for the window and goes on.
 
 ## What the sweep found
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 41 of 41 steps. Its first run found three tstodon bugs, each now fixed and covered by a Worker test:
+The sweep passes 84 of 84 steps with both servers open, 85 of 85 with tstodon in secure mode, and 86 of 86 with both in secure mode. Four more steps are known gaps.
+
+Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
 1. `GET /api/v2/search` answered 500 (`LIKE or GLOB pattern too complex`) for any `q` longer than 48 bytes, which includes most post URLs, and did not look up a post URL (`server/search-url-resolve.test.ts`).
 2. A remote status's `mentions` was always `[]` in the REST API (`server/remote-status-mentions.test.ts`).
 3. A note URL the requester may not read answered `200 text/html` to Mastodon's `Accept` header. Mastodon expects 401, 403 or 404 and then falls back to its stored copy (`server/activitypub-negotiation.test.ts`).
 
+The areas added for INT-1, INT-2, INT-3, INT-4 and INT-6 found five more, also fixed and covered:
+
+4. A search for a page URL resolved to nothing, for a profile (`/@user`) and for a post (`/@user/id`), and an actor URI with no `type` was fetched twice (`server/search-url-resolve.test.ts`).
+5. A search for `@user@tstodon.localhost` on tstodon answered a remote copy of the local account, which could not be followed (`server/search-url-resolve.test.ts`).
+6. The reply backfill read only the first page of `replies`, so a Mastodon thread opened on tstodon showed the author's own replies and no one else's (`server/remote-thread-backfill.test.ts`).
+7. A second `Undo(Follow)` with the id of an earlier one was dropped as a duplicate, and the unfollowed account stayed a follower (`server/inbox-claims.test.ts`).
+8. The conversation of a Mastodon direct message left out the recipients on Mastodon (`server/remote-conversations.test.ts`).
+
+The four known gaps (`gap` in the sweep's output):
+
+- tstodon reports `for_private_mentions: drop` and notifies a Mastodon stranger's direct message all the same: the policy is not applied to a remote sender (INT-2).
+- A tstodon note has no `replies` collection, so Mastodon cannot fetch the replies to a tstodon post it resolved (INT-4, two steps).
+- tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
+
 The scenarios still to automate are the `INT-*` rows in [open TODOs](../../docs/planning/open-todos.md#interop-with-real-mastodon-open).
 
 ## Not covered yet
 
-Account migration (`Move`), reports (`Flag`), locked accounts and follow requests, custom emoji from tstodon to Mastodon, pinned posts, the streaming API, and tstodon's own `AUTHORIZED_FETCH`.
+Account migration (`Move`), reports (`Flag`), custom emoji from tstodon to Mastodon, pinned posts, and the streaming API.
