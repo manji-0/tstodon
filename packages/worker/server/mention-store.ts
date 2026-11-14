@@ -17,15 +17,19 @@ import {
   listShownRemoteStatusMentions as listShownRemoteStatusMentionsSql,
   listStatusMentionsByIds as listStatusMentionsByIdsSql,
   listStatusRemoteMentions as listStatusRemoteMentionsSql,
+  silenceRemoteStatusMentionsExcept as silenceRemoteStatusMentionsExceptSql,
 } from "./generated/prisma/sql";
 
 const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.string() });
 const StatusIdActorUriRow = z.object({ status_id: z.string(), actor_uri: z.string() });
 
 /**
- * Record the local accounts a cached remote note names. `mentioned` are its
- * mentions; one written silent before becomes a real one. `addressed` only
- * may read the note: a silent mention, which never replaces a real one.
+ * Make the local accounts a cached remote note names the ones its document
+ * names now. `mentioned` are its mentions; one written silent before becomes
+ * a real one. `addressed` only may read the note: a silent mention, which
+ * never replaces a real one. A real mention that is in neither becomes
+ * silent: an `Update` dropped it, and Mastodon keeps the account's access
+ * (`ProcessStatusUpdateService#update_mentions!`) rather than deleting the row.
  */
 export const recordRemoteStatusMentions = async (
   db: D1Database,
@@ -33,6 +37,10 @@ export const recordRemoteStatusMentions = async (
   accounts: Readonly<{ mentioned: ReadonlyArray<string>; addressed: ReadonlyArray<string> }>,
 ): Promise<Result<void, RepositoryError>> => {
   const statements = [
+    d1PrepareTyped(
+      db,
+      silenceRemoteStatusMentionsExceptSql(statusId, jsonStringArray([...accounts.mentioned])),
+    ),
     ...accounts.mentioned.map((accountId) =>
       d1PrepareTyped(db, insertRemoteStatusMentionSql(statusId, accountId)),
     ),
@@ -40,9 +48,6 @@ export const recordRemoteStatusMentions = async (
       d1PrepareTyped(db, insertSilentRemoteStatusMentionSql(statusId, accountId)),
     ),
   ];
-  if (statements.length === 0) {
-    return ok(undefined);
-  }
   const batched = await runD1Batch(db, statements);
   return batched.isErr() ? err(batched.error) : ok(undefined);
 };

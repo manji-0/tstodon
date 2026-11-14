@@ -224,3 +224,54 @@ describe("an account a remote note only addresses", () => {
     expect((await statusAs("rsm-direct-stranger@example.com", id)).status).toBe(404);
   });
 });
+
+describe("a mention an Update removes", () => {
+  // Mastodon's `ProcessStatusUpdateService#update_mentions!` turns a removed mention silent.
+  it("leaves the mentions, and the account keeps its access", async () => {
+    const email = "rsm-edited-out@example.com";
+    const mentioned = await signedInAccount(email);
+    const localActorUri = `https://example.com/users/${mentioned.username}`;
+    const author = await remoteActor("rsmeditor", "mentions.example");
+    const noteUri = "https://mentions.example/notes/rsm-edited-out";
+    const note = {
+      id: noteUri,
+      type: "Note",
+      attributedTo: author.actorUri,
+      published: new Date().toISOString(),
+    };
+    expect(
+      await author.send({
+        id: `${noteUri}/create`,
+        type: "Create",
+        object: {
+          ...note,
+          content: "<p>a direct note that mentions you</p>",
+          to: [localActorUri],
+          tag: [{ type: "Mention", href: localActorUri, name: `@${mentioned.username}` }],
+        },
+      }),
+    ).toBe(202);
+    const id = await storedId(noteUri);
+    const before = expectContract(ApiStatus, await call(email, `/api/v1/statuses/${id}`));
+    expect(before.mentions.map((mention) => mention.id)).toEqual([mentioned.id]);
+    expect(await mentionNotified(email, id)).toBe(true);
+
+    expect(
+      await author.send({
+        id: `${noteUri}/update`,
+        type: "Update",
+        object: {
+          ...note,
+          content: "<p>edited: nobody is mentioned now</p>",
+          to: [],
+          updated: new Date(Date.now() + 1000).toISOString(),
+        },
+      }),
+    ).toBe(202);
+    const after = await statusAs(email, id);
+    expect(after.status).toBe(200);
+    const edited = expectContract(ApiStatus, await after.json());
+    expect(edited.content).toContain("nobody is mentioned now");
+    expect(edited.mentions).toEqual([]);
+  });
+});

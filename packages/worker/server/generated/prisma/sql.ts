@@ -880,6 +880,8 @@ export * from "./sql/setStatusReplyUri";
 
 export * from "./sql/settleRemotePollOwnVotes";
 
+export * from "./sql/silenceRemoteStatusMentionsExcept";
+
 export * from "./sql/startPollUpdate";
 
 export * from "./sql/statusStatsByIdsJson";
