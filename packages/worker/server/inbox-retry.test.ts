@@ -135,6 +135,41 @@ const notifiedOf = async (
     ).json(),
   ).filter((entry) => entry.status.id === id).length;
 
+/** `env` whose first D1 batch waits for `between` to run first, as another request would. */
+const interleaving = (between: () => Promise<unknown>): Env => {
+  let ran = false;
+  const db = new Proxy(env.DB, {
+    get: (target, key) => {
+      if (key === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          if (!ran) {
+            ran = true;
+            await between();
+          }
+          return target.batch(statements);
+        };
+      }
+      const value: unknown = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return new Proxy(env, {
+    get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)),
+  });
+};
+
+/** The cached actor of `author` and this instance's identity, for a handler called directly. */
+const signerOf = async (author: Remote) => {
+  const identity = parseInstanceIdentity(env);
+  const signer = (await findRemoteActorsByUris(env.DB, [author.actorUri]))
+    .unwrapOr(undefined)
+    ?.get(author.actorUri);
+  if (identity.isErr() || !signer) {
+    throw new Error("signer fixture rejected");
+  }
+  return { identity: identity.value, signer };
+};
+
 describe("an inbox activity that failed after its row was stored", () => {
   it("finishes a Create's mentions, notification and quote once when the same Create is redelivered", async () => {
     const mentioned = await localAccount("inbox-retry-create-late@example.com");
@@ -444,29 +479,6 @@ describe("two inbox activities that carry one note", () => {
           fetchSigner: unsignedFetch,
           delivery,
         });
-  };
-
-  /** `env` whose first D1 batch waits for `between` to run first, as another request would. */
-  const interleaving = (between: () => Promise<unknown>): Env => {
-    let ran = false;
-    const db = new Proxy(env.DB, {
-      get: (target, key) => {
-        if (key === "batch") {
-          return async (statements: D1PreparedStatement[]) => {
-            if (!ran) {
-              ran = true;
-              await between();
-            }
-            return target.batch(statements);
-          };
-        }
-        const value: unknown = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-    return new Proxy(env, {
-      get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)),
-    });
   };
 
   it("stores the note once when a QuoteRequest stores it between a Create's read of its URI and its write", async () => {
@@ -932,6 +944,40 @@ describe("a delivery of a note whose stored row does not read as a status", () =
       await (await SELF.fetch(`https://example.com/api/v1/statuses/${id}/history`)).json(),
     );
     expect(history.map((version) => version.content)).toEqual(["<p>edited</p>"]);
+  });
+
+  it("fails a replacement computed from a row another delivery replaced meanwhile, and keeps that one's", async () => {
+    const author = await remoteActor("invalid-row-raced");
+    const id = await unreadable(author, "invalid-row-raced");
+    const edit = (content: string, updated: string) => {
+      const object = note(author, "invalid-row-raced", { content, updated });
+      return { id: `${object.id}/update/${updated}`, type: "Update", object };
+    };
+    const first = edit("<p>first edit</p>", "2026-10-21T00:00:00.000Z");
+    const second = edit("<p>second edit</p>", "2026-10-22T00:00:00.000Z");
+    const { identity, signer } = await signerOf(author);
+
+    // The first Update has read the unreadable row when the second replaces
+    // it: its write waits for the second one's delivery to finish.
+    let between: number | undefined;
+    const raced = await applyRemoteUpdate(
+      interleaving(async () => {
+        between = await author.send(second);
+      }),
+      identity,
+      signer,
+      first.object,
+      { fetchSigner: unsignedFetch },
+    );
+
+    expect(between).toBe(202);
+    expect(raced.isErr()).toBe(true);
+    const kept = { content: "<p>second edit</p>", edited_at: "2026-10-22T00:00:00.000Z" };
+    expect(await status(id)).toMatchObject(kept);
+
+    // Its redelivery reads the row, which now reads: an older edit is dropped.
+    expect(await author.send(first)).toBe(202);
+    expect(await status(id)).toMatchObject(kept);
   });
 
   it("answers another actor's Update with 202 and leaves the row as it is", async () => {

@@ -468,6 +468,39 @@ const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> =>
   });
 };
 
+/** The columns a rewrite of a row replaces: the ones {@link salvageRemoteStatus} reads. */
+const REWRITTEN_COLUMNS = [
+  "url",
+  "content_html",
+  "spoiler_text",
+  "visibility",
+  "sensitive",
+  "language",
+  "published_at",
+  "edited_at",
+  "media_json",
+  "poll_json",
+  "emojis_json",
+  "quote_policy_json",
+] as const;
+
+/**
+ * SQL for one text that differs between any two versions of
+ * {@link REWRITTEN_COLUMNS}, whatever a column holds: `quote` writes a text,
+ * a number, a blob and `NULL` each in a form no other value has.
+ */
+const ROW_VERSION_SQL = REWRITTEN_COLUMNS.map((column) => `quote(${column})`).join(" || ',' || ");
+
+const VersionedRow = z.object({ version: z.string() });
+
+/**
+ * What a rewrite of a row that does not read starts from. `status` is what
+ * the row holds once the columns that do not read are filled. `version`
+ * names the stored columns it was read from ({@link ROW_VERSION_SQL}), so the
+ * rewrite replaces that row and no other ({@link overwriteRemoteStatus}).
+ */
+export type SalvagedRemoteStatus = Readonly<{ status: RemoteStatus; version: string }>;
+
 /**
  * The status the row of `id` holds once the columns that do not read are
  * taken from `fill`, the note as its author delivers it: what a rewrite of
@@ -479,13 +512,20 @@ export const salvageRemoteStatus = async (
   db: D1Database,
   id: string,
   fill: RemoteStatus,
-): Promise<Result<RemoteStatus | undefined, RepositoryError>> => {
-  const queried = await findRow(db, findRemoteStatusByIdSql(id));
+): Promise<Result<SalvagedRemoteStatus | undefined, RepositoryError>> => {
+  const queried = await runD1(() =>
+    db
+      .prepare(`SELECT *, ${ROW_VERSION_SQL} AS version FROM remote_statuses WHERE id = ?`)
+      .bind(id)
+      .first(),
+  );
   if (queried.isErr()) {
     return err(queried.error);
   }
+  const versioned = schemaResult(VersionedRow)(queried.value);
   const row = schemaResult(salvagedRowSchema(remoteStatusRowOf(fill)))(queried.value);
-  return ok(row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined);
+  const status = row.isOk() ? remoteStatusFromRow(row.value).unwrapOr(undefined) : undefined;
+  return ok(status && versioned.isOk() ? { status, version: versioned.value.version } : undefined);
 };
 
 /**
@@ -625,20 +665,35 @@ export const upsertRemoteStatus = async (
  * `status` and its tags, in one batch. `before` is what the row still held
  * ({@link salvageRemoteStatus}). The upsert keeps a stored `edited_at` when
  * the status has none, so it is cleared first.
+ *
+ * The batch fails when the row is no longer the one `before` was read from:
+ * another delivery replaced it meanwhile, and this write, computed from the
+ * row that is gone, would undo that one. It is the guard of
+ * `refuseReplacedRemoteStatus.sql`, which names the `edited_at` of a row that
+ * reads. A row that does not read may hold none to name, and two rewrites of
+ * it may leave the same one, so this guard names every column the rewrite
+ * replaces. The sender's redelivery reads the row again.
  */
 export const overwriteRemoteStatus = async (
   db: D1Database,
-  before: RemoteStatus,
+  before: SalvagedRemoteStatus,
   status: RemoteStatus,
   tags: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1Batch(db, [
     db
+      .prepare(
+        `INSERT INTO remote_status_edits (id, status_id, snapshot_json, created_at)
+         SELECT 'refused', NULL, '', '' FROM remote_statuses
+         WHERE id = ? AND ${ROW_VERSION_SQL} IS NOT ?`,
+      )
+      .bind(status.id, before.version),
+    db
       .prepare("UPDATE remote_statuses SET edited_at = NULL WHERE id = ? AND actor_uri = ?")
       .bind(status.id, status.actorUri),
     remoteStatusRowStatement(db, status, undefined, "Replace"),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
-    ...pollSettlement(db, before, status),
+    ...pollSettlement(db, before.status, status),
   ]);
   return written.map(() => undefined);
 };

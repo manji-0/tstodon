@@ -77,7 +77,7 @@ export const settleInvalidRemoteStatus = async (
   if (salvaged.value === undefined) {
     return kept(invalid.id, "RowNotRewritable");
   }
-  const stored = salvaged.value;
+  const stored = salvaged.value.status;
   const delivered: RemoteStatusValue =
     activity !== "Create"
       ? {
@@ -109,7 +109,7 @@ export const settleInvalidRemoteStatus = async (
     edited && updated !== undefined
       ? { ...refreshed, editedAt: { kind: "Edited", at: updated } }
       : refreshed;
-  const replaced = await overwriteRemoteStatus(env.DB, stored, status, noteHashtags(raw));
+  const replaced = await overwriteRemoteStatus(env.DB, salvaged.value, status, noteHashtags(raw));
   if (replaced.isErr()) {
     return err(replaced.error);
   }
