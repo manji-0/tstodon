@@ -4,7 +4,7 @@
 <!-- constrained-by ../../docs/getting-started/e2e-federation-portless.md -->
 <!-- constrained-by ../../docs/reference/configuration.md#limited-federation -->
 
-This harness runs one real Mastodon (v4.7.5) next to a local tstodon Worker and federates them over HTTPS. The other federation suites pair tstodon with tstodon, so they cannot catch a disagreement with Mastodon itself. CI does not run this yet.
+This harness runs one real Mastodon (v4.7.5) next to a local tstodon Worker and federates them over HTTPS. The other federation suites pair tstodon with tstodon, so they cannot catch a disagreement with Mastodon itself. CI runs it ([One command, and CI](#one-command-and-ci)).
 
 ## What runs
 
@@ -42,6 +42,31 @@ pnpm e2e:mastodon:probe    # the sweep; reports every gap, exits 1 if any
 `bootstrap.sh` is safe to rerun. A rerun gives each user a new token and rewrites `.state/e2e.env`. `MASTODON_VERSION` selects another image tag.
 
 `E2E_PROBE_AREAS=search,threads pnpm e2e:mastodon:probe` runs only those areas of the sweep. The areas are `base`, `search`, `direct`, `threads`, `follows` and `authorized-fetch`.
+
+### One command, and CI
+
+`e2e/mastodon/ci.sh` does a whole run and leaves nothing behind:
+
+```sh
+e2e/mastodon/ci.sh
+TSTODON_AUTHORIZED_FETCH=true MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/ci.sh    # both in secure mode
+```
+
+1. It removes the Compose stack and the tstodon database (`.wrangler/e2e-mastodon`) that an earlier run left.
+2. It runs `bootstrap.sh`, then `start-tstodon.sh` in the background, and waits for `https://tstodon.localhost`.
+3. It runs `pnpm e2e:mastodon` and `pnpm e2e:mastodon:probe`. Both run even when the first fails. The script exits 1 when either fails.
+4. It writes the logs to `.cache/e2e-mastodon/`: `tstodon-dev.log` (the Worker), `compose-<service>.log`, `compose-ps.txt`, `gate.log` and `sweep.log`. On a failure it also prints the last 150 lines of the Worker's, Mastodon's and the proxy's logs.
+5. It stops the Worker and removes the stack and the tstodon database. With `E2E_MASTODON_KEEP=1` the stack stays up.
+
+Do not run it beside a stack you started by hand: step 1 removes that stack. The certificates and Mastodon's secrets in `.state/`, `.dev.vars` and the `/etc/hosts` lines stay. `E2E_PROBE_AREAS` limits the sweep here too. A run takes about six minutes once the images are pulled.
+
+The workflow `.github/workflows/e2e-mastodon.yml` installs the dependencies and calls this script, once for each mode: both servers open, tstodon in secure mode, both in secure mode. It runs:
+
+- on a pull request that changes `packages/worker/server`, `packages/worker/app`, `packages/api`, `packages/domain`, `packages/core`, `e2e/mastodon`, `e2e/lib.ts` or the lockfile;
+- every night, on `main`;
+- by hand (`workflow_dispatch`), on any branch.
+
+A failed leg uploads `.cache/e2e-mastodon/` as the artifact `e2e-mastodon-logs-<mode>`. The workflow reads no repository secret, because the scripts generate every key. It does not cache the Docker images: the runner pulls them about as fast as it would restore a cache.
 
 ### Secure mode
 
