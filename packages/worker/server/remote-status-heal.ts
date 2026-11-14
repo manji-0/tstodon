@@ -8,7 +8,7 @@ import {
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
-} from "./remote-status-persist";
+} from "./remote-note-document";
 import {
   type InvalidRemoteStatusRow,
   overwriteRemoteStatus,

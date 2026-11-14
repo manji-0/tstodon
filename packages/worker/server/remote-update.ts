@@ -17,12 +17,11 @@ import { contentChanged, isNewer, remoteRevisionStatement } from "./remote-statu
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   applyMediaPolicy,
-  finishRemoteNote,
-  newlyMentionedAccountIds,
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
-} from "./remote-status-persist";
+} from "./remote-note-document";
+import { finishRemoteNote, newlyMentionedAccountIds } from "./remote-status-persist";
 import { listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
 
