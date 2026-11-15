@@ -445,8 +445,8 @@ export const dropSettledDepartedSigner = async (
 
 /**
  * {@link persistOutboxTarget} for several targets of one activity, in one D1
- * batch, which also drops a deleted account's key when these were the last
- * targets to settle ({@link dropSettledDepartedSigner}).
+ * batch. A deleted account's key goes when the last of its activity's targets
+ * leaves `Queued` (the trigger of migration 0145).
  */
 export const persistOutboxTargets = async (
   db: D1Database,
@@ -460,8 +460,9 @@ export const persistOutboxTargets = async (
     return ok(undefined);
   }
   const updatedAt = nowIso();
-  const batched = await runTypedBatch(db, [
-    ...settled.map(({ inboxUrl, delivery, nextAttemptAt, lastHttpStatus }) => {
+  const batched = await runTypedBatch(
+    db,
+    settled.map(({ inboxUrl, delivery, nextAttemptAt, lastHttpStatus }) => {
       const columns = persistColumns(delivery);
       const transient =
         delivery.kind === "Queued" ||
@@ -477,8 +478,7 @@ export const persistOutboxTargets = async (
         delivery.kind === "Queued" ? nextAttemptAt : null,
       );
     }),
-    deleteSettledDepartedSignerSql(activityId),
-  ]);
+  );
   return batched.map(() => undefined);
 };
 

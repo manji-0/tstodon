@@ -12,7 +12,7 @@ import { purgeAccount } from "./admin-actions";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
 import { findOutboundActivityWithSigner, persistOutboxTarget } from "./outbox-store";
-import { listKnownRemoteInboxes } from "./remote-actor-store";
+import { listKnownRemoteInboxes, purgeRemoteActor } from "./remote-actor-store";
 import { RemoteAccountId } from "./remote-account-id";
 
 /**
@@ -177,6 +177,33 @@ describe("deleting a local account", () => {
     expect(await keepsSignerKey(queued.id)).toBe(false);
     const settled = await findOutboundActivityWithSigner(env.DB, queued.id);
     expect(settled.isOk() && settled.value?.signer_private_key_jwk).toBeNull();
+  });
+
+  it("drops the key when the last inbox still to be attempted is cancelled", async () => {
+    const leaver = await signedInAccount("delete-cancelled@example.com");
+    const actorUri = `${ORIGIN}/users/${leaver.username}`;
+    const fan = await remoteActor("cancelled-fan", "cancelled-fans.example");
+    const fanInbox = `${fan.actorUri}/inbox`;
+    await followedBy(leaver.id, fan.actorUri);
+
+    expect(await adminDelete(leaver.id)).toBe(200);
+
+    const [queued] = await queuedActorDeletes(actorUri);
+    if (!queued) {
+      throw new Error("no Delete queued");
+    }
+    expect(queued.inboxes).toContain(fanInbox);
+    for (const inbox of queued.inboxes.filter((inbox) => inbox !== fanInbox)) {
+      expect(
+        (await persistOutboxTarget(env.DB, queued.id, inbox, { kind: "Delivered" })).isOk(),
+      ).toBe(true);
+    }
+    expect(await keepsSignerKey(queued.id)).toBe(true);
+
+    // The fan deletes its account before the Delete reaches it: its queued delivery is failed.
+    expect((await purgeRemoteActor(env.DB, fan.actorUri)).isOk()).toBe(true);
+
+    expect(await keepsSignerKey(queued.id)).toBe(false);
   });
 
   it("sends nothing when the deletion fails part way, and one Delete when it is tried again", async () => {
