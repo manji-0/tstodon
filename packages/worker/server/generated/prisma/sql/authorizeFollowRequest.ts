@@ -7,16 +7,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param targetAccountId
  * @param followerAccountId
+ * @param acceptedAt
  */
 export const authorizeFollowRequest = $runtime.makeTypedQueryFactory(
-  "UPDATE follows SET kind = 'Accepted'\nWHERE target_account_id = $1 AND follower_account_id = $2 AND kind = 'Pending'\nRETURNING follower_account_id",
+  "UPDATE follows SET kind = 'Accepted', created_at = $3\nWHERE target_account_id = $1 AND follower_account_id = $2 AND kind = 'Pending'\nRETURNING follower_account_id",
 ) as (
   targetAccountId: string,
   followerAccountId: string,
+  acceptedAt: string,
 ) => $runtime.TypedSql<authorizeFollowRequest.Parameters, authorizeFollowRequest.Result>;
 
 export namespace authorizeFollowRequest {
-  export type Parameters = [targetAccountId: string, followerAccountId: string];
+  export type Parameters = [targetAccountId: string, followerAccountId: string, acceptedAt: string];
   export type Result = {
     follower_account_id: string;
   };

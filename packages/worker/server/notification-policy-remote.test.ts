@@ -227,6 +227,33 @@ describe("the notification policy for a remote sender", () => {
     expect(await outcome(recipient)).toEqual({ listed: 1, held: 1 });
   });
 
+  it("counts a follower from when the recipient accepted its request", async () => {
+    const recipient = await local("np-remote-accepted-late@example.com");
+    const follower = await remoteActor("np-accepted-late-follower");
+    await send(recipient.email, "PATCH", "/api/v1/accounts/update_credentials", { locked: true });
+    expect(
+      await follower.send({
+        id: `${follower.actorUri}/follows/1`,
+        type: "Follow",
+        object: recipient.url,
+      }),
+    ).toBe(202);
+    await env.DB.prepare(
+      "UPDATE remote_follows SET created_at = ? WHERE remote_actor_uri = ? AND target_account_id = ?",
+    )
+      .bind(daysAgo(5), follower.actorUri, recipient.id)
+      .run();
+    const [request] = z
+      .array(Account)
+      .parse(await send(recipient.email, "GET", "/api/v1/follow_requests"));
+    await send(recipient.email, "POST", `/api/v1/follow_requests/${request?.id}/authorize`);
+    await send(recipient.email, "POST", "/api/v1/notifications/clear");
+    await setPolicy(recipient, { for_not_followers: "filter" });
+
+    await mention(follower, recipient, "np-accepted-late");
+    expect(await outcome(recipient)).toEqual(HELD);
+  });
+
   it("applies `for_new_accounts` to an account published in the last thirty days", async () => {
     const recipient = await local("np-remote-new-account@example.com");
     const old = await remoteActor("np-old-account", "remote.example", { published: daysAgo(400) });

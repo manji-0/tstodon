@@ -367,6 +367,45 @@ describe("notification policy", () => {
   });
 });
 
+describe("notification policy for_not_followers", () => {
+  it("counts a local follower from when the recipient accepted its request", async () => {
+    const recipientEmail = "policy-accepted-late@example.com";
+    const followerEmail = "policy-accepted-late-follower@example.com";
+    const recipient = await credentials(recipientEmail);
+    const follower = await credentials(followerEmail);
+    const post = async (email: string, path: string, body: Record<string, unknown> = {}) =>
+      json(path, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(await auth(email)) },
+        body: JSON.stringify(body),
+      });
+    const locked = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...(await auth(recipientEmail)) },
+      body: JSON.stringify({ locked: true }),
+    });
+    expect(locked.status).toBe(200);
+    expect((await post(followerEmail, `/api/v1/accounts/${recipient.id}/follow`)).status).toBe(200);
+    await env.DB.prepare(
+      "UPDATE follows SET created_at = ? WHERE follower_account_id = ? AND target_account_id = ?",
+    )
+      .bind(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), follower.id, recipient.id)
+      .run();
+    expect(
+      (await post(recipientEmail, `/api/v1/follow_requests/${follower.id}/authorize`)).status,
+    ).toBe(200);
+    expect((await post(recipientEmail, "/api/v1/notifications/clear")).status).toBe(200);
+    expect((await patchPolicy(recipientEmail, { for_not_followers: "filter" })).status).toBe(200);
+
+    await postStatus(followerEmail, { status: `@${recipient.username} hello` });
+    expect(await notifications(recipientEmail)).toHaveLength(0);
+    const policy = await json("/api/v2/notifications/policy", {
+      headers: await auth(recipientEmail),
+    });
+    expect(read(PolicySchema, policy.body).summary.pending_notifications_count).toBe(1);
+  });
+});
+
 describe("notification policy for_bots", () => {
   const markBot = async (email: string): Promise<void> => {
     const response = await json("/api/v1/accounts/update_credentials", {
