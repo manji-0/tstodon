@@ -85,6 +85,19 @@ describe("the custom emoji of a remote account", () => {
     expect((await account(author.actorUri)).emojis).toEqual([]);
   });
 
+  it("leaves out an emoji whose image URL is longer than 2048 characters", async () => {
+    const author = await remoteActor("emoji-profile-long-url");
+    const url = (length: number) =>
+      `https://remote.example/emoji/${"a".repeat(length - "https://remote.example/emoji/.png".length)}.png`;
+    await updateProfile(author, {
+      name: ":fits: :long:",
+      tag: [emojiTag("fits", url(2048)), emojiTag("long", url(2049))],
+    });
+    expect((await account(author.actorUri)).emojis).toEqual([
+      { shortcode: "fits", url: url(2048), static_url: url(2048), visible_in_picker: false },
+    ]);
+  });
+
   it("reads a profile stored before emoji were kept", async () => {
     const author = await remoteActor("emoji-profile-old-row");
     await env.DB.prepare("UPDATE remote_actors SET profile_json = ? WHERE actor_uri = ?")

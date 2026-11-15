@@ -93,6 +93,29 @@ describe("remote Update of a note", () => {
     expect(edited.created_at).toBe("2026-10-20T00:00:00.000Z");
   });
 
+  it("leaves out an emoji whose image URL is longer than 2048 characters", async () => {
+    const author = await remoteActor("update-long-emoji");
+    const id = await create(author, "long-emoji", "<p>before</p>");
+    const url = (length: number) =>
+      `https://remote.example/emoji/${"a".repeat(length - "https://remote.example/emoji/.png".length)}.png`;
+    await update(
+      author,
+      "long-emoji",
+      note(author, "long-emoji", "<p>:fits: :long:</p>", {
+        tag: [
+          { type: "Emoji", name: ":fits:", icon: { url: url(2048) } },
+          { type: "Emoji", name: ":long:", icon: { url: url(2049) } },
+        ],
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    const shown = read(
+      z.object({ emojis: z.array(z.object({ shortcode: z.string(), url: z.string() })) }),
+      await json(`/api/v1/statuses/${id}`),
+    );
+    expect(shown.emojis).toEqual([{ shortcode: "fits", url: url(2048) }]);
+  });
+
   it("does not let an older Update roll back a newer edit", async () => {
     const author = await remoteActor("update-order");
     const id = await create(author, "order-me", "<p>v1</p>");

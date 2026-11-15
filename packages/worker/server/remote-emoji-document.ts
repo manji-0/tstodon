@@ -21,9 +21,17 @@ const EmojiTagsSchema = z.object({
 });
 
 /**
+ * The longest image URL kept. The URL is stored with the note or the profile
+ * and written twice in every entity that lists the emoji, so a hostile
+ * document must not set its size.
+ */
+const MAX_EMOJI_URL_LENGTH = 2048;
+
+/**
  * The custom emoji a note or an actor declares in the `Emoji` objects of its
  * `tag`, the first of each shortcode. `sameAs` gives the form in which two
- * shortcodes are one.
+ * shortcodes are one. A tag whose image URL is longer than
+ * `MAX_EMOJI_URL_LENGTH` is left out.
  */
 export const declaredEmojis = (
   raw: unknown,
@@ -35,7 +43,13 @@ export const declaredEmojis = (
   for (const tag of tags.isOk() ? (tags.value.tag ?? []) : []) {
     const shortcode = tag.name?.replace(/^:|:$/g, "");
     const url = tag.icon?.url;
-    if (tag.type !== "Emoji" || !shortcode || !url || seen.has(sameAs(shortcode))) {
+    if (
+      tag.type !== "Emoji" ||
+      !shortcode ||
+      !url ||
+      url.length > MAX_EMOJI_URL_LENGTH ||
+      seen.has(sameAs(shortcode))
+    ) {
       continue;
     }
     seen.add(sameAs(shortcode));
