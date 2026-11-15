@@ -238,7 +238,7 @@ describe("deleting a local account", () => {
     expect(new Set(ids).size).toBe(2);
   });
 
-  it("tells the account's followers and follows first when there are more inboxes than the cap", () => {
+  it("caps only the other known inboxes, never the account's followers and follows", () => {
     const related = ["https://a.example/inbox", "https://b.example/inbox"];
     const known = ["https://c.example/inbox", "https://a.example/inbox", "https://d.example/inbox"];
     expect(actorDeleteInboxes(related, known, 3)).toEqual([
@@ -246,7 +246,8 @@ describe("deleting a local account", () => {
       "https://b.example/inbox",
       "https://c.example/inbox",
     ]);
-    expect(actorDeleteInboxes(related, known, 1)).toEqual(["https://a.example/inbox"]);
+    expect(actorDeleteInboxes(related, known, 1)).toEqual(related);
+    expect(actorDeleteInboxes(related, known, 0)).toEqual(related);
   });
 
   it("sends nothing for an account no remote server knows", async () => {

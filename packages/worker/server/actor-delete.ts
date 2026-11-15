@@ -23,23 +23,29 @@ import { parseInstanceIdentity } from "./runtime-config";
  */
 
 /**
- * The most inboxes one account's `Delete` goes to. Mastodon sends it to
- * every inbox it knows; here the targets are stored in the request that
- * deletes the account (100 a D1 batch) and delivered by the delivery
- * Workflow ten a step, so the number is capped.
+ * The most inboxes one account's `Delete` goes to beyond its followers' and
+ * its follows'. Mastodon sends it to every inbox it knows; here the targets
+ * are stored in the request that deletes the account and delivered by the
+ * delivery Workflow ten a step, so the inboxes with no tie to the account
+ * are capped. Those of its followers and follows never are: each holds a
+ * follow that must end.
  */
 export const ACTOR_DELETE_INBOX_LIMIT = 1000;
 
 /**
- * The inboxes a `Delete` goes to, at most `limit`: `related` first (the
- * account's followers and the accounts it follows, which hold a follow that
- * must end), then the `known` inboxes not among them.
+ * The inboxes a `Delete` goes to: every one of `related` (the account's
+ * followers and the accounts it follows), then the `known` inboxes not among
+ * them, as many as fit under `limit`.
  */
 export const actorDeleteInboxes = (
   related: ReadonlyArray<string>,
   known: ReadonlyArray<string>,
   limit: number,
-): string[] => [...new Set([...related, ...known])].slice(0, limit);
+): string[] => {
+  const inboxes = new Set(related);
+  const room = Math.max(0, limit - inboxes.size);
+  return [...inboxes, ...known.filter((inbox) => !inboxes.has(inbox)).slice(0, room)];
+};
 
 /** What is left of a local account to announce its deletion with. */
 export type DepartingActor = Readonly<{
