@@ -18,7 +18,11 @@ export type NotificationPolicy = Readonly<{
  * reads.
  */
 export type NotificationSender = Readonly<{
-  /** When this server first stored the account (Mastodon's `accounts.created_at`). */
+  /**
+   * When the account was created, as Mastodon's `accounts.created_at` holds
+   * it: a local account's sign-up, and a remote actor's `published` date, or
+   * when this server first stored the actor if its document gives none.
+   */
   createdAt: string;
   standing: AccountStanding;
   /** A local profile marked as a bot, or a remote `Service` or `Application` actor. */

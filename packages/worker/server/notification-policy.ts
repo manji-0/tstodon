@@ -50,7 +50,8 @@ type FollowFacts = Pick<
 /**
  * The accepted follows between the recipient and the sender, and when this
  * server first stored the sender, in one read. A local account's `createdAt`
- * comes with its account row instead.
+ * comes with its account row instead, and a remote actor's `published` date
+ * takes the place of the stored time when it has one.
  */
 const followFacts = async (
   db: D1Database,
@@ -161,11 +162,18 @@ const unansweredPrivateMention = async (
   return ok(!NotificationPolicy.answersRecipient(ancestors));
 };
 
-/** The sender's standing and whether it is a bot. */
+type SenderProfile = Readonly<{
+  standing: AccountStanding;
+  bot: boolean;
+  /** A remote actor's `published` date, when its document gave one. */
+  published: string | undefined;
+}>;
+
+/** The sender's standing, whether it is a bot, and when a remote actor says it was created. */
 const senderProfile = async (
   db: D1Database,
   sender: Sender,
-): Promise<Result<Readonly<{ standing: AccountStanding; bot: boolean }>, RepositoryError>> => {
+): Promise<Result<SenderProfile, RepositoryError>> => {
   if (sender.kind === "Local") {
     const [standing, profile] = await Promise.all([
       findAccountStanding(db, sender.accountId),
@@ -174,7 +182,11 @@ const senderProfile = async (
     if (standing.isErr()) {
       return err(standing.error);
     }
-    return profile.map((found) => ({ standing: standing.value, bot: found.bot }));
+    return profile.map((found) => ({
+      standing: standing.value,
+      bot: found.bot,
+      published: undefined,
+    }));
   }
   const [moderation, actor] = await Promise.all([
     getRemoteActorModeration(db, sender.actorUri),
@@ -186,6 +198,7 @@ const senderProfile = async (
   return actor.map((found) => ({
     standing: moderation.value.standing,
     bot: found?.profile.bot ?? false,
+    published: found?.profile.publishedAt ?? undefined,
   }));
 };
 
@@ -212,10 +225,14 @@ const senderFacts = async (
   if (unanswered.isErr()) {
     return err(unanswered.error);
   }
+  // Mastodon's `ProcessAccountService` sets a remote account's `created_at`
+  // to the actor's `published` date, and to the time it saves the row only
+  // without one.
   return ok({
-    ...profile.value,
+    standing: profile.value.standing,
+    bot: profile.value.bot,
     ...follows.value,
-    createdAt: localCreatedAt ?? follows.value.createdAt,
+    createdAt: localCreatedAt ?? profile.value.published ?? follows.value.createdAt,
     unansweredPrivateMention: unanswered.value,
   });
 };

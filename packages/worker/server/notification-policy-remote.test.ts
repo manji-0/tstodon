@@ -227,19 +227,28 @@ describe("the notification policy for a remote sender", () => {
     expect(await outcome(recipient)).toEqual({ listed: 1, held: 1 });
   });
 
-  it("applies `for_new_accounts` to an account first seen in the last thirty days", async () => {
+  it("applies `for_new_accounts` to an account published in the last thirty days", async () => {
     const recipient = await local("np-remote-new-account@example.com");
-    const old = await remoteActor("np-old-account");
-    const fresh = await remoteActor("np-new-account");
-    const freshFriend = await remoteActor("np-new-friend");
-    await firstSeen(old, 31);
+    const old = await remoteActor("np-old-account", "remote.example", { published: daysAgo(400) });
+    const oldUndated = await remoteActor("np-old-undated-account");
+    const fresh = await remoteActor("np-new-account", "remote.example", { published: daysAgo(2) });
+    const freshUndated = await remoteActor("np-new-undated-account");
+    const freshFriend = await remoteActor("np-new-friend", "remote.example", {
+      published: daysAgo(2),
+    });
+    // An old account seen here for the first time is not new; without a
+    // `published` date, the time this server first stored it stands in.
+    await firstSeen(fresh, 60);
+    await firstSeen(oldUndated, 31);
     await follows(recipient, freshFriend, "np-new-friend");
     await setPolicy(recipient, { for_new_accounts: "filter" });
 
     await mention(old, recipient, "np-old-account");
+    await mention(oldUndated, recipient, "np-old-undated-account");
     await mention(freshFriend, recipient, "np-new-friend");
-    expect(await outcome(recipient)).toEqual({ listed: 2, held: 0 });
+    expect(await outcome(recipient)).toEqual({ listed: 3, held: 0 });
     await mention(fresh, recipient, "np-new-account");
-    expect(await outcome(recipient)).toEqual({ listed: 2, held: 1 });
+    await mention(freshUndated, recipient, "np-new-undated-account");
+    expect(await outcome(recipient)).toEqual({ listed: 3, held: 2 });
   });
 });
