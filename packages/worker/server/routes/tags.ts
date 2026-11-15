@@ -8,6 +8,8 @@ import { localRef } from "../account-ref";
 import { findAccountById } from "../account-store";
 import { authenticate } from "../auth";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
+import { RemoteAccountId } from "../remote-account-id";
+import { findRemoteActorByUri } from "../remote-actor-store";
 import { mastodonFeaturedTag, mastodonTag } from "../tag-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { readParams } from "../request-params";
@@ -399,7 +401,19 @@ export const getV1AccountsByIdFeaturedTags = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
+  const id = c.req.param("id") ?? "";
+  // A remote actor's `featuredTags` collection is not fetched, so a remote
+  // account this server knows has none: an empty list, not the 404 a client
+  // reads as a missing account (INT-14 tracks fetching the collection).
+  const actorUri = RemoteAccountId.decode(id);
+  if (actorUri.isOk()) {
+    const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
+    if (actor.isErr()) {
+      return jsonRepositoryError(c, actor.error.message);
+    }
+    return actor.value ? c.json([]) : tagNotFound(c);
+  }
+  const account = await findAccountById(c.env.DB, id);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
   }

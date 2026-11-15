@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
 import { findRemoteActorsByUris } from "./remote-actor-store";
+import { readPollByStatusId, recordRemotePollVote, votePoll } from "./poll-store";
 import { handleRemotePollVote } from "./remote-poll-vote";
 import { processOutboxJob } from "./outbox-job";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -232,6 +233,32 @@ describe("remote votes on a local poll", () => {
     expect(state.votes_count).toBe(3);
     expect(state.voters_count).toBe(2);
     expect(state.options.map((option) => option.votes_count)).toEqual([1, 0, 2]);
+  });
+
+  it("counts every vote when two are written from one read of the poll", async () => {
+    // Mastodon sends one `Create` per chosen option, at once: each delivery
+    // reads the poll before the other has written its vote.
+    const poll = await createPoll("race-author@example.com", { multiple: true });
+    const voter = await remoteActor("race-voter");
+    const stale = (await readPollByStatusId(env.DB, poll.statusId, undefined))._unsafeUnwrap();
+    if (!stale) {
+      throw new Error("no poll");
+    }
+
+    for (const [index, title] of ["cats", "birds"].entries()) {
+      const recorded = await recordRemotePollVote(env.DB, stale, {
+        actorUri: voter.actorUri,
+        objectUri: `https://remote.example/votes/race-${index}`,
+        title,
+      });
+      expect(recorded._unsafeUnwrap()).toEqual({ kind: "Recorded" });
+    }
+    await votePoll(env.DB, poll.pollId, poll.authorId, [0]);
+
+    const state = await pollState(poll);
+    expect(state.options.map((option) => option.votes_count)).toEqual([2, 0, 1]);
+    expect(state.votes_count).toBe(3);
+    expect(state.voters_count).toBe(2);
   });
 
   it("rejects a second option on a single-choice poll", async () => {

@@ -20,9 +20,12 @@ import { newEntityId } from "./ids";
  * media bucket under `emoji/` and keep a row for it.
  */
 
+export type UnsupportedEmojiImage = Readonly<{ kind: "UnsupportedImage" }>;
+
 export type UploadEmojiError =
   | Readonly<{ kind: "InvalidShortcode" }>
   | Readonly<{ kind: "ImageRequired" }>
+  | UnsupportedEmojiImage
   | Readonly<{ kind: "ShortcodeTaken" }>
   | RepositoryError;
 
@@ -30,11 +33,27 @@ export type UploadEmojiError =
 export const UPLOAD_EMOJI_ERRORS = {
   InvalidShortcode: "shortcode is invalid",
   ImageRequired: "image is required",
+  UnsupportedImage: "image must be a PNG, GIF or WebP file",
   ShortcodeTaken: "shortcode has already been taken",
 } as const satisfies Record<Exclude<UploadEmojiError["kind"], "RepositoryError">, string>;
 
-const contentTypeOf = (image: File): string =>
-  image.type.length > 0 ? image.type : "application/octet-stream";
+/**
+ * The types an emoji's image may have: Mastodon's, and APNG. The Worker can
+ * serve the image from the instance's own origin (`getEmojiById`), where an
+ * SVG or HTML document would run its script.
+ */
+const EMOJI_IMAGE_TYPES: ReadonlyArray<string> = [
+  "image/png",
+  "image/apng",
+  "image/gif",
+  "image/webp",
+];
+
+/** `contentType` when an emoji's image may have it, parameters dropped. */
+export const emojiImageType = (contentType: string): string | undefined => {
+  const type = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+  return EMOJI_IMAGE_TYPES.includes(type) ? type : undefined;
+};
 
 /** A file part of a form that holds bytes; an empty file input sends none. */
 export const uploadedFile = (value: unknown): File | undefined =>
@@ -58,6 +77,10 @@ export const uploadCustomEmoji = async (
   if (!input.image) {
     return err({ kind: "ImageRequired" });
   }
+  const contentType = emojiImageType(input.image.type);
+  if (contentType === undefined) {
+    return err({ kind: "UnsupportedImage" });
+  }
   const existing = await findCustomEmojiRowByShortcode(env.DB, shortcode);
   if (existing.isErr()) {
     return err(existing.error);
@@ -68,7 +91,6 @@ export const uploadCustomEmoji = async (
   }
   const id = newEntityId();
   const objectKey = `emoji/${id}`;
-  const contentType = contentTypeOf(input.image);
   const bytes = await input.image.arrayBuffer();
   const stored = await env.MEDIA.put(objectKey, bytes, {
     httpMetadata: { contentType },
@@ -96,7 +118,8 @@ export const uploadCustomEmoji = async (
 
 /**
  * Change an emoji: `undefined` leaves a field alone, `null` clears the
- * category. `undefined` in the result means there is no such emoji.
+ * category. `undefined` in the result means there is no such emoji. A new
+ * image of a type an emoji may not have is refused before anything is written.
  */
 export const changeCustomEmoji = async (
   env: Env,
@@ -106,7 +129,11 @@ export const changeCustomEmoji = async (
     category: string | null | undefined;
     image: File | undefined;
   }>,
-): Promise<Result<CustomEmojiRow | undefined, RepositoryError>> => {
+): Promise<Result<CustomEmojiRow | undefined, UnsupportedEmojiImage | RepositoryError>> => {
+  const imageType = changes.image ? emojiImageType(changes.image.type) : undefined;
+  if (changes.image && imageType === undefined) {
+    return err({ kind: "UnsupportedImage" });
+  }
   const row = await findCustomEmojiRowById(env.DB, id);
   if (row.isErr() || !row.value) {
     return row;
@@ -122,8 +149,8 @@ export const changeCustomEmoji = async (
       return err(updated.error);
     }
   }
-  if (changes.image) {
-    const contentType = contentTypeOf(changes.image);
+  if (changes.image && imageType !== undefined) {
+    const contentType = imageType;
     const bytes = await changes.image.arrayBuffer();
     const stored = await env.MEDIA.put(`emoji/${id}`, bytes, {
       httpMetadata: { contentType },

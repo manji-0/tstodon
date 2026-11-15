@@ -2,6 +2,7 @@ import type { ApiStatusJSON } from "@tstodon/api";
 import { InstanceIdentity, IsoInstant, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
+import { loadCustomEmojis } from "./custom-emoji-store";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
 import { startHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
@@ -57,6 +58,7 @@ export const announceNoteUpdate = async (
           poll: await loadNotePoll(env.DB, note.id),
           media: media.value,
           quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
+          emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
         },
       ),
     });

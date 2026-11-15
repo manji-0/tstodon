@@ -12,6 +12,7 @@ import type {
 import { InstanceIdentity, LocalStatus, StatusId, StatusTarget } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
+import { loadCustomEmojis } from "./custom-emoji-store";
 import type { RepositoryError } from "./d1";
 import { enqueueLocalActivity, enqueueTargetedActivity } from "./delivery";
 import { formatPostText } from "./html";
@@ -315,6 +316,7 @@ export const publishLocalNote = async (
           poll: await loadNotePoll(env.DB, note.id),
           media: media.value,
           quotePolicy: await loadNoteQuotePolicy(env.DB, user, note),
+          emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
         });
   const enqueued =
     object === undefined

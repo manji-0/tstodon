@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 /**
  * Interop sweep: one pass over the interactions tstodon and a real Mastodon
- * exchange, each in both directions, through the client APIs only. A failed
+ * exchange, each in both directions, through the client APIs (and, for what
+ * Mastodon has no API for, a few lines run in its Rails environment). A failed
  * step is recorded and the sweep goes on, so one run lists every gap. Exits 1
  * if any step failed. This is a survey to rank scenarios by, not a gate.
  * Needs the stack from `bootstrap.sh` and `.state/e2e.env`.
  */
-import { deflateSync, crc32 } from "node:zlib";
-import { A, signUp, type E2eUser } from "../lib.js";
+import { A, signUp } from "../lib.js";
 import { mastodonUser } from "./lib.js";
+import { upload } from "./media.js";
 import { authorizedFetchScenarios } from "./probe-authorized-fetch.js";
 import { directScenarios } from "./probe-direct.js";
+import { editScenarios } from "./probe-edits.js";
+import { emojiScenarios } from "./probe-emoji.js";
+import { hashtagScenarios } from "./probe-hashtags.js";
+import { moderationScenarios } from "./probe-moderation.js";
+import { moveScenarios } from "./probe-move.js";
+import { profileScenarios } from "./probe-profile.js";
+import { quoteScenarios } from "./probe-quotes.js";
+import { mediaScenarios } from "./probe-media.js";
+import { pollScenarios } from "./probe-polls.js";
+import { reactionScenarios } from "./probe-reactions.js";
 import { followScenarios } from "./probe-follows.js";
 import { searchScenarios } from "./probe-search.js";
 import { threadScenarios } from "./probe-threads.js";
@@ -24,7 +35,6 @@ import {
   Conversations,
   eventually,
   follow,
-  Media,
   notified,
   onHome,
   Poll,
@@ -38,45 +48,6 @@ import {
   step,
   StepFailure,
 } from "./sweep.js";
-
-/** A 32×32 red PNG. */
-const png = (): Blob => {
-  const chunk = (type: string, data: Buffer): Buffer => {
-    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    const sum = Buffer.alloc(4);
-    sum.writeUInt32BE(crc32(body));
-    return Buffer.concat([length, body, sum]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(32, 0);
-  header.writeUInt32BE(32, 4);
-  header.set([8, 2, 0, 0, 0], 8);
-  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(96, Buffer.from([220, 40, 40]))]);
-  const pixels = deflateSync(Buffer.concat(Array.from({ length: 32 }, () => row)));
-  const bytes = Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", header),
-    chunk("IDAT", pixels),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-  return new Blob([new Uint8Array(bytes)], { type: "image/png" });
-};
-
-const upload = async (user: E2eUser, description: string): Promise<string> => {
-  const form = new FormData();
-  form.set("file", png(), "red.png");
-  form.set("description", description);
-  const media = await call(user, "/api/v2/media", Media, { method: "POST", form });
-  await eventually(`${user.username}'s upload is processed`, async () => {
-    const response = await fetch(`${user.origin}/api/v1/media/${media.id}`, {
-      headers: user.headers,
-    });
-    return response.status === 200 ? true : undefined;
-  });
-  return media.id;
-};
 
 /** Every interaction once, in both directions, between a pair that follows each other. */
 const baseScenarios = async ({ stamp, mona, carol }: Cast): Promise<void> => {
@@ -363,6 +334,16 @@ const areas: ReadonlyArray<readonly [name: string, run: (cast: Cast) => Promise<
   ["threads", threadScenarios],
   ["follows", followScenarios],
   ["authorized-fetch", authorizedFetchScenarios],
+  ["edits", editScenarios],
+  ["reactions", reactionScenarios],
+  ["polls", pollScenarios],
+  ["media", mediaScenarios],
+  ["emoji", emojiScenarios],
+  ["hashtags", hashtagScenarios],
+  ["profile", profileScenarios],
+  ["moderation", moderationScenarios],
+  ["quotes", quoteScenarios],
+  ["move", moveScenarios],
 ];
 
 /** `E2E_PROBE_AREAS=search,threads` runs those areas only. */
@@ -384,7 +365,15 @@ const main = async (): Promise<void> => {
   for (const [name, run] of areas) {
     if (only === undefined || only.includes(name)) {
       console.log(`\n== ${name}`);
-      await run(cast);
+      // What an area does outside its steps (making this run's Mastodon
+      // users needs Docker) fails that area, and the sweep goes on.
+      try {
+        await run(cast);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        results.push({ name: `${name}: setup`, outcome: "FAIL", detail });
+        console.log(`FAIL ${name}: setup\n     ${detail}`);
+      }
     }
   }
 

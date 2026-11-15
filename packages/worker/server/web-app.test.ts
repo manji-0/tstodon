@@ -186,7 +186,14 @@ describe("Mastodon web app", () => {
     expect(worker.headers.get("cache-control") ?? "").not.toContain("immutable");
     expect(await worker.text()).toContain("/packs/");
     // Upstream's emoji, fetched at build time, and the committed sounds.
-    expect((await SELF.fetch(`${ORIGIN}/emoji/1f600.svg`)).status).toBe(200);
+    // `GET /emoji/:id` serves a custom emoji from the bucket; a twemoji file
+    // under the same prefix is still the static asset, cached as one.
+    const twemoji = await SELF.fetch(`${ORIGIN}/emoji/1f600.svg`);
+    expect(twemoji.status).toBe(200);
+    expect(twemoji.headers.get("content-type")).toBe("image/svg+xml");
+    expect(twemoji.headers.get("cache-control") ?? "").not.toContain("no-store");
+    expect(twemoji.headers.get("etag")).not.toBeNull();
+    await twemoji.body?.cancel();
     expect((await SELF.fetch(`${ORIGIN}/sounds/boop.mp3`)).status).toBe(200);
     // The fixed icon URLs the service worker puts on notifications.
     for (const icon of ["/badge.png", "/android-chrome-192x192.png"]) {

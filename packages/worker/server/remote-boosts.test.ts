@@ -355,3 +355,93 @@ describe("remote boosts on the home timeline", () => {
     expect(fetched.status).toBe(404);
   });
 });
+
+describe("a boost of the booster's own followers-only note", () => {
+  it("is kept for the booster's followers, and another actor's boost of it is dropped", async () => {
+    const booster = await remoteActor("boost-own-private", "booster.example");
+    const stranger = await remoteActor("boost-own-private-stranger", "booster.example");
+    const follower = "boost-own-private-follower@example.com";
+    const other = "boost-own-private-other@example.com";
+    await signedInAccount(other);
+    await acceptedFollow(follower, booster, "own-private");
+    await acceptedFollow(follower, stranger, "own-private-stranger");
+    const noteUri = `${new URL(booster.actorUri).origin}/notes/boost-own-private`;
+    expect(
+      await booster.send({
+        id: `${noteUri}/activity`,
+        type: "Create",
+        object: {
+          ...noteDocument(booster, noteUri, "boost-own-private"),
+          to: [`${booster.actorUri}/followers`],
+          cc: [],
+        },
+      }),
+    ).toBe(202);
+
+    // Mastodon addresses the boost of a followers-only post to the followers.
+    expect(
+      await booster.send({
+        id: announceId(booster, "own-private"),
+        type: "Announce",
+        object: noteUri,
+        to: [`${booster.actorUri}/followers`],
+        cc: [booster.actorUri],
+      }),
+    ).toBe(202);
+    expect(
+      await stranger.send({
+        id: announceId(stranger, "own-private"),
+        type: "Announce",
+        object: noteUri,
+        to: [PUBLIC],
+        cc: [`${stranger.actorUri}/followers`],
+      }),
+    ).toBe(202);
+
+    const boosts = (await home(follower)).filter((entry) => entry.reblog !== null);
+    expect(boosts).toMatchObject([
+      {
+        uri: announceId(booster, "own-private"),
+        account: { id: accountId(booster) },
+        reblog: { uri: noteUri },
+      },
+    ]);
+    const path = `/api/v1/statuses/${boosts[0]?.id ?? ""}`;
+    expect((await json(path, { headers: await authHeaders(follower) })).status).toBe(200);
+    expect((await json(path, { headers: await authHeaders(other) })).status).toBe(404);
+    expect((await json(path)).status).toBe(404);
+  });
+
+  it("hides a public boost from non-followers once its own target is followers-only", async () => {
+    const booster = await remoteActor("boost-narrowed", "booster.example");
+    const follower = "boost-narrowed-follower@example.com";
+    const other = "boost-narrowed-other@example.com";
+    await signedInAccount(other);
+    await acceptedFollow(follower, booster, "narrowed");
+    const noteUri = await note(booster, "boost-narrowed");
+    expect(await boost(booster, noteUri, "narrowed")).toBe(202);
+
+    const profile = `/api/v1/accounts/${accountId(booster)}/statuses`;
+    const boostsFor = async (headers?: Record<string, string>): Promise<string[]> =>
+      read(z.array(EntrySchema), (await json(profile, headers ? { headers } : undefined)).body)
+        .filter((entry) => entry.reblog !== null)
+        .map((entry) => entry.reblog?.uri ?? "");
+    expect(await boostsFor(await authHeaders(other))).toEqual([noteUri]);
+    expect(await boostsFor()).toEqual([noteUri]);
+
+    // The boost row stays public; a later copy of the note (a refetch) says
+    // the author narrowed it to followers.
+    await env.DB.prepare("UPDATE remote_statuses SET visibility = 'private' WHERE object_uri = ?")
+      .bind(noteUri)
+      .run();
+
+    expect(await boostsFor(await authHeaders(follower))).toEqual([noteUri]);
+    expect(await boostsFor(await authHeaders(other))).toEqual([]);
+    expect(await boostsFor()).toEqual([]);
+    const [entry] = (await home(follower)).filter((item) => item.reblog !== null);
+    const byId = `/api/v1/statuses/${entry?.id ?? ""}`;
+    expect((await json(byId, { headers: await authHeaders(follower) })).status).toBe(200);
+    expect((await json(byId, { headers: await authHeaders(other) })).status).toBe(404);
+    expect((await json(byId)).status).toBe(404);
+  });
+});

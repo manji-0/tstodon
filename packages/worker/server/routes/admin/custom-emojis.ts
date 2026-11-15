@@ -113,7 +113,9 @@ export const patchV1AdminCustomEmojisById = async (
 
   const latest = await changeCustomEmoji(c.env, id, { visibleInPicker, category, image });
   if (latest.isErr()) {
-    return jsonRepositoryError(c, latest.error.message);
+    return latest.error.kind === "UnsupportedImage"
+      ? validation(c, UPLOAD_EMOJI_ERRORS.UnsupportedImage)
+      : jsonRepositoryError(c, latest.error.message);
   }
   if (!latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);

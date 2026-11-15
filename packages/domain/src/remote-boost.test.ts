@@ -8,7 +8,14 @@ import { Visibility, type Visibility as VisibilityValue } from "./visibility";
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 const FOLLOWERS = "https://remote.example/users/booster/followers";
 
-const announce = (targetVisibility: VisibilityValue, to: string[], cc: string[]) => {
+const BOOSTER = "https://remote.example/users/booster";
+
+const announce = (
+  targetVisibility: VisibilityValue,
+  to: string[],
+  cc: string[],
+  targetAuthorUri: string | undefined = "https://remote.example/users/author",
+) => {
   const id = StatusId.parse("100");
   const target = StatusId.parse("50");
   const activityId = ActivityId.parse("https://remote.example/users/booster/statuses/1/activity");
@@ -18,10 +25,11 @@ const announce = (targetVisibility: VisibilityValue, to: string[], cc: string[])
   }
   return RemoteBoost.fromAnnounce({
     id: id.value,
-    actorUri: "https://remote.example/users/booster",
+    actorUri: BOOSTER,
     activityId: activityId.value,
     target: { kind: "RemoteStatus", statusId: target.value },
     targetVisibility,
+    targetAuthorUri,
     to,
     cc,
     publishedAt: publishedAt.value,
@@ -51,5 +59,21 @@ describe("RemoteBoost.fromAnnounce", () => {
     expect(announce(Visibility.Public, [], [])._unsafeUnwrapErr()).toEqual({
       kind: "DirectAudience",
     });
+  });
+
+  it("keeps an author's boost of their own followers-only status, for followers only", () => {
+    expect(
+      announce(Visibility.FollowersOnly, [FOLLOWERS], [BOOSTER], BOOSTER)._unsafeUnwrap()
+        .visibility,
+    ).toEqual(Visibility.FollowersOnly);
+    expect(
+      announce(Visibility.FollowersOnly, [PUBLIC], [FOLLOWERS], BOOSTER)._unsafeUnwrap().visibility,
+    ).toEqual(Visibility.FollowersOnly);
+    expect(announce(Visibility.Direct, [FOLLOWERS], [], BOOSTER)._unsafeUnwrapErr()).toEqual({
+      kind: "NotAnnounceable",
+    });
+    expect(
+      announce(Visibility.FollowersOnly, [FOLLOWERS], [], undefined)._unsafeUnwrapErr(),
+    ).toEqual({ kind: "NotAnnounceable" });
   });
 });

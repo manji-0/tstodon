@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { warmSchemas } from "@tstodon/core";
+import { assertNever, warmSchemas } from "@tstodon/core";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
 import { findRemotePollVotes } from "../remote-poll-vote-store";
@@ -12,7 +12,8 @@ import { numberList } from "../form-values";
 import { ApiPollVoteParamsSchema } from "@tstodon/api";
 import { readParams } from "../request-params";
 
-const REMOTE_VOTE_REFUSALS = {
+/** What a refused ballot answers, on a remote poll and on a local one. */
+const VOTE_REFUSALS = {
   DomainBlocked: "The poll's server is blocked",
   AlreadyVoted: "You have already voted on this poll",
   Expired: "The poll has ended",
@@ -84,14 +85,24 @@ export const postV1PollsByIdVotes = async (
     }
     return failure.kind === "NotFound"
       ? c.json({ error: "Record not found", kind: "NotFound" }, 404)
-      : c.json({ error: REMOTE_VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
+      : c.json({ error: VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
   }
   const voted = await votePoll(c.env.DB, c.req.param("id"), user.value.id, indexes);
   if (voted.isErr()) {
-    if (voted.error.message === "poll expired") {
-      return c.json({ error: "poll expired", kind: "PollExpired" }, 422);
+    const failure = voted.error;
+    switch (failure.kind) {
+      case "RepositoryError":
+        return jsonRepositoryError(c, failure.message);
+      case "PollNotFound":
+        return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+      case "PollExpired":
+        return c.json({ error: "poll expired", kind: "PollExpired" }, 422);
+      case "AlreadyVoted":
+      case "TooManyChoices":
+        return c.json({ error: VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
+      default:
+        return assertNever(failure);
     }
-    return jsonRepositoryError(c, voted.error.message);
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), user.value.id);
   if (poll.isErr() || !poll.value) {

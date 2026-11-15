@@ -43,7 +43,9 @@ export const headerObjectKey = (accountId: string, blobId: string): string =>
 export const mediaPublicUrl = (identity: InstanceIdentity, objectKey: string): string =>
   `${identity.mediaPublicBaseUrl.replace(/\/$/, "")}/${objectKey.replace(/^\//, "")}`;
 
-const OBJECT_KEY_RE = /^(attachments|avatars|headers)\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+$/;
+/** A custom emoji is stored under its id, digits only: `emoji/1f600.svg` is a static file. */
+const OBJECT_KEY_RE =
+  /^(?:(?:attachments|avatars|headers)\/[A-Za-z0-9._~-]+\/[A-Za-z0-9._~-]+|emoji\/[0-9]+)$/;
 
 /** Reject path traversal and unexpected key shapes before R2.get. */
 export const parseMediaObjectKey = (raw: string): string | undefined => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApEmoji } from "./actor";
 import { ApUri, withContext } from "./context";
 
 /**
@@ -57,8 +58,8 @@ const noteFields = {
   summary: z.string().nullable(),
   inReplyTo: ApUri.nullable(),
   attachment: z.array(ApDocument),
-  /** Mentions first, then hashtags, as Mastodon's `virtual_tags`. */
-  tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag])),
+  /** Mentions first, then hashtags, then custom emoji, as Mastodon's `virtual_tags`. */
+  tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag, ApEmoji])),
   interactionPolicy: ApInteractionPolicy,
   /** The quoted status (FEP-044f), with Misskey's and the older names. */
   quote: ApUri.optional(),

@@ -168,13 +168,28 @@ const signUpBrowser = async (
   if (!signedIn.ok) {
     return fail(`Access sign-in for ${username} on ${origin}`, await signedIn.text());
   }
+  return { headers: await appToken(origin, browser, USER_SCOPES, username), browser };
+};
+
+const USER_SCOPES = "read write follow push";
+
+/**
+ * Register an app on `origin`, approve it for `scopes` on the consent page
+ * with a signed-in browser, and return the bearer token as request headers.
+ */
+export const appToken = async (
+  origin: string,
+  browser: E2eBrowser,
+  scopes: string,
+  username: string,
+): Promise<Record<string, string>> => {
   const appResponse = await fetch(`${origin}/api/v1/apps`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       client_name: "tstodon e2e",
       redirect_uris: OOB,
-      scopes: "read write follow push",
+      scopes,
     }),
   });
   const app = expectParsed(
@@ -188,7 +203,7 @@ const signUpBrowser = async (
     body: new URLSearchParams({
       client_id: app.client_id,
       redirect_uri: OOB,
-      scope: "read write follow push",
+      scope: scopes,
       decision: "approve",
     }).toString(),
   });
@@ -208,7 +223,7 @@ const signUpBrowser = async (
     }),
   });
   const token = expectParsed("token", schemaResult(IssuedToken), await tokenResponse.json());
-  return { headers: { Authorization: `Bearer ${token.access_token}` }, browser };
+  return { Authorization: `Bearer ${token.access_token}` };
 };
 
 /** {@link signUpBrowser}'s bearer token alone. */

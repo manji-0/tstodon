@@ -46,5 +46,11 @@ describe("media-keys", () => {
     expect(parseMediaObjectKey("../etc/passwd")).toBeUndefined();
     expect(parseMediaObjectKey("attachments/acct-1/media-1/extra")).toBeUndefined();
     expect(parseMediaObjectKey("other/acct-1/media-1")).toBeUndefined();
+    expect(parseMediaObjectKey("emoji/117617487655515663")).toBe("emoji/117617487655515663");
+    expect(parseMediaObjectKey("emoji/a/b")).toBeUndefined();
+    // A stored emoji is named by its id; `public/emoji/1f600.svg` is a static file.
+    expect(parseMediaObjectKey("emoji/1f600.svg")).toBeUndefined();
+    expect(parseMediaObjectKey("emoji/1f600")).toBeUndefined();
+    expect(parseMediaObjectKey("avatars/blob-1")).toBeUndefined();
   });
 });

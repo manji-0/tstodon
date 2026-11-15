@@ -3,6 +3,7 @@ import { InstanceIdentity, type LocalNote, type OutboxJob } from "@tstodon/domai
 import { findAccountById } from "./account-store";
 import { noteDocument } from "./activitypub";
 import { nowIso } from "./clock";
+import { loadCustomEmojis } from "./custom-emoji-store";
 import { enqueueLocalActivity } from "./delivery";
 import { newEntityId } from "./ids";
 import { measureJobPage } from "./metrics";
@@ -103,6 +104,7 @@ const distributePollUpdate = async (
       poll,
       media: media.value,
       quotePolicy: await loadNoteQuotePolicy(env.DB, author.value, note),
+      emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
     }),
   };
   if (!reachesRemoteInboxes(update, identity.domain)) {

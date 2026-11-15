@@ -10,6 +10,7 @@ import {
   ACTIVITY_STREAMS,
   type ApActivityDocumentOf,
   type ApActorDocumentJSON,
+  type ApEmojiJSON,
   type ApImageJSON,
   PUBLIC_COLLECTION,
   type ApQuestionJSON,
@@ -20,7 +21,7 @@ import {
 import type { z } from "zod";
 import { type AccountProfile, EMPTY_ACCOUNT_PROFILE } from "./account-profile-store";
 import type { ActivityJsonSchema } from "./activitypub-wire";
-import type { CustomEmoji } from "./emoji";
+import { type CustomEmoji, emojisInTexts } from "./emoji";
 import { escapeHtml, textToHtml } from "./html";
 import { mediaPublicUrl } from "./media-keys";
 import type { PollRecord } from "./poll-store";
@@ -59,6 +60,13 @@ const ACTOR_CONTEXT_TERMS = {
   indexable: "toot:indexable",
   Emoji: "toot:Emoji",
 } as const;
+
+/** A custom emoji an actor or a note uses, as its `Emoji` tag. */
+const emojiTag = (emoji: CustomEmoji): ApEmojiJSON => ({
+  type: "Emoji",
+  name: `:${emoji.shortcode}:`,
+  icon: { type: "Image", url: emoji.url },
+});
 
 /** An avatar or header as an `Image`, with its stored content type when known. */
 const actorImage = (
@@ -125,14 +133,7 @@ export const actorDocument = (
       owner: id,
       publicKeyPem: account.publicKeyPem,
     },
-    tag:
-      shown.kind === "Shown"
-        ? shown.emojis.map((emoji) => ({
-            type: "Emoji",
-            name: `:${emoji.shortcode}:`,
-            icon: { type: "Image", url: emoji.url },
-          }))
-        : [],
+    tag: shown.kind === "Shown" ? shown.emojis.map(emojiTag) : [],
     attachment: (profile?.fields ?? []).map((field) => ({
       type: "PropertyValue",
       name: field.name,
@@ -368,10 +369,19 @@ export const noteDocument = (
     media: NoteMedia;
     /** Who may quote the note, federated as `interactionPolicy.canQuote`. */
     quotePolicy: QuotePolicy;
+    /**
+     * The instance's custom emoji. Required: the ones the note uses are its
+     * `Emoji` tags, without which a remote server shows the bare shortcode.
+     */
+    emojis: ReadonlyArray<CustomEmoji>;
   }>,
 ): ApStatusDocumentJSON => {
   const { quote, mentions = [], reply, poll, quotePolicy } = extras;
   const hashtags = extractHashtags(note.text);
+  const emojis = emojisInTexts(
+    [note.text, note.spoilerText, ...(poll?.options.map((option) => option.title) ?? [])],
+    extras.emojis,
+  );
   const { attachments, authorSensitized } = extras.media;
   const actor = InstanceIdentity.actorUrl(identity, account.username);
   const id = `${actor}/statuses/${note.id}`;
@@ -422,7 +432,10 @@ export const noteDocument = (
           },
         }
       : {}),
-    ...(poll || attachments.length > 0 ? { toot: "http://joinmastodon.org/ns#" } : {}),
+    ...(poll || attachments.length > 0 || emojis.length > 0
+      ? { toot: "http://joinmastodon.org/ns#" }
+      : {}),
+    ...(emojis.length > 0 ? { Emoji: "toot:Emoji" } : {}),
     ...(poll ? { votersCount: "toot:votersCount" } : {}),
     ...(attachments.length > 0
       ? {
@@ -474,6 +487,7 @@ export const noteDocument = (
         href: tagUrl(identity, name),
         name: `#${name}`,
       })),
+      ...emojis.map(emojiTag),
     ],
     interactionPolicy: { canQuote: { automaticApproval } },
   };

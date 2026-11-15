@@ -19,7 +19,9 @@ export const customEmojiJson = (emoji: CustomEmoji): ApiCustomEmojiJSON => ({
 
 /**
  * Configured emojis whose `:shortcode:` appears in `text`, in first-use order.
- * Shortcodes are matched case-insensitively against the configured set.
+ * A shortcode matches as written, case and all, as Mastodon's
+ * `CustomEmoji.from_text`: a remote server matches an `Emoji` tag's name
+ * against the text the same way, so `:Blob:` is not the emoji `blob`.
  */
 export const emojisInText = (
   text: string,
@@ -28,11 +30,11 @@ export const emojisInText = (
   if (emojis.length === 0 || text.length === 0) {
     return [];
   }
-  const byShortcode = new Map(emojis.map((emoji) => [emoji.shortcode.toLowerCase(), emoji]));
+  const byShortcode = new Map(emojis.map((emoji) => [emoji.shortcode, emoji]));
   const found: CustomEmoji[] = [];
   const seen = new Set<string>();
   for (const match of text.matchAll(/:([a-zA-Z0-9_]+):/g)) {
-    const shortcode = match[1]?.toLowerCase();
+    const shortcode = match[1];
     if (shortcode === undefined || seen.has(shortcode)) {
       continue;
     }
@@ -54,9 +56,8 @@ export const emojisInTexts = (
   const seen = new Set<string>();
   for (const text of texts) {
     for (const emoji of emojisInText(text, emojis)) {
-      const key = emoji.shortcode.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
+      if (!seen.has(emoji.shortcode)) {
+        seen.add(emoji.shortcode);
         found.push(emoji);
       }
     }
