@@ -34,6 +34,7 @@ import {
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
+  listOutboundFollowInboxes as listOutboundFollowInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listAcceptedRemoteFollowerActors as listAcceptedRemoteFollowerActorsSql,
   listPeerDomains as listPeerDomainsSql,
@@ -572,6 +573,20 @@ export const listAcceptedRemoteFollowerInboxes = async (
     const results = await queryTyped(
       db,
       listAcceptedRemoteFollowerInboxesSql(targetAccountId),
+      InboxUriSharedInboxUriRow,
+    );
+    return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
+  });
+
+/** The inboxes of the remote actors `accountId` follows or asked to follow. */
+export const listOutboundFollowInboxes = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(
+      db,
+      listOutboundFollowInboxesSql(accountId),
       InboxUriSharedInboxUriRow,
     );
     return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];

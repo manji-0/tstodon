@@ -125,6 +125,20 @@ export const forwardActivityToInboxes = (
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "Account", accountId }, kind, body, inboxUrls);
 
+/**
+ * {@link enqueueActivityToInboxes} for an account that is about to be
+ * deleted: the activity keeps the account's name and key, and is delivered
+ * and signed after the account's row is gone.
+ */
+export const enqueueDepartedAccountActivity = (
+  env: Env,
+  signer: Extract<OutboundSigner, { kind: "DepartedAccount" }>,
+  kind: string,
+  payload: ApActivityDocumentJSON,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<Result<void, EnqueueLocalActivityError>> =>
+  enqueueSignedActivity(env, signer, kind, payload, inboxUrls);
+
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
   env: Env,
@@ -159,7 +173,7 @@ const enqueueSignedActivity = async (
     console.error(
       JSON.stringify({
         kind: "OutboxEnqueueInsertFailed",
-        signer,
+        signer: signer.kind,
         activityKind: kind,
         message: inserted.error.message,
       }),
@@ -282,13 +296,19 @@ type SigningKey =
   | Readonly<{ kind: "Missing" }>
   | Readonly<{ kind: "Unavailable" }>;
 
-/** The key that signs `activity`: its account's, read with it, or the instance actor's. */
+/**
+ * The key that signs `activity`: its account's or a deleted account's, read
+ * with it, or the instance actor's.
+ */
 const signingKey = async (
   env: Env,
   identity: InstanceIdentity,
   activity: OutboundActivityWithSignerRow,
 ): Promise<SigningKey> => {
-  if (activity.account_id === null) {
+  if (activity.signer_username === null || activity.signer_private_key_jwk === null) {
+    if (activity.account_id !== null) {
+      return { kind: "Missing" };
+    }
     const keys = await instanceActorKeys(env.DB);
     return keys.isOk()
       ? {
@@ -297,9 +317,6 @@ const signingKey = async (
           privateKeyJwk: keys.value.privateKeyJwk,
         }
       : { kind: "Unavailable" };
-  }
-  if (activity.signer_username === null || activity.signer_private_key_jwk === null) {
-    return { kind: "Missing" };
   }
   const username = Username.parse(activity.signer_username);
   if (username.isErr()) {

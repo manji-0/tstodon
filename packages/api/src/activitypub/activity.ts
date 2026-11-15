@@ -89,14 +89,17 @@ export const ApUpdate = z.object({
 });
 export type ApUpdateJSON = z.infer<typeof ApUpdate>;
 
-/** `Delete` of a local status (a `Tombstone`) or of a quote stamp. */
+/**
+ * `Delete` of a local status (a `Tombstone`), of a quote stamp, or of the
+ * actor itself, named by its URI (`DeleteActorSerializer`).
+ */
 export const ApDelete = z.object({
   id: ApUri,
   type: z.literal("Delete"),
   actor: ApUri,
   to: audience,
   cc: audience.optional(),
-  object: z.union([ApTombstone, ApQuoteAuthorization]),
+  object: z.union([ApTombstone, ApQuoteAuthorization, ApUri]),
 });
 export type ApDeleteJSON = z.infer<typeof ApDelete>;
 

@@ -209,6 +209,19 @@ export const noteDeleteActivity = (
   object: { id: note.id, type: "Tombstone", atomUri: note.id },
 });
 
+/**
+ * The `Delete` of a local actor, as Mastodon's `DeleteActorSerializer`: the
+ * actor deletes itself, addressed to the public.
+ */
+export const actorDeleteActivity = (actorUri: string): ApActivityDocumentOf<"Delete"> => ({
+  "@context": ACTIVITY_STREAMS,
+  id: `${actorUri}#delete`,
+  type: "Delete",
+  actor: actorUri,
+  to: [PUBLIC_COLLECTION],
+  object: actorUri,
+});
+
 /** An `Announce` as delivered, with its `@context`. */
 export type AnnounceDocument = ApActivityDocumentOf<"Announce">;
 

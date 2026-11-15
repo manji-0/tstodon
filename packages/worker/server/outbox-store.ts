@@ -1,4 +1,4 @@
-import { assertNever, Sensitive, warmSchemas } from "@tstodon/core";
+import { assertNever, Sensitive, type SensitiveValue, warmSchemas } from "@tstodon/core";
 import {
   ActivityId,
   OutboxDelivery,
@@ -25,6 +25,7 @@ import {
   findOutboxFanout as findOutboxFanoutSql,
   findOutboxTarget as findOutboxTargetSql,
   insertOutboundActivity as insertOutboundActivitySql,
+  insertOutboundDepartedSigner as insertOutboundDepartedSignerSql,
   insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
   insertOutboxTargetOrIgnore as insertOutboxTargetOrIgnoreSql,
   insertSettledOutboxTargetOrIgnore as insertSettledOutboxTargetOrIgnoreSql,
@@ -57,7 +58,10 @@ export const OutboxDeliveryRowSchema = z.object({
 export type OutboundActivityRow = z.infer<typeof OutboundActivityRowSchema>;
 
 const OutboundActivityWithSignerRowSchema = OutboundActivityRowSchema.extend({
-  /** `null` for the instance actor, or when the signing account is gone. */
+  /**
+   * The signing account's, or the ones kept for a deleted account's last
+   * activity. `null` for the instance actor, or when the signing account is gone.
+   */
   signer_username: z.string().nullable(),
   signer_private_key_jwk: Sensitive.schema(z.string().min(1)).nullable(),
 });
@@ -152,10 +156,19 @@ const outboxDeliveryFromRow = (
   );
 };
 
-/** Who signs an outbound activity: a local account, or the instance actor. */
+/**
+ * Who signs an outbound activity: a local account, the instance actor, or an
+ * account that is being deleted, whose name and key are stored with the
+ * activity because its row will be gone when the activity is delivered.
+ */
 export type OutboundSigner =
   | Readonly<{ kind: "Account"; accountId: string }>
-  | Readonly<{ kind: "InstanceActor" }>;
+  | Readonly<{ kind: "InstanceActor" }>
+  | Readonly<{
+      kind: "DepartedAccount";
+      username: string;
+      privateKeyJwk: SensitiveValue<string>;
+    }>;
 
 export const insertOutboundActivity = async (
   db: D1Database,
@@ -175,6 +188,18 @@ export const insertOutboundActivity = async (
       db,
       insertOutboundActivitySql(id, accountId, input.kind, payloadJson, createdAt),
     ),
+    ...(input.signer.kind === "DepartedAccount"
+      ? [
+          d1PrepareTyped(
+            db,
+            insertOutboundDepartedSignerSql(
+              id,
+              input.signer.username,
+              input.signer.privateKeyJwk.reveal(),
+            ),
+          ),
+        ]
+      : []),
     d1PrepareTyped(
       db,
       insertOutboxDeliveryFanoutSql(

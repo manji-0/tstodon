@@ -464,6 +464,8 @@ export * from "./sql/insertOauthAuthorizationCode";
 
 export * from "./sql/insertOutboundActivity";
 
+export * from "./sql/insertOutboundDepartedSigner";
+
 export * from "./sql/insertOutboundFollow";
 
 export * from "./sql/insertOutboxDeliveryFanout";
@@ -653,6 +655,8 @@ export * from "./sql/listNotificationsAscending";
 export * from "./sql/listNotifyingFollowerIds";
 
 export * from "./sql/listOutboundActivities";
+
+export * from "./sql/listOutboundFollowInboxes";
 
 export * from "./sql/listOutboundFollowsByActor";
 

@@ -1,0 +1,145 @@
+import { schemaResult } from "@tstodon/core";
+import { SELF, env } from "cloudflare:test";
+import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
+import { ApActivityDocument, PUBLIC_COLLECTION } from "@tstodon/api/activitypub";
+import { expectContract } from "../test/api-contract";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { deliverTarget } from "../test/delivery-fixture";
+import { remoteActor } from "../test/remote-actor-fixture";
+import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
+import { RemoteAccountId } from "./remote-account-id";
+
+/**
+ * INT-15, account deletion over federation: deleting a local account sends a
+ * `Delete` of its actor, as Mastodon's `DeleteAccountService`, to the remote
+ * servers that know it, signed with the account's key although the account's
+ * row is gone when it is delivered.
+ */
+
+const ORIGIN = "https://example.com";
+
+const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
+  const parsed = schemaResult(schema)(body);
+  if (parsed.isErr()) {
+    throw new Error(`schema rejected: ${JSON.stringify(body)}`);
+  }
+  return parsed.value;
+};
+
+const followedBy = async (accountId: string, followerUri: string): Promise<void> => {
+  await env.DB.prepare(
+    `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, created_at)
+     VALUES (?, ?, ?, 'Fulfilled', 'Accepted', ?)`,
+  )
+    .bind(crypto.randomUUID(), followerUri, accountId, new Date().toISOString())
+    .run();
+};
+
+const DeleteRows = z.array(
+  z.object({ id: z.string(), account_id: z.string().nullable(), payload_json: z.string() }),
+);
+
+/** The queued `Delete` activities of `actorUri`, with the inboxes each goes to. */
+const queuedActorDeletes = async (actorUri: string) => {
+  const { results } = await env.DB.prepare(
+    "SELECT id, account_id, payload_json FROM outbound_activities WHERE kind = 'Delete' ORDER BY rowid",
+  ).all();
+  const deletes = read(DeleteRows, results)
+    .map((row) => ({
+      ...row,
+      activity: expectContract(ApActivityDocument, JSON.parse(row.payload_json)),
+    }))
+    .filter(({ activity }) => activity.actor === actorUri);
+  return Promise.all(
+    deletes.map(async (row) => {
+      const targets = await env.DB.prepare(
+        "SELECT inbox_url FROM outbox_deliveries WHERE activity_id = ? AND inbox_url IS NOT NULL ORDER BY inbox_url",
+      )
+        .bind(row.id)
+        .all();
+      return {
+        ...row,
+        inboxes: read(z.array(z.object({ inbox_url: z.string() })), targets.results).map(
+          (target) => target.inbox_url,
+        ),
+      };
+    }),
+  );
+};
+
+const adminDelete = async (accountId: string): Promise<number> => {
+  const response = await SELF.fetch(`${ORIGIN}/api/v1/admin/accounts/${accountId}`, {
+    method: "DELETE",
+    headers: await authHeaders("delete-federation-admin@example.com", { admin: true }),
+  });
+  await response.arrayBuffer();
+  return response.status;
+};
+
+describe("deleting a local account", () => {
+  it("sends a Delete of the actor to its followers' and its follows' inboxes, signed with its key", async () => {
+    const email = "delete-leaver@example.com";
+    const leaver = await signedInAccount(email);
+    const actorUri = `${ORIGIN}/users/${leaver.username}`;
+    const sharedInbox = "https://fans.example/inbox";
+    const fan = await remoteActor("fan", "fans.example", { sharedInboxUri: sharedInbox });
+    const otherFan = await remoteActor("other-fan", "fans.example", {
+      sharedInboxUri: sharedInbox,
+    });
+    const followed = await remoteActor("followed", "followed.example");
+    await followedBy(leaver.id, fan.actorUri);
+    await followedBy(leaver.id, otherFan.actorUri);
+    const follow = await SELF.fetch(
+      `${ORIGIN}/api/v1/accounts/${RemoteAccountId.encode(followed.actorUri)}/follow`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+        body: "{}",
+      },
+    );
+    expect(follow.status).toBe(200);
+    const actor = await SELF.fetch(actorUri, { headers: { accept: "application/activity+json" } });
+    const { publicKeyPem } = read(
+      z.object({ publicKey: z.object({ publicKeyPem: z.string() }) }),
+      await actor.json(),
+    ).publicKey;
+
+    expect(await adminDelete(leaver.id)).toBe(200);
+
+    const gone = await SELF.fetch(actorUri, { headers: { accept: "application/activity+json" } });
+    expect(gone.status).toBe(404);
+    const deletes = await queuedActorDeletes(actorUri);
+    expect(deletes).toHaveLength(1);
+    const [queued] = deletes;
+    if (!queued) {
+      throw new Error("no Delete queued");
+    }
+    expect(queued.account_id).toBeNull();
+    expect(queued.activity).toEqual({
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: `${actorUri}#delete`,
+      type: "Delete",
+      actor: actorUri,
+      to: [PUBLIC_COLLECTION],
+      object: actorUri,
+    });
+    expect(queued.inboxes).toEqual([sharedInbox, `${followed.actorUri}/inbox`].toSorted());
+
+    const sent = await deliverTarget(queued.id, sharedInbox);
+    const body = await sent.clone().text();
+    expect(parseSignatureHeader(sent.headers.get("signature") ?? "")?.keyId).toBe(
+      `${actorUri}#main-key`,
+    );
+    expect(await verifyInboxRequest(sent.clone(), publicKeyPem, body)).toBe(true);
+  });
+
+  it("sends nothing for an account no remote server knows", async () => {
+    const loner = await signedInAccount("delete-loner@example.com");
+    const actorUri = `${ORIGIN}/users/${loner.username}`;
+
+    expect(await adminDelete(loner.id)).toBe(200);
+
+    expect(await queuedActorDeletes(actorUri)).toEqual([]);
+  });
+});
