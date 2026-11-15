@@ -17,6 +17,7 @@ import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { isTruthy, stringList } from "./form-values";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
+import { remoteAttachmentMetadata } from "./remote-attachment";
 import { remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
 
@@ -151,6 +152,7 @@ export const noteFromUnknown = (
         url,
         mediaType: entry.mediaType ?? "",
         description: entry.name ?? "",
+        ...remoteAttachmentMetadata(entry),
       },
     ];
   });

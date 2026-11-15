@@ -135,6 +135,11 @@ export const NoteDocumentSchema = z
           mediaType: z.string().optional(),
           url: z.string().optional(),
           name: z.string().nullable().optional(),
+          // Read leniently (`remote-attachment.ts`): a malformed one is left out, and the note is kept.
+          blurhash: z.unknown().optional(),
+          width: z.unknown().optional(),
+          height: z.unknown().optional(),
+          focalPoint: z.unknown().optional(),
         }),
       )
       .optional(),

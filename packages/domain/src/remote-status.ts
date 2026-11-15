@@ -8,11 +8,21 @@ import { StatusId } from "./status-id";
 import { Visibility } from "./visibility";
 import type { StatusLanguage } from "./status-quote-target";
 
+/**
+ * A remote note's attachment. The blurhash, the size and the focus point are
+ * what the note declares; each is absent when the note has none that reads,
+ * and on a row written before they were kept.
+ */
 export const RemoteAttachmentSchema = z.object({
   url: z.url(),
   /** Empty when the remote note did not declare a media type. */
   mediaType: z.string(),
   description: z.string(),
+  blurhash: z.string().min(1).optional(),
+  /** The original file's size in pixels. */
+  size: z.object({ width: z.int().positive(), height: z.int().positive() }).optional(),
+  /** The focal point, each axis from -1 to 1. */
+  focus: z.object({ x: z.number().min(-1).max(1), y: z.number().min(-1).max(1) }).optional(),
 });
 
 export type RemoteAttachment = z.infer<typeof RemoteAttachmentSchema>;
