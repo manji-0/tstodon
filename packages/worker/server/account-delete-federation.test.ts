@@ -6,6 +6,8 @@ import { ApActivityDocument, PUBLIC_COLLECTION } from "@tstodon/api/activitypub"
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliverTarget } from "../test/delivery-fixture";
+import { PNG_40X30 } from "../test/image-fixtures";
+import { purgeAccount } from "./admin-actions";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
 import { findOutboundActivityWithSigner, persistOutboxTarget } from "./outbox-store";
@@ -162,6 +164,42 @@ describe("deleting a local account", () => {
     expect(await keepsSignerKey(queued.id)).toBe(false);
     const settled = await findOutboundActivityWithSigner(env.DB, queued.id);
     expect(settled.isOk() && settled.value?.signer_private_key_jwk).toBeNull();
+  });
+
+  it("sends nothing when the deletion fails part way, and one Delete when it is tried again", async () => {
+    const email = "delete-retried@example.com";
+    const leaver = await signedInAccount(email);
+    const actorUri = `${ORIGIN}/users/${leaver.username}`;
+    const fan = await remoteActor("retry-fan", "retry-fans.example");
+    await followedBy(leaver.id, fan.actorUri);
+    const upload = new FormData();
+    upload.set("file", new File([PNG_40X30], "a.png", { type: "image/png" }));
+    const uploaded = await SELF.fetch(`${ORIGIN}/api/v2/media`, {
+      method: "POST",
+      headers: await authHeaders(email),
+      body: upload,
+    });
+    expect(uploaded.status).toBe(200);
+
+    const failingBucket = new Proxy(env.MEDIA, {
+      get: (target, key) =>
+        key === "delete"
+          ? async () => {
+              throw new Error("the bucket does not answer");
+            }
+          : Reflect.get(target, key),
+    });
+    await expect(purgeAccount({ ...env, MEDIA: failingBucket }, leaver.id)).rejects.toThrow(
+      "the bucket does not answer",
+    );
+
+    expect(await queuedActorDeletes(actorUri)).toEqual([]);
+    const kept = await SELF.fetch(actorUri, { headers: { accept: "application/activity+json" } });
+    expect(kept.status).toBe(200);
+
+    expect((await purgeAccount(env, leaver.id)).isOk()).toBe(true);
+    const deletes = await queuedActorDeletes(actorUri);
+    expect(deletes.map((queued) => queued.inboxes)).toEqual([[`${fan.actorUri}/inbox`]]);
   });
 
   it("sends nothing for an account no remote server knows", async () => {

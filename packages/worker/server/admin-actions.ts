@@ -10,10 +10,9 @@ import {
   RemoteActorModeration,
   type RemoteActorModerationAction,
   Hostname,
-  InstanceIdentity,
   ReportResolution,
 } from "@tstodon/domain";
-import { actorDeleteActivity } from "./activitypub";
+import { announceActorDeleted, readDepartingActor } from "./actor-delete";
 import { nowIso } from "./clock";
 import { err, ok, type Result } from "neverthrow";
 import { mediaObjectKeysForAccount } from "./account-flag-store";
@@ -28,13 +27,7 @@ import {
   getRemoteActorModeration,
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
-import {
-  findRemoteActorByUri,
-  listAcceptedRemoteFollowerInboxes,
-  listOutboundFollowInboxes,
-} from "./remote-actor-store";
-import { enqueueDepartedAccountActivity } from "./delivery";
-import { parseInstanceIdentity } from "./runtime-config";
+import { findRemoteActorByUri } from "./remote-actor-store";
 import { severAndNotify } from "./severance";
 import {
   clearRemoteMediaForDomain,
@@ -45,7 +38,7 @@ import {
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
-import { type RepositoryError, toRepositoryError } from "./d1";
+import type { RepositoryError } from "./d1";
 import {
   findReportById,
   listOpenReportIdsForTarget,
@@ -280,64 +273,12 @@ const deleteObjectsUnder = async (bucket: R2Bucket, prefix: string): Promise<voi
 };
 
 /**
- * Tell the remote servers that know a local account that it is being deleted
- * (Mastodon's `DeleteAccountService#delete_actor!`): a `Delete` of the actor
- * to the inboxes of its remote followers and of the remote accounts it
- * follows, shared inboxes where there are any. It is queued with the
- * account's name and key before the rows go, because it is delivered after.
- * Each remote then drops the account, its posts and its follows.
- */
-const sendActorDelete = async (
-  env: Env,
-  accountId: string,
-): Promise<Result<void, RepositoryError>> => {
-  const identity = parseInstanceIdentity(env);
-  if (identity.isErr()) {
-    return err(toRepositoryError("invalid instance identity"));
-  }
-  const account = await findAccountById(env.DB, accountId);
-  if (account.isErr()) {
-    return err(account.error);
-  }
-  if (!account.value) {
-    return ok(undefined);
-  }
-  const [followers, followed] = await Promise.all([
-    listAcceptedRemoteFollowerInboxes(env.DB, accountId),
-    listOutboundFollowInboxes(env.DB, accountId),
-  ]);
-  if (followers.isErr()) {
-    return err(followers.error);
-  }
-  if (followed.isErr()) {
-    return err(followed.error);
-  }
-  const enqueued = await enqueueDepartedAccountActivity(
-    env,
-    {
-      kind: "DepartedAccount",
-      username: account.value.username,
-      privateKeyJwk: account.value.privateKeyJwk,
-    },
-    "Delete",
-    actorDeleteActivity(InstanceIdentity.actorUrl(identity.value, account.value.username)),
-    [...followers.value, ...followed.value],
-  );
-  if (enqueued.isErr()) {
-    return err(
-      enqueued.error.kind === "RepositoryError"
-        ? enqueued.error
-        : toRepositoryError(`actor Delete not queued: ${enqueued.error.kind}`),
-    );
-  }
-  return ok(undefined);
-};
-
-/**
  * Delete a local account and everything it owns (Mastodon's
- * `DeleteAccountService`): the `Delete` of its actor is queued for the remote
- * servers that know it, then its bucket objects go, then the rows, which
- * cascade from `accounts`. `false` when there was no such account. Last, it
+ * `DeleteAccountService`): its bucket objects first, then the rows, which
+ * cascade from `accounts`, then the `Delete` of its actor is queued for the
+ * remote servers that know it (`actor-delete.ts`). Nothing is sent unless
+ * the rows are gone, so a deletion that fails part way can be tried again.
+ * `false` when there was no such account. Last, it
  * deletes whatever is left under the account's attachment prefix: a copy the
  * rekey job pointed a row at after the keys were listed, or one it could not
  * confirm. A copy the job makes after the rows are gone, it deletes itself.
@@ -346,9 +287,9 @@ export const purgeAccount = async (
   env: Env,
   accountId: string,
 ): Promise<Result<boolean, RepositoryError>> => {
-  const announced = await sendActorDelete(env, accountId);
-  if (announced.isErr()) {
-    return err(announced.error);
+  const departing = await readDepartingActor(env, accountId);
+  if (departing.isErr()) {
+    return err(departing.error);
   }
   const objects = await mediaObjectKeysForAccount(env.DB, accountId);
   if (objects.isErr()) {
@@ -358,6 +299,9 @@ export const purgeAccount = async (
     await env.MEDIA.delete(objectKey);
   }
   const deleted = await deleteAccount(env.DB, accountId);
+  if (deleted.isOk() && deleted.value && departing.value) {
+    await announceActorDeleted(env, departing.value);
+  }
   if (deleted.isOk()) {
     await deleteObjectsUnder(env.MEDIA, `${MediaObjectKind.Attachment}/${accountId}/`);
   }
