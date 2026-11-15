@@ -12,6 +12,7 @@ import { purgeAccount } from "./admin-actions";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
 import { findOutboundActivityWithSigner, persistOutboxTarget } from "./outbox-store";
+import { listKnownRemoteInboxes } from "./remote-actor-store";
 import { RemoteAccountId } from "./remote-account-id";
 
 /**
@@ -248,6 +249,23 @@ describe("deleting a local account", () => {
     ]);
     expect(actorDeleteInboxes(related, known, 1)).toEqual(related);
     expect(actorDeleteInboxes(related, known, 0)).toEqual(related);
+  });
+
+  it("leaves the servers the instance suspends out of the known inboxes, so they take no slot under the cap", async () => {
+    const soon = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+    await env.DB.prepare(
+      "INSERT INTO domain_blocks (id, domain, severity) VALUES ('known-inboxes-suspended', 'Suspended-Known.example', 'suspend')",
+    ).run();
+    const kept = await remoteActor("kept", "kept-known.example", { fetchedAt: soon(1) });
+    await remoteActor("newest", "suspended-known.example", { fetchedAt: soon(2) });
+    await remoteActor("on-host", "elsewhere-known.example", {
+      accountDomain: "suspended-known.example",
+      fetchedAt: soon(3),
+    });
+
+    const known = await listKnownRemoteInboxes(env.DB, 1);
+
+    expect(known.isOk() && known.value).toEqual([`${kept.actorUri}/inbox`]);
   });
 
   it("sends nothing for an account no remote server knows", async () => {
