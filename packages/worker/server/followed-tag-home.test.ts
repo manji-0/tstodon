@@ -183,4 +183,64 @@ describe("a followed hashtag on the home timeline", () => {
     expect(read(Entry, JSON.parse(heard.payload)).uri).toBe(sent.uri);
     stream.close();
   });
+
+  it("keeps a post on the page when a muted author floods its hashtag after it", async () => {
+    const reader = "ftag-flood-reader@example.com";
+    const spammer = "ftag-flood-spammer@example.com";
+    await followTag(reader, "ftagflood");
+    const spammerAccount = await signedInAccount(spammer);
+    const remoteSpammer = await remoteActor("ftag-flood-spam", "tagged.example");
+    const remotePoster = await remoteActor("ftag-flood-poster", "tagged.example");
+    for (const target of [spammerAccount.id, RemoteAccountId.encode(remoteSpammer.actorUri)]) {
+      expect(
+        (await api(reader, `/api/v1/accounts/${target}/mute`, { method: "POST", body: "{}" }))
+          .status,
+      ).toBe(200);
+    }
+    const local = await post("ftag-flood-author@example.com", "worth reading #ftagflood");
+    const followers = `${remotePoster.actorUri}/followers`;
+    const remote = remoteNote(remotePoster, "ftag-flood-worth", "ftagflood", [PUBLIC], [followers]);
+    await deliver(remotePoster, remote);
+    for (let n = 0; n < 25; n += 1) {
+      await post(spammer, `spam ${n} #ftagflood`);
+      await deliver(
+        remoteSpammer,
+        remoteNote(
+          remoteSpammer,
+          `ftag-flood-spam-${n}`,
+          "ftagflood",
+          [PUBLIC],
+          [`${remoteSpammer.actorUri}/followers`],
+        ),
+      );
+    }
+
+    const home = read(
+      z.array(Entry),
+      (await api(reader, "/api/v1/timelines/home?limit=20")).body,
+    ).map((entry) => entry.uri);
+    expect(home).toEqual([remote.id, local.uri]);
+  });
+
+  it("reads past a hidden flood deeper than a page reads, rather than answer an empty page", async () => {
+    const reader = "ftag-deep-reader@example.com";
+    const spammer = "ftag-deep-spammer@example.com";
+    await followTag(reader, "ftagdeep");
+    const spammerAccount = await signedInAccount(spammer);
+    expect(
+      (
+        await api(reader, `/api/v1/accounts/${spammerAccount.id}/mute`, {
+          method: "POST",
+          body: "{}",
+        })
+      ).status,
+    ).toBe(200);
+    const worth = await post("ftag-deep-author@example.com", "worth reading #ftagdeep");
+    for (let n = 0; n < 90; n += 1) {
+      await post(spammer, `spam ${n} #ftagdeep`);
+    }
+
+    const home = read(z.array(Entry), (await api(reader, "/api/v1/timelines/home?limit=20")).body);
+    expect(home.map((entry) => entry.uri)).toEqual([worth.uri]);
+  });
 });

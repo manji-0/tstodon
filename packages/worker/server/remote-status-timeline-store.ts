@@ -132,10 +132,11 @@ export const listFollowedTagRemoteStatuses = async (
   accountId: string,
   limit: number,
   cursor: StatusCursor = {},
+  horizon: string | undefined = undefined,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
-    const tagged = followedTagNoteIdsSql("Remote", accountId, cursor, limit);
+    const tagged = followedTagNoteIdsSql("Remote", accountId, nowIso(), cursor, horizon);
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM (

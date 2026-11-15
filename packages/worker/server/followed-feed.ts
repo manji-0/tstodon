@@ -1,5 +1,5 @@
 import { SUPPRESSED_ACCOUNT_IDS_SQL, SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
-import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
+import { DOMAIN_RESTRICTED_ACTORS_SQL, DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { type IdCursor, idCursorBounds } from "./id-cursor";
 import { ENTITY_ID_DIGITS } from "./ids";
 import type { ListRepliesPolicy } from "./list-store";
@@ -86,8 +86,8 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
  * Mastodon reads none at all on a home page: it delivers each post to its
  * hashtags' followers once (`FanOutOnWriteService#deliver_to_hashtag_followers`)
  * and keeps 800 home entries. Here a page reads at most this many hashtags,
- * each up to the page's size, so its rows read do not grow with how many
- * posts carry those hashtags.
+ * each to a {@link HOME_FOLLOWED_TAG_DEPTH bounded depth}, so its rows read
+ * do not grow with how many posts carry those hashtags.
  */
 export const HOME_FOLLOWED_TAG_LIMIT = 25;
 
@@ -100,75 +100,166 @@ const FOLLOWED_TAG_SIDES = {
   Local: {
     tags: "local_status_tags",
     notes: "statuses",
-    shown: `+n.kind = 'LocalNote' AND +n.visibility = 'public' AND n.account_id NOT IN (
-      SELECT account_id FROM account_moderation WHERE moderation IN ('Silenced', 'Suspended')
-    )`,
+    shown: "+n.kind = 'LocalNote' AND +n.visibility = 'public' AND n.account_id NOT IN hidden",
+    /**
+     * The authors home leaves out ({@link SUPPRESSED_ACCOUNT_IDS_SQL}, the
+     * members of the viewer's exclusive lists) and those the instance limits.
+     */
+    hidden: (viewerId: string, now: string): SqlFragment => ({
+      sql: `SELECT * FROM ${SUPPRESSED_ACCOUNT_IDS_SQL}
+        UNION SELECT * FROM ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
+        UNION SELECT account_id FROM account_moderation WHERE moderation IN ('Silenced', 'Suspended')`,
+      binds: [viewerId, viewerId, viewerId, now, viewerId],
+    }),
   },
   Remote: {
     tags: "remote_status_tags",
     notes: "remote_statuses",
-    shown: "+n.visibility = 'public'",
+    shown: "+n.visibility = 'public' AND n.actor_uri NOT IN hidden",
+    /**
+     * The actors the viewer blocks or mutes or that block it, those on a
+     * domain it blocks or the instance limits, and those it follows, whose
+     * notes the followed-actor query lists.
+     */
+    hidden: (viewerId: string, now: string): SqlFragment => ({
+      sql: `SELECT * FROM ${SUPPRESSED_ACTOR_URIS_SQL}
+        UNION SELECT * FROM ${DOMAIN_RESTRICTED_ACTORS_SQL}
+        UNION SELECT actor_uri FROM outbound_follows WHERE account_id = ? AND state = 'Accepted'`,
+      binds: [viewerId, viewerId, viewerId, now, viewerId, viewerId],
+    }),
   },
 } as const;
+
+/**
+ * How deep a home page reads each followed hashtag's index below its cursor,
+ * as a multiple of the page's size. Past that the page stops at the
+ * {@link followedTagHorizonSql horizon}.
+ */
+export const HOME_FOLLOWED_TAG_DEPTH = 4;
+
+/** The viewer's most recently followed hashtags, with the id floor of each follow. */
+const followedTagsCte = `ft AS (
+  SELECT tag_name,
+    printf('%0${ENTITY_ID_DIGITS}d',
+      CAST(round((julianday(created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor
+  FROM followed_tags WHERE account_id = ?
+  ORDER BY created_at DESC, tag_name LIMIT ${HOME_FOLLOWED_TAG_LIMIT}
+)`;
+
+/**
+ * The bounds on a tag index row `t` of followed hashtag `ft`: its id floor,
+ * the cursor's bound (the CTE `c(v)`) and, when `horizon` is given, the
+ * horizon (the CTE `w(h)`). Every lower bound is folded into one `max(...)`,
+ * so SQLite starts the index range at the highest of them.
+ */
+const tagIndexBounds = (
+  cursor: IdCursor,
+  horizon: boolean,
+): Readonly<{ bound: string; sql: string }> => {
+  const { onlyId, after, before, ascending } = idCursorBounds(cursor);
+  if (onlyId.length > 0) {
+    return { bound: onlyId, sql: "t.status_id = (SELECT v FROM c) AND t.status_id >= ft.floor" };
+  }
+  const lower = [
+    "ft.floor",
+    ...(after.length > 0 ? ["(SELECT v FROM c)"] : []),
+    ...(horizon && !ascending ? ["(SELECT h FROM w)"] : []),
+  ];
+  return {
+    bound: after.length > 0 ? after : before,
+    sql: [
+      `t.status_id >= ${lower.length > 1 ? `max(${lower.join(", ")})` : lower[0]}`,
+      ...(after.length > 0 ? ["t.status_id <> (SELECT v FROM c)"] : []),
+      ...(before.length > 0 ? ["t.status_id < (SELECT v FROM c)"] : []),
+      ...(horizon && ascending ? ["t.status_id <= (SELECT h FROM w)"] : []),
+    ].join(" AND "),
+  };
+};
+
+/**
+ * How far a home page can vouch for the notes under the viewer's followed
+ * hashtags: for each hashtag whose index holds more than
+ * {@link HOME_FOLLOWED_TAG_DEPTH} pages below the cursor (above it for a
+ * `min_id` page), the id that deep, local and remote; the newest of those
+ * (the oldest for `min_id`), or NULL when every hashtag is read to its end.
+ * Reads only the tag indexes, a fixed depth per hashtag. One row,
+ * `horizon`.
+ */
+export const followedTagHorizonSql = (
+  viewerId: string,
+  cursor: IdCursor,
+  limit: number,
+): SqlFragment => {
+  const { bound, sql: within } = tagIndexBounds(cursor, false);
+  const { ascending } = idCursorBounds(cursor);
+  const deep = Math.max(1, Math.trunc(limit) * HOME_FOLLOWED_TAG_DEPTH) - 1;
+  const edge = (tags: string): string => `SELECT (
+      SELECT t.status_id FROM ${tags} t
+      WHERE t.tag = ft.tag_name AND ${within}
+      ORDER BY t.status_id ${ascending ? "ASC" : "DESC"} LIMIT 1 OFFSET ${deep}
+    ) AS id FROM ft`;
+  return {
+    sql: `WITH ${followedTagsCte}, c(v) AS (SELECT ?)
+      SELECT ${ascending ? "MIN" : "MAX"}(id) AS horizon FROM (
+        ${edge("local_status_tags")} UNION ALL ${edge("remote_status_tags")}
+      )`,
+    binds: [viewerId, bound],
+  };
+};
 
 /**
  * The ids of the notes a followed hashtag brings to the viewer's home page,
  * as Mastodon's `deliver_to_hashtag_followers`: public notes (not of a
  * silenced or suspended local author), posted or received since the viewer
- * followed the hashtag. An id sorts by the instant it was made at, so "since
- * the follow" is an id floor: the follow's instant shifted above the id's low
- * 16 bits (`entityIdAt`). For each of the viewer's
- * {@link HOME_FOLLOWED_TAG_LIMIT} most recently followed hashtags, the newest
- * `limit` ids within `cursor` (the oldest for a `min_id` page): the `limit`-th
- * of them is found first (`cut`), reading the hashtag's index in id order up
- * to it, then the ids up to it are read again. The binds are the viewer and
- * the cursor's bound, however many hashtags.
+ * followed the hashtag, of the viewer's {@link HOME_FOLLOWED_TAG_LIMIT} most
+ * recently followed hashtags. An id sorts by the instant it was made at, so
+ * "since the follow" is an id floor: the follow's instant shifted above the
+ * id's low 16 bits (`entityIdAt`). The side's `hidden` authors are left out.
+ * The ids lie within `cursor` and, when the page has a `horizon`
+ * ({@link followedTagHorizonSql}), not past it, so a page reads a bounded
+ * depth of each hashtag's index however many notes it holds or hides. The
+ * binds are the viewer's, the cursor's and the horizon, however many
+ * hashtags.
  */
 export const followedTagNoteIdsSql = (
   side: keyof typeof FOLLOWED_TAG_SIDES,
   viewerId: string,
+  now: string,
   cursor: IdCursor,
-  limit: number,
+  horizon: string | undefined,
 ): SqlFragment => {
   const { tags, notes, shown } = FOLLOWED_TAG_SIDES[side];
-  const { onlyId, after, before, ascending } = idCursorBounds(cursor);
-  const [bound, test] =
-    onlyId.length > 0
-      ? [onlyId, "AND t.status_id = (SELECT v FROM c)"]
-      : after.length > 0
-        ? [after, "AND t.status_id > (SELECT v FROM c)"]
-        : before.length > 0
-          ? [before, "AND t.status_id < (SELECT v FROM c)"]
-          : ["", ""];
-  const within = `t.tag = ft.tag_name AND t.status_id >= ft.floor ${test} AND ${shown}`;
-  // Materialized, so the edge is found once per hashtag, not once per row.
-  const [order, edge, kept] = ascending
-    ? ["ASC", "hi", "t.status_id >= ft.floor AND (ft.hi IS NULL OR t.status_id <= ft.hi)"]
-    : ["DESC", "lo", "t.status_id >= COALESCE(ft.lo, ft.floor)"];
+  const hidden = FOLLOWED_TAG_SIDES[side].hidden(viewerId, now);
+  const { bound, sql: within } = tagIndexBounds(cursor, horizon !== undefined);
   return {
     sql: `(
-      WITH ft AS (
-        SELECT tag_name,
-          printf('%0${ENTITY_ID_DIGITS}d',
-            CAST(round((julianday(created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor
-        FROM followed_tags WHERE account_id = ?
-        ORDER BY created_at DESC, tag_name LIMIT ${HOME_FOLLOWED_TAG_LIMIT}
-      ), c(v) AS (SELECT ?), cut AS MATERIALIZED (
-        SELECT ft.tag_name, ft.floor, (
-          SELECT t.status_id FROM ${tags} t CROSS JOIN ${notes} n ON n.id = t.status_id
-          WHERE ${within}
-          ORDER BY t.status_id ${order} LIMIT 1 OFFSET ${Math.max(0, Math.trunc(limit) - 1)}
-        ) AS ${edge}
-        FROM ft
+      WITH ${followedTagsCte}, c(v) AS (SELECT ?), w(h) AS (SELECT ?),
+      hidden(id) AS MATERIALIZED (
+        ${hidden.sql}
       )
-      SELECT DISTINCT t.status_id FROM cut ft
+      SELECT DISTINCT t.status_id FROM ft
       CROSS JOIN ${tags} t
       CROSS JOIN ${notes} n ON n.id = t.status_id
-      WHERE t.tag = ft.tag_name AND ${kept} ${test} AND ${shown}
+      WHERE t.tag = ft.tag_name AND ${within} AND ${shown}
     )`,
-    binds: [viewerId, bound],
+    binds: [viewerId, bound, horizon ?? "", ...hidden.binds],
   };
 };
+
+/**
+ * Keep the home entries a page with this `horizon` can vouch for: none past
+ * it, as the notes of the followed hashtags past it were not read.
+ */
+export const withinHorizon = <T extends Readonly<{ id: string }>>(
+  entries: ReadonlyArray<T>,
+  cursor: IdCursor,
+  horizon: string | undefined,
+): T[] =>
+  horizon === undefined
+    ? [...entries]
+    : entries.filter((entry) =>
+        idCursorBounds(cursor).ascending ? entry.id <= horizon : entry.id >= horizon,
+      );
 
 /**
  * The local `statuses` rows a feed of the viewer keeps by the viewer's follow

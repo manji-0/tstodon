@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
+import { HOME_HORIZON_STEPS } from "./timeline-documents";
 
 /**
  * D1 bills every row a query reads. A read endpoint whose rows read grows
@@ -165,10 +166,11 @@ describe("D1 rows read do not grow with unrelated rows", () => {
         ),
       ]);
       const growth = (await get(readerToken, path)) - before;
-      // Each side reads a page of the hashtag's index and its notes twice, and
-      // the page's notes once more: a few pages, not the flood.
+      // Each page reads a bounded depth of the hashtag's index, local and
+      // remote, and a home left empty by the hidden flood reads past it
+      // HOME_HORIZON_STEPS times: a fixed number of pages, not the flood.
       expect(growth, `home read ${growth} more rows after ${2 * NOISE} tagged posts`).toBeLessThan(
-        MAX_GROWTH * 3,
+        MAX_GROWTH * 3 * HOME_HORIZON_STEPS,
       );
     },
   );
