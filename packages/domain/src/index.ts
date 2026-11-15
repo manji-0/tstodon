@@ -257,6 +257,7 @@ export {
   type RemoteBoost as RemoteBoostValue,
   type RemoteBoostError,
 } from "./remote-boost";
+export { PollBallot, type BallotPoll, type VoteError } from "./poll-ballot";
 export {
   RemotePoll,
   RemotePollSchema,
