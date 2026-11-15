@@ -451,6 +451,64 @@ describe("history and source of an edited remote note", () => {
     expect((await history(id)).map((version) => version.content)).toEqual(["<p>a</p>", "<p>b</p>"]);
   });
 
+  const image = (url: string, extra: Record<string, unknown> = {}) => ({
+    type: "Document",
+    mediaType: "image/png",
+    url,
+    name: "a cat",
+    ...extra,
+  });
+
+  it("reads an attachment whose file and description stay the same as no edit", async () => {
+    const author = await remoteActor("history-same-media");
+    const id = await create(author, "same-media", "<p>a</p>");
+    await update(
+      author,
+      "same-media-1",
+      note(author, "same-media", "<p>a</p>", {
+        attachment: [image("https://remote.example/cat.png")],
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    // Mastodon compares the file's URL and the description, and nothing else of an attachment.
+    await update(
+      author,
+      "same-media-2",
+      note(author, "same-media", "<p>a</p>", {
+        attachment: [image("https://remote.example/cat.png", { mediaType: "image/webp" })],
+        updated: "2026-10-22T00:00:00.000Z",
+      }),
+    );
+    expect(await history(id)).toHaveLength(2);
+    expect((await status(id)).edited_at).toBe("2026-10-21T00:00:00.000Z");
+  });
+
+  it("reads a new description, another file and another order as an edit", async () => {
+    const author = await remoteActor("history-media-edit");
+    const id = await create(author, "media-edit", "<p>a</p>");
+    const one = image("https://remote.example/1.png");
+    const two = image("https://remote.example/2.png");
+    const described = image("https://remote.example/1.png", { name: "a dog" });
+    const versions = [
+      [one, two],
+      [described, two],
+      [two, described],
+      [two, image("https://remote.example/3.png")],
+    ];
+    for (const [index, attachment] of versions.entries()) {
+      await update(
+        author,
+        `media-edit-${index}`,
+        note(author, "media-edit", "<p>a</p>", {
+          attachment,
+          updated: `2026-10-2${index + 1}T00:00:00.000Z`,
+        }),
+      );
+    }
+    expect(await history(id)).toHaveLength(versions.length + 1);
+    expect((await status(id)).edited_at).toBe("2026-10-24T00:00:00.000Z");
+  });
+
   it("hides the history of a note the viewer cannot see", async () => {
     const author = await remoteActor("history-private");
     const object = note(author, "history-private", "<p>dm</p>", { to: [author.actorUri] });

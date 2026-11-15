@@ -15,6 +15,23 @@ import { mastodonRemoteStatus } from "./remote-status-document";
 import { listRemoteStatusEdits, remoteStatusEditStatement } from "./remote-status-edit-store";
 
 /**
+ * Whether the attachments are the same files, in the same order, with the
+ * same descriptions. Mastodon's `ProcessStatusUpdateService` compares these
+ * (`MediaAttachmentParser#significantly_changes?` and the ordered ids) and no
+ * other property of an attachment, so one a later version starts to keep
+ * never turns a stored note into an edited one.
+ */
+const sameMedia = (
+  before: RemoteStatusValue["media"],
+  after: RemoteStatusValue["media"],
+): boolean =>
+  before.length === after.length &&
+  before.every(
+    (attachment, index) =>
+      attachment.url === after[index]?.url && attachment.description === after[index].description,
+  );
+
+/**
  * Whether the author changed what the post says. Vote counts, which a
  * `Question` refreshes as people vote, are not an edit, as on Mastodon.
  */
@@ -22,7 +39,7 @@ export const contentChanged = (before: RemoteStatusValue, after: RemoteStatusVal
   before.contentHtml !== after.contentHtml ||
   before.spoilerText !== after.spoilerText ||
   before.sensitive !== after.sensitive ||
-  JSON.stringify(before.media) !== JSON.stringify(after.media) ||
+  !sameMedia(before.media, after.media) ||
   !RemotePoll.sameQuestion(before.poll, after.poll);
 
 /** Whether the instant `candidate` is later than `than`: an edit dated so replaces the one stored. */
