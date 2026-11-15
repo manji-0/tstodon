@@ -24,7 +24,8 @@ export type Remote = Readonly<{
  * `cache: false` it is not stored, so the first delivery fetches its document.
  * `fetchedAt` is when it was cached, now by default. An account domain other
  * than `host` is stamped as confirmed by WebFinger then, as only a confirmation
- * stores one.
+ * stores one. `published` is the actor document's `published` date, none by
+ * default.
  */
 export const remoteActor = async (
   username: string,
@@ -37,12 +38,15 @@ export const remoteActor = async (
     followersUri?: string;
     followingUri?: string;
     featuredUri?: string;
+    published?: string;
   }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}/users/${username}`;
   const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(options.fetchedAt ?? new Date().toISOString());
-  if (fetchedAt.isErr()) {
+  const published =
+    options.published === undefined ? undefined : IsoInstant.parse(options.published);
+  if (fetchedAt.isErr() || published?.isErr()) {
     throw new Error("invalid fixture instant");
   }
   const actor = RemoteActor.fromFetched({
@@ -57,6 +61,7 @@ export const remoteActor = async (
     publicKeyId: `${actorUri}#main-key`,
     publicKeyPem: keys.publicKeyPem,
     displayName: `Remote ${username}`,
+    profile: { ...RemoteActor.emptyProfile, publishedAt: published?.unwrapOr(null) ?? null },
     fetchedAt: fetchedAt.value,
     webfingeredAt:
       options.accountDomain === undefined || options.accountDomain === host

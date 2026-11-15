@@ -1,19 +1,26 @@
 import {
+  type AccountStanding,
+  type InstanceIdentity,
+  type MentionAncestor,
   NotificationPolicy,
   type NotificationPolicyAction,
   type NotificationSender,
+  type ThreadStatus,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { findAccountStanding } from "./account-moderation-store";
 import { findAccountProfile } from "./account-profile-store";
 import { findAccountById } from "./account-store";
-import type { RepositoryError } from "./d1";
-import { findFollowKind } from "./follow-store";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
+import { listShownRemoteStatusMentions, listStatusMentions } from "./mention-store";
 import { findNotificationPolicy, isSenderAccepted } from "./notification-policy-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
-import { findRemoteActorByUri, findRemoteFollow } from "./remote-actor-store";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import { findRemoteStatusById } from "./remote-status-store";
 import { findStatusById } from "./status-store";
+import { listThreadAncestors } from "./thread-context";
 
 export type NotificationDisposition = NotificationPolicyAction;
 
@@ -24,85 +31,227 @@ type DispositionInput = Readonly<{
   statusId?: string | undefined;
 }>;
 
-/** What `NotificationPolicy.disposition` needs to know about a remote (`r_…`) sender. */
-const remoteSender = async (
+/** The sender of a notification, as the tables name it. */
+type Sender =
+  | Readonly<{ kind: "Local"; accountId: string }>
+  | Readonly<{ kind: "Remote"; actorUri: string }>;
+
+const FollowFactsRow = z.object({
+  followed: z.number(),
+  follows_since: z.string().nullable(),
+  created_at: z.string().nullable(),
+});
+
+type FollowFacts = Pick<
+  NotificationSender,
+  "followedByRecipient" | "followsRecipientSince" | "createdAt"
+>;
+
+/**
+ * The accepted follows between the recipient and the sender, and when this
+ * server first stored the sender, in one read. A local account's `createdAt`
+ * comes with its account row instead, and a remote actor's `published` date
+ * takes the place of the stored time when it has one.
+ */
+const followFacts = async (
   db: D1Database,
   recipientId: string,
-  actorUri: string,
-): Promise<Result<NotificationSender, RepositoryError>> => {
-  const [follow, moderation, actor] = await Promise.all([
-    findRemoteFollow(db, recipientId, actorUri),
-    getRemoteActorModeration(db, actorUri),
-    findRemoteActorByUri(db, actorUri),
-  ]);
-  if (follow.isErr()) {
-    return err(follow.error);
+  sender: Sender,
+): Promise<Result<FollowFacts, RepositoryError>> =>
+  runD1(async () => {
+    const statement =
+      sender.kind === "Local"
+        ? db
+            .prepare(
+              `SELECT
+                 EXISTS (SELECT 1 FROM follows
+                   WHERE follower_account_id = ?1 AND target_account_id = ?2 AND kind = 'Accepted') AS followed,
+                 (SELECT created_at FROM follows
+                   WHERE follower_account_id = ?2 AND target_account_id = ?1 AND kind = 'Accepted') AS follows_since,
+                 NULL AS created_at`,
+            )
+            .bind(recipientId, sender.accountId)
+        : db
+            .prepare(
+              `SELECT
+                 EXISTS (SELECT 1 FROM outbound_follows
+                   WHERE account_id = ?1 AND actor_uri = ?2 AND state = 'Accepted') AS followed,
+                 (SELECT created_at FROM remote_follows
+                   WHERE target_account_id = ?1 AND remote_actor_uri = ?2
+                     AND remote_request_kind = 'Fulfilled') AS follows_since,
+                 (SELECT created_at FROM remote_actors WHERE actor_uri = ?2) AS created_at`,
+            )
+            .bind(recipientId, sender.actorUri);
+    const [row] = parseRows(FollowFactsRow, (await statement.all()).results);
+    return {
+      followedByRecipient: row?.followed === 1,
+      followsRecipientSince: row?.follows_since ?? undefined,
+      createdAt: row?.created_at ?? "",
+    };
+  });
+
+/** The mention's status, when this server holds it. */
+const mentionStatus = async (
+  db: D1Database,
+  sender: Sender,
+  statusId: string,
+): Promise<Result<ThreadStatus | undefined, RepositoryError>> => {
+  if (sender.kind === "Local") {
+    const status = await findStatusById(db, statusId);
+    return status.map((found) => (found ? { kind: "Local", status: found } : undefined));
   }
+  const status = await findRemoteStatusById(db, statusId);
+  return status.map((found) => (found ? { kind: "Remote", status: found } : undefined));
+};
+
+/**
+ * Mastodon's `private_mention_not_in_response?`: the notification is a
+ * mention on a direct status, and nothing the recipient wrote above it in
+ * the thread makes it an answer (`NotificationPolicy.answersRecipient`).
+ */
+const unansweredPrivateMention = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  input: DispositionInput,
+  sender: Sender,
+): Promise<Result<boolean, RepositoryError>> => {
+  if (input.kind !== "mention" || !input.statusId) {
+    return ok(false);
+  }
+  const status = await mentionStatus(db, sender, input.statusId);
+  if (status.isErr()) {
+    return err(status.error);
+  }
+  if (!status.value || status.value.status.visibility.kind !== "Direct") {
+    return ok(false);
+  }
+  const above = await listThreadAncestors(
+    db,
+    identity,
+    status.value,
+    NotificationPolicy.ancestorLimit,
+  );
+  if (above.isErr()) {
+    return err(above.error);
+  }
+  const idsOf = (kind: ThreadStatus["kind"]): string[] =>
+    above.value.filter((ancestor) => ancestor.kind === kind).map((ancestor) => ancestor.status.id);
+  const [localMentions, remoteMentions] = await Promise.all([
+    listStatusMentions(db, idsOf("Local")),
+    listShownRemoteStatusMentions(db, idsOf("Remote")),
+  ]);
+  if (localMentions.isErr()) {
+    return err(localMentions.error);
+  }
+  if (remoteMentions.isErr()) {
+    return err(remoteMentions.error);
+  }
+  const ancestors = above.value.toReversed().map((ancestor): MentionAncestor => {
+    const mentions = (ancestor.kind === "Local" ? localMentions.value : remoteMentions.value).get(
+      ancestor.status.id,
+    );
+    return {
+      byRecipient: ancestor.kind === "Local" && ancestor.status.accountId === input.recipientId,
+      direct: ancestor.status.visibility.kind === "Direct",
+      mentionsSender:
+        sender.kind === "Local"
+          ? (mentions?.accountIds.includes(sender.accountId) ?? false)
+          : (mentions?.actorUris.includes(sender.actorUri) ?? false),
+    };
+  });
+  return ok(!NotificationPolicy.answersRecipient(ancestors));
+};
+
+type SenderProfile = Readonly<{
+  standing: AccountStanding;
+  bot: boolean;
+  /** A remote actor's `published` date, when its document gave one. */
+  published: string | undefined;
+}>;
+
+/** The sender's standing, whether it is a bot, and when a remote actor says it was created. */
+const senderProfile = async (
+  db: D1Database,
+  sender: Sender,
+): Promise<Result<SenderProfile, RepositoryError>> => {
+  if (sender.kind === "Local") {
+    const [standing, profile] = await Promise.all([
+      findAccountStanding(db, sender.accountId),
+      findAccountProfile(db, sender.accountId),
+    ]);
+    if (standing.isErr()) {
+      return err(standing.error);
+    }
+    return profile.map((found) => ({
+      standing: standing.value,
+      bot: found.bot,
+      published: undefined,
+    }));
+  }
+  const [moderation, actor] = await Promise.all([
+    getRemoteActorModeration(db, sender.actorUri),
+    findRemoteActorByUri(db, sender.actorUri),
+  ]);
   if (moderation.isErr()) {
     return err(moderation.error);
   }
-  if (actor.isErr()) {
-    return err(actor.error);
-  }
-  return ok({
-    kind: "Remote",
+  return actor.map((found) => ({
     standing: moderation.value.standing,
-    followsRecipient: follow.value?.requestKind === "Fulfilled",
-    bot: actor.value?.profile.bot ?? false,
-  });
+    bot: found?.profile.bot ?? false,
+    published: found?.profile.publishedAt ?? undefined,
+  }));
 };
 
-const localSender = async (
+/** What `NotificationPolicy.disposition` needs to know about the sender. */
+const senderFacts = async (
   db: D1Database,
+  identity: InstanceIdentity,
+  policy: NotificationPolicy,
   input: DispositionInput,
-  createdAt: string,
+  sender: Sender,
+  localCreatedAt: string | undefined,
 ): Promise<Result<NotificationSender, RepositoryError>> => {
   // Independent reads: one D1 round instead of one each.
-  const [standing, profile, followed, follows, status] = await Promise.all([
-    findAccountStanding(db, input.senderId),
-    findAccountProfile(db, input.senderId),
-    findFollowKind(db, input.recipientId, input.senderId),
-    findFollowKind(db, input.senderId, input.recipientId),
-    input.kind === "mention" && input.statusId
-      ? findStatusById(db, input.statusId)
-      : Promise.resolve(ok(undefined)),
+  const [profile, follows] = await Promise.all([
+    senderProfile(db, sender),
+    followFacts(db, input.recipientId, sender),
   ]);
-  if (standing.isErr()) {
-    return err(standing.error);
-  }
   if (profile.isErr()) {
     return err(profile.error);
-  }
-  if (followed.isErr()) {
-    return err(followed.error);
   }
   if (follows.isErr()) {
     return err(follows.error);
   }
-  if (status.isErr()) {
-    return err(status.error);
+  const unanswered = NotificationPolicy.readsPrivateMention(
+    policy,
+    follows.value.followedByRecipient,
+  )
+    ? await unansweredPrivateMention(db, identity, input, sender)
+    : ok(false);
+  if (unanswered.isErr()) {
+    return err(unanswered.error);
   }
+  // Mastodon's `ProcessAccountService` sets a remote account's `created_at`
+  // to the actor's `published` date, and to the time it saves the row only
+  // without one.
   return ok({
-    kind: "Local",
-    createdAt,
-    silenced: standing.value.kind === "Silenced",
-    recipientFollowsSender: followed.value === "Accepted",
-    senderFollowsRecipient: follows.value === "Accepted",
-    privateMention:
-      status.value !== undefined &&
-      status.value.kind === "LocalNote" &&
-      status.value.visibility.kind === "Direct",
+    standing: profile.value.standing,
     bot: profile.value.bot,
+    ...follows.value,
+    createdAt: localCreatedAt ?? profile.value.published ?? follows.value.createdAt,
+    unansweredPrivateMention: unanswered.value,
   });
 };
 
 /**
- * The recipient's notification policy applied to this notification. An
- * accepted sender always gets through, and a sender id that is neither a
+ * The recipient's notification policy applied to this notification, as
+ * Mastodon's `NotifyService` applies it to local and remote senders alike.
+ * An accepted sender always gets through, and a sender id that is neither a
  * local account nor a remote one is accepted.
  */
 export const notificationDisposition = async (
   db: D1Database,
+  identity: InstanceIdentity,
   input: DispositionInput,
 ): Promise<Result<NotificationDisposition, RepositoryError>> => {
   // The policy and the sender's account are read with the acceptance check,
@@ -124,15 +273,23 @@ export const notificationDisposition = async (
   if (account.isErr()) {
     return err(account.error);
   }
-  let sender: Result<NotificationSender, RepositoryError>;
+  let sender: Sender;
   if (account.value) {
-    sender = await localSender(db, input, account.value.createdAt);
+    sender = { kind: "Local", accountId: input.senderId };
   } else {
     const actorUri = RemoteAccountId.decode(input.senderId);
     if (actorUri.isErr()) {
       return ok("accept");
     }
-    sender = await remoteSender(db, input.recipientId, actorUri.value);
+    sender = { kind: "Remote", actorUri: actorUri.value };
   }
-  return sender.map((facts) => NotificationPolicy.disposition(policy.value, facts, Date.now()));
+  const facts = await senderFacts(
+    db,
+    identity,
+    policy.value,
+    input,
+    sender,
+    account.value?.createdAt,
+  );
+  return facts.map((found) => NotificationPolicy.disposition(policy.value, found, Date.now()));
 };

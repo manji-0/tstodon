@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { assertNever, warmSchemas } from "@tstodon/core";
+import { PollBallot } from "@tstodon/domain";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
 import { findRemotePollVotes } from "../remote-poll-vote-store";
@@ -12,14 +13,18 @@ import { numberList } from "../form-values";
 import { ApiPollVoteParamsSchema } from "@tstodon/api";
 import { readParams } from "../request-params";
 
-/** What a refused ballot answers, on a remote poll and on a local one. */
-const VOTE_REFUSALS = {
+/**
+ * What a refused ballot on a remote poll answers. The rules Mastodon's
+ * `VoteValidator` has answer in its words (`PollBallot.message`): it refuses
+ * a second choice on a single-choice poll as a vote already cast.
+ */
+const REMOTE_VOTE_REFUSALS = {
   DomainBlocked: "The poll's server is blocked",
-  AlreadyVoted: "You have already voted on this poll",
-  Expired: "The poll has ended",
+  AlreadyVoted: PollBallot.message(["AlreadyVoted"]),
+  Expired: PollBallot.message(["Expired"]),
   NoChoice: "Choose at least one option",
-  TooManyChoices: "This poll takes a single choice",
-  OutOfRange: "That option does not exist",
+  TooManyChoices: PollBallot.message(["AlreadyVoted"]),
+  OutOfRange: PollBallot.message(["InvalidChoice"]),
 } as const;
 
 export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/polls/:id">) => {
@@ -85,7 +90,7 @@ export const postV1PollsByIdVotes = async (
     }
     return failure.kind === "NotFound"
       ? c.json({ error: "Record not found", kind: "NotFound" }, 404)
-      : c.json({ error: VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
+      : c.json({ error: REMOTE_VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
   }
   const voted = await votePoll(c.env.DB, c.req.param("id"), user.value.id, indexes);
   if (voted.isErr()) {
@@ -95,11 +100,8 @@ export const postV1PollsByIdVotes = async (
         return jsonRepositoryError(c, failure.message);
       case "PollNotFound":
         return c.json({ error: "Record not found", kind: "NotFound" }, 404);
-      case "PollExpired":
-        return c.json({ error: "poll expired", kind: "PollExpired" }, 422);
-      case "AlreadyVoted":
-      case "TooManyChoices":
-        return c.json({ error: VOTE_REFUSALS[failure.kind], kind: failure.kind }, 422);
+      case "VoteInvalid":
+        return c.json({ error: PollBallot.message(failure.errors), kind: "ValidationError" }, 422);
       default:
         return assertNever(failure);
     }

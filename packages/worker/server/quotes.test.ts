@@ -245,7 +245,7 @@ describe("quote posts", () => {
     const edited = await json(`/api/v1/statuses/${original.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json", ...(await auth(author)) },
-      body: JSON.stringify({ quote_approval_policy: "nobody" }),
+      body: JSON.stringify({ status: "quotable until edited", quote_approval_policy: "nobody" }),
     });
     expect(edited.status).toBe(200);
 
@@ -258,7 +258,7 @@ describe("quote posts", () => {
     const allowedAgain = await json(`/api/v1/statuses/${original.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json", ...(await auth(author)) },
-      body: JSON.stringify({ quote_approval_policy: "public" }),
+      body: JSON.stringify({ status: "quotable until edited", quote_approval_policy: "public" }),
     });
     expect(allowedAgain.status).toBe(200);
     const accepted = await create(other, {

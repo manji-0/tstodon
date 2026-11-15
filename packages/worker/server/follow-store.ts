@@ -121,7 +121,11 @@ export const listPendingFollowRequesters = async (
     }));
   });
 
-/** Promote a `Pending` follow to `Accepted`. Returns true when a row moved. */
+/**
+ * Promote a `Pending` follow to `Accepted`, dated now: the follower counts
+ * from the acceptance, as Mastodon creates the Follow then. Returns true when
+ * a row moved.
+ */
 export const authorizeFollowRequest = async (
   db: D1Database,
   targetAccountId: string,
@@ -130,7 +134,7 @@ export const authorizeFollowRequest = async (
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      authorizeFollowRequestSql(targetAccountId, followerAccountId),
+      authorizeFollowRequestSql(targetAccountId, followerAccountId, nowIso()),
       FollowerAccountIdRow,
     );
     return rows.length > 0;

@@ -105,6 +105,8 @@ describe("media attributes", () => {
       method: "PUT",
       headers: { "content-type": "application/json", ...(await auth(email)) },
       body: JSON.stringify({
+        status: "before edit",
+        media_ids: [mediaId],
         media_attributes: [
           { id: mediaId, description: "described on edit" },
           { id: otherId, description: "should be ignored" },

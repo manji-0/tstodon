@@ -7,19 +7,21 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param targetAccountId
  * @param remoteActorUri
+ * @param acceptedAt
  */
 export const authorizeRemoteFollowRequest = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_follows\nSET remote_request_kind = 'Fulfilled', follow_kind = 'Accepted'\nWHERE target_account_id = $1 AND remote_actor_uri = $2 AND remote_request_kind = 'Queued'\nRETURNING remote_actor_uri",
+  "UPDATE remote_follows\nSET remote_request_kind = 'Fulfilled', follow_kind = 'Accepted', created_at = $3\nWHERE target_account_id = $1 AND remote_actor_uri = $2 AND remote_request_kind = 'Queued'\nRETURNING remote_actor_uri",
 ) as (
   targetAccountId: string,
   remoteActorUri: string,
+  acceptedAt: string,
 ) => $runtime.TypedSql<
   authorizeRemoteFollowRequest.Parameters,
   authorizeRemoteFollowRequest.Result
 >;
 
 export namespace authorizeRemoteFollowRequest {
-  export type Parameters = [targetAccountId: string, remoteActorUri: string];
+  export type Parameters = [targetAccountId: string, remoteActorUri: string, acceptedAt: string];
   export type Result = {
     remote_actor_uri: string;
   };

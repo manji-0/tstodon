@@ -12,11 +12,13 @@ import {
   LocalStatus,
   type RemoteStatusValue,
   StatusComposition,
-  Visibility,
+  StatusRevision,
+  StatusTarget,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import type { Context } from "hono";
+import { assertNever } from "@tstodon/core";
 import { authenticate } from "../../auth";
 import { nowIso } from "../../clock";
 import { deleteLocalStatus } from "../../local-status-delete";
@@ -33,7 +35,13 @@ import {
   requireUser,
 } from "../../http";
 import { mastodonStatus } from "../../local-status-documents";
-import { countPollVotes, findPollByStatusId, replacePollOptions } from "../../poll-store";
+import {
+  deletePoll,
+  findPollByStatusId,
+  insertPoll,
+  renewPoll,
+  replacePollQuestion,
+} from "../../poll-store";
 import {
   mediaAttributesOf,
   mediaDescriptionsFit,
@@ -53,11 +61,16 @@ import { availableAccountDocumentsByIds } from "../../account-documents";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findShownStatusAnywhere } from "../../found-status";
 import { remoteStatusHistory } from "../../remote-status-edit";
-import { isQuotePolicy, listAcceptedQuoteEdges, setStatusQuotePolicy } from "../../quote-store";
-import { applyMediaAttributes } from "../../local-status-publish";
-import { checkAttachableMedia } from "./create";
+import {
+  findQuoteByQuoting,
+  isQuotePolicy,
+  listAcceptedQuoteEdges,
+  setStatusQuotePolicy,
+} from "../../quote-store";
+import { applyMediaAttributes, type PublishPoll } from "../../local-status-publish";
+import { checkAttachableMedia, parsePollRequest } from "./create";
 import { startLinkCard } from "../../link-card";
-import { checkPollLimits, draftRefusal } from "./status-limits";
+import { draftRefusal } from "./status-limits";
 import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
 import type { MediaAttribute } from "../../status-body-schema";
@@ -121,67 +134,104 @@ export const deleteV1StatusesById = async (
 
 type UpdateStatusBody = z.output<typeof ApiUpdateStatusParamsSchema>;
 
-/** The new options of a poll that may still be edited: no votes yet, not expired. */
-type PollUpdate = Readonly<{
-  pollId: string;
-  options: ReadonlyArray<string>;
-  multiple: boolean;
-  expiresAt: string;
-  hideTotals: boolean;
-}>;
+/**
+ * What a revision does to the note's poll, as Mastodon's
+ * `UpdateStatusService#update_poll!`: the request's poll is the note's poll
+ * from then on. A poll whose options or `multiple` change is a new question
+ * and loses its votes; one that repeats them keeps its votes.
+ */
+type PollRevision =
+  | Readonly<{ kind: "Unchanged" }>
+  | Readonly<{ kind: "Removed"; pollId: string }>
+  | Readonly<{ kind: "Added"; poll: PublishPoll }>
+  | Readonly<{ kind: "Renewed"; pollId: string; expiresAt: string; hideTotals: boolean }>
+  | Readonly<{
+      kind: "Replaced";
+      pollId: string;
+      options: ReadonlyArray<string>;
+      multiple: boolean;
+      expiresAt: string;
+      hideTotals: boolean;
+    }>;
 
-const resolvePollEdit = async (
+const expiresAfter = (seconds: number): string =>
+  new Date(Date.now() + seconds * 1000).toISOString();
+
+const resolvePollRevision = async (
   db: D1Database,
   note: LocalNote,
   viewerId: string,
-  pollEdit: UpdateStatusBody["poll"],
-): Promise<Result<PollUpdate | undefined, ApiRefusal>> => {
-  if (!pollEdit) {
-    return ok(undefined);
-  }
+  requested: UpdateStatusBody["poll"],
+): Promise<Result<PollRevision, ApiRefusal>> => {
   const current = await findPollByStatusId(db, note.id, viewerId);
   if (current.isErr()) {
     return err(ApiRefusal.repository(current.error.message));
   }
+  const poll = parsePollRequest(requested);
+  if (poll.isErr()) {
+    return err(poll.error);
+  }
+  if (!poll.value) {
+    return ok(
+      current.value ? { kind: "Removed", pollId: current.value.id } : { kind: "Unchanged" },
+    );
+  }
+  // Mastodon sets the end from `expires_in` on every edit, so a poll that
+  // leaves it out has no end and `Poll` refuses it.
+  if (requested?.expires_in === undefined) {
+    return err(
+      ApiRefusal.rejected(422, "Validation failed: Deadline can't be blank", "PollExpiration"),
+    );
+  }
   if (!current.value) {
-    return err(ApiRefusal.rejected(422, "cannot edit a poll", "PollEditUnsupported"));
+    return ok({ kind: "Added", poll: poll.value });
   }
-  const votes = await countPollVotes(db, current.value.id);
-  if (votes.isErr()) {
-    return err(ApiRefusal.repository(votes.error.message));
-  }
-  if (votes.value > 0) {
-    return err(
-      ApiRefusal.rejected(422, "cannot edit a poll after voting has started", "PollVotesCast"),
-    );
-  }
-  if (Date.parse(current.value.expiresAt) <= Date.now()) {
-    return err(ApiRefusal.rejected(422, "cannot edit a poll after it has expired", "PollExpired"));
-  }
-  const options = pollEdit.options
-    .map((option) => option.trim())
-    .filter((option) => option.length > 0);
-  if (options.length < 2) {
-    return err(
-      ApiRefusal.rejected(422, "poll must have at least two options", "PollOptionsRequired"),
-    );
-  }
-  const expiresIn = pollEdit.expires_in;
-  const limits = checkPollLimits(options, expiresIn);
-  if (limits.isErr()) {
-    return err(limits.error);
-  }
-  return ok({
-    pollId: current.value.id,
-    options,
-    multiple: pollEdit.multiple ?? false,
-    expiresAt:
-      expiresIn !== undefined && Number.isFinite(expiresIn)
-        ? new Date(Date.now() + expiresIn * 1000).toISOString()
-        : current.value.expiresAt,
-    // `hide_totals` is optional on an edit: omitting it keeps the poll's.
-    hideTotals: pollEdit.hide_totals ?? current.value.hideTotals,
-  });
+  const { options, multiple, hideTotals } = poll.value;
+  const expiresAt = expiresAfter(poll.value.expiresIn);
+  // Mastodon compares the request's options as sent, before `Poll` strips
+  // them, and its `multiple` cast to a boolean, so one left out (`nil`)
+  // differs from a stored `false`.
+  const sameQuestion =
+    requested.multiple === current.value.multiple &&
+    requested.options.length === current.value.options.length &&
+    requested.options.every((title, index) => title === current.value?.options[index]?.title);
+  return ok(
+    sameQuestion
+      ? { kind: "Renewed", pollId: current.value.id, expiresAt, hideTotals }
+      : { kind: "Replaced", pollId: current.value.id, options, multiple, expiresAt, hideTotals },
+  );
+};
+
+const applyPollRevision = async (
+  db: D1Database,
+  statusId: string,
+  revision: PollRevision,
+): Promise<Result<void, ApiRefusal>> => {
+  const applied = await (async () => {
+    switch (revision.kind) {
+      case "Unchanged":
+        return ok(undefined);
+      case "Removed":
+        return deletePoll(db, revision.pollId);
+      case "Added":
+        return (
+          await insertPoll(db, {
+            statusId,
+            multiple: revision.poll.multiple,
+            expiresAt: expiresAfter(revision.poll.expiresIn),
+            options: revision.poll.options,
+            hideTotals: revision.poll.hideTotals,
+          })
+        ).map(() => undefined);
+      case "Renewed":
+        return renewPoll(db, revision);
+      case "Replaced":
+        return replacePollQuestion(db, revision);
+      default:
+        return assertNever(revision);
+    }
+  })();
+  return applied.mapErr((error) => ApiRefusal.repository(error.message));
 };
 
 /** Store the revision being replaced, stamped with the time it was made. */
@@ -241,9 +291,15 @@ const replaceMentions = async (
  * mentions), and announce the update. Every request field is checked
  * before the first write, so a refused edit leaves the note as it was.
  * The response is rendered after the edit is stored and announced, so a
- * failed render answers 500 (or 404) although the edit stands. Mastodon's
- * PUT carries the whole revision and no idempotency key: a retry with the
- * same body leaves the note reading the same, with one more history entry.
+ * failed render answers 500 (or 404) although the edit stands.
+ *
+ * As Mastodon's `UpdateStatusService`, the request is the whole revision: a
+ * content warning, sensitive flag, media or poll it leaves out is removed
+ * (`StatusRevision.content`, `PollRevision`). The language and the quote
+ * policy stay when the request names none, and the visibility always stays:
+ * an edit cannot change who a note reaches. There is no idempotency key: a
+ * retry with the same body leaves the note reading the same, with one more
+ * history entry.
  */
 const editNote = async (
   env: Env,
@@ -253,31 +309,38 @@ const editNote = async (
   body: UpdateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
 ): Promise<Result<ApiStatusJSON, ApiRefusal>> => {
-  const pollUpdate = await resolvePollEdit(env.DB, existing, author.id, body.poll);
-  if (pollUpdate.isErr()) {
-    return err(pollUpdate.error);
+  const pollRevision = await resolvePollRevision(env.DB, existing, author.id, body.poll);
+  if (pollRevision.isErr()) {
+    return err(pollRevision.error);
   }
-  const visibility =
-    body.visibility && body.visibility.length > 0
-      ? Visibility.fromMastodon(body.visibility)
-      : ok(existing.visibility);
-  if (visibility.isErr()) {
-    return err(ApiRefusal.rejected(400, "Invalid visibility", "Unknown"));
+  // Only a revision without text asks whether the note quotes a status.
+  const quote =
+    (body.status ?? "").trim().length === 0
+      ? await findQuoteByQuoting(env.DB, StatusTarget.local(existing.id))
+      : ok(undefined);
+  if (quote.isErr()) {
+    return err(ApiRefusal.repository(quote.error.message));
   }
+  const content = StatusRevision.content(
+    {
+      spoilerText: existing.spoilerText,
+      language: existing.language,
+      quotes: quote.value !== undefined,
+    },
+    {
+      text: body.status,
+      spoilerText: body.spoiler_text,
+      sensitive: body.sensitive,
+      language: body.language ?? undefined,
+    },
+  );
+  const hasPoll = pollRevision.value.kind !== "Removed" && pollRevision.value.kind !== "Unchanged";
   const draft = StatusComposition.validate(
     StatusComposition.composing({
-      text: body.status ?? existing.text,
-      visibility: visibility.value,
-      spoilerText: body.spoiler_text ?? existing.spoilerText,
-      sensitive: body.sensitive ?? existing.sensitive,
-      language:
-        body.language === undefined || body.language === null
-          ? existing.language
-          : body.language.length > 0
-            ? { kind: "Present", value: body.language }
-            : { kind: "None" },
-      mediaIds: body.media_ids ?? existing.mediaIds,
-      poll: existing.poll,
+      ...content,
+      visibility: existing.visibility,
+      mediaIds: body.media_ids ?? [],
+      poll: hasPoll ? { kind: "Present" } : { kind: "None" },
     }),
   );
   if (draft.isErr()) {
@@ -335,11 +398,9 @@ const editNote = async (
     });
   }
   startLinkCard(env, "Status", existing.id, revised.text);
-  if (pollUpdate.value) {
-    const poll = await replacePollOptions(env.DB, pollUpdate.value);
-    if (poll.isErr()) {
-      return err(ApiRefusal.repository(poll.error.message));
-    }
+  const pollApplied = await applyPollRevision(env.DB, existing.id, pollRevision.value);
+  if (pollApplied.isErr()) {
+    return err(pollApplied.error);
   }
   if (policyEdit !== undefined) {
     const stored = await setStatusQuotePolicy(
@@ -404,7 +465,7 @@ const updateStatus = async (c: Context<{ Bindings: Env }>): Promise<Response> =>
   if (!existing || existing.kind !== "LocalNote" || existing.accountId !== user.value.id) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  // A `null` field keeps the status's value, as a missing one does.
+  // A `null` field is one the request leaves out.
   const body = parseBodyParams(
     ApiUpdateStatusParamsSchema,
     withoutNullFields(await readUnknownBody(c)),

@@ -101,16 +101,13 @@ const createRefusals = [
 
 const editRefusals = [
   {
-    name: "an unknown visibility",
-    body: { status: "edited", visibility: "everyone" },
-    status: 400,
-    error: { error: "Invalid visibility", kind: "Unknown" },
-  },
-  {
-    name: "a poll on a note posted without one",
-    body: { status: "edited", poll: { options: ["a", "b"], expires_in: 3600 } },
+    name: "a poll with one option",
+    body: { status: "edited", poll: { options: ["a"], expires_in: 3600 } },
     status: 422,
-    error: { error: "cannot edit a poll", kind: "PollEditUnsupported" },
+    error: {
+      error: "Validation failed: Poll options must have more than one item",
+      kind: "PollOptionsOutOfRange",
+    },
   },
   {
     name: "an unknown quote approval policy",

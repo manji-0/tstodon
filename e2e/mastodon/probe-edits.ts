@@ -16,7 +16,6 @@ import {
   post,
   Status,
   Statuses,
-  step,
   StepFailure,
 } from "./sweep.js";
 
@@ -295,19 +294,36 @@ export const editScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
   );
 
   // Mastodon's PUT carries the whole revision: a field left out is emptied.
-  for (const author of [alice, mona]) {
-    const check = async (): Promise<void> => {
-      const sent = await post(author, {
+  await bothWays(
+    "an edit that leaves the content warning, the sensitive flag and the poll out removes them",
+    alice,
+    mona,
+    async (from, to) => {
+      const sent = await post(from, {
         status: `whole revision ${stamp}`,
         spoiler_text: "warning",
-        visibility: "direct",
+        sensitive: true,
+        poll: { options: ["yes", "no"], expires_in: 3600 },
       });
-      const edited = await edit(author, sent.id, { status: `whole revision, edited ${stamp}` });
-      if (edited.spoiler_text !== "") {
-        throw new StepFailure(`the content warning is still "${edited.spoiler_text}"`);
+      const copy = await onHome(to, sent.uri);
+      const emptied = (status: Status): boolean =>
+        status.spoiler_text === "" && !status.sensitive && !status.poll;
+      const edited = await edit(from, sent.id, { status: `whole revision, edited ${stamp}` });
+      if (!emptied(edited)) {
+        throw new StepFailure(
+          `the author's server answers ${JSON.stringify({
+            spoiler_text: edited.spoiler_text,
+            sensitive: edited.sensitive,
+            poll: edited.poll?.options.map((option) => option.title),
+          })}`,
+        );
       }
-    };
-    const name = `an edit that leaves the content warning out removes it: on ${new URL(author.origin).host}`;
-    await (author === alice ? knownGap(name, "INT-18", check) : step(name, check));
-  }
+      await copyBecomes(
+        to,
+        copy.id,
+        "the copy has the new text, and no content warning, sensitive flag or poll",
+        (status) => status.content.includes("whole revision, edited") && emptied(status),
+      );
+    },
+  );
 };

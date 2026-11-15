@@ -529,7 +529,11 @@ export const findRemoteFollow = async (
       : undefined;
   });
 
-/** Promote a `Queued` remote follow to `Accepted`. Returns true when a row moved. */
+/**
+ * Promote a `Queued` remote follow to `Accepted`, dated now: the follower
+ * counts from the acceptance, as Mastodon creates the Follow then. Returns
+ * true when a row moved.
+ */
 export const authorizeRemoteFollowRequest = async (
   db: D1Database,
   targetAccountId: string,
@@ -538,7 +542,7 @@ export const authorizeRemoteFollowRequest = async (
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      authorizeRemoteFollowRequestSql(targetAccountId, remoteActorUri),
+      authorizeRemoteFollowRequestSql(targetAccountId, remoteActorUri, nowIso()),
       RemoteActorUriRow,
     );
     return rows.length > 0;
