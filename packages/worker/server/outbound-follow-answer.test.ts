@@ -9,7 +9,10 @@ const signer = testRemoteActor("bob");
 const alice = testLocalAccount("100", "alice");
 const followId = "https://social.example/users/alice/follows/1";
 
-const recording = (accounts: ReadonlyMap<string, typeof alice> = new Map([["alice", alice]])) => {
+const recording = (
+  accounts: ReadonlyMap<string, typeof alice> = new Map([["alice", alice]]),
+  stored: Readonly<{ matches: boolean; holds: boolean }> = { matches: true, holds: true },
+) => {
   const accepted: OutboundFollowAnswer[] = [];
   const rejected: OutboundFollowAnswer[] = [];
   const lookedUp: string[] = [];
@@ -24,12 +27,13 @@ const recording = (accounts: ReadonlyMap<string, typeof alice> = new Map([["alic
       },
       acceptOutboundFollow: async (answer: OutboundFollowAnswer) => {
         accepted.push(answer);
-        return ok(true);
+        return ok(stored.matches);
       },
       rejectOutboundFollow: async (answer: OutboundFollowAnswer) => {
         rejected.push(answer);
-        return ok(true);
+        return ok(stored.matches);
       },
+      holdsOutboundFollow: async () => ok(stored.holds),
     },
   };
 };
@@ -49,7 +53,7 @@ describe("answerOutboundFollow", () => {
       objectId: followId,
       object: followId,
     });
-    expect(answered.isOk()).toBe(true);
+    expect(answered.unwrapOr(undefined)).toEqual({ kind: "Recorded" });
     expect(store.accepted).toEqual([
       { actorUri: signer.actorUri, followActivityId: followId, accountId: undefined },
     ]);
@@ -101,5 +105,55 @@ describe("answerOutboundFollow", () => {
     );
     expect(answered.isErr() ? answered.error : undefined).toEqual(failure);
     expect(store.accepted).toEqual([]);
+  });
+
+  it("names the follow to undo for an Accept of a follow the account does not hold", async () => {
+    const store = recording(undefined, { matches: false, holds: false });
+    const answered = await answerOutboundFollow(store.contracts, identity, signer, {
+      kind: "Accept",
+      objectId: followId,
+      object: followId,
+    });
+    expect(answered.unwrapOr(undefined)).toEqual({
+      kind: "AcceptedUnheld",
+      follower: alice,
+      followActivityId: followId,
+    });
+  });
+
+  it("names a Follow id of its own when the Accept embeds a Follow under another id", async () => {
+    const store = recording(undefined, { matches: false, holds: false });
+    const answered = await answerOutboundFollow(store.contracts, identity, signer, {
+      kind: "Accept",
+      objectId: `${signer.actorUri}/follows/rewritten`,
+      object: embeddedFollow("https://social.example/users/alice", signer.actorUri),
+    });
+    expect(answered.unwrapOr(undefined)).toMatchObject({
+      kind: "AcceptedUnheld",
+      followActivityId: expect.stringMatching(
+        /^https:\/\/social\.example\/users\/alice\/follows\/[^/]+$/,
+      ),
+    });
+  });
+
+  it("leaves an unmatched Accept alone when the account holds another follow of the signer", async () => {
+    const store = recording(undefined, { matches: false, holds: true });
+    const answered = await answerOutboundFollow(store.contracts, identity, signer, {
+      kind: "Accept",
+      objectId: followId,
+      object: followId,
+    });
+    expect(answered.unwrapOr(undefined)).toEqual({ kind: "Unmatched" });
+  });
+
+  it("leaves an unmatched Reject alone", async () => {
+    const store = recording(undefined, { matches: false, holds: false });
+    const answered = await answerOutboundFollow(store.contracts, identity, signer, {
+      kind: "Reject",
+      objectId: followId,
+      object: followId,
+    });
+    expect(answered.unwrapOr(undefined)).toEqual({ kind: "Unmatched" });
+    expect(store.lookedUp).toEqual([]);
   });
 });
