@@ -38,9 +38,11 @@ export const RemoteBoost = {
   schema: RemoteBoostSchema,
   parse: schemaResult(RemoteBoostSchema),
   /**
-   * The boost an `Announce` makes. As in Mastodon, only a public or unlisted
-   * status can be boosted, and the boost takes its visibility from the
-   * `Announce`'s own `to`/`cc`.
+   * The boost an `Announce` makes. As Mastodon's `announceable?`, a public
+   * or unlisted status can be boosted by anyone, and a followers-only one by
+   * its own author. The boost takes its visibility from the `Announce`'s own
+   * `to`/`cc`; the boost of a followers-only status reaches followers only,
+   * whatever its audience says.
    */
   fromAnnounce: (input: {
     id: StatusId;
@@ -48,15 +50,23 @@ export const RemoteBoost = {
     activityId: ActivityId;
     target: StatusTarget;
     targetVisibility: Visibility;
+    /** The remote actor that wrote the target; `undefined` for a local status. */
+    targetAuthorUri: string | undefined;
     to: ReadonlyArray<string>;
     cc: ReadonlyArray<string>;
     publishedAt: IsoInstant;
   }): Result<RemoteBoost, RemoteBoostError> => {
-    if (input.targetVisibility.kind !== "Public" && input.targetVisibility.kind !== "Unlisted") {
+    const ownFollowersOnly =
+      input.targetVisibility.kind === "FollowersOnly" && input.targetAuthorUri === input.actorUri;
+    if (
+      !ownFollowersOnly &&
+      input.targetVisibility.kind !== "Public" &&
+      input.targetVisibility.kind !== "Unlisted"
+    ) {
       return err({ kind: "NotAnnounceable" });
     }
-    const visibility = RemoteStatus.visibilityFromAudience(input.to, input.cc);
-    if (visibility.kind === "Direct") {
+    const audience = RemoteStatus.visibilityFromAudience(input.to, input.cc);
+    if (audience.kind === "Direct") {
       return err({ kind: "DirectAudience" });
     }
     return ok({
@@ -65,7 +75,7 @@ export const RemoteBoost = {
       actorUri: input.actorUri,
       activityId: input.activityId,
       target: input.target,
-      visibility,
+      visibility: ownFollowersOnly ? { kind: "FollowersOnly" } : audience,
       publishedAt: input.publishedAt,
     });
   },

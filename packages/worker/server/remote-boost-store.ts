@@ -18,6 +18,16 @@ import { CountedRow, queryTyped } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
 
+/**
+ * The boosted status (`ls` or `rs`) is one a boost (`b`) may show: a public or
+ * unlisted one, or the booster's own followers-only one, whose boost is
+ * followers-only too (`RemoteBoost.fromAnnounce`).
+ */
+const BOOSTABLE_TARGET_SQL = `(
+  COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
+  OR (rs.visibility = 'private' AND rs.actor_uri = b.actor_uri)
+)`;
+
 const RemoteBoostRowSchema = z.object({
   id: z.string().min(1),
   actor_uri: z.string().min(1),
@@ -101,7 +111,7 @@ export const findRemoteBoostById = async (
 /**
  * Boosts on one of the account's followed feeds (home or a list): those of
  * remote actors it follows (accepted, with reblogs shown) on that feed, newest
- * first. The boosted status must be a public or unlisted one; a block or mute
+ * first. The boosted status must be one a boost may show; a block or mute
  * of the booster or of the original author hides the boost, as does a domain
  * block or suspension of either.
  */
@@ -127,7 +137,7 @@ export const listFollowedRemoteBoosts = async (
                 AND f.reblogs <> 0 ${follows.sql}
            LEFT JOIN statuses ls ON ls.id = b.local_status_id
            LEFT JOIN remote_statuses rs ON rs.id = b.remote_status_id
-           WHERE COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
+           WHERE ${BOOSTABLE_TARGET_SQL}
              AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
              AND b.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND COALESCE(rs.actor_uri, '') NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
@@ -164,7 +174,7 @@ export const listFollowedRemoteBoosts = async (
 /**
  * A remote actor's boosts on its profile, newest first, as the viewer may see
  * them: a followers-only boost only by the actor's accepted followers. The
- * boosted status must be public or unlisted, and a block or mute of its
+ * boosted status must be one a boost may show, and a block or mute of its
  * author, or a domain block or suspension of that author's domain, hides it.
  */
 export const listActorRemoteBoosts = async (
@@ -191,7 +201,7 @@ export const listActorRemoteBoosts = async (
                SELECT 1 FROM outbound_follows f
                WHERE f.account_id = ? AND f.actor_uri = b.actor_uri AND f.state = 'Accepted'
              ))
-             AND COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
+             AND ${BOOSTABLE_TARGET_SQL}
              AND (ls.id IS NULL OR ls.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL})
              AND COALESCE(rs.actor_uri, '') NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}

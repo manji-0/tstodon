@@ -38,7 +38,7 @@ const announcedTarget = async (
   remote: RemoteStatusValue | undefined,
 ): Promise<
   Result<
-    Readonly<{ target: StatusTargetValue; visibility: Visibility }> | undefined,
+    Readonly<{ target: StatusTargetValue; visibility: Visibility; authorUri?: string }> | undefined,
     RepositoryError
   >
 > => {
@@ -48,6 +48,7 @@ const announcedTarget = async (
       remote && {
         target: { kind: "RemoteStatus", statusId: remote.id },
         visibility: remote.visibility,
+        authorUri: remote.actorUri,
       },
     );
   }
@@ -98,6 +99,7 @@ export const recordRemoteBoost = async (
     activityId: announce.id,
     target: target.value.target,
     targetVisibility: target.value.visibility,
+    targetAuthorUri: target.value.authorUri,
     to: stringList(envelope.to),
     cc: stringList(envelope.cc),
     publishedAt: publishedAt.value,

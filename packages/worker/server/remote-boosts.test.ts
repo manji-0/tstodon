@@ -355,3 +355,60 @@ describe("remote boosts on the home timeline", () => {
     expect(fetched.status).toBe(404);
   });
 });
+
+describe("a boost of the booster's own followers-only note", () => {
+  it("is kept for the booster's followers, and another actor's boost of it is dropped", async () => {
+    const booster = await remoteActor("boost-own-private", "booster.example");
+    const stranger = await remoteActor("boost-own-private-stranger", "booster.example");
+    const follower = "boost-own-private-follower@example.com";
+    const other = "boost-own-private-other@example.com";
+    await signedInAccount(other);
+    await acceptedFollow(follower, booster, "own-private");
+    await acceptedFollow(follower, stranger, "own-private-stranger");
+    const noteUri = `${new URL(booster.actorUri).origin}/notes/boost-own-private`;
+    expect(
+      await booster.send({
+        id: `${noteUri}/activity`,
+        type: "Create",
+        object: {
+          ...noteDocument(booster, noteUri, "boost-own-private"),
+          to: [`${booster.actorUri}/followers`],
+          cc: [],
+        },
+      }),
+    ).toBe(202);
+
+    // Mastodon addresses the boost of a followers-only post to the followers.
+    expect(
+      await booster.send({
+        id: announceId(booster, "own-private"),
+        type: "Announce",
+        object: noteUri,
+        to: [`${booster.actorUri}/followers`],
+        cc: [booster.actorUri],
+      }),
+    ).toBe(202);
+    expect(
+      await stranger.send({
+        id: announceId(stranger, "own-private"),
+        type: "Announce",
+        object: noteUri,
+        to: [PUBLIC],
+        cc: [`${stranger.actorUri}/followers`],
+      }),
+    ).toBe(202);
+
+    const boosts = (await home(follower)).filter((entry) => entry.reblog !== null);
+    expect(boosts).toMatchObject([
+      {
+        uri: announceId(booster, "own-private"),
+        account: { id: accountId(booster) },
+        reblog: { uri: noteUri },
+      },
+    ]);
+    const path = `/api/v1/statuses/${boosts[0]?.id ?? ""}`;
+    expect((await json(path, { headers: await authHeaders(follower) })).status).toBe(200);
+    expect((await json(path, { headers: await authHeaders(other) })).status).toBe(404);
+    expect((await json(path)).status).toBe(404);
+  });
+});
