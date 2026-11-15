@@ -73,6 +73,16 @@ const ENTITIES: Readonly<Record<string, string>> = {
   nbsp: " ",
 };
 
+/**
+ * The character a numeric reference names. One that names no character (zero,
+ * a surrogate, a number past U+10FFFF) is U+FFFD, as an HTML parser reads it:
+ * `String.fromCodePoint` throws on a number out of range.
+ */
+const referencedCharacter = (code: number): string =>
+  Number.isInteger(code) && code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
+    ? String.fromCodePoint(code)
+    : "\ufffd";
+
 /** The text of an actor's HTML `summary`: line breaks kept, every tag dropped. */
 export const summaryText = (html: string): string =>
   html
@@ -81,10 +91,10 @@ export const summaryText = (html: string): string =>
     .replace(/<[^>]*>/g, "")
     .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
       if (entity.startsWith("#x") || entity.startsWith("#X")) {
-        return String.fromCodePoint(Number.parseInt(entity.slice(2), 16));
+        return referencedCharacter(Number.parseInt(entity.slice(2), 16));
       }
       if (entity.startsWith("#")) {
-        return String.fromCodePoint(Number.parseInt(entity.slice(1), 10));
+        return referencedCharacter(Number.parseInt(entity.slice(1), 10));
       }
       return ENTITIES[entity.toLowerCase()] ?? match;
     })

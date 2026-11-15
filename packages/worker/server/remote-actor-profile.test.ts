@@ -128,6 +128,20 @@ describe("the custom emoji of a remote account", () => {
   });
 });
 
+describe("the bio of a remote account", () => {
+  it("stores an actor whose summary has a character reference outside Unicode", async () => {
+    const author = await remoteActor("bio-bad-reference");
+    await updateProfile(author, {
+      name: "Bad reference",
+      summary:
+        "<p>over &#x110000; huge &#99999999999999999999; half &#xD800; nul &#0; fine &#x41;&#66;</p>",
+    });
+    const shown = await account(author.actorUri);
+    expect(shown.display_name).toBe("Bad reference");
+    expect(shown.note).toContain("over \ufffd huge \ufffd half \ufffd nul \ufffd fine AB");
+  });
+});
+
 const field = (name: unknown, value: unknown) => ({ type: "PropertyValue", name, value });
 
 describe("the profile fields of a remote account", () => {
