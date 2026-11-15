@@ -7,12 +7,13 @@ import { accountRefPresentation } from "../account-presentation";
 import { featuredTagActivity, hashtagObject } from "../activitypub";
 import { enqueueLocalActivity } from "../delivery";
 import { newEntityId } from "../ids";
-import { localRef } from "../account-ref";
+import { localRef, remoteRef } from "../account-ref";
 import { findAccountById } from "../account-store";
 import { authenticate } from "../auth";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { RemoteAccountId } from "../remote-account-id";
 import { findRemoteActorByUri } from "../remote-actor-store";
+import { listRemoteFeaturedTags } from "../remote-featured-tag-store";
 import { mastodonFeaturedTag, mastodonTag } from "../tag-documents";
 import { parseInstanceIdentity } from "../runtime-config";
 import { readParams } from "../request-params";
@@ -79,13 +80,13 @@ const buildFeaturedTagDocument = async (
   }
   return {
     kind: "Ok",
-    document: mastodonFeaturedTag(
-      identity,
-      username,
+    document: mastodonFeaturedTag(identity, {
+      acct: username,
+      tagName: name,
       name,
-      uses.value.count,
-      uses.value.lastStatusAt,
-    ),
+      statusesCount: uses.value.count,
+      lastStatusAt: uses.value.lastStatusAt,
+    }),
   };
 };
 
@@ -432,6 +433,38 @@ export const getV1FeaturedTagsSuggestions = async (
   );
 };
 
+/**
+ * A remote account's featured hashtags, as Mastodon lists a remote
+ * account's `featured_tags`: none while the account is unavailable, 404 for
+ * an account this server does not know.
+ */
+const remoteFeaturedTags = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  actorUri: string,
+): Promise<Response> => {
+  const actor = await findRemoteActorByUri(c.env.DB, actorUri);
+  if (actor.isErr()) {
+    return jsonRepositoryError(c, actor.error.message);
+  }
+  if (!actor.value) {
+    return tagNotFound(c);
+  }
+  const presentation = await accountRefPresentation(c.env, remoteRef(actor.value));
+  if (presentation.isErr()) {
+    return jsonRepositoryError(c, presentation.error.message);
+  }
+  if (!AccountPresentation.available(presentation.value)) {
+    return c.json([]);
+  }
+  const tags = await listRemoteFeaturedTags(c.env.DB, actorUri);
+  if (tags.isErr()) {
+    return jsonRepositoryError(c, tags.error.message);
+  }
+  const acct = `${actor.value.username}@${actor.value.domain}`;
+  return c.json(tags.value.map((tag) => mastodonFeaturedTag(identity, { acct, ...tag })));
+};
+
 export const getV1AccountsByIdFeaturedTags = async (
   c: Context<{ Bindings: Env }, "/api/v1/accounts/:id/featured_tags">,
 ) => {
@@ -440,16 +473,9 @@ export const getV1AccountsByIdFeaturedTags = async (
     return c.json(identity.error, 500);
   }
   const id = c.req.param("id") ?? "";
-  // A remote actor's `featuredTags` collection is not fetched, so a remote
-  // account this server knows has none: an empty list, not the 404 a client
-  // reads as a missing account (INT-14 tracks fetching the collection).
   const actorUri = RemoteAccountId.decode(id);
   if (actorUri.isOk()) {
-    const actor = await findRemoteActorByUri(c.env.DB, actorUri.value);
-    if (actor.isErr()) {
-      return jsonRepositoryError(c, actor.error.message);
-    }
-    return actor.value ? c.json([]) : tagNotFound(c);
+    return remoteFeaturedTags(c, identity.value, actorUri.value);
   }
   const account = await findAccountById(c.env.DB, id);
   if (account.isErr()) {

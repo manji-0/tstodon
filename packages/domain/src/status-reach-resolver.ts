@@ -22,6 +22,14 @@ export type FindRemoteActorInbox = (
   actorUri: string,
 ) => Promise<Result<string | undefined, RepositoryError>>;
 
+/**
+ * The delivery inboxes of the accepted remote followers of the local accounts
+ * that boost a status, in one lookup.
+ */
+export type ListLocalBoosterFollowerInboxes = (
+  status: ThreadStatus,
+) => Promise<Result<ReadonlyArray<string>, RepositoryError>>;
+
 /** The local accounts that boosted a status, in boost order. */
 export type ListLocalBoosterAccountIds = (
   status: ThreadStatus,

@@ -3,13 +3,10 @@ import {
   type InstanceIdentity,
   type LocalAccount,
   type LocalStatus as LocalStatusValue,
-  RemoteActor,
-  StatusTarget,
+  type RemoteActor,
   type ThreadStatus,
 } from "@tstodon/domain";
-import { err, ok } from "neverthrow";
 import { z } from "zod";
-import { findAccountById } from "./account-store";
 import { localNoteRef } from "./activitypub";
 import { enqueueActivityToInboxes, forwardActivityToInboxes } from "./delivery";
 import { type FoundStatus, foundStatusTarget } from "./found-status";
@@ -17,61 +14,15 @@ import {
   localQuoteAuthorization,
   quoteAuthorizationDeleteActivity,
 } from "./quote-authorization-document";
-import { findRemoteActorByUri, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
-import { listStatusInteractorInboxes } from "./remote-interaction-store";
 import { statusTargetRef } from "./quote-uri";
-import { listLocalBoosterAccountIds } from "./status-interaction-store";
-import {
-  quoteStampReach,
-  type StampDeleteForwardOperations,
-  stampDeleteForward,
-  type StatusReachOperations,
-} from "./status-reach";
-import { findThreadParent } from "./thread-context";
+import { quoteStampReach, stampDeleteForward } from "./status-reach";
+import { statusReachOperations } from "./status-reach-operations";
 
 /** A found status as a thread node. */
 const threadStatusOf = (found: FoundStatus): ThreadStatus =>
   found.kind === "LocalStatus"
     ? { kind: "Local", status: found.status }
     : { kind: "Remote", status: found.status };
-
-const targetOf = (status: ThreadStatus) =>
-  status.kind === "Local"
-    ? StatusTarget.local(status.status.id)
-    : StatusTarget.remote(status.status.id);
-
-const listRemoteFollowerInboxes = (env: Env) => (accountId: string) =>
-  listAcceptedRemoteFollowerInboxes(env.DB, accountId);
-
-const statusReachOperations = (env: Env, identity: InstanceIdentity): StatusReachOperations => ({
-  listInteractorInboxes: async (status) => {
-    if (status.kind === "Remote") {
-      return listStatusInteractorInboxes(env.DB, {
-        kind: "Remote",
-        statusId: status.status.id,
-        uri: status.status.objectUri,
-      });
-    }
-    const author = await findAccountById(env.DB, status.status.accountId);
-    if (author.isErr()) {
-      return err(author.error);
-    }
-    if (!author.value) {
-      return ok([]);
-    }
-    return listStatusInteractorInboxes(env.DB, {
-      kind: "Local",
-      statusId: status.status.id,
-      uri: localNoteRef(identity, author.value, status.status.id).uri,
-    });
-  },
-  listRemoteFollowerInboxes: listRemoteFollowerInboxes(env),
-  findRemoteActorInbox: async (actorUri) =>
-    (await findRemoteActorByUri(env.DB, actorUri)).map((actor) =>
-      actor ? RemoteActor.deliveryInbox(actor) : undefined,
-    ),
-  findThreadParent: (status) => findThreadParent(env.DB, identity, status),
-});
 
 /**
  * Withdraw the stamp of a revoked quote of a local status, as Mastodon's
@@ -112,12 +63,6 @@ const parseLdSigned = schemaResult(
   z.object({ signature: z.record(z.string(), z.unknown()) }).passthrough(),
 );
 
-const forwardOperations = (env: Env, identity: InstanceIdentity): StampDeleteForwardOperations => ({
-  listLocalBoosterAccountIds: (status) => listLocalBoosterAccountIds(env.DB, targetOf(status)),
-  listRemoteFollowerInboxes: listRemoteFollowerInboxes(env),
-  findThreadParent: (status) => findThreadParent(env.DB, identity, status),
-});
-
 /**
  * Forward an inbound stamp `Delete` to the audience of the quoting status
  * this server distributed ({@link stampDeleteForward}), as Mastodon's
@@ -136,7 +81,7 @@ export const forwardStampDelete = async (
   if (signed.isErr()) {
     return;
   }
-  const forward = await stampDeleteForward(forwardOperations(env, identity), quoting, sender);
+  const forward = await stampDeleteForward(statusReachOperations(env, identity), quoting, sender);
   if (forward.isErr() || forward.value === undefined) {
     return;
   }

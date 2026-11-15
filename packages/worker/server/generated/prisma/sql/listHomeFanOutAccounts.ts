@@ -9,14 +9,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  * @param afterAccountId
  * @param limit
+ * @param entryId
  */
 export const listHomeFanOutAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT account_id FROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE target_account_id = $1 AND kind = 'Accepted' AND follower_account_id > $3\nUNION\nSELECT account_id FROM outbound_follows\nWHERE actor_uri = $2 AND state = 'Accepted' AND account_id > $3\n)\nWHERE EXISTS (\nSELECT 1 FROM stream_subscriptions s\nWHERE s.hub = account_id AND s.stream IN ('user', 'list')\n)\nORDER BY account_id LIMIT $4",
+  "SELECT account_id FROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE target_account_id = $1 AND kind = 'Accepted' AND follower_account_id > $3\nUNION\nSELECT account_id FROM outbound_follows\nWHERE actor_uri = $2 AND state = 'Accepted' AND account_id > $3\nUNION\nSELECT account_id FROM followed_tags\nWHERE account_id > $3 AND tag_name IN (\nSELECT tag FROM local_status_tags WHERE status_id = $5\nUNION ALL\nSELECT tag FROM remote_status_tags WHERE status_id = $5\n)\n)\nWHERE EXISTS (\nSELECT 1 FROM stream_subscriptions s\nWHERE s.hub = account_id AND s.stream IN ('user', 'list')\n)\nORDER BY account_id LIMIT $4",
 ) as (
   accountId: string,
   actorUri: string,
   afterAccountId: string,
   limit: number,
+  entryId: string,
 ) => $runtime.TypedSql<listHomeFanOutAccounts.Parameters, listHomeFanOutAccounts.Result>;
 
 export namespace listHomeFanOutAccounts {
@@ -25,6 +27,7 @@ export namespace listHomeFanOutAccounts {
     actorUri: string,
     afterAccountId: string,
     limit: number,
+    entryId: string,
   ];
   export type Result = {
     account_id: string;

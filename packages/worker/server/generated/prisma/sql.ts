@@ -8,6 +8,8 @@ export * from "./sql/accountStatsByIdsJson";
 
 export * from "./sql/addRemoteActorPin";
 
+export * from "./sql/addRemoteFeaturedTag";
+
 export * from "./sql/advanceBackfillCursor";
 
 export * from "./sql/attachMediaToStatus";
@@ -169,6 +171,10 @@ export * from "./sql/deleteRemoteBlock";
 export * from "./sql/deleteRemoteBoostByActivity";
 
 export * from "./sql/deleteRemoteFavourite";
+
+export * from "./sql/deleteRemoteFeaturedTag";
+
+export * from "./sql/deleteRemoteFeaturedTags";
 
 export * from "./sql/deleteRemoteFollow";
 
@@ -484,6 +490,8 @@ export * from "./sql/insertRemoteBlock";
 
 export * from "./sql/insertRemoteBoost";
 
+export * from "./sql/insertRemoteFeaturedTag";
+
 export * from "./sql/insertRemotePollOwnVote";
 
 export * from "./sql/insertRemotePollVoteOrIgnore";
@@ -634,6 +642,8 @@ export * from "./sql/listListsForAccount";
 
 export * from "./sql/listLocalAccountModerations";
 
+export * from "./sql/listLocalBoosterFollowerInboxes";
+
 export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";
@@ -694,6 +704,8 @@ export * from "./sql/listRemoteActorModerations";
 
 export * from "./sql/listRemoteActorPinnedStatuses";
 
+export * from "./sql/listRemoteFeaturedTags";
+
 export * from "./sql/listRemoteNoteReplies";
 
 export * from "./sql/listRemotePollVotes";
@@ -713,6 +725,8 @@ export * from "./sql/listRemoteStatusRetentionSlice";
 export * from "./sql/listRemoteStatusTags";
 
 export * from "./sql/listRemoteThreadAncestors";
+
+export * from "./sql/listRemoteThreadLevel";
 
 export * from "./sql/listRestrictedDomains";
 

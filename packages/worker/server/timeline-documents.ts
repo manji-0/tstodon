@@ -1,4 +1,5 @@
 import type { ApiStatusJSON } from "@tstodon/api";
+import { withinHorizon } from "./followed-feed";
 import { InstanceIdentity, type LocalStatus, type RemoteNote, Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
@@ -18,6 +19,7 @@ import { mastodonRemoteStatuses } from "./remote-status-documents";
 import {
   listActorRemoteStatuses,
   listFollowedRemoteStatuses,
+  listFollowedTagRemoteStatuses,
   listPublicRemoteStatuses,
   listTagRemoteStatuses,
 } from "./remote-status-timeline-store";
@@ -25,6 +27,7 @@ import { filterMutedThreads, listStatusMuteRoots, mutedThreadStatusIds } from ".
 import { listTagStatuses, type TagStatusFilters } from "./status-discovery-store";
 import {
   type AccountStatusFilters,
+  findFollowedTagHorizon,
   listHomeStatuses,
   listPublicStatuses,
 } from "./status-timeline-store";
@@ -279,13 +282,23 @@ const feedDocuments = async (
   local: Promise<Result<LocalStatus[], RepositoryError>>,
   limit: number,
   cursor: IdCursor,
+  horizon: string | undefined = undefined,
 ): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
   const mutedRoots = listStatusMuteRoots(env.DB, viewerId);
-  const [statuses, remote, boosts] = await Promise.all([
+  const [statuses, followed, tagged, boosts] = await Promise.all([
     local,
     listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
+    // A followed hashtag brings posts to home only, as in Mastodon.
+    feed.kind === "Home"
+      ? listFollowedTagRemoteStatuses(env.DB, viewerId, limit, cursor, horizon)
+      : Promise.resolve(ok([])),
     listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
   ]);
+  // Disjoint: the hashtag query leaves out the followed actors. Nothing past
+  // the horizon, where the followed hashtags were not read.
+  const remote = followed.andThen((notes) =>
+    tagged.map((more) => withinHorizon([...notes, ...more], cursor, horizon)),
+  );
   if (statuses.isErr()) {
     return err(statuses.error);
   }
@@ -296,7 +309,12 @@ const feedDocuments = async (
     return err(boosts.error);
   }
   const [visible, mutedRemote] = await Promise.all([
-    filterMutedThreads(env.DB, viewerId, statuses.value, mutedRoots),
+    filterMutedThreads(
+      env.DB,
+      viewerId,
+      withinHorizon(statuses.value, cursor, horizon),
+      mutedRoots,
+    ),
     mutedThreadStatusIds(
       env.DB,
       identity,
@@ -335,7 +353,9 @@ const feedDocuments = async (
               ),
           ),
       ),
-      pageSource(boosts.value, (shown) => remoteBoostDocuments(env, identity, shown, viewerId)),
+      pageSource(withinHorizon(boosts.value, cursor, horizon), (shown) =>
+        remoteBoostDocuments(env, identity, shown, viewerId),
+      ),
     ],
     cursor,
     limit,
@@ -345,7 +365,8 @@ const feedDocuments = async (
 /**
  * The viewer's home timeline as Mastodon statuses rendered for the viewer:
  * its own and followed accounts' statuses and boosts, followed remote actors'
- * notes and boosts, without what the viewer blocks or mutes (accounts, domains,
+ * notes and boosts, public notes under the hashtags it follows, posted since
+ * it followed them, without what the viewer blocks or mutes (accounts, domains,
  * conversations), with `filtered` on what its filters match. This is the one definition of
  * what home holds: `GET /api/v1/timelines/home` pages it, and the streaming
  * fan-out asks it for one entry (`onlyId`) to decide whether a follower
@@ -357,16 +378,47 @@ export const homeTimelineDocuments = async (
   viewerId: string,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
-  feedDocuments(
-    env,
-    identity,
-    viewerId,
-    { kind: "Home" },
-    listHomeStatuses(env.DB, viewerId, limit, cursor),
-    limit,
-    cursor,
-  );
+): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+  let page = cursor;
+  for (let step = 1; ; step += 1) {
+    const horizon = await findFollowedTagHorizon(env.DB, viewerId, page, limit);
+    if (horizon.isErr()) {
+      return err(horizon.error);
+    }
+    const documents = await feedDocuments(
+      env,
+      identity,
+      viewerId,
+      { kind: "Home" },
+      listHomeStatuses(env.DB, viewerId, limit, page, horizon.value),
+      limit,
+      page,
+      horizon.value,
+    );
+    // A page left empty by its horizon (a hidden flood under a followed
+    // hashtag) is read again past the horizon, as an empty page tells a
+    // client the timeline ended. A `since_id` page never moves past it.
+    const next =
+      documents.isOk() && documents.value.length === 0
+        ? pastHorizon(page, horizon.value)
+        : undefined;
+    if (next === undefined || step >= HOME_HORIZON_STEPS) {
+      return documents;
+    }
+    page = next;
+  }
+};
+
+/** How many horizons one home request reads past before it answers an empty page. */
+export const HOME_HORIZON_STEPS = 4;
+
+/** The page after a horizon: below it, or above it for a `min_id` page. */
+const pastHorizon = (cursor: IdCursor, horizon: string | undefined): IdCursor | undefined => {
+  if (horizon === undefined || (cursor.onlyId ?? "") !== "" || (cursor.sinceId ?? "") !== "") {
+    return undefined;
+  }
+  return (cursor.minId ?? "") !== "" ? { minId: horizon } : { maxId: horizon };
+};
 
 /**
  * The notes a remote actor pinned, in its order, as `pinned=true` on its

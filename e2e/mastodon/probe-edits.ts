@@ -10,12 +10,12 @@ import {
   contextOf,
   eventually,
   follow,
-  knownGap,
   notified,
   onHome,
   post,
   Status,
   Statuses,
+  step,
   StepFailure,
 } from "./sweep.js";
 
@@ -266,13 +266,12 @@ export const editScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
     },
   );
 
-  // Mastodon sends a `Delete` to the author's followers and to the remote
-  // accounts that interacted, not to the followers of a local account that
-  // boosted the post. The same boost stays on tstodon when the post is
-  // Mastodon's, which only Mastodon can change.
-  await knownGap(
+  // Mastodon sends the `Delete` of a local post to its reach (the followers
+  // and the remote accounts that interacted), not to the followers of a local
+  // account that boosted it. tstodon sends it to those followers too, as
+  // Mastodon's `ActivityPub::Forwarder` does for a remote post.
+  await step(
     "a deleted post takes a local boost of it off the home of the booster's remote follower: tstodon → Mastodon",
-    "INT-9",
     async () => {
       const original = await post(bob, { status: `boosted across then deleted ${stamp}` });
       await call(alice, `/api/v1/statuses/${original.id}/reblog`, Status, {
@@ -285,10 +284,8 @@ export const editScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
       };
       await eventually("the follower's home has the boost", boostOnHome);
       await call(bob, `/api/v1/statuses/${original.id}`, Anything, { method: "DELETE" });
-      await eventually(
-        "the follower's home no longer has the boost",
-        async () => ((await boostOnHome()) === undefined ? true : undefined),
-        8000,
+      await eventually("the follower's home no longer has the boost", async () =>
+        (await boostOnHome()) === undefined ? true : undefined,
       );
     },
   );

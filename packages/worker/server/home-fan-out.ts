@@ -235,8 +235,9 @@ const announceHomeEntryTallied = async (
 };
 
 /**
- * Tell one page of the author's local followers with a `user` or `list`
- * stream open about the entry. Resolves to
+ * Tell one page of the author's local followers, and of the local followers
+ * of the entry's hashtags, with a `user` or `list` stream open about the
+ * entry. Resolves to
  * the followers told and the cursor of the next page (`undefined` when this
  * was the last).
  */
@@ -254,6 +255,7 @@ export const fanOutHomePage = async (
         job.author.kind === "RemoteActor" ? job.author.actorUri : "",
         job.afterAccountId,
         pageSize,
+        job.entryId,
       ),
       AccountIdRow,
     ),

@@ -1,13 +1,16 @@
 import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
-import type { Result } from "neverthrow";
+import { ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { nowIso } from "./clock";
-import { containsFolded, type RepositoryError, runD1 } from "./d1";
+import { containsFolded, parseRows, type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import {
   EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL,
   FEED_LANGUAGES_SQL,
   FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalReblogsSql,
+  followedTagHorizonSql,
+  followedTagNoteIdsSql,
   reblogOfShownAuthorSql,
 } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -60,11 +63,39 @@ export const suppressedBinds = (viewerId: string | undefined): string[] => {
   return [viewer, viewer, viewer, nowIso()];
 };
 
+/**
+ * The page's horizon over the viewer's followed hashtags
+ * ({@link followedTagHorizonSql}): `undefined` when every hashtag is read to
+ * its end, and for a single entry (`onlyId`).
+ */
+export const findFollowedTagHorizon = async (
+  db: D1Database,
+  viewerId: string,
+  cursor: StatusCursor,
+  limit: number,
+): Promise<Result<string | undefined, RepositoryError>> => {
+  if ((cursor.onlyId ?? "").length > 0) {
+    return ok(undefined);
+  }
+  return runD1(async () => {
+    const { sql, binds } = followedTagHorizonSql(viewerId, cursor, limit);
+    const row = await db
+      .prepare(sql)
+      .bind(...binds)
+      .first();
+    const [parsed] = parseRows(HorizonRow, row === null ? [] : [row]);
+    return parsed?.horizon ?? undefined;
+  });
+};
+
+const HorizonRow = z.object({ horizon: z.string().nullable() });
+
 export const listHomeStatuses = async (
   db: D1Database,
   accountId: string,
   limit: number,
   cursor: StatusCursor = {},
+  horizon: string | undefined = undefined,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     // Members of the viewer's exclusive lists show on those lists only.
@@ -74,10 +105,11 @@ export const listHomeStatuses = async (
     const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(accountId, now);
+    const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         ))
+         ) OR id IN ${tagged.sql})
          ${suppressed}
          ${reblogs.sql}
          ${FEED_LANGUAGES_SQL}
@@ -87,6 +119,7 @@ export const listHomeStatuses = async (
       .bind(
         accountId,
         accountId,
+        ...tagged.binds,
         // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
         accountId,
         accountId,

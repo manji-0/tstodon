@@ -13,6 +13,9 @@ import {
   THREAD_BACKFILL_ANCESTOR_LIMIT,
   THREAD_BACKFILL_REPLY_LIMIT,
   THREAD_REFRESH_RUNNING_LIMIT_MS,
+  THREAD_TREE_NODES_PER_JOB,
+  THREAD_TREE_PAGE_LIMIT,
+  THREAD_TREE_REPLY_LIMIT,
   threadRefreshOf,
 } from "./remote-thread-backfill";
 
@@ -131,6 +134,40 @@ const runQueued = async (
   expect(await processOutboxJob(recording.env, job.value)).toBe(outcome);
 };
 
+/** Run the queued jobs until none is left, as the queue would; resolves to how many ran. */
+const drain = async (recording: ReturnType<typeof recordingEnv>): Promise<number> => {
+  let ran = 0;
+  while (recording.sent.length > 0) {
+    await runQueued(recording);
+    ran += 1;
+  }
+  return ran;
+};
+
+/** When the fetch of the status's thread was closed; null while it runs. */
+const finishedAt = async (statusId: string) =>
+  (
+    await env.DB.prepare("SELECT context_refreshed_at FROM remote_statuses WHERE id = ?")
+      .bind(statusId)
+      .first<{ context_refreshed_at: string | null }>()
+  )?.context_refreshed_at ?? null;
+
+/** A note whose `replies` collection lists `replies` on its first page. */
+const withReplies = (
+  remote: Remote,
+  slug: string,
+  replies: ReadonlyArray<string>,
+  extra: Record<string, unknown> = {},
+) =>
+  noteDocument(remote, slug, {
+    ...extra,
+    replies: {
+      id: `${noteUri(remote, slug)}/replies`,
+      type: "Collection",
+      first: { type: "CollectionPage", items: replies },
+    },
+  });
+
 describe("opening a remote status", () => {
   it("fetches its ancestors and listed replies once, off the request path", async () => {
     const author = await remoteActor("thread-author", "thread.example");
@@ -178,7 +215,9 @@ describe("opening a remote status", () => {
       .bind(openedId)
       .run();
     await Promise.all([requested(openedId, recording.env), requested(openedId, recording.env)]);
-    expect(recording.sent).toEqual([{ kind: "BackfillRemoteThread", statusId: openedId }]);
+    expect(recording.sent).toEqual([
+      { kind: "BackfillRemoteThread", statusId: openedId, from: { kind: "Root" } },
+    ]);
 
     await serving(documents, () => runQueued(recording));
 
@@ -324,7 +363,7 @@ describe("opening a remote status", () => {
           { id: secondPage, type: "CollectionPage", items: [noteUri(other, "down-other-reply")] },
         ],
       ]),
-      () => runQueued(recording),
+      () => drain(recording),
     );
     expect(await finished()).not.toBeNull();
     expect((await contextOf(openedId)).descendants.map((entry) => entry.uri)).toEqual([
@@ -419,6 +458,256 @@ const asyncRefresh = async (id: string, headers: Record<string, string>) =>
     headers,
   });
 
+describe("the reply tree of an opened remote status", () => {
+  it("is walked a level at a time in queued jobs, and the fetch closes with the last", async () => {
+    const author = await remoteActor("tree-author", "tree.example");
+    const other = await remoteActor("tree-other", "tree.example");
+    const elsewhere = await remoteActor("tree-elsewhere", "elsewhere.example");
+    const slugs = ["tree-1", "tree-2", "tree-3"];
+    const [first, second, third] = [
+      noteUri(other, slugs[0] ?? ""),
+      noteUri(author, slugs[1] ?? ""),
+      noteUri(other, slugs[2] ?? ""),
+    ];
+    const root = withReplies(author, "tree-root", [first]);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    // The third's `replies` is on another origin, which is not read.
+    const stray = noteUri(elsewhere, "tree-stray");
+    const documents = new Map<string, unknown>([
+      [root.id, root],
+      [first, withReplies(other, slugs[0] ?? "", [second], { inReplyTo: root.id })],
+      [second, withReplies(author, slugs[1] ?? "", [third], { inReplyTo: first })],
+      [
+        third,
+        noteDocument(other, slugs[2] ?? "", {
+          inReplyTo: second,
+          replies: "https://elsewhere.example/replies",
+        }),
+      ],
+      [
+        "https://elsewhere.example/replies",
+        { id: "https://elsewhere.example/replies", type: "Collection", items: [stray] },
+      ],
+      [stray, noteDocument(elsewhere, "tree-stray", { inReplyTo: third })],
+    ]);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+
+    await serving(documents, async () => {
+      // The first pass and the jobs for levels 1 and 2.
+      for (let job = 0; job < 3; job += 1) {
+        await runQueued(recording);
+      }
+      expect(await finishedAt(rootId)).toBeNull();
+      // Level 3, then an empty level 4.
+      expect(await drain(recording)).toBe(2);
+    });
+
+    expect(await finishedAt(rootId)).not.toBeNull();
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([
+      first,
+      second,
+      third,
+    ]);
+  });
+
+  it(`expands at most ${THREAD_TREE_NODES_PER_JOB} replies a job and goes on in the next`, async () => {
+    const author = await remoteActor("wide-author", "tree.example");
+    const count = THREAD_TREE_NODES_PER_JOB + 2;
+    const replyUris = Array.from({ length: count }, (_, index) => noteUri(author, `wide-${index}`));
+    const leaf = (index: number) => noteUri(author, `wide-leaf-${index}`);
+    const root = withReplies(author, "wide-root", replyUris);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    const documents = new Map<string, unknown>([
+      [root.id, root],
+      ...replyUris.map(
+        (uri, index) =>
+          [
+            uri,
+            withReplies(author, `wide-${index}`, [leaf(index)], { inReplyTo: root.id }),
+          ] as const,
+      ),
+      ...replyUris.map(
+        (uri, index) =>
+          [leaf(index), noteDocument(author, `wide-leaf-${index}`, { inReplyTo: uri })] as const,
+      ),
+    ]);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+
+    const levels: unknown[] = [];
+    await serving(documents, async () => {
+      while (recording.sent.length > 0) {
+        levels.push(recording.sent[0]);
+        await runQueued(recording);
+      }
+    });
+
+    const Level = z.object({
+      from: z.object({
+        kind: z.string(),
+        depth: z.number().optional(),
+        after: z.string().optional(),
+      }),
+    });
+    expect(levels.map((job) => read(Level, job).from)).toEqual([
+      { kind: "Root" },
+      expect.objectContaining({ kind: "Level", depth: 1, after: "" }),
+      expect.objectContaining({ kind: "Level", depth: 1 }),
+      expect.objectContaining({ kind: "Level", depth: 2, after: "" }),
+      expect.objectContaining({ kind: "Level", depth: 2 }),
+      expect.objectContaining({ kind: "Level", depth: 3, after: "" }),
+    ]);
+    expect((await contextOf(rootId)).descendants).toHaveLength(2 * count);
+  });
+
+  it(`stops once the tree listed ${THREAD_TREE_REPLY_LIMIT} replies or read ${THREAD_TREE_PAGE_LIMIT} pages`, async () => {
+    const author = await remoteActor("capped-author", "tree.example");
+    const reply = noteUri(author, "capped-reply");
+    const root = withReplies(author, "capped-root", [reply]);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    const documents = new Map<string, unknown>([
+      [root.id, root],
+      [
+        reply,
+        withReplies(author, "capped-reply", [noteUri(author, "capped-leaf")], {
+          inReplyTo: root.id,
+        }),
+      ],
+      [noteUri(author, "capped-leaf"), noteDocument(author, "capped-leaf", { inReplyTo: reply })],
+    ]);
+    // The first pass stores the reply.
+    const setup = recordingEnv();
+    await requested(rootId, setup.env);
+    await serving(documents, () => runQueued(setup));
+    for (const counts of [
+      { listed: THREAD_TREE_REPLY_LIMIT - 1, pages: 1 },
+      { listed: 1, pages: THREAD_TREE_PAGE_LIMIT - 1 },
+    ]) {
+      const recording = recordingEnv();
+      recording.sent.push({
+        kind: "BackfillRemoteThread",
+        statusId: rootId,
+        from: { kind: "Level", depth: 1, after: "", stored: 1, ...counts },
+      });
+      await serving(documents, () => runQueued(recording));
+      // The reply was expanded, and the walk ends there.
+      expect(recording.sent).toEqual([]);
+      expect(await finishedAt(rootId)).not.toBeNull();
+    }
+  });
+
+  it("skips a reply whose replies do not answer, as Mastodon does, and goes on", async () => {
+    const author = await remoteActor("tree-down", "tree.example");
+    const [down, up] = [noteUri(author, "tree-down-1"), noteUri(author, "tree-down-2")];
+    const leaf = noteUri(author, "tree-down-leaf");
+    const root = withReplies(author, "tree-down-root", [down, up]);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    const documents = new Map<string, unknown>([
+      [root.id, root],
+      [down, withReplies(author, "tree-down-1", [], { inReplyTo: root.id })],
+      [up, withReplies(author, "tree-down-2", [leaf], { inReplyTo: root.id })],
+      [leaf, noteDocument(author, "tree-down-leaf", { inReplyTo: up })],
+    ]);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(documents, () => runQueued(recording));
+
+    await serving(new Map([...documents, [down, DOWN]]), () => drain(recording));
+
+    expect(await finishedAt(rootId)).not.toBeNull();
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([
+      down,
+      up,
+      leaf,
+    ]);
+  });
+
+  it(`goes on to the next level after a slice of exactly ${THREAD_TREE_NODES_PER_JOB} replies`, async () => {
+    const author = await remoteActor("full-slice", "tree.example");
+    const replies = Array.from({ length: THREAD_TREE_NODES_PER_JOB }, (_, index) =>
+      noteUri(author, `full-${index}`),
+    );
+    const root = withReplies(author, "full-root", replies);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    const leaf = (index: number) => noteUri(author, `full-leaf-${index}`);
+    const deep = (index: number) => noteUri(author, `full-deep-${index}`);
+    const documents = new Map<string, unknown>([[root.id, root]]);
+    replies.forEach((uri, index) => {
+      documents.set(
+        uri,
+        withReplies(author, `full-${index}`, [leaf(index)], { inReplyTo: root.id }),
+      );
+      documents.set(
+        leaf(index),
+        withReplies(author, `full-leaf-${index}`, [deep(index)], { inReplyTo: uri }),
+      );
+      documents.set(
+        deep(index),
+        noteDocument(author, `full-deep-${index}`, { inReplyTo: leaf(index) }),
+      );
+    });
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(documents, () => drain(recording));
+
+    expect((await contextOf(rootId)).descendants).toHaveLength(3 * THREAD_TREE_NODES_PER_JOB);
+  });
+
+  it("stores no note in the root author's name that another host serves", async () => {
+    const author = await remoteActor("forged-author", "tree.example");
+    const evil = await remoteActor("forger", "evil.example");
+    const evilReply = noteUri(evil, "evil-reply");
+    const forged = (slug: string, inReplyTo: string) =>
+      noteDocument(evil, slug, { attributedTo: author.actorUri, inReplyTo });
+    const rootEmbedded = forged("forged-root-embedded", "x");
+    const root = withReplies(author, "forged-root", [evilReply]);
+    const rootWithForgery = {
+      ...root,
+      replies: {
+        id: `${root.id}/replies`,
+        type: "Collection",
+        first: {
+          type: "CollectionPage",
+          items: [evilReply, { ...rootEmbedded, inReplyTo: root.id }],
+        },
+      },
+    };
+    await deliver(author, rootWithForgery);
+    const rootId = await statusIdOf(root.id);
+    const embedded = forged("forged-embedded", evilReply);
+    const linked = noteUri(evil, "forged-linked");
+    const documents = new Map<string, unknown>([
+      [root.id, rootWithForgery],
+      [evilReply, withReplies(evil, "evil-reply", [], { inReplyTo: root.id })],
+      [linked, forged("forged-linked", evilReply)],
+      [rootEmbedded.id, { ...rootEmbedded, inReplyTo: root.id }],
+    ]);
+    documents.set(evilReply, {
+      ...noteDocument(evil, "evil-reply", { inReplyTo: root.id }),
+      replies: {
+        id: `${evilReply}/replies`,
+        type: "Collection",
+        first: { type: "CollectionPage", items: [embedded, linked] },
+      },
+    });
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(documents, () => drain(recording));
+
+    const forgeries = await env.DB.prepare(
+      "SELECT object_uri FROM remote_statuses WHERE object_uri LIKE 'https://evil.example/notes/forged-%'",
+    ).all();
+    expect(forgeries.results).toEqual([]);
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([evilReply]);
+  });
+});
+
 describe("Mastodon async refresh of a remote thread", () => {
   it("tells a signed-in reader to poll the fetch the view queued", async () => {
     const author = await remoteActor("refresh-header", "thread.example");
@@ -480,7 +769,7 @@ describe("Mastodon async refresh of a remote thread", () => {
       async_refresh: { id, status: "running", result_count: 0 },
     });
 
-    await serving(documents, () => runQueued(recording));
+    await serving(documents, () => drain(recording));
 
     const finished = await asyncRefresh(id, headers);
     expect(read(ApiAsyncRefresh, await finished.json())).toEqual({

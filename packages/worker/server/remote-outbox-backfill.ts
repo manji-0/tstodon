@@ -12,6 +12,11 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { stringList } from "./form-values";
 import { replaceRemoteActorPins } from "./remote-actor-pin-store";
+import {
+  featuredHashtag,
+  REMOTE_FEATURED_TAG_LIMIT,
+  replaceRemoteFeaturedTags,
+} from "./remote-featured-tag-store";
 import { recordRemoteBoost } from "./remote-boost";
 import { cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import {
@@ -203,6 +208,19 @@ const backfillRemoteOutbox = async (env: Env, job: BackfillRemoteOutbox): Promis
     : undefined;
   if (featured) {
     await backfillPins(env, identity.value, actor, featured.items, options);
+  }
+  // As Mastodon's `ProcessAccountService`: the `featuredTags` collection, or
+  // the hashtags of `featured` for an actor that names none. One page, and
+  // of it the hashtags among the first ten items (`collection_items`
+  // with `max_items: FeaturedTag::LIMIT`).
+  const featuredTags = actor.featuredTagsUri
+    ? await firstCollectionPage(identity.value, actor.featuredTagsUri, options)
+    : featured;
+  if (featuredTags) {
+    const tags = featuredTags.items
+      .slice(0, REMOTE_FEATURED_TAG_LIMIT)
+      .flatMap((item) => featuredHashtag(item) ?? []);
+    await replaceRemoteFeaturedTags(env.DB, actor.actorUri, tags);
   }
   return { outcome: "ok", size: outbox?.items.length ?? 0, chained };
 };
