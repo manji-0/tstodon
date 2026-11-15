@@ -187,7 +187,7 @@ describe("an edit replaces the whole revision", () => {
 
     const edited = await edit(email, original.id, {
       status: "poll, reworded",
-      poll: { options: ["yes", "no"], expires_in: 7200 },
+      poll: { options: ["yes", "no"], expires_in: 7200, multiple: false },
     });
     expect(edited.poll).toMatchObject({
       id: original.poll?.id,
@@ -222,6 +222,56 @@ describe("an edit replaces the whole revision", () => {
     });
     // The voter's earlier vote is gone, so the poll takes a new one.
     await vote(voter, original.poll?.id ?? "", [2]);
+  });
+
+  it("resets the votes of a poll whose revision leaves `multiple` out or pads an option", async () => {
+    const email = "rev-poll-cast@example.com";
+    const original = await create(email, {
+      status: "poll",
+      poll: { options: ["yes", "no"], expires_in: 3600 },
+    });
+    const pollId = original.poll?.id ?? "";
+    await vote("rev-poll-cast-voter@example.com", pollId, [0]);
+    // Mastodon casts a missing `multiple` to `nil`, which is not the stored `false`.
+    const unflagged = await edit(email, original.id, {
+      status: "poll",
+      poll: { options: ["yes", "no"], expires_in: 3600 },
+    });
+    expect(unflagged.poll).toMatchObject({ id: pollId, votes_count: 0, multiple: false });
+
+    await vote("rev-poll-cast-voter@example.com", pollId, [0]);
+    // It compares the options as sent, before `Poll` strips them.
+    const padded = await edit(email, original.id, {
+      status: "poll",
+      poll: { options: ["yes ", "no"], expires_in: 3600, multiple: false },
+    });
+    expect(padded.poll).toMatchObject({
+      votes_count: 0,
+      options: [
+        { title: "yes", votes_count: 0 },
+        { title: "no", votes_count: 0 },
+      ],
+    });
+  });
+
+  it("refuses a poll without `expires_in`, which Mastodon sets on every edit", async () => {
+    const email = "rev-poll-no-end@example.com";
+    const original = await create(email, {
+      status: "poll",
+      poll: { options: ["yes", "no"], expires_in: 3600 },
+    });
+    for (const target of [original, await create(email, { status: "no poll yet" })]) {
+      const response = await send(email, "PUT", `/api/v1/statuses/${target.id}`, {
+        status: "poll",
+        poll: { options: ["yes", "no"], multiple: false },
+      });
+      expect(response.status).toBe(422);
+      expect(await response.json()).toMatchObject({
+        error: "Validation failed: Deadline can't be blank",
+      });
+    }
+    const fetched = await send(email, "GET", `/api/v1/statuses/${original.id}`);
+    expect(Revision.parse(await fetched.json()).poll?.expires_at).toBe(original.poll?.expires_at);
   });
 
   it("takes the revision Mastodon's web client sends for a post whose poll has votes", async () => {

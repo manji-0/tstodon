@@ -176,20 +176,25 @@ const resolvePollRevision = async (
       current.value ? { kind: "Removed", pollId: current.value.id } : { kind: "Unchanged" },
     );
   }
+  // Mastodon sets the end from `expires_in` on every edit, so a poll that
+  // leaves it out has no end and `Poll` refuses it.
+  if (requested?.expires_in === undefined) {
+    return err(
+      ApiRefusal.rejected(422, "Validation failed: Deadline can't be blank", "PollExpiration"),
+    );
+  }
   if (!current.value) {
     return ok({ kind: "Added", poll: poll.value });
   }
   const { options, multiple, hideTotals } = poll.value;
-  // Mastodon sets the end from `expires_in` on every edit and refuses a poll
-  // without one; a request that leaves it out keeps the poll's end here.
-  const expiresAt =
-    requested?.expires_in === undefined
-      ? current.value.expiresAt
-      : expiresAfter(poll.value.expiresIn);
+  const expiresAt = expiresAfter(poll.value.expiresIn);
+  // Mastodon compares the request's options as sent, before `Poll` strips
+  // them, and its `multiple` cast to a boolean, so one left out (`nil`)
+  // differs from a stored `false`.
   const sameQuestion =
-    multiple === current.value.multiple &&
-    options.length === current.value.options.length &&
-    options.every((title, index) => title === current.value?.options[index]?.title);
+    requested.multiple === current.value.multiple &&
+    requested.options.length === current.value.options.length &&
+    requested.options.every((title, index) => title === current.value?.options[index]?.title);
   return ok(
     sameQuestion
       ? { kind: "Renewed", pollId: current.value.id, expiresAt, hideTotals }

@@ -107,12 +107,14 @@ describe("poll hide_totals", () => {
       return poll;
     };
 
-    const hidden = await edit({ poll: { options: ["yes", "no", "maybe"], hide_totals: true } });
+    const hidden = await edit({
+      poll: { options: ["yes", "no", "maybe"], expires_in: 3600, hide_totals: true },
+    });
     expect(hidden.options.map((option) => option.title)).toEqual(["yes", "no", "maybe"]);
     expect(hidden.options.map((option) => option.votes_count)).toEqual([null, null, null]);
 
     // A revision that leaves `hide_totals` out shows the totals, as Mastodon's.
-    const revealed = await edit({ poll: { options: ["yes", "no"] } });
+    const revealed = await edit({ poll: { options: ["yes", "no"], expires_in: 3600 } });
     expect(revealed.votes_count).toBe(0);
     expect(revealed.options.map((option) => option.votes_count)).toEqual([0, 0]);
   });
