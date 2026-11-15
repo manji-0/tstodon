@@ -61,6 +61,26 @@ const upload = async (
 };
 
 describe("admin custom emojis", () => {
+  it("serves the emoji's image at its URL when the Worker serves the media", async () => {
+    const emoji = read(
+      AdminEmojiSchema,
+      (await upload("emoji-served@example.com", "servedtest")).body,
+    );
+    const path = new URL(emoji.url).pathname;
+    expect(path).toBe(`/emoji/${emoji.id}`);
+
+    const served = await SELF.fetch(`https://example.com${path}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    // An admin can replace the image under this URL, so it is not cached for good.
+    expect(served.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect([...new Uint8Array(await served.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+
+    const missing = await SELF.fetch("https://example.com/emoji/no-such-emoji");
+    expect(missing.status).toBe(404);
+    await missing.arrayBuffer();
+  });
+
   it("rejects non-admins", async () => {
     expect((await json("/api/v1/admin/custom_emojis")).status).toBe(401);
     expect(

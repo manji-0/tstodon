@@ -46,5 +46,8 @@ describe("media-keys", () => {
     expect(parseMediaObjectKey("../etc/passwd")).toBeUndefined();
     expect(parseMediaObjectKey("attachments/acct-1/media-1/extra")).toBeUndefined();
     expect(parseMediaObjectKey("other/acct-1/media-1")).toBeUndefined();
+    expect(parseMediaObjectKey("emoji/117617487655515663")).toBe("emoji/117617487655515663");
+    expect(parseMediaObjectKey("emoji/a/b")).toBeUndefined();
+    expect(parseMediaObjectKey("avatars/blob-1")).toBeUndefined();
   });
 });

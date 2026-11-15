@@ -159,16 +159,30 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
   return c.json(mastodonMedia(identity.value, row.value), 200);
 };
 
+/** How a served object may be cached, by what can happen to the bytes under its key. */
+const cachePolicy = (objectKey: string): Readonly<{ header: string; edge: boolean }> => {
+  if (isLegacyAttachmentObjectKey(objectKey)) {
+    return { header: "no-store", edge: false };
+  }
+  // An admin replaces a custom emoji's image under the same key.
+  if (objectKey.startsWith("emoji/")) {
+    return { header: "public, max-age=3600", edge: false };
+  }
+  return { header: CACHE_CONTROL, edge: true };
+};
+
 /**
  * Serve an object from R2 through the edge cache. An attachment at a legacy,
  * id-derived key bypasses the cache, so it stops answering as soon as the
- * rekey job deletes it.
+ * rekey job deletes it; a custom emoji bypasses it too, and is cached for an
+ * hour by whoever asked.
  */
 const serveR2Object = async (
   c: Context<{ Bindings: Env }>,
   objectKey: string,
 ): Promise<Response> => {
-  const cacheable = !isLegacyAttachmentObjectKey(objectKey);
+  const policy = cachePolicy(objectKey);
+  const cacheable = policy.edge;
   const cache = caches.default;
   const cacheKey = new Request(c.req.url, { method: "GET" });
   const cached = cacheable ? await cache.match(cacheKey) : undefined;
@@ -186,7 +200,7 @@ const serveR2Object = async (
   const response = new Response(object.body, {
     headers: {
       "content-type": contentType,
-      "cache-control": cacheable ? CACHE_CONTROL : "no-store",
+      "cache-control": policy.header,
     },
   });
   if (cacheable) {
@@ -245,6 +259,8 @@ export const getAttachmentsByAccountIdByBlobId = (
 export const getAvatarsByAccountIdByBlobId = (
   c: Context<{ Bindings: Env }, "/avatars/:accountId/:blobId">,
 ) => serveObjectKeyPath(c);
+/** A custom emoji's image (`emoji/{id}`, `admin-custom-emojis.ts`). */
+export const getEmojiById = (c: Context<{ Bindings: Env }, "/emoji/:id">) => serveObjectKeyPath(c);
 export const getHeadersByAccountIdByBlobId = (
   c: Context<{ Bindings: Env }, "/headers/:accountId/:blobId">,
 ) => serveObjectKeyPath(c);
