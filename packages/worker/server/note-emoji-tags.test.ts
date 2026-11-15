@@ -8,6 +8,7 @@ const Created = z.object({
   id: z.string(),
   uri: z.string(),
   account: z.object({ id: z.string() }),
+  emojis: z.array(z.object({ shortcode: z.string() })),
 });
 const AdminEmoji = z.object({ id: z.string(), url: z.string() });
 const Payload = z.object({ object: ApStatusObject });
@@ -87,5 +88,22 @@ describe("custom emoji in a federated note", () => {
     const served = await noteDocument(sent.uri);
     expect(emojiTags(served)).toEqual([]);
     expect(JSON.stringify(served["@context"])).not.toContain("toot:Emoji");
+  });
+
+  // Mastodon looks a shortcode up as written (`CustomEmoji.from_text`), and
+  // matches a tag's name against the text the same way.
+  it("matches a shortcode in the case it is written, so a tag's name is in the text", async () => {
+    const email = "note-emoji-case@example.com";
+    const wave = await uploadEmoji(email, "casewave");
+
+    const other = await post(email, { status: "shouting :CaseWave: and :CASEWAVE:" });
+    expect(emojiTags(await noteDocument(other.uri))).toEqual([]);
+    expect(other.emojis).toEqual([]);
+
+    const same = await post(email, { status: "saying :casewave: after :CaseWave:" });
+    expect(emojiTags(await noteDocument(same.uri))).toEqual([
+      { type: "Emoji", name: ":casewave:", icon: { type: "Image", url: wave.url } },
+    ]);
+    expect(same.emojis.map((emoji) => emoji.shortcode)).toEqual(["casewave"]);
   });
 });
