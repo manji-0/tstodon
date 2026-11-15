@@ -244,7 +244,7 @@ sequenceDiagram
 
 **Vote** (`votePoll`):
 
-1. Read poll target (`findPollVoteTarget`) — expiry check in app
+1. Read poll target (`findPollVoteTarget`) and the account's earlier votes — expiry check and ballot rules (`ballotRefusal`: one option once on a single-choice poll, each option once on a multiple-choice one) in app; the single-choice insert repeats its rule in SQL, for two requests at once
 2. Build N × `insertPollVoteOrIgnore` + N × `recountPollOptionIfActive` (`UPDATE … SET` the option's tally to its vote rows `WHERE expires_at > ?`), so a vote written between the read and the batch is still counted
 3. `runD1Batch`; treat final statement `meta.changes === 0` as business “poll expired”
 

@@ -5,7 +5,7 @@ import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch, sqlInJsonEach } from "./d1";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
-import { foundRow, parseRows, type StoredRowInvalid, toRepositoryError } from "./d1";
+import { foundRow, parseRows, type StoredRowInvalid } from "./d1";
 import { d1PrepareTyped, queryTyped, runTyped, type TypedSqlLike } from "./typed-sql";
 import {
   claimLocalPollExpiryNotice as claimLocalPollExpiryNoticeSql,
@@ -61,6 +61,7 @@ export const ExpiredPollTargetRowSchema = z.object({
 export const PollVoteTargetRowSchema = z.object({
   options_json: z.string().min(1),
   expires_at: z.string().min(1),
+  multiple: z.number(),
 });
 
 warmSchemas([PollVoteTargetRowSchema]);
@@ -307,12 +308,44 @@ export const findPollById = async (
 ): Promise<Result<PollRecord | undefined, RepositoryError>> =>
   foundRow(await loadPoll(db, findPollByIdSql(pollId), pollId, viewerId));
 
+/** Why a local account's ballot on a local poll is not counted. */
+export type PollVoteRefusal = Readonly<{
+  kind: "PollNotFound" | "PollExpired" | "AlreadyVoted" | "TooManyChoices";
+}>;
+
+/**
+ * What Mastodon's `VoteValidator` refuses of a ballot, given the options the
+ * account chose before: a single-choice poll takes one option, once; a
+ * multiple-choice poll takes each option once.
+ */
+const ballotRefusal = (
+  multiple: boolean,
+  earlier: ReadonlyArray<number>,
+  requested: ReadonlyArray<number>,
+): PollVoteRefusal | undefined => {
+  if (!multiple) {
+    if (earlier.length > 0) {
+      return { kind: "AlreadyVoted" };
+    }
+    return requested.length > 1 ? { kind: "TooManyChoices" } : undefined;
+  }
+  const repeated =
+    new Set(requested).size < requested.length ||
+    requested.some((choice) => earlier.includes(choice));
+  return repeated ? { kind: "AlreadyVoted" } : undefined;
+};
+
+/**
+ * Count a local account's ballot on a local poll. A ballot that names no
+ * option the poll has is no vote, as Mastodon's `VoteService`. A refused
+ * ballot writes nothing.
+ */
 export const votePoll = async (
   db: D1Database,
   pollId: string,
   accountId: string,
   choices: ReadonlyArray<number>,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<void, PollVoteRefusal | RepositoryError>> => {
   const queried = await runD1(async () => {
     return queryTyped(db, findPollVoteTargetSql(pollId), PollVoteTargetRowSchema);
   });
@@ -321,39 +354,61 @@ export const votePoll = async (
   }
   const target = queried.value[0];
   if (!target) {
-    return err(toRepositoryError("poll not found"));
+    return err({ kind: "PollNotFound" });
   }
   if (Date.parse(target.expires_at) <= Date.now()) {
-    return err(toRepositoryError("poll expired"));
+    return err({ kind: "PollExpired" });
   }
   const options = parseJsonColumn(PollOptionsSchema, target.options_json);
   if (options.isErr()) {
     return err(options.error);
   }
-  const chosen = [...new Set(choices)].filter((choice) => options.value[choice] !== undefined);
-  if (chosen.length === 0) {
+  const requested = choices.filter((choice) => options.value[choice] !== undefined);
+  if (requested.length === 0) {
     return ok(undefined);
+  }
+  const earlier = await runD1(async () =>
+    queryTyped(db, listPollVotesForAccountSql(pollId, accountId), OptionIndexRow),
+  );
+  if (earlier.isErr()) {
+    return err(earlier.error);
+  }
+  const multiple = target.multiple !== 0;
+  const refusal = ballotRefusal(
+    multiple,
+    earlier.value.map((row) => row.option_index),
+    requested,
+  );
+  if (refusal) {
+    return err(refusal);
   }
   const now = nowIso();
   // Each tally is counted from the vote rows in the batch that writes them
   // (`recountPollOptionIfActive`): a tally computed from the options read
   // above would drop a vote another request wrote in between.
   const batched = await runD1Batch(db, [
-    ...chosen.map((choice) =>
-      d1PrepareTyped(db, insertPollVoteOrIgnoreSql(pollId, accountId, choice, now)),
+    ...requested.map((choice) =>
+      d1PrepareTyped(
+        db,
+        insertPollVoteOrIgnoreSql(pollId, accountId, choice, now, multiple ? 0 : 1),
+      ),
     ),
-    ...chosen.map((choice) =>
+    ...requested.map((choice) =>
       d1PrepareTyped(db, recountPollOptionIfActiveSql(pollId, choice, now)),
     ),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const updateResult = batched.value[batched.value.length - 1];
-  if ((updateResult?.meta.changes ?? 0) === 0) {
-    return err(toRepositoryError("poll expired"));
+  if ((batched.value.at(-1)?.meta.changes ?? 0) === 0) {
+    return err({ kind: "PollExpired" });
   }
-  return ok(undefined);
+  // The insert refuses what `ballotRefusal` would have, had it read the vote
+  // another request of this account wrote in between.
+  const stored = batched.value.slice(0, requested.length);
+  return stored.some((insert) => insert.meta.changes === 0)
+    ? err({ kind: "AlreadyVoted" })
+    : ok(undefined);
 };
 
 /**

@@ -9,14 +9,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param optionIndex
  * @param createdAt
+ * @param single
  */
 export const insertPollVoteOrIgnore = $runtime.makeTypedQueryFactory(
-  "INSERT OR IGNORE INTO poll_votes (poll_id, account_id, option_index, created_at)\nSELECT $1, $2, $3, $4\nWHERE EXISTS (SELECT 1 FROM polls WHERE id = $1 AND expires_at > $4)",
+  "INSERT OR IGNORE INTO poll_votes (poll_id, account_id, option_index, created_at)\nSELECT $1, $2, $3, $4\nWHERE EXISTS (SELECT 1 FROM polls WHERE id = $1 AND expires_at > $4)\nAND (\n$5 = 0\nOR NOT EXISTS (SELECT 1 FROM poll_votes WHERE poll_id = $1 AND account_id = $2)\n)",
 ) as (
   pollId: string,
   accountId: string,
   optionIndex: number,
   createdAt: string,
+  single: number,
 ) => $runtime.TypedSql<insertPollVoteOrIgnore.Parameters, insertPollVoteOrIgnore.Result>;
 
 export namespace insertPollVoteOrIgnore {
@@ -25,6 +27,7 @@ export namespace insertPollVoteOrIgnore {
     accountId: string,
     optionIndex: number,
     createdAt: string,
+    single: number,
   ];
   export type Result = {};
 }
