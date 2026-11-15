@@ -87,10 +87,126 @@ const LINK_PROTOCOLS = new Set([
 /** Microformats and the classes Mastodon's own markup uses. */
 const ALLOWED_CLASS = /^(?:[hpuedt]{1,2}-[\w-]+|mention|hashtag|ellipsis|invisible)$/;
 
-const TAG =
-  /^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*\/?>/;
+const TAG_START = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)/y;
+const SPACES = /\s*/y;
+const ATTRIBUTE_NAME = /[^\s"'>/=]+/y;
+const UNQUOTED_VALUE = /[^\s"'>]+/y;
+
+/** Where the run `pattern` (a sticky expression) matches at `from` ends; `from` when it matches nothing. */
+const runEnd = (pattern: RegExp, html: string, from: number): number => {
+  pattern.lastIndex = from;
+  return pattern.test(html) ? pattern.lastIndex : from;
+};
+
+/** Where a tag scan stands between two tokens. */
+const AFTER_NAME_OR_VALUE = 0;
+const AFTER_ATTRIBUTE_NAME = 1;
+const BEFORE_ATTRIBUTE_NAME = 2;
+const AFTER_EQUALS = 3;
+const SCAN_STATES = 4;
+
+/**
+ * The scans that found no tag, as the places they stood at: a scan that comes
+ * to stand at one of them, in the same state, finds no tag either. A scan
+ * reads on from a place by what the text holds there and nothing before it,
+ * so every place is read at most once per state however many `<` a text has,
+ * and sanitising takes time linear in its length.
+ */
+export type FailedTagScans = { places: Uint8Array | undefined };
+
+export type Tag = Readonly<{
+  /** The index after the tag's `>`. */
+  end: number;
+  closing: boolean;
+  name: string;
+  /** The attributes as written, from the name to the last one's end. */
+  attributes: string;
+}>;
+
+/**
+ * The tag that starts at `at`, where `html` has a `<`:
+ *
+ *     <(/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s+NAME(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*\/?>
+ *
+ * with `NAME` as `[^\s"'>/=]+`. It is read token by token and not with that
+ * one expression, which reads to the end of the text for each `<` of a text
+ * such as `<a <a <a`. `failed` is shared by the scans of one text.
+ */
+export const tagAt = (html: string, at: number, failed: FailedTagScans): Tag | undefined => {
+  TAG_START.lastIndex = at;
+  const start = TAG_START.exec(html);
+  if (!start) {
+    return undefined;
+  }
+  const attributesFrom = at + start[0].length;
+  let attributesEnd = attributesFrom;
+  let position = attributesFrom;
+  let state = AFTER_NAME_OR_VALUE;
+  const stood: number[] = [];
+  for (;;) {
+    const place = position * SCAN_STATES + state;
+    if (failed.places?.[place] === 1) {
+      break;
+    }
+    stood.push(place);
+    if (state === BEFORE_ATTRIBUTE_NAME) {
+      const end = runEnd(ATTRIBUTE_NAME, html, position);
+      if (end === position) {
+        break;
+      }
+      position = end;
+      attributesEnd = end;
+      state = AFTER_ATTRIBUTE_NAME;
+      continue;
+    }
+    if (state === AFTER_EQUALS) {
+      const from = runEnd(SPACES, html, position);
+      const quote = html[from];
+      const close = quote === '"' || quote === "'" ? html.indexOf(quote, from + 1) : -1;
+      const end = quote === '"' || quote === "'" ? close + 1 : runEnd(UNQUOTED_VALUE, html, from);
+      if (end === 0 || end === from) {
+        break;
+      }
+      position = end;
+      attributesEnd = end;
+      state = AFTER_NAME_OR_VALUE;
+      continue;
+    }
+    const spacesEnd = runEnd(SPACES, html, position);
+    if (state === AFTER_ATTRIBUTE_NAME && html[spacesEnd] === "=") {
+      position = spacesEnd + 1;
+      state = AFTER_EQUALS;
+      continue;
+    }
+    const end =
+      html[spacesEnd] === ">"
+        ? spacesEnd + 1
+        : html[spacesEnd] === "/" && html[spacesEnd + 1] === ">"
+          ? spacesEnd + 2
+          : undefined;
+    if (end !== undefined) {
+      return {
+        end,
+        closing: start[1] === "/",
+        name: start[2] ?? "",
+        attributes: html.slice(attributesFrom, attributesEnd),
+      };
+    }
+    if (spacesEnd === position) {
+      break;
+    }
+    position = spacesEnd;
+    state = BEFORE_ATTRIBUTE_NAME;
+  }
+  failed.places ??= new Uint8Array((html.length + 1) * SCAN_STATES);
+  for (const place of stood) {
+    failed.places[place] = 1;
+  }
+  return undefined;
+};
+
 const ATTRIBUTE = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
-const ENTITY = /^&(?:#\d{1,7}|#x[0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/;
+const ENTITY = /&(?:#\d{1,7}|#x[0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/y;
 
 const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   amp: "&",
@@ -125,7 +241,8 @@ const escapeText = (text: string): string => {
   for (let i = 0; i < text.length; i += 1) {
     const ch = text[i];
     if (ch === "&") {
-      const entity = ENTITY.exec(text.slice(i));
+      ENTITY.lastIndex = i;
+      const entity = ENTITY.exec(text);
       if (entity) {
         out += entity[0];
         i += entity[0].length - 1;
@@ -195,6 +312,9 @@ export const sanitizeRemoteHtml = (html: string): string => {
   let out = "";
   let text = "";
   const open: string[] = [];
+  /** How many of each element are open, so a closing tag that closes nothing does not search `open`. */
+  const openCount = new Map<string, number>();
+  const failed: FailedTagScans = { places: undefined };
   let i = 0;
   const flushText = (): void => {
     out += escapeText(text);
@@ -207,29 +327,29 @@ export const sanitizeRemoteHtml = (html: string): string => {
       break;
     }
     text += html.slice(i, lt);
-    const rest = html.slice(lt);
-    if (rest.startsWith("<!--")) {
-      const end = rest.indexOf("-->", 4);
-      i = end === -1 ? html.length : lt + end + 3;
+    if (html.startsWith("<!--", lt)) {
+      const end = html.indexOf("-->", lt + 4);
+      i = end === -1 ? html.length : end + 3;
       continue;
     }
-    if (rest.startsWith("<!") || rest.startsWith("<?")) {
-      const end = rest.indexOf(">");
-      i = end === -1 ? html.length : lt + end + 1;
+    if (html.startsWith("<!", lt) || html.startsWith("<?", lt)) {
+      const end = html.indexOf(">", lt);
+      i = end === -1 ? html.length : end + 1;
       continue;
     }
-    const tag = TAG.exec(rest);
+    const tag = tagAt(html, lt, failed);
     if (!tag) {
       text += "<";
       i = lt + 1;
       continue;
     }
-    i = lt + tag[0].length;
-    const closing = tag[1] === "/";
-    const name = (tag[2] ?? "").toLowerCase();
+    i = tag.end;
+    const { closing } = tag;
+    const name = tag.name.toLowerCase();
     if (!closing && DROPPED_WITH_CONTENT.has(name)) {
-      const end = new RegExp(`</${name}\\s*>`, "i").exec(html.slice(i));
-      i = end ? i + end.index + end[0].length : html.length;
+      const closer = new RegExp(`</${name}\\s*>`, "gi");
+      closer.lastIndex = i;
+      i = closer.test(html) ? closer.lastIndex : html.length;
       continue;
     }
     if (!ALLOWED_ELEMENTS.has(name)) {
@@ -243,16 +363,20 @@ export const sanitizeRemoteHtml = (html: string): string => {
       continue;
     }
     if (!closing) {
-      out += `<${name}${safeAttributes(name, tag[3] ?? "")}>`;
+      out += `<${name}${safeAttributes(name, tag.attributes)}>`;
       open.push(name);
+      openCount.set(name, (openCount.get(name) ?? 0) + 1);
       continue;
     }
-    const at = open.lastIndexOf(name);
-    if (at === -1) {
+    if ((openCount.get(name) ?? 0) === 0) {
       continue;
     }
-    while (open.length > at) {
-      out += `</${open.pop()}>`;
+    for (let closed = open.pop(); closed !== undefined; closed = open.pop()) {
+      out += `</${closed}>`;
+      openCount.set(closed, (openCount.get(closed) ?? 1) - 1);
+      if (closed === name) {
+        break;
+      }
     }
   }
   flushText();
