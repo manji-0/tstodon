@@ -10,13 +10,15 @@ import { schemaResult, Sensitive, type SensitiveValue, warmSchemas } from "@tsto
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
-import { queryTyped, runTyped } from "./typed-sql";
+import { jsonStringArray, okValues, parseRows, type RepositoryError, runD1 } from "./d1";
+import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   countAccounts as countAccountsSql,
   countSearchAccounts as countSearchAccountsSql,
   deleteAccount as deleteAccountSql,
+  findDeletedAccountName as findDeletedAccountNameSql,
+  recordDeletedAccountName as recordDeletedAccountNameSql,
   findAccountByAuthUserId as findAccountByAuthUserIdSql,
   findAccountByEmail as findAccountByEmailSql,
   findAccountById as findAccountByIdSql,
@@ -36,6 +38,7 @@ import { type AdminAccountFilters } from "./account-admin-store";
 
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 const IdRow = z.object({ id: z.string() });
+const UsernameRow = z.object({ username: z.string() });
 
 export const AccountRowSchema = z.object({
   id: z.string().min(1),
@@ -287,15 +290,27 @@ export const setAccountLocked = async (
   return written.map(() => undefined);
 };
 
-/** Purge a local account; every dependent row cascades from it. */
+/**
+ * Purge a local account; every dependent row cascades from it. Its username
+ * is kept in `deleted_account_names`, in the same batch, so its actor URI
+ * answers 410 from then on ({@link isDeletedAccountName}).
+ */
 export const deleteAccount = async (
   db: D1Database,
   id: string,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, deleteAccountSql(id), IdRow);
-    return rows.length > 0;
-  });
+  (await runTypedBatch(db, [recordDeletedAccountNameSql(id, nowIso()), deleteAccountSql(id)])).map(
+    (results) => parseRows(IdRow, results.at(-1)?.results).length > 0,
+  );
+
+/** Whether `username` was a local account that has been deleted. */
+export const isDeletedAccountName = async (
+  db: D1Database,
+  username: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(
+    async () => (await queryTyped(db, findDeletedAccountNameSql(username), UsernameRow)).length > 0,
+  );
 
 export const STATUS_SQL: Readonly<Record<AdminAccountFilters["status"], string>> = {
   all: "1",

@@ -24,7 +24,7 @@ import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import type { RepositoryError } from "../d1";
-import { findAccountByUsername, findAccountsByIds } from "../account-store";
+import { findAccountByUsername, findAccountsByIds, isDeletedAccountName } from "../account-store";
 import { findBlock } from "../block-mute-store";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import { isActorDomainBlocked } from "../domain-block-store";
@@ -159,7 +159,12 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
     return jsonRepositoryError(c, account.error.message);
   }
   if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
+    // As Mastodon: a deleted account's actor is gone for good, an unknown name is not found.
+    const deleted = await isDeletedAccountName(c.env.DB, c.req.param("username"));
+    if (deleted.isErr()) {
+      return jsonRepositoryError(c, deleted.error.message);
+    }
+    return deleted.value ? c.json({ kind: "Gone" }, 410) : c.json({ kind: "NotFound" }, 404);
   }
   const document = await localActorDocument(c.env, identity.value, account.value);
   if (document.isErr()) {

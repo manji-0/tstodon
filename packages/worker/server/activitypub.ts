@@ -227,11 +227,17 @@ export const noteDeleteActivity = (
 
 /**
  * The `Delete` of a local actor, as Mastodon's `DeleteActorSerializer`: the
- * actor deletes itself, addressed to the public.
+ * actor deletes itself, addressed to the public. Mastodon's id is
+ * `<actor>#delete`. Here a username can be registered again and deleted
+ * again, and a peer that drops an activity id it has seen would drop that
+ * second `Delete`, so `deletionKey` makes the id one per deletion.
  */
-export const actorDeleteActivity = (actorUri: string): ApActivityDocumentOf<"Delete"> => ({
+export const actorDeleteActivity = (
+  actorUri: string,
+  deletionKey: string,
+): ApActivityDocumentOf<"Delete"> => ({
   "@context": ACTIVITY_STREAMS,
-  id: `${actorUri}#delete`,
+  id: `${actorUri}#deletes/${deletionKey}`,
   type: "Delete",
   actor: actorUri,
   to: [PUBLIC_COLLECTION],

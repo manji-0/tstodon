@@ -268,6 +268,8 @@ export * from "./sql/findCustomEmojiById";
 
 export * from "./sql/findCustomEmojiByShortcode";
 
+export * from "./sql/findDeletedAccountName";
+
 export * from "./sql/findDeliveryDomainHealth";
 
 export * from "./sql/findDomainBlockByDomain";
@@ -829,6 +831,8 @@ export * from "./sql/recordAccountIp";
 export * from "./sql/recordAvatarFileSize";
 
 export * from "./sql/recordCustomEmojiFileSize";
+
+export * from "./sql/recordDeletedAccountName";
 
 export * from "./sql/recordHeaderFileSize";
 

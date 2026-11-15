@@ -5,6 +5,7 @@ import { findAccountById } from "./account-store";
 import { actorDeleteActivity } from "./activitypub";
 import { type RepositoryError, toRepositoryError } from "./d1";
 import { enqueueDepartedAccountActivity } from "./delivery";
+import { newEntityId } from "./ids";
 import { listAcceptedRemoteFollowerInboxes, listOutboundFollowInboxes } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 
@@ -75,7 +76,7 @@ export const announceActorDeleted = async (env: Env, actor: DepartingActor): Pro
     env,
     { kind: "DepartedAccount", username: actor.username, privateKeyJwk: actor.privateKeyJwk },
     "Delete",
-    actorDeleteActivity(actor.actorUri),
+    actorDeleteActivity(actor.actorUri, newEntityId()),
     actor.inboxes,
   );
   if (enqueued.isErr()) {

@@ -120,8 +120,13 @@ describe("deleting a local account", () => {
 
     expect(await adminDelete(leaver.id)).toBe(200);
 
+    // Gone for good, where a name that never existed is not found.
     const gone = await SELF.fetch(actorUri, { headers: { accept: "application/activity+json" } });
-    expect(gone.status).toBe(404);
+    expect(gone.status).toBe(410);
+    const unknown = await SELF.fetch(`${ORIGIN}/users/delete_never_existed`, {
+      headers: { accept: "application/activity+json" },
+    });
+    expect(unknown.status).toBe(404);
     const deletes = await queuedActorDeletes(actorUri);
     expect(deletes).toHaveLength(1);
     const [queued] = deletes;
@@ -131,7 +136,7 @@ describe("deleting a local account", () => {
     expect(queued.account_id).toBeNull();
     expect(queued.activity).toEqual({
       "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${actorUri}#delete`,
+      id: expect.stringMatching(new RegExp(`^${actorUri}#deletes/[0-9]+$`)),
       type: "Delete",
       actor: actorUri,
       to: [PUBLIC_COLLECTION],
@@ -200,6 +205,29 @@ describe("deleting a local account", () => {
     expect((await purgeAccount(env, leaver.id)).isOk()).toBe(true);
     const deletes = await queuedActorDeletes(actorUri);
     expect(deletes.map((queued) => queued.inboxes)).toEqual([[`${fan.actorUri}/inbox`]]);
+  });
+
+  it("gives the Delete of a username that is registered and deleted again another id", async () => {
+    const email = "delete-again@example.com";
+    const inbox = "https://again-fans.example/users/again-fan/inbox";
+    const fan = await remoteActor("again-fan", "again-fans.example");
+    const ids: string[] = [];
+    for (const _round of [1, 2]) {
+      const leaver = await signedInAccount(email);
+      const actorUri = `${ORIGIN}/users/${leaver.username}`;
+      const served = await SELF.fetch(actorUri, {
+        headers: { accept: "application/activity+json" },
+      });
+      expect(served.status).toBe(200);
+      await followedBy(leaver.id, fan.actorUri);
+      expect(await adminDelete(leaver.id)).toBe(200);
+      const deletes = await queuedActorDeletes(actorUri);
+      expect(deletes.at(-1)?.inboxes).toEqual([inbox]);
+      ids.push(deletes.at(-1)?.activity.id ?? "");
+      // The fixture's sign-in row, which it makes itself and a purge leaves.
+      await env.DB.prepare('DELETE FROM "user" WHERE email = ?').bind(email).run();
+    }
+    expect(new Set(ids).size).toBe(2);
   });
 
   it("sends nothing for an account no remote server knows", async () => {
