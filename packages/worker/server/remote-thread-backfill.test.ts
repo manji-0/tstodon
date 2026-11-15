@@ -600,28 +600,111 @@ describe("the reply tree of an opened remote status", () => {
     }
   });
 
-  it("retries a level whose replies do not answer, and leaves the fetch running", async () => {
+  it("skips a reply whose replies do not answer, as Mastodon does, and goes on", async () => {
     const author = await remoteActor("tree-down", "tree.example");
-    const reply = noteUri(author, "tree-down-reply");
+    const [down, up] = [noteUri(author, "tree-down-1"), noteUri(author, "tree-down-2")];
     const leaf = noteUri(author, "tree-down-leaf");
-    const root = withReplies(author, "tree-down-root", [reply]);
+    const root = withReplies(author, "tree-down-root", [down, up]);
     await deliver(author, root);
     const rootId = await statusIdOf(root.id);
     const documents = new Map<string, unknown>([
       [root.id, root],
-      [reply, withReplies(author, "tree-down-reply", [leaf], { inReplyTo: root.id })],
-      [leaf, noteDocument(author, "tree-down-leaf", { inReplyTo: reply })],
+      [down, withReplies(author, "tree-down-1", [], { inReplyTo: root.id })],
+      [up, withReplies(author, "tree-down-2", [leaf], { inReplyTo: root.id })],
+      [leaf, noteDocument(author, "tree-down-leaf", { inReplyTo: up })],
     ]);
     const recording = recordingEnv();
     await requested(rootId, recording.env);
     await serving(documents, () => runQueued(recording));
 
-    await serving(new Map([...documents, [reply, DOWN]]), () => runQueued(recording, "retry"));
-    expect(await finishedAt(rootId)).toBeNull();
+    await serving(new Map([...documents, [down, DOWN]]), () => drain(recording));
 
-    await serving(documents, () => drain(recording));
     expect(await finishedAt(rootId)).not.toBeNull();
-    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([reply, leaf]);
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([
+      down,
+      up,
+      leaf,
+    ]);
+  });
+
+  it(`goes on to the next level after a slice of exactly ${THREAD_TREE_NODES_PER_JOB} replies`, async () => {
+    const author = await remoteActor("full-slice", "tree.example");
+    const replies = Array.from({ length: THREAD_TREE_NODES_PER_JOB }, (_, index) =>
+      noteUri(author, `full-${index}`),
+    );
+    const root = withReplies(author, "full-root", replies);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    const leaf = (index: number) => noteUri(author, `full-leaf-${index}`);
+    const deep = (index: number) => noteUri(author, `full-deep-${index}`);
+    const documents = new Map<string, unknown>([[root.id, root]]);
+    replies.forEach((uri, index) => {
+      documents.set(
+        uri,
+        withReplies(author, `full-${index}`, [leaf(index)], { inReplyTo: root.id }),
+      );
+      documents.set(
+        leaf(index),
+        withReplies(author, `full-leaf-${index}`, [deep(index)], { inReplyTo: uri }),
+      );
+      documents.set(
+        deep(index),
+        noteDocument(author, `full-deep-${index}`, { inReplyTo: leaf(index) }),
+      );
+    });
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(documents, () => drain(recording));
+
+    expect((await contextOf(rootId)).descendants).toHaveLength(3 * THREAD_TREE_NODES_PER_JOB);
+  });
+
+  it("stores no note in the root author's name that another host serves", async () => {
+    const author = await remoteActor("forged-author", "tree.example");
+    const evil = await remoteActor("forger", "evil.example");
+    const evilReply = noteUri(evil, "evil-reply");
+    const forged = (slug: string, inReplyTo: string) =>
+      noteDocument(evil, slug, { attributedTo: author.actorUri, inReplyTo });
+    const rootEmbedded = forged("forged-root-embedded", "x");
+    const root = withReplies(author, "forged-root", [evilReply]);
+    const rootWithForgery = {
+      ...root,
+      replies: {
+        id: `${root.id}/replies`,
+        type: "Collection",
+        first: {
+          type: "CollectionPage",
+          items: [evilReply, { ...rootEmbedded, inReplyTo: root.id }],
+        },
+      },
+    };
+    await deliver(author, rootWithForgery);
+    const rootId = await statusIdOf(root.id);
+    const embedded = forged("forged-embedded", evilReply);
+    const linked = noteUri(evil, "forged-linked");
+    const documents = new Map<string, unknown>([
+      [root.id, rootWithForgery],
+      [evilReply, withReplies(evil, "evil-reply", [], { inReplyTo: root.id })],
+      [linked, forged("forged-linked", evilReply)],
+      [rootEmbedded.id, { ...rootEmbedded, inReplyTo: root.id }],
+    ]);
+    documents.set(evilReply, {
+      ...noteDocument(evil, "evil-reply", { inReplyTo: root.id }),
+      replies: {
+        id: `${evilReply}/replies`,
+        type: "Collection",
+        first: { type: "CollectionPage", items: [embedded, linked] },
+      },
+    });
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(documents, () => drain(recording));
+
+    const forgeries = await env.DB.prepare(
+      "SELECT object_uri FROM remote_statuses WHERE object_uri LIKE 'https://evil.example/notes/forged-%'",
+    ).all();
+    expect(forgeries.results).toEqual([]);
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([evilReply]);
   });
 });
 

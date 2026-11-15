@@ -616,7 +616,7 @@ export const storeNoteDocument = async (
 };
 
 /** Fetch the note at `objectUri` and store it ({@link storeNoteDocument}). `undefined` when the fetch fails. */
-const storeFetchedNote = async (
+export const storeFetchedNote = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,

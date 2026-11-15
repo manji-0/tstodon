@@ -22,7 +22,7 @@ import {
 } from "./remote-collection";
 import { listRemoteThreadLevel } from "./generated/prisma/sql";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
-import { persistAnnouncedObject } from "./remote-status-persist";
+import { storeFetchedNote, storeNoteDocument } from "./remote-status-persist";
 import {
   claimRemoteThreadBackfill,
   findRemoteStatusById,
@@ -73,11 +73,12 @@ export const THREAD_TREE_REPLY_LIMIT = 1000;
 export const THREAD_TREE_PAGE_LIMIT = 500;
 
 /**
- * Replies expanded by one job of the tree walk: each costs its document, its
- * `replies` pages and the replies it lists, so a job's fetches stay those of
- * the first pass ({@link THREAD_BACKFILL_REPLY_PAGES}). A job also stops once
- * it stored {@link THREAD_BACKFILL_REPLY_LIMIT} replies, and the next job
- * goes on where it stopped.
+ * Replies expanded by one job of the tree walk. Each costs its document, its
+ * `replies` pages and a fetch per reply it lists that is not cached, so a job
+ * also stops once the replies it expanded listed
+ * {@link THREAD_BACKFILL_REPLY_LIMIT}, and the next job goes on where it
+ * stopped. A job then fetches at most 5 documents, 15 pages and about 40
+ * replies, each reply with its author's actor when that is new.
  */
 export const THREAD_TREE_NODES_PER_JOB = 5;
 
@@ -167,12 +168,12 @@ const parseRepliesHolder = schemaResult(RepliesHolderSchema);
 
 /**
  * Store the notes above `status` that are not cached yet, nearest first, up to
- * the limit. Resolves to how many it stored.
+ * the limit, each fetched from its URI and stored under an author on that
+ * host. Resolves to how many it stored.
  */
 const backfillAncestors = async (
   env: Env,
   identity: InstanceIdentity,
-  actor: RemoteActor,
   status: RemoteStatus,
   options: FederatedFetchOptions,
 ): Promise<number> => {
@@ -185,7 +186,7 @@ const backfillAncestors = async (
     }
     let parent = await findRemoteStatusReplyTargetByObjectUri(env.DB, parentUri);
     if (parent.isOk() && !parent.value) {
-      const persisted = await persistAnnouncedObject(env, identity, actor, parentUri, {
+      const persisted = await storeFetchedNote(env, identity, parentUri, {
         ...options,
         idClock: "Published",
       });
@@ -262,14 +263,16 @@ const listedReplies = async (
 type Expanded = Readonly<{ listed: number; pages: number; stored: number }>;
 
 /**
- * Store the replies the note at `objectUri` lists ({@link listedReplies}).
- * `Unavailable` when the list could not be read whole: nothing of it is
- * stored then.
+ * Store the replies the note at `objectUri` lists ({@link listedReplies}), as
+ * Mastodon's `FetchReplyWorker` does: no one vouches for a reply, so each is
+ * stored only under an author on its URI's host. An embedded reply is read as
+ * it comes only when its URI is on the origin that listed it; any other is
+ * fetched from its URI. `Unavailable` when the list could not be read whole:
+ * nothing of it is stored then.
  */
 const backfillReplies = async (
   env: Env,
   identity: InstanceIdentity,
-  actor: RemoteActor,
   objectUri: string,
   options: FederatedFetchOptions,
 ): Promise<Expanded | "Unavailable"> => {
@@ -288,10 +291,11 @@ const backfillReplies = async (
     if (cached.isErr() || cached.value) {
       continue;
     }
-    const persisted = await persistAnnouncedObject(env, identity, actor, reference.value, {
-      ...options,
-      idClock: "Published",
-    });
+    const replyOptions = { ...options, idClock: "Published" } as const;
+    const persisted =
+      typeof reference.value !== "string" && URL.parse(uri)?.origin === URL.parse(objectUri)?.origin
+        ? await storeNoteDocument(env, identity, uri, reference.value, replyOptions)
+        : await storeFetchedNote(env, identity, uri, replyOptions);
     if (persisted.isOk() && persisted.value) {
       stored += 1;
     }
@@ -330,8 +334,10 @@ type ThreadStep =
  * level at a time, until a level has none or the tree has listed
  * {@link THREAD_TREE_REPLY_LIMIT} replies or read {@link THREAD_TREE_PAGE_LIMIT}
  * pages. Only the last job closes the claim, with the statuses stored, so the
- * async refresh reads as running until then. A job that cannot read a list
- * whole, or cannot queue the next, is retried and leaves the claim running.
+ * async refresh reads as running until then. A first pass that cannot read
+ * the status's list whole, or a job that cannot queue the next, is retried and
+ * leaves the claim running; a reply deeper down whose list does not answer is
+ * skipped.
  */
 const backfillRemoteThread = async (env: Env, job: BackfillRemoteThread): Promise<JobPage> => {
   const step = await backfillRemoteThreadPass(env, job);
@@ -379,20 +385,8 @@ const backfillRemoteThreadPass = async (
     fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
   if (job.from.kind === "Root") {
-    const ancestors = await backfillAncestors(
-      env,
-      identity.value,
-      actor.value,
-      status.value,
-      options,
-    );
-    const replies = await backfillReplies(
-      env,
-      identity.value,
-      actor.value,
-      status.value.objectUri,
-      options,
-    );
+    const ancestors = await backfillAncestors(env, identity.value, status.value, options);
+    const replies = await backfillReplies(env, identity.value, status.value.objectUri, options);
     // Retried, with the claim left running: finishing here would keep a thread
     // cut short by an outage for the whole TTL. What a try stored stays.
     if (replies === "Unavailable") {
@@ -413,19 +407,18 @@ const backfillRemoteThreadPass = async (
           },
         };
   }
-  return expandLevel(env, identity.value, actor.value, job.statusId, job.from, options);
+  return expandLevel(env, identity.value, job.statusId, job.from, options);
 };
 
 /**
  * Expand the next replies of one level of the tree, up to
- * {@link THREAD_TREE_NODES_PER_JOB} of them or until this job stored
- * {@link THREAD_BACKFILL_REPLY_LIMIT}. The walk goes on at the next of the
- * level, or at the next level once this one is done.
+ * {@link THREAD_TREE_NODES_PER_JOB} of them or until their collections listed
+ * {@link THREAD_BACKFILL_REPLY_LIMIT} replies in this job. The walk goes on at
+ * the next of the level, or at the next level once this one is done.
  */
 const expandLevel = async (
   env: Env,
   identity: InstanceIdentity,
-  actor: RemoteActor,
   rootId: string,
   from: Extract<BackfillRemoteThread["from"], { kind: "Level" }>,
   options: FederatedFetchOptions,
@@ -441,27 +434,33 @@ const expandLevel = async (
     return { kind: "Retry" };
   }
   if (nodes.value.length === 0) {
-    return { kind: "Finished", stored: from.stored };
+    // A level read to its end in full slices goes on to the next level; an
+    // empty level ends the walk.
+    return from.after === ""
+      ? { kind: "Finished", stored: from.stored }
+      : { kind: "Continue", from: { ...from, depth: from.depth + 1, after: "" } };
   }
   let { after, listed, pages, stored } = from;
-  let storedHere = 0;
+  let listedHere = 0;
   for (const node of nodes.value) {
     if (
       listed >= THREAD_TREE_REPLY_LIMIT ||
       pages >= THREAD_TREE_PAGE_LIMIT ||
-      storedHere >= THREAD_BACKFILL_REPLY_LIMIT
+      listedHere >= THREAD_BACKFILL_REPLY_LIMIT
     ) {
       break;
     }
-    const expanded = await backfillReplies(env, identity, actor, node.object_uri, options);
-    if (expanded === "Unavailable") {
-      return { kind: "Retry" };
-    }
+    // A reply whose list does not answer is skipped, as Mastodon's
+    // `FetchAllRepliesWorker` skips a failed fetch: one host down does not
+    // hold up the rest of the tree.
+    const expanded = await backfillReplies(env, identity, node.object_uri, options);
     after = node.id;
-    listed += expanded.listed;
-    pages += expanded.pages;
-    stored += expanded.stored;
-    storedHere += expanded.stored;
+    if (expanded !== "Unavailable") {
+      listed += expanded.listed;
+      pages += expanded.pages;
+      stored += expanded.stored;
+      listedHere += expanded.listed;
+    }
   }
   if (listed >= THREAD_TREE_REPLY_LIMIT || pages >= THREAD_TREE_PAGE_LIMIT) {
     return { kind: "Finished", stored };
