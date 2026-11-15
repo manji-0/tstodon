@@ -38,6 +38,7 @@ export const deleteLocalStatus = async (
             reply: await loadNoteReply(env.DB, identity, status),
             media: { attachments: [], authorSensitized: false },
             quotePolicy: await loadNoteQuotePolicy(env.DB, account, status),
+            emojis: [],
           }),
         )
       : undefined;

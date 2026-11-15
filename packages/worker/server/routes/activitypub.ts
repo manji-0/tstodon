@@ -16,6 +16,7 @@ import {
 import type { Context } from "hono";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
 import { findBlock } from "../block-mute-store";
+import { loadCustomEmojis } from "../custom-emoji-store";
 import { isActorDomainBlocked } from "../domain-block-store";
 import {
   activityPayloadFromJson,
@@ -150,6 +151,7 @@ export const getUsersByUsernameStatusesById = async (
     poll: await loadNotePoll(c.env.DB, status.value.id),
     media: media.value,
     quotePolicy: await loadNoteQuotePolicy(c.env.DB, account.value, status.value),
+    emojis: await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl),
   });
   const visibility = status.value.visibility.kind;
   if (visibility !== "Public" && visibility !== "Unlisted") {
