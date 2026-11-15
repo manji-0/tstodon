@@ -63,7 +63,7 @@ import {
 type CreateStatusBody = z.output<typeof ApiCreateStatusParamsSchema>;
 
 /** The poll a new status asks for, with its options trimmed and within the instance limits. */
-const parsePollRequest = (
+export const parsePollRequest = (
   poll: CreateStatusBody["poll"],
 ): Result<PublishPoll | null, ApiRefusal> => {
   if (!poll) {

@@ -41,6 +41,16 @@ const notifications = async (email: string) => {
   return read(z.array(NotificationSchema), body);
 };
 
+/** Let a stranger's direct message notify; the default policy holds it as a request. */
+const acceptPrivateMentions = async (email: string) => {
+  const patched = await json("/api/v2/notifications/policy", {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+    body: JSON.stringify({ for_private_mentions: "accept" }),
+  });
+  expect(patched.status).toBe(200);
+};
+
 const me = async (email: string) =>
   read(
     z.object({ id: z.string(), username: z.string() }),
@@ -371,6 +381,7 @@ describe("notifications from remote actors", () => {
   it("notifies a mention in a new remote note, once", async () => {
     const email = "remote-notify-mentioned@example.com";
     const account = await me(email);
+    await acceptPrivateMentions(email);
     const actorUrl = `https://example.com/users/${account.username}`;
     const remote = await remoteActor("mentioner");
     const note = (n: number, extra: Record<string, unknown>) => ({
@@ -441,6 +452,7 @@ describe("notifications from remote actors", () => {
   it("withdraws notifications when the activity is undone or the note deleted", async () => {
     const email = "remote-notify-undo@example.com";
     const account = await me(email);
+    await acceptPrivateMentions(email);
     const actorUrl = `https://example.com/users/${account.username}`;
     const status = await post(email, "undo me");
     const remote = await remoteActor("undoer");

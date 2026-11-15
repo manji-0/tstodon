@@ -61,7 +61,6 @@ describe("status editing", () => {
         status: "edited text",
         spoiler_text: "cw",
         sensitive: true,
-        visibility: "unlisted",
       }),
     });
     expect(edited.status).toBe(200);
@@ -71,7 +70,6 @@ describe("status editing", () => {
     expect(editedDoc.content).toContain("edited text");
     expect(editedDoc.spoiler_text).toBe("cw");
     expect(editedDoc.sensitive).toBe(true);
-    expect(editedDoc.visibility).toBe("unlisted");
     expect(editedDoc.edited_at).not.toBeNull();
 
     const history = await json(`/api/v1/statuses/${original.id}/history`);
@@ -159,7 +157,7 @@ describe("status editing", () => {
     expect(denied.status).toBe(404);
   });
 
-  it("edits an unvoted poll in place", async () => {
+  it("edits a poll in place", async () => {
     const email = "edit-poll@example.com";
     const created = await json(
       "/api/v1/statuses",
@@ -192,33 +190,6 @@ describe("status editing", () => {
     );
     expect(poll.poll?.options.map((option) => option.title)).toEqual(["alpha", "beta", "gamma"]);
     expect(poll.poll?.multiple).toBe(true);
-  });
-
-  it("rejects editing a poll after voting has started", async () => {
-    const author = "edit-poll-author@example.com";
-    const voter = "edit-poll-voter@example.com";
-    const created = await json(
-      "/api/v1/statuses",
-      await jsonBody(
-        { status: "voted poll", poll: { options: ["one", "two"], expires_in: 3600 } },
-        author,
-      )(),
-    );
-    const pollId = read(z.object({ poll: z.object({ id: z.string().min(1) }) }), created.body).poll
-      .id;
-    const voted = await json(`/api/v1/polls/${pollId}/votes`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...(await auth(voter)) },
-      body: JSON.stringify({ choices: [0] }),
-    });
-    expect(voted.status).toBe(200);
-
-    const edited = await json(`/api/v1/statuses/${read(EditedStatusSchema, created.body).id}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", ...(await auth(author)) },
-      body: JSON.stringify({ poll: { options: ["a", "b"] } }),
-    });
-    expect(edited.status).toBe(422);
   });
 
   it("requires at least two poll options", async () => {

@@ -12,83 +12,97 @@ export type NotificationPolicy = Readonly<{
   forBots: NotificationPolicyAction;
 }>;
 
-/** What the policy needs to know about a local sender. */
-export type LocalNotificationSender = Readonly<{
-  kind: "Local";
+/**
+ * What the policy needs to know about the sender of a notification, a local
+ * account or a remote one: the facts Mastodon's `NotifyService::BaseCondition`
+ * reads.
+ */
+export type NotificationSender = Readonly<{
+  /** When this server first stored the account (Mastodon's `accounts.created_at`). */
   createdAt: string;
-  silenced: boolean;
-  recipientFollowsSender: boolean;
-  senderFollowsRecipient: boolean;
-  /** The notification is a mention on a direct status. */
-  privateMention: boolean;
-  /** The sender's profile is marked as a bot (`accounts.bot`). */
-  bot: boolean;
-}>;
-
-/** What the policy needs to know about a remote sender. */
-export type RemoteNotificationSender = Readonly<{
-  kind: "Remote";
   standing: AccountStanding;
-  followsRecipient: boolean;
-  /** The actor's `type` is `Service` or `Application` (Mastodon's `bot?`). */
+  /** A local profile marked as a bot, or a remote `Service` or `Application` actor. */
   bot: boolean;
+  /** The recipient follows the sender, with an accepted follow. */
+  followedByRecipient: boolean;
+  /** When the sender's accepted follow of the recipient began; absent when it does not follow. */
+  followsRecipientSince: string | undefined;
+  /**
+   * The notification is a mention on a direct status that does not answer
+   * the recipient ({@link NotificationPolicy.answersRecipient}).
+   */
+  unansweredPrivateMention: boolean;
 }>;
-
-export type NotificationSender = LocalNotificationSender | RemoteNotificationSender;
-
-const NEW_ACCOUNT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Mastodon's defaults: private mentions are dropped, limited accounts
- * filtered, bots accepted.
+ * A status above a direct mention in its thread, as Mastodon's
+ * `statuses_that_mention_sender` reads it.
  */
+export type MentionAncestor = Readonly<{
+  /** The recipient of the notification wrote it. */
+  byRecipient: boolean;
+  direct: boolean;
+  /** It mentions the sender of the notification, not silently. */
+  mentionsSender: boolean;
+}>;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Mastodon's `NEW_ACCOUNT_THRESHOLD`. */
+const NEW_ACCOUNT_WINDOW_MS = 30 * DAY_MS;
+/** Mastodon's `NEW_FOLLOWER_THRESHOLD`: a follow this recent does not make a follower yet. */
+const NEW_FOLLOWER_WINDOW_MS = 3 * DAY_MS;
+/** Mastodon's `depth_limit` of 100 steps above the mention's parent. */
+const ANCESTOR_LIMIT = 101;
+
+/** Mastodon's defaults (`notification_policies` in `db/schema.rb`). */
 const defaultPolicy: NotificationPolicy = {
   forNotFollowing: "accept",
   forNotFollowers: "accept",
   forNewAccounts: "accept",
-  forPrivateMentions: "drop",
+  forPrivateMentions: "filter",
   forLimitedAccounts: "filter",
   forBots: "accept",
 };
 
-/**
- * Local accounts cannot follow remote ones here, so `for_not_following`
- * always applies to a remote sender. `for_private_mentions` is not applied:
- * its exemption is "the recipient follows the sender", which a remote sender
- * can never meet, so the `drop` default would discard every remote direct
- * message. `for_new_accounts` needs local account state.
- */
-const remoteActions = (
-  policy: NotificationPolicy,
-  sender: RemoteNotificationSender,
-): NotificationPolicyAction[] => [
-  policy.forNotFollowing,
-  ...(sender.standing.kind === "Silenced" ? [policy.forLimitedAccounts] : []),
-  ...(sender.standing.kind === "Suspended" ? (["drop"] as const) : []),
-  ...(sender.followsRecipient ? [] : [policy.forNotFollowers]),
-  ...(sender.bot ? [policy.forBots] : []),
-];
+/** Whether `at` is within `windowMs` before `now`; a date that does not parse is not. */
+const within = (at: string, windowMs: number, now: number): boolean => {
+  const instant = Date.parse(at);
+  return Number.isFinite(instant) && now - instant < windowMs;
+};
 
-/** A private mention from an account the recipient follows is exempt (Mastodon's exception). */
-const localActions = (
+/**
+ * The categories that apply to the sender. Every category but
+ * `for_not_followers` spares a sender the recipient follows. A suspended
+ * sender is dropped whatever the policy.
+ */
+const actions = (
   policy: NotificationPolicy,
-  sender: LocalNotificationSender,
+  sender: NotificationSender,
   now: number,
 ): NotificationPolicyAction[] => {
-  const created = Date.parse(sender.createdAt);
-  const fresh = Number.isFinite(created) && now - created < NEW_ACCOUNT_WINDOW_MS;
+  const notFollower =
+    sender.followsRecipientSince === undefined ||
+    within(sender.followsRecipientSince, NEW_FOLLOWER_WINDOW_MS, now);
+  const stranger: NotificationPolicyAction[] = sender.followedByRecipient
+    ? []
+    : [
+        policy.forNotFollowing,
+        ...(sender.standing.kind === "Silenced" ? [policy.forLimitedAccounts] : []),
+        ...(within(sender.createdAt, NEW_ACCOUNT_WINDOW_MS, now) ? [policy.forNewAccounts] : []),
+        ...(sender.unansweredPrivateMention ? [policy.forPrivateMentions] : []),
+        ...(sender.bot ? [policy.forBots] : []),
+      ];
   return [
-    ...(sender.privateMention && !sender.recipientFollowsSender ? [policy.forPrivateMentions] : []),
-    ...(sender.silenced ? [policy.forLimitedAccounts] : []),
-    ...(fresh ? [policy.forNewAccounts] : []),
-    ...(sender.recipientFollowsSender ? [] : [policy.forNotFollowing]),
-    ...(sender.senderFollowsRecipient ? [] : [policy.forNotFollowers]),
-    ...(sender.bot ? [policy.forBots] : []),
+    ...(sender.standing.kind === "Suspended" ? (["drop"] as const) : []),
+    ...(notFollower ? [policy.forNotFollowers] : []),
+    ...stranger,
   ];
 };
 
 export const NotificationPolicy = {
   default: defaultPolicy,
+  /** How many statuses above a mention {@link NotificationPolicy.answersRecipient} reads. */
+  ancestorLimit: ANCESTOR_LIMIT,
   /**
    * Which categories apply to a notification from this sender, resolved to
    * the most restrictive action. `now` is in epoch milliseconds.
@@ -98,7 +112,19 @@ export const NotificationPolicy = {
     sender: NotificationSender,
     now: number,
   ): NotificationPolicyAction =>
-    NotificationPolicyAction.mostRestrictive(
-      sender.kind === "Remote" ? remoteActions(policy, sender) : localActions(policy, sender, now),
-    ),
+    NotificationPolicyAction.mostRestrictive(actions(policy, sender, now)),
+  /**
+   * Whether a direct mention answers the recipient: Mastodon's
+   * `response_to_recipient?`. `ancestors` are the statuses above the mention,
+   * nearest first. The walk up the thread ends at the mention's parent when
+   * that mentions the sender, whoever wrote it, and else at the first status
+   * of the recipient's that mentions the sender. The mention is an answer
+   * when the status the walk ends at is a direct one the recipient wrote.
+   */
+  answersRecipient: (ancestors: ReadonlyArray<MentionAncestor>): boolean => {
+    const found = ancestors
+      .slice(0, ANCESTOR_LIMIT)
+      .find((ancestor, index) => ancestor.mentionsSender && (index === 0 || ancestor.byRecipient));
+    return found !== undefined && found.byRecipient && found.direct;
+  },
 } as const;

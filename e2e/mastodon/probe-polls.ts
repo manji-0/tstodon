@@ -209,4 +209,37 @@ export const pollScenarios = async ({ stamp, mona, carol }: Cast): Promise<void>
     }
     await notified(mona, "poll", mona, sent.uri);
   });
+
+  // Mastodon's `VoteValidator`, in its own words.
+  for (const author of [alice, mona]) {
+    await step(
+      `a vote on one's own poll, or for an option it lacks, is refused: on ${new URL(author.origin).host}`,
+      async () => {
+        const sent = await post(author, {
+          status: `own poll ${stamp}`,
+          poll: { options: ["yes", "no"], expires_in: 3600 },
+        });
+        for (const [choice, expected] of [
+          [0, "Validation failed: You cannot vote in your own polls"],
+          [
+            2,
+            "Validation failed: The chosen vote option does not exist, You cannot vote in your own polls",
+          ],
+        ] as const) {
+          const refused = await fetch(
+            `${author.origin}/api/v1/polls/${sent.poll?.id ?? ""}/votes`,
+            {
+              method: "POST",
+              headers: { ...author.headers, "Content-Type": "application/json" },
+              body: JSON.stringify({ choices: [choice] }),
+            },
+          );
+          const body = await refused.text();
+          if (refused.status !== 422 || !body.includes(`"${expected}"`)) {
+            throw new StepFailure(`choice ${choice} answers ${refused.status} ${body}`);
+          }
+        }
+      },
+    );
+  }
 };

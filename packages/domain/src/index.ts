@@ -169,9 +169,8 @@ export {
 } from "./notification-group";
 export {
   NotificationPolicy,
-  type LocalNotificationSender,
+  type MentionAncestor,
   type NotificationSender,
-  type RemoteNotificationSender,
 } from "./notification-policy";
 export { NotificationPolicyAction } from "./notification-policy-action";
 export type { ResolveNotificationDisposition } from "./notification-resolver";
@@ -258,6 +257,12 @@ export {
   type RemoteBoost as RemoteBoostValue,
   type RemoteBoostError,
 } from "./remote-boost";
+export { PollBallot, type BallotPoll, type VoteError } from "./poll-ballot";
+export {
+  StatusRevision,
+  type StatusRevisionContent,
+  type StatusRevisionRequest,
+} from "./status-revision";
 export {
   RemotePoll,
   RemotePollSchema,

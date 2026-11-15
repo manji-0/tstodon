@@ -170,7 +170,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 - A new account's actor URI is `https://mastodon.test/ap/users/<id>`, not `/users/<name>`. Take the URI from the account's `uri` field.
 - Mastodon signs its fetches as the instance actor (`/actor`).
-- Mastodon's default notification policy (`for_private_mentions: filter`) files a private mention from an account the receiver does not follow under a notification request. The status is stored, but there is no notification and no conversation until the receiver accepts the request (`NotifyService`, `UnfilterNotificationsWorker`). A reply in a thread where the receiver mentioned the sender is exempt.
+- Mastodon's default notification policy (`for_private_mentions: filter`) files a private mention from an account the receiver does not follow under a notification request. The status is stored, but there is no notification and no conversation until the receiver accepts the request (`NotifyService`, `UnfilterNotificationsWorker`). A reply in a thread where the receiver mentioned the sender in a direct message is exempt (`private_mention_not_in_response?`). The policy applies to local and remote senders alike. Every category but `for_not_followers` spares a sender the receiver follows, and a follower of less than three days is no follower yet. tstodon applies the same policy with the same default, and lists the filtered message in the receiver's conversations at once (INT-2).
 - Mastodon leaves a boost out of a home feed that already holds the boosted post. To see a boost arrive, boost a post from an account the receiver does not follow.
 - Mastodon leaves a reply out of a home feed unless the reader follows the account replied to. To see a reply arrive, mention the reader.
 - A page URL (`https://mastodon.test/@carol`, `/@carol/<id>`) serves the actor or the note under another id (`/ap/users/<id>`, `/ap/users/<id>/statuses/<id>`). Mastodon's own lookup (`FetchResourceService`) fetches the URL, then the id it names, once.
@@ -181,9 +181,10 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
 - Mastodon allows a user 1500 API requests per five minutes. A second sweep right after the first reaches that as mona. `sweep.ts` waits for the window and goes on.
 - Mastodon dates an edit to the second (`updated`). It applies an `Update` as an edit only when that date is after the one it holds (`ProcessStatusUpdateService`). With an equal date it takes the poll tallies and the quote policy and leaves the text. Two edits within one second are one edit to the other server, on Mastodon and on tstodon.
-- `PUT /api/v1/statuses/:id` carries the whole revision. A field the request leaves out is emptied: the content warning, the sensitive flag, the media, the poll. tstodon keeps a field that is left out (INT-18).
+- `PUT /api/v1/statuses/:id` carries the whole revision (`UpdateStatusService`). A field the request leaves out is emptied: the text, the content warning, the sensitive flag, the media, the poll. A content warning makes the revision sensitive. The language and the quote policy stay when the request names none, and the visibility always stays. A poll whose options or `multiple` change loses its votes; the options are compared as sent, and a `multiple` left out counts as a change. A poll that repeats them keeps its votes and ends `expires_in` after the edit, and a poll without `expires_in` is refused (422). tstodon does the same.
 - A boost of the author's own followers-only post is an `Announce` addressed to the followers. Mastodon accepts such an `Announce` from the post's author only (`announceable?`).
 - A multiple-choice ballot is one `Create` per chosen option, delivered at once.
+- A vote Mastodon's `VoteValidator` refuses answers 422 with `Validation failed: ` and its messages, joined by `, `: `The poll has already ended`, `The chosen vote option does not exist`, `You cannot vote in your own polls`, `You have already voted on this poll`. The choices of a ballot are votes created in order, so a second choice on a single-choice poll is `already voted`. tstodon answers the same.
 - Mastodon sends a poll's tallies three minutes after a vote (`DistributePollUpdateWorker`) and when the poll ends. When a client reads a remote poll that it fetched over a minute ago, Mastodon fetches it again; tstodon does not. The shortest poll runs five minutes. The jobs that end a poll are queued once per poll, so the sweep runs them in `rails runner`.
 - Mastodon calls a short video with no sound `gifv`, its own upload too.
 - Mastodon sends the `Delete` of a post to the author's followers and to the remote accounts that interacted with it. The followers of a local account that boosted it get nothing, and keep the boost. tstodon does the same.
@@ -196,7 +197,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 213 of 213 steps with both servers open, 214 of 214 with tstodon in secure mode, and 215 of 215 with both in secure mode. Six more steps are known gaps.
+The sweep passes 217 of 217 steps with both servers open. Before the INT-2 and INT-18 gaps were closed, it passed 214 of 214 with tstodon in secure mode and 215 of 215 with both in secure mode. Four more steps are known gaps.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
@@ -226,11 +227,13 @@ A CI run of the `follows` area found one more, also fixed and covered:
 
 14. A follow that was undone at once could stay on Mastodon for good. tstodon sends the `Follow` and the `Undo` as two deliveries, Mastodon handled both at once and kept the follow, and tstodon ignored the `Accept` that came next (`server/outbound-follow.test.ts`).
 
-Four known gaps were closed since, each with a Worker test, and their steps are plain steps now:
+Six known gaps were closed since, each with a Worker test, and their steps are plain steps now:
 
 - A Mastodon attachment keeps its focus point, its blurhash and its size on tstodon (INT-11, two steps; `server/remote-media-metadata.test.ts`). tstodon does not download the file, so the size is the one the note declares.
 - A Mastodon account's custom emoji shows in its display name and bio on tstodon (INT-13; `server/remote-actor-profile.test.ts`).
 - A Mastodon account's profile fields show on tstodon (INT-15; `server/remote-actor-profile.test.ts`). `verified_at` stays null: tstodon does not fetch the linked page.
+- A Mastodon stranger's direct message waits in a notification request on tstodon, and notifies once the request is accepted (INT-2; `server/notification-policy-remote.test.ts`).
+- An edit through tstodon's API that leaves the content warning, the sensitive flag or the poll out removes them, on tstodon and on the Mastodon copy (INT-18; `server/status-edit-whole-revision.test.ts`).
 
 Seven more were closed after that, each with a Worker test, and their steps are plain steps now:
 
@@ -239,12 +242,10 @@ Seven more were closed after that, each with a Worker test, and their steps are 
 - Mastodon fetches the replies to a tstodon post it resolved, and the replies to those (INT-4, two steps; `server/note-replies.test.ts`). A tstodon note carries a `replies` collection in Mastodon's shape. The sweep dates Mastodon's copy of the post back first ([The Mastodon users](#the-mastodon-users)).
 - A hashtag featured on tstodon shows on the Mastodon profile (INT-14; `server/featured-tags-federation.test.ts`). tstodon's actor names a `featuredTags` collection, and featuring a hashtag sends an `Add`, unfeaturing a `Remove`.
 
-The 6 known gaps (`gap` in the sweep's output):
+The 4 known gaps (`gap` in the sweep's output):
 
-- tstodon reports `for_private_mentions: drop` and notifies a Mastodon stranger's direct message all the same: the policy is not applied to a remote sender (INT-2).
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
 - The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
-- An edit through tstodon's API keeps a content warning the request leaves out; Mastodon's removes it (INT-18).
 - A hashtag followed on tstodon brings no post to the home timeline (INT-14).
 - A hashtag featured on Mastodon does not show on the tstodon profile: tstodon accepts the `Add` and keeps no remote featured hashtags (INT-14).
 

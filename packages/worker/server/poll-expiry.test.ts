@@ -62,6 +62,23 @@ const createPoll = async (email: string, multiple = false, hideTotals = false) =
 const vote = async (email: string, pollId: string, choices: number[] = [0]) =>
   expect((await send(email, `/api/v1/polls/${pollId}/votes`, { choices })).status).toBe(200);
 
+/**
+ * The author's vote on their own poll, as stored before such a vote was
+ * refused (Mastodon's `VoteValidator`); the API no longer writes one.
+ */
+const storeOwnVote = async (
+  poll: { pollId: string; authorId: string },
+  choices: number[] = [0],
+) => {
+  for (const choice of choices) {
+    await env.DB.prepare(
+      "INSERT INTO poll_votes (poll_id, account_id, option_index, created_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(poll.pollId, poll.authorId, choice, new Date().toISOString())
+      .run();
+  }
+};
+
 const endPoll = (pollId: string) =>
   env.DB.prepare("UPDATE polls SET expires_at = ? WHERE id = ?")
     .bind("2020-01-01T00:00:00.000Z", pollId)
@@ -165,7 +182,7 @@ describe("local poll expiry notifications", () => {
   it("tells an author who voted on their own poll once", async () => {
     const author = "local-poll-expiry-self@example.com";
     const poll = await createPoll(author);
-    await vote(author, poll.pollId);
+    await storeOwnVote(poll);
     await endPoll(poll.pollId);
     await runExpiryJob();
     await runExpiryJob();
@@ -267,7 +284,7 @@ describe("local poll expiry notifications", () => {
     const author = "local-poll-pending-author@example.com";
     const voter = "local-poll-pending-voter@example.com";
     const poll = await createPoll(author, true);
-    await vote(author, poll.pollId, [0, 1]);
+    await storeOwnVote(poll, [0, 1]);
     await vote(voter, poll.pollId, [1]);
     await endPoll(poll.pollId);
     await runExpiryJob();
@@ -571,16 +588,14 @@ describe("who hears a local poll's Update", () => {
     expect(await updateTargets(poll)).not.toContain(`${former.actorUri}/inbox`);
   });
 
-  it("sends no Update to a stranger who voted before the poll was edited to followers-only", async () => {
+  it("sends no Update to a stranger who voted before the poll was narrowed to followers-only", async () => {
     const poll = await pollAt("poll-reach-narrowed-author@example.com", "public");
     const stranger = await remoteActor("poll-reach-narrowed-voter", "narrowed.example");
     await remoteVote(stranger, poll, "narrowed-vote");
-    const edited = await json(`/api/v1/statuses/${poll.statusId}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", ...(await authHeaders(poll.email)) },
-      body: JSON.stringify({ status: "now followers-only", visibility: "private" }),
-    });
-    expect(edited.status).toBe(200);
+    // An edit no longer changes the visibility; a poll narrowed before that keeps its votes.
+    await env.DB.prepare("UPDATE statuses SET visibility = 'private' WHERE id = ?")
+      .bind(poll.statusId)
+      .run();
 
     expect(await updateTargets(poll)).not.toContain(`${stranger.actorUri}/inbox`);
   });

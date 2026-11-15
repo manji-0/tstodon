@@ -232,6 +232,8 @@ describe("a mention an Update removes", () => {
     const mentioned = await signedInAccount(email);
     const localActorUri = `https://example.com/users/${mentioned.username}`;
     const author = await remoteActor("rsmeditor", "mentions.example");
+    // A direct note from an account the recipient does not follow waits in a request.
+    await followRemote(email, author);
     const noteUri = "https://mentions.example/notes/rsm-edited-out";
     const note = {
       id: noteUri,

@@ -253,7 +253,9 @@ describe("remote votes on a local poll", () => {
       });
       expect(recorded._unsafeUnwrap()).toEqual({ kind: "Recorded" });
     }
-    await votePoll(env.DB, poll.pollId, poll.authorId, [0]);
+    // A local account other than the author: its account id comes with a poll of its own.
+    const localVoter = await createPoll("race-local-voter@example.com");
+    expect((await votePoll(env.DB, poll.pollId, localVoter.authorId, [0])).isOk()).toBe(true);
 
     const state = await pollState(poll);
     expect(state.options.map((option) => option.votes_count)).toEqual([2, 0, 1]);
