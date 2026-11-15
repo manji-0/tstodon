@@ -1,13 +1,15 @@
 import type {
   ApiAccountJSON,
+  ApiMediaAttachmentJSON,
   ApiMentionJSON,
   ApiOriginalStatusJSON,
   ApiPreviewCardJSON,
   ApiTagJSON,
-  MediaAttachmentType,
 } from "@tstodon/api";
 import {
+  ImageDimensions,
   type QuoteApprovalForViewer,
+  type RemoteAttachment,
   type RemoteStatus as RemoteStatusValue,
   Visibility,
 } from "@tstodon/domain";
@@ -68,17 +70,15 @@ export const mastodonRemoteStatus = (
       httpUrl(attachment.url) === undefined
         ? []
         : [
-            {
+            remoteMediaJson(attachment, {
               id: `${status.id}-${index}`,
-              type: remoteMediaType(attachment.mediaType),
               url: attachment.url,
               preview_url: attachment.url,
               remote_url: attachment.url,
               text_url: attachment.url,
-              meta: {},
               description: attachment.description.length > 0 ? attachment.description : null,
-              blurhash: null,
-            },
+              blurhash: attachment.blurhash ?? null,
+            }),
           ],
     ),
     mentions: [...(extras.mentions ?? [])],
@@ -101,7 +101,48 @@ export const mastodonRemoteStatus = (
   };
 };
 
-const remoteMediaType = (mediaType: string): MediaAttachmentType => {
+type RemoteMediaFields = Omit<ApiMediaAttachmentJSON, "type" | "meta">;
+
+/**
+ * A remote attachment as Mastodon's REST `MediaAttachment`. The file is not
+ * downloaded, so its sizes are the ones the note declares: `meta.original`,
+ * and for an image `meta.small`, the size Mastodon's `small` style would have.
+ * `preview_url` stays the original file.
+ */
+const remoteMediaJson = (
+  attachment: RemoteAttachment,
+  fields: RemoteMediaFields,
+): ApiMediaAttachmentJSON => {
+  const { size } = attachment;
+  const focus = attachment.focus ? { focus: attachment.focus } : {};
+  const type = remoteMediaType(attachment.mediaType);
+  switch (type) {
+    case "image":
+      return {
+        ...fields,
+        type,
+        meta: {
+          ...(size
+            ? {
+                original: ImageDimensions.meta(size),
+                small: ImageDimensions.meta(
+                  ImageDimensions.fitWithin(size, ImageDimensions.smallPixels),
+                ),
+              }
+            : {}),
+          ...focus,
+        },
+      };
+    case "video":
+      return { ...fields, type, meta: { ...(size ? { original: size } : {}), ...focus } };
+    case "audio":
+      return { ...fields, type, meta: {} };
+    case "unknown":
+      return { ...fields, type, meta: {} };
+  }
+};
+
+const remoteMediaType = (mediaType: string): "image" | "video" | "audio" | "unknown" => {
   const type = mediaType.toLowerCase();
   if (type.length === 0) {
     return "unknown";

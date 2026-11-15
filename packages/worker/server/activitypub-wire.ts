@@ -77,6 +77,8 @@ export const ActorDocumentSchema = z
     image: z.unknown().optional(),
     manuallyApprovesFollowers: z.boolean().nullable().optional(),
     published: z.string().nullable().optional(),
+    /** Its profile fields, among other attachments; read leniently (`remote-actor-fields.ts`). */
+    attachment: z.unknown().optional(),
     /** The accounts this one says it is also: a list, or a single URI. */
     alsoKnownAs: z.union([z.string(), z.array(z.string())]).optional(),
     /** The account this one says it moved to. */
@@ -135,6 +137,11 @@ export const NoteDocumentSchema = z
           mediaType: z.string().optional(),
           url: z.string().optional(),
           name: z.string().nullable().optional(),
+          // Read leniently (`remote-attachment.ts`): a malformed one is left out, and the note is kept.
+          blurhash: z.unknown().optional(),
+          width: z.unknown().optional(),
+          height: z.unknown().optional(),
+          focalPoint: z.unknown().optional(),
         }),
       )
       .optional(),

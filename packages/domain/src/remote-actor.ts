@@ -3,6 +3,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
+import { RemoteEmojiSchema } from "./remote-status";
 
 /**
  * What a remote actor shows on its profile. `note` is plain text: the actor's
@@ -16,6 +17,17 @@ const RemoteActorProfileSchema = z.object({
   locked: z.boolean(),
   bot: z.boolean(),
   publishedAt: IsoInstant.schema.nullable(),
+  /**
+   * The custom emoji the display name, the note and the fields write, from
+   * the actor's `Emoji` tags. None on a profile stored before they were kept.
+   */
+  emojis: z.array(RemoteEmojiSchema).default([]),
+  /**
+   * The profile fields, from the actor's `PropertyValue` attachments. `value`
+   * is the actor's HTML as sent: sanitise it before it is rendered. None on a
+   * profile stored before they were kept.
+   */
+  fields: z.array(z.object({ name: z.string(), value: z.string() })).default([]),
 });
 
 export type RemoteActorProfile = z.infer<typeof RemoteActorProfileSchema>;
@@ -28,6 +40,8 @@ const EMPTY_PROFILE: RemoteActorProfile = {
   locked: false,
   bot: false,
   publishedAt: null,
+  emojis: [],
+  fields: [],
 };
 
 const RemoteActorSchema = z.object({

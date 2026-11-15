@@ -20,6 +20,30 @@ const encode83 = (value: number, length: number): string => {
   return result;
 };
 
+const BASE83_ONLY = /^[0-9A-Za-z#$%*+,\-.:;=?@[\]^_{|}~]+$/;
+
+/** The most components on an axis Mastodon takes from a remote blurhash (`MediaAttachmentParser#supported_blurhash?`). */
+const MAX_REMOTE_COMPONENTS = 5;
+
+/**
+ * Whether `value` is a BlurHash a remote attachment may carry: its length is
+ * the one its first character declares, and it has at most five components on
+ * each axis, as Mastodon requires before it keeps one.
+ */
+export const isRemoteBlurhash = (value: string): boolean => {
+  const flag = BASE83.indexOf(value.charAt(0));
+  if (flag < 0 || !BASE83_ONLY.test(value)) {
+    return false;
+  }
+  const componentsX = (flag % 9) + 1;
+  const componentsY = Math.floor(flag / 9) + 1;
+  return (
+    value.length === 4 + 2 * componentsX * componentsY &&
+    componentsX <= MAX_REMOTE_COMPONENTS &&
+    componentsY <= MAX_REMOTE_COMPONENTS
+  );
+};
+
 const sRGBToLinear = (value: number): number => {
   const v = value / 255;
   return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);

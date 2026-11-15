@@ -30,9 +30,6 @@ const loads = async (viewer: E2eUser, url: string | null, what: string): Promise
 const withMedia = (viewer: E2eUser, uri: string, accept: (status: Status) => boolean) =>
   onHome(viewer, uri, (status) => status.media_attachments.length > 0 && accept(status));
 
-/** tstodon keeps a remote attachment's URL, type and description, not its blurhash, size or focus. */
-const REMOTE_MEDIA_METADATA = { toTstodon: "INT-11" } as const;
-
 export const mediaScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
   const alice = await signUp(A, "mia");
 
@@ -40,48 +37,36 @@ export const mediaScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
     await follow(from, to);
   });
 
-  await bothWays(
-    "an image arrives with its focus point",
-    alice,
-    mona,
-    async (from, to) => {
-      const media = await upload(from, `focus ${stamp}`, { focus: "0.5,-0.25" });
-      const sent = await post(from, { status: `focus ${stamp}`, media_ids: [media] });
-      const copy = await withMedia(to, sent.uri, () => true);
-      const focus = copy.media_attachments[0]?.meta?.focus;
-      if (focus?.x !== 0.5 || focus.y !== -0.25) {
-        throw new StepFailure(`the copy's focus is ${JSON.stringify(focus)}`);
-      }
-    },
-    REMOTE_MEDIA_METADATA,
-  );
+  await bothWays("an image arrives with its focus point", alice, mona, async (from, to) => {
+    const media = await upload(from, `focus ${stamp}`, { focus: "0.5,-0.25" });
+    const sent = await post(from, { status: `focus ${stamp}`, media_ids: [media] });
+    const copy = await withMedia(to, sent.uri, () => true);
+    const focus = copy.media_attachments[0]?.meta?.focus;
+    if (focus?.x !== 0.5 || focus.y !== -0.25) {
+      throw new StepFailure(`the copy's focus is ${JSON.stringify(focus)}`);
+    }
+  });
 
-  await bothWays(
-    "an image arrives with a blurhash and its size",
-    alice,
-    mona,
-    async (from, to) => {
-      const media = await upload(from, `blurhash ${stamp}`, { file: png([40, 160, 90], 64, 48) });
-      const sent = await post(from, { status: `blurhash ${stamp}`, media_ids: [media] });
-      let last = "";
-      await withMedia(to, sent.uri, (status) => {
-        const [attachment] = status.media_attachments;
-        last = JSON.stringify({ blurhash: attachment?.blurhash, meta: attachment?.meta });
-        const original = attachment?.meta?.original;
-        return (
-          typeof attachment?.blurhash === "string" &&
-          attachment.blurhash.length >= 6 &&
-          original?.width === 64 &&
-          original.height === 48
-        );
-      }).catch((error: unknown) => {
-        throw new StepFailure(
-          `${error instanceof Error ? error.message : String(error)}; saw ${last}`,
-        );
-      });
-    },
-    REMOTE_MEDIA_METADATA,
-  );
+  await bothWays("an image arrives with a blurhash and its size", alice, mona, async (from, to) => {
+    const media = await upload(from, `blurhash ${stamp}`, { file: png([40, 160, 90], 64, 48) });
+    const sent = await post(from, { status: `blurhash ${stamp}`, media_ids: [media] });
+    let last = "";
+    await withMedia(to, sent.uri, (status) => {
+      const [attachment] = status.media_attachments;
+      last = JSON.stringify({ blurhash: attachment?.blurhash, meta: attachment?.meta });
+      const original = attachment?.meta?.original;
+      return (
+        typeof attachment?.blurhash === "string" &&
+        attachment.blurhash.length >= 6 &&
+        original?.width === 64 &&
+        original.height === 48
+      );
+    }).catch((error: unknown) => {
+      throw new StepFailure(
+        `${error instanceof Error ? error.message : String(error)}; saw ${last}`,
+      );
+    });
+  });
 
   await bothWays("the copy's image and preview load", alice, mona, async (from, to) => {
     const media = await upload(from, `loads ${stamp}`);

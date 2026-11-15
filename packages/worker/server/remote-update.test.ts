@@ -93,6 +93,47 @@ describe("remote Update of a note", () => {
     expect(edited.created_at).toBe("2026-10-20T00:00:00.000Z");
   });
 
+  it("reads a single Emoji object where a list is usual", async () => {
+    const author = await remoteActor("update-single-emoji");
+    const id = await create(author, "single-emoji", "<p>before</p>");
+    await update(
+      author,
+      "single-emoji",
+      note(author, "single-emoji", "<p>:solo:</p>", {
+        tag: { type: "Emoji", name: ":solo:", icon: { url: "https://remote.example/solo.png" } },
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    const shown = read(
+      z.object({ emojis: z.array(z.object({ shortcode: z.string(), url: z.string() })) }),
+      await json(`/api/v1/statuses/${id}`),
+    );
+    expect(shown.emojis).toEqual([{ shortcode: "solo", url: "https://remote.example/solo.png" }]);
+  });
+
+  it("leaves out an emoji whose image URL is longer than 2048 characters", async () => {
+    const author = await remoteActor("update-long-emoji");
+    const id = await create(author, "long-emoji", "<p>before</p>");
+    const url = (length: number) =>
+      `https://remote.example/emoji/${"a".repeat(length - "https://remote.example/emoji/.png".length)}.png`;
+    await update(
+      author,
+      "long-emoji",
+      note(author, "long-emoji", "<p>:fits: :long:</p>", {
+        tag: [
+          { type: "Emoji", name: ":fits:", icon: { url: url(2048) } },
+          { type: "Emoji", name: ":long:", icon: { url: url(2049) } },
+        ],
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    const shown = read(
+      z.object({ emojis: z.array(z.object({ shortcode: z.string(), url: z.string() })) }),
+      await json(`/api/v1/statuses/${id}`),
+    );
+    expect(shown.emojis).toEqual([{ shortcode: "fits", url: url(2048) }]);
+  });
+
   it("does not let an older Update roll back a newer edit", async () => {
     const author = await remoteActor("update-order");
     const id = await create(author, "order-me", "<p>v1</p>");
@@ -449,6 +490,64 @@ describe("history and source of an edited remote note", () => {
       updated: "2026-10-20T12:00:00.000Z",
     });
     expect((await history(id)).map((version) => version.content)).toEqual(["<p>a</p>", "<p>b</p>"]);
+  });
+
+  const image = (url: string, extra: Record<string, unknown> = {}) => ({
+    type: "Document",
+    mediaType: "image/png",
+    url,
+    name: "a cat",
+    ...extra,
+  });
+
+  it("reads an attachment whose file and description stay the same as no edit", async () => {
+    const author = await remoteActor("history-same-media");
+    const id = await create(author, "same-media", "<p>a</p>");
+    await update(
+      author,
+      "same-media-1",
+      note(author, "same-media", "<p>a</p>", {
+        attachment: [image("https://remote.example/cat.png")],
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    // Mastodon compares the file's URL and the description, and nothing else of an attachment.
+    await update(
+      author,
+      "same-media-2",
+      note(author, "same-media", "<p>a</p>", {
+        attachment: [image("https://remote.example/cat.png", { mediaType: "image/webp" })],
+        updated: "2026-10-22T00:00:00.000Z",
+      }),
+    );
+    expect(await history(id)).toHaveLength(2);
+    expect((await status(id)).edited_at).toBe("2026-10-21T00:00:00.000Z");
+  });
+
+  it("reads a new description, another file and another order as an edit", async () => {
+    const author = await remoteActor("history-media-edit");
+    const id = await create(author, "media-edit", "<p>a</p>");
+    const one = image("https://remote.example/1.png");
+    const two = image("https://remote.example/2.png");
+    const described = image("https://remote.example/1.png", { name: "a dog" });
+    const versions = [
+      [one, two],
+      [described, two],
+      [two, described],
+      [two, image("https://remote.example/3.png")],
+    ];
+    for (const [index, attachment] of versions.entries()) {
+      await update(
+        author,
+        `media-edit-${index}`,
+        note(author, "media-edit", "<p>a</p>", {
+          attachment,
+          updated: `2026-10-2${index + 1}T00:00:00.000Z`,
+        }),
+      );
+    }
+    expect(await history(id)).toHaveLength(versions.length + 1);
+    expect((await status(id)).edited_at).toBe("2026-10-24T00:00:00.000Z");
   });
 
   it("hides the history of a note the viewer cannot see", async () => {
