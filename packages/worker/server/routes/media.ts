@@ -15,6 +15,7 @@ import {
   newAttachmentObjectKey,
   parseMediaObjectKey,
 } from "../media-keys";
+import { emojiImageType } from "../admin-custom-emojis";
 import { notFound } from "../not-found";
 import { imagesBindingAnalyzer, isAnalyzedImageType, processUploadedImage } from "../media-image";
 import { uploadDimensionViolation, uploadSizeViolation } from "../media-limits";
@@ -194,14 +195,19 @@ const serveR2Object = async (
   if (!object) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const contentType =
-    object.httpMetadata?.contentType && object.httpMetadata.contentType.length > 0
-      ? object.httpMetadata.contentType
+  const stored = object.httpMetadata?.contentType ?? "";
+  // An emoji stored before uploads checked the type may be an SVG or an HTML
+  // document: it is served as bytes, not as a page of this origin.
+  const contentType = objectKey.startsWith("emoji/")
+    ? (emojiImageType(stored) ?? "application/octet-stream")
+    : stored.length > 0
+      ? stored
       : "application/octet-stream";
   const response = new Response(object.body, {
     headers: {
       "content-type": contentType,
       "cache-control": policy.header,
+      "x-content-type-options": "nosniff",
     },
   });
   if (cacheable) {

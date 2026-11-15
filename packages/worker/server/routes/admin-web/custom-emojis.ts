@@ -132,7 +132,9 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
         image: undefined,
       });
       if (changed.isErr()) {
-        return serverError(c, changed.error);
+        return changed.error.kind === "UnsupportedImage"
+          ? badForm(c)
+          : serverError(c, changed.error);
       }
       return changed.value
         ? pageRedirect(

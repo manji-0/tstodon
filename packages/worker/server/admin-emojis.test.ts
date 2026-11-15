@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
@@ -43,16 +43,14 @@ const upload = async (
   email: string,
   shortcode: string,
   extra: Record<string, string> = {},
+  image: File = new File([new Uint8Array([137, 80, 78, 71])], "emoji.png", { type: "image/png" }),
 ): Promise<{ status: number; body: unknown }> => {
   const form = new FormData();
   form.set("shortcode", shortcode);
   for (const [key, value] of Object.entries(extra)) {
     form.set(key, value);
   }
-  form.set(
-    "image",
-    new File([new Uint8Array([137, 80, 78, 71])], "emoji.png", { type: "image/png" }),
-  );
+  form.set("image", image);
   return json("/api/v1/admin/custom_emojis", {
     method: "POST",
     headers: await auth(email, true),
@@ -79,6 +77,57 @@ describe("admin custom emojis", () => {
     const missing = await SELF.fetch("https://example.com/emoji/1");
     expect(missing.status).toBe(404);
     await missing.arrayBuffer();
+  });
+
+  // The Worker serves an emoji from its own origin, where a script would run
+  // with the instance's cookies.
+  it("takes a PNG, GIF or WebP image only, and never serves another type as itself", async () => {
+    const email = "emoji-types@example.com";
+    const script = "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>";
+    for (const [name, type] of [
+      ["emoji.svg", "image/svg+xml"],
+      ["emoji.html", "text/html"],
+      ["emoji", ""],
+    ] as const) {
+      const refused = await upload(email, "typestest", {}, new File([script], name, { type }));
+      expect(refused.status, type).toBe(422);
+    }
+    for (const type of ["image/gif", "image/webp"]) {
+      const taken = await upload(
+        email,
+        `types${type.slice(6)}`,
+        {},
+        new File([new Uint8Array([1, 2, 3])], "emoji", { type }),
+      );
+      expect(taken.status, type).toBe(200);
+    }
+
+    const emoji = read(AdminEmojiSchema, (await upload(email, "typestest")).body);
+    const path = new URL(emoji.url).pathname;
+    const replacement = new FormData();
+    replacement.set("image", new File([script], "emoji.svg", { type: "image/svg+xml" }));
+    const replaced = await SELF.fetch(
+      `https://example.com/api/v1/admin/custom_emojis/${emoji.id}`,
+      {
+        method: "PATCH",
+        headers: await auth(email, true),
+        body: replacement,
+      },
+    );
+    expect(replaced.status).toBe(422);
+    await replaced.arrayBuffer();
+    const served = await SELF.fetch(`https://example.com${path}`);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+    expect([...new Uint8Array(await served.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+
+    // An object stored before the upload checked its type.
+    await env.MEDIA.put("emoji/7", script, { httpMetadata: { contentType: "image/svg+xml" } });
+    const old = await SELF.fetch("https://example.com/emoji/7");
+    expect(old.status).toBe(200);
+    expect(old.headers.get("content-type")).toBe("application/octet-stream");
+    expect(old.headers.get("x-content-type-options")).toBe("nosniff");
+    await old.arrayBuffer();
   });
 
   it("rejects non-admins", async () => {
