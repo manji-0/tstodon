@@ -2,7 +2,7 @@
 # Brings up one real Mastodon behind a TLS proxy and provisions users on it.
 # Idempotent: rerun it against a running or a stopped stack. See README.md.
 #
-#   ./bootstrap.sh [username ...]     (default: mona carol dana erin long_username_for_interop_0123)
+#   ./bootstrap.sh [username ...]     (default: mona carol dana erin long_username_for_interop_0123 moderator)
 #
 # Writes .state/: the CA and leaf certificate, Mastodon's secrets, and
 # `e2e.env` with the users' OAuth tokens for the scenario scripts.
@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 state=.state
 certs=$state/certs
-if [ $# -eq 0 ]; then set -- mona carol dana erin long_username_for_interop_0123; fi
+if [ $# -eq 0 ]; then set -- mona carol dana erin long_username_for_interop_0123 moderator; fi
 users=("$@")
 started=$SECONDS
 

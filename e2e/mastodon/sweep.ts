@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { sleep, type E2eUser } from "../lib.js";
+import { appToken, sleep, type E2eUser } from "../lib.js";
+import { mastodonUser } from "./lib.js";
 
 /** The Mastodon users `bootstrap.sh` provisions; each scenario file signs up its own tstodon users. */
 export type Cast = Readonly<{
@@ -30,11 +31,25 @@ export const Account = z.looseObject({
   acct: z.string(),
   uri: z.string(),
   display_name: z.string(),
+  note: z.string(),
+  avatar: z.string(),
+  header: z.string(),
+  locked: z.boolean(),
+  bot: z.boolean(),
+  fields: z.array(z.looseObject({ name: z.string(), value: z.string() })),
+  emojis: z.array(z.looseObject({ shortcode: z.string(), url: z.string() })),
+  moved: z.looseObject({ uri: z.string() }).nullish(),
   followers_count: z.number(),
 });
 export const Poll = z.looseObject({
   id: z.string(),
   votes_count: z.number(),
+  voters_count: z.number().nullish(),
+  multiple: z.boolean(),
+  expired: z.boolean(),
+  expires_at: z.string().nullable(),
+  voted: z.boolean().optional(),
+  own_votes: z.array(z.number()).optional(),
   options: z.array(z.looseObject({ title: z.string(), votes_count: z.number().nullable() })),
 });
 export const BaseStatus = z.looseObject({
@@ -47,14 +62,33 @@ export const BaseStatus = z.looseObject({
   favourites_count: z.number(),
   reblogs_count: z.number(),
   edited_at: z.string().nullable(),
+  spoiler_text: z.string(),
+  sensitive: z.boolean(),
+  favourited: z.boolean().optional(),
+  reblogged: z.boolean().optional(),
   account: z.looseObject({ uri: z.string() }),
   poll: Poll.nullish(),
   media_attachments: z.array(
-    z.looseObject({ type: z.string(), description: z.string().nullable() }),
+    z.looseObject({
+      id: z.string(),
+      type: z.string(),
+      description: z.string().nullable(),
+      url: z.string().nullable(),
+      preview_url: z.string().nullable(),
+      blurhash: z.string().nullish(),
+      meta: z
+        .looseObject({
+          focus: z.looseObject({ x: z.number(), y: z.number() }).optional(),
+          original: z
+            .looseObject({ width: z.number().optional(), height: z.number().optional() })
+            .optional(),
+        })
+        .nullish(),
+    }),
   ),
   mentions: z.array(z.looseObject({ acct: z.string() })),
   tags: z.array(z.looseObject({ name: z.string() })),
-  emojis: z.array(z.looseObject({ shortcode: z.string() })),
+  emojis: z.array(z.looseObject({ shortcode: z.string(), url: z.string() })),
   quote: z
     .looseObject({ state: z.string(), quoted_status: z.looseObject({ uri: z.string() }).nullish() })
     .nullish(),
@@ -62,6 +96,7 @@ export const BaseStatus = z.looseObject({
 export const Status = BaseStatus.extend({ reblog: BaseStatus.nullish() });
 export type Status = z.infer<typeof Status>;
 export const Statuses = z.array(Status);
+export type Poll = z.infer<typeof Poll>;
 export const Notifications = z.array(
   z.looseObject({
     type: z.string(),
@@ -136,10 +171,13 @@ export const call = async <T>(
   return parsed.data;
 };
 
+/** How long `eventually` waits when its caller names no time; `knownGap` shortens it. */
+let patienceMs = 20_000;
+
 export const eventually = async <T>(
   label: string,
   probe: () => Promise<T | undefined>,
-  timeoutMs = 20_000,
+  timeoutMs = patienceMs,
 ): Promise<T> => {
   const deadline = Date.now() + timeoutMs;
   for (let tries = 1; ; tries += 1) {
@@ -183,13 +221,16 @@ export const step = async (name: string, run: () => Promise<void>): Promise<bool
  * A step that fails for a gap `tracked` names (an `INT-*` row of
  * `docs/planning/open-todos.md`). Its failure is recorded as a known gap and
  * does not fail the sweep. Once it passes it fails the sweep, so the marker
- * is dropped with the fix.
+ * is dropped with the fix. The step is expected to time out, so its waits
+ * are shorter than a plain step's.
  */
 export const knownGap = async (
   name: string,
   tracked: string,
   run: () => Promise<void>,
 ): Promise<void> => {
+  const patience = patienceMs;
+  patienceMs = 8000;
   try {
     await run();
   } catch (error) {
@@ -197,6 +238,8 @@ export const knownGap = async (
     results.push({ name, outcome: "gap", detail: `${tracked}: ${detail}` });
     console.log(`gap  ${name} (${tracked})\n     ${detail}`);
     return;
+  } finally {
+    patienceMs = patience;
   }
   const detail = `passes now: make it a plain step and close the gap in ${tracked}`;
   results.push({ name, outcome: "FAIL", detail });
@@ -273,15 +316,26 @@ export const follow = async (follower: E2eUser, followed: E2eUser): Promise<stri
   return account.id;
 };
 
-/** The same interaction, sent from each server to the other. */
+/**
+ * The same interaction, sent from each server to the other. `gaps` names the
+ * tracked gap of a direction that is known to fail (`knownGap`).
+ */
 export const bothWays = async (
   name: string,
   alice: E2eUser,
   mona: E2eUser,
   run: (from: E2eUser, to: E2eUser) => Promise<void>,
+  gaps: Readonly<{ toMastodon?: string; toTstodon?: string }> = {},
 ): Promise<void> => {
-  await step(`${name}: tstodon → Mastodon`, () => run(alice, mona));
-  await step(`${name}: Mastodon → tstodon`, () => run(mona, alice));
+  const directions = [
+    [`${name}: tstodon → Mastodon`, gaps.toMastodon, alice, mona],
+    [`${name}: Mastodon → tstodon`, gaps.toTstodon, mona, alice],
+  ] as const;
+  for (const [label, tracked, from, to] of directions) {
+    await (tracked === undefined
+      ? step(label, () => run(from, to))
+      : knownGap(label, tracked, () => run(from, to)));
+  }
 };
 
 /** The first relationship state of `viewer` to the account that `accept` takes. */
@@ -308,6 +362,93 @@ export const contextOf = (viewer: E2eUser, statusId: string) =>
   call(viewer, `/api/v1/statuses/${statusId}/context`, Context);
 
 const composeDirectory = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = dirname(dirname(composeDirectory));
+
+const run = (command: string, args: readonly string[], cwd: string, input?: string): string => {
+  try {
+    return execFileSync(command, args, {
+      cwd,
+      encoding: "utf8",
+      ...(input === undefined ? {} : { input }),
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new StepFailure(`${command} ${args.slice(0, 6).join(" ")}: ${detail.slice(-800)}`);
+  }
+};
+
+/**
+ * Run a Ruby script in Mastodon's Rails environment (`rails runner`, about
+ * ten seconds), for what its client API does not offer: an account
+ * migration, an account deletion, a poll that ends in seconds. Its standard
+ * output.
+ */
+export const mastodonRails = (script: string): string =>
+  run(
+    "docker",
+    ["compose", "exec", "-T", "web", "bin/rails", "runner", "-"],
+    composeDirectory,
+    script,
+  );
+
+/**
+ * Fresh Mastodon users for one run, made by `provision.rb` as the standing
+ * ones are. A scenario that changes an account for good (a move, a deletion)
+ * uses these. A name ending in `_admin` gets the Owner role.
+ */
+export const mastodonUsers = async (names: readonly string[]): Promise<E2eUser[]> => {
+  const out = run(
+    "docker",
+    ["compose", "exec", "-T", "web", "bin/rails", "runner", "/provision.rb", ...names],
+    composeDirectory,
+  );
+  const users: E2eUser[] = [];
+  for (const name of names) {
+    const token = out
+      .split("\n")
+      .find((line) => line.startsWith(`PROVISIONED ${name} `))
+      ?.split(" ")[2];
+    if (!token) {
+      throw new StepFailure(`provision.rb made no token for ${name}: ${out.slice(-300)}`);
+    }
+    process.env[`E2E_MASTODON_TOKEN_${name.toUpperCase()}`] = token;
+    users.push(await mastodonUser(name));
+  }
+  return users;
+};
+
+/**
+ * Give a tstodon user the admin role, as an operator does in the database;
+ * the same user with a token for the admin API.
+ */
+export const tstodonAdmin = async (user: E2eUser): Promise<E2eUser> => {
+  run(
+    "pnpm",
+    [
+      "exec",
+      "wrangler",
+      "d1",
+      "execute",
+      "tstodon-e2e-mastodon",
+      "--local",
+      "--config",
+      "e2e/mastodon/tstodon.wrangler.jsonc",
+      "--persist-to",
+      ".wrangler/e2e-mastodon",
+      "--command",
+      `UPDATE "user" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE id = '${user.id}')`,
+    ],
+    repositoryRoot,
+  );
+  const headers = await appToken(
+    user.origin,
+    user.browser,
+    "read write follow push admin:read admin:write",
+    user.username,
+  );
+  return { ...user, headers };
+};
 
 /**
  * How many GET requests Mastodon's web process logged for `path` since

@@ -41,7 +41,7 @@ pnpm e2e:mastodon:probe    # the sweep; reports every gap, exits 1 if any
 
 `bootstrap.sh` is safe to rerun. A rerun gives each user a new token and rewrites `.state/e2e.env`. `MASTODON_VERSION` selects another image tag.
 
-`E2E_PROBE_AREAS=search,threads pnpm e2e:mastodon:probe` runs only those areas of the sweep. The areas are `base`, `search`, `direct`, `threads`, `follows` and `authorized-fetch`.
+`E2E_PROBE_AREAS=search,threads pnpm e2e:mastodon:probe` runs only those areas of the sweep. The areas are `base`, `search`, `direct`, `threads`, `follows`, `authorized-fetch`, `edits`, `reactions`, `polls`, `media`, `emoji`, `hashtags`, `profile`, `moderation`, `quotes` and `move`.
 
 ### One command, and CI
 
@@ -58,7 +58,7 @@ TSTODON_AUTHORIZED_FETCH=true MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/ci.sh 
 4. It writes the logs to `.cache/e2e-mastodon/`: `tstodon-dev.log` (the Worker), `compose-<service>.log`, `compose-ps.txt`, `gate.log` and `sweep.log`. On a failure it also prints the last 150 lines of the Worker's, Mastodon's and the proxy's logs.
 5. It stops the Worker and removes the stack and the tstodon database. With `E2E_MASTODON_KEEP=1` the stack stays up.
 
-Do not run it beside a stack you started by hand: step 1 removes that stack. The certificates and Mastodon's secrets in `.state/`, `.dev.vars` and the `/etc/hosts` lines stay. `E2E_PROBE_AREAS` limits the sweep here too. A run takes about six minutes once the images are pulled.
+Do not run it beside a stack you started by hand: step 1 removes that stack. The certificates and Mastodon's secrets in `.state/`, `.dev.vars` and the `/etc/hosts` lines stay. `E2E_PROBE_AREAS` limits the sweep here too. A run takes about thirteen minutes once the images are pulled.
 
 The workflow `.github/workflows/e2e-mastodon.yml` installs the dependencies and calls this script, once for each mode: both servers open, tstodon in secure mode, both in secure mode. It runs:
 
@@ -81,7 +81,7 @@ The sweep reads which mode each server is in from an unsigned fetch of an actor.
 
 ### The Mastodon users
 
-`bootstrap.sh` provisions five users. They outlive a sweep, so each has one job, and a scenario must not change that:
+`bootstrap.sh` provisions six users. They outlive a sweep, so each has one job, and a scenario must not change that:
 
 | User                             | Job                                                                                                   |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -90,6 +90,11 @@ The sweep reads which mode each server is in from an unsigned fetch of an actor.
 | `dana`                           | The follow scenarios lock her and leave her tstodon followers; her notification policy is the default |
 | `erin`                           | No tstodon user ever follows her                                                                      |
 | `long_username_for_interop_0123` | The longest username Mastodon allows (30 characters); no tstodon user ever follows it                 |
+| `moderator`                      | The instance's Owner. Its token has the admin scopes, and it reads the reports tstodon forwards       |
+
+A scenario that changes an account for good makes its own Mastodon users for the run (`mastodonUsers` in `sweep.ts`, which runs `provision.rb` again): the profile area locks one and deletes one, the moderation area blocks one, and the move area moves one. Mastodon has no client API for an account migration, an alias, an account deletion or a poll shorter than five minutes, so those steps run a few lines of Ruby in Mastodon's Rails environment (`mastodonRails`, about ten seconds each). Both need Docker on the machine that runs the sweep.
+
+On tstodon, a step that needs an admin gives its user the admin role in the local D1 database and a token with the admin scopes (`tstodonAdmin`).
 
 To start over, remove both sides' state. Mastodon generates new actor keys, and tstodon would keep the old ones cached.
 
@@ -105,15 +110,25 @@ rm -rf e2e/mastodon/.state e2e/mastodon/.dev.vars .wrangler/e2e-mastodon
 | `follow-both-ways.ts` | `pnpm e2e:mastodon`       | Alice on tstodon resolves and follows Mona on Mastodon, Mastodon accepts, Mona's post reaches Alice's home timeline. Mona resolves and follows Alice, Alice's post reaches Mona's home timeline.                                                                                                                                                             |
 | `probe.ts`            | `pnpm e2e:mastodon:probe` | The sweep. Its `base` area sends each interaction in both directions: follow, public and followers-only posts, mentions, direct messages, URL search, replies, favourites, boosts, edits, polls and votes, media, hashtags, quote posts, custom emoji (Mastodon to tstodon only), profile updates, deletes, unfollow, block. A failed step does not stop it. |
 
-The other areas of the sweep are one file each, and `sweep.ts` holds what they share:
+The other areas of the sweep are one file each. `sweep.ts` holds what they share, and `media.ts` the files they upload:
 
-| File                        | Area               | Coverage                                                                                                                                                                                                                                                         |
-| --------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `probe-search.ts`           | `search`           | Search with `resolve=true`: a profile page URL and an actor URI (one fetch each, counted in Mastodon's log), a post's page URL (`/@user/id`), `@user@host` and `user@host`, `accounts/lookup`, `accounts/search`, a local account by its full acct, a long acct. |
-| `probe-direct.ts`           | `direct`           | A direct message to three recipients on both servers, a reply chain of three in one conversation, and a stranger's direct message under the receiver's notification policy.                                                                                      |
-| `probe-threads.ts`          | `threads`          | A reply whose parent the receiving server never saw, a thread five posts deep across both servers, and context backfill of ancestors and replies.                                                                                                                |
-| `probe-follows.ts`          | `follows`          | A locked account on each side: a follow request authorized, one rejected, and a follow again after the reject. Remove a follower. A follow and an unfollow at once.                                                                                              |
-| `probe-authorized-fetch.ts` | `authorized-fetch` | Signed fetches of an actor with its collection counts and of a note, each way. For a server in secure mode: unsigned fetches are refused.                                                                                                                        |
+| File                        | Area               | Coverage                                                                                                                                                                                                                                                                                                    |
+| --------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `probe-search.ts`           | `search`           | Search with `resolve=true`: a profile page URL and an actor URI (one fetch each, counted in Mastodon's log), a post's page URL (`/@user/id`), `@user@host` and `user@host`, `accounts/lookup`, `accounts/search`, a local account by its full acct, a long acct.                                            |
+| `probe-direct.ts`           | `direct`           | A direct message to three recipients on both servers, a reply chain of three in one conversation, and a stranger's direct message under the receiver's notification policy.                                                                                                                                 |
+| `probe-threads.ts`          | `threads`          | A reply whose parent the receiving server never saw, a thread five posts deep across both servers, and context backfill of ancestors and replies.                                                                                                                                                           |
+| `probe-follows.ts`          | `follows`          | A locked account on each side: a follow request authorized, one rejected, and a follow again after the reject. Remove a follower. A follow and an unfollow at once.                                                                                                                                         |
+| `probe-authorized-fetch.ts` | `authorized-fetch` | Signed fetches of an actor with its collection counts and of a note, each way. For a server in secure mode: unsigned fetches are refused.                                                                                                                                                                   |
+| `probe-edits.ts`            | `edits`            | INT-9. An edit that adds and removes a content warning, adds and removes an image, changes alt text, changes a poll, adds a mention. The edit history on the other server. The `update` notification of an account that boosted. A deleted reply leaves the thread, a deleted post takes its boost with it. |
+| `probe-reactions.ts`        | `reactions`        | INT-12. A stranger's favourite and boost, with `favourited_by` and `reblogged_by`. A favourite of a followers-only post. An author's boost of their own followers-only post. The notification withdrawn with an undone favourite or boost. A boost on the booster's remote profile.                         |
+| `probe-polls.ts`            | `polls`            | INT-10. A multiple-choice poll with two choices from one remote voter. A second vote refused. A stranger's vote. A vote on tstodon reaching Mastodon's copy. A Mastodon poll that ends: closed on tstodon, a late vote refused.                                                                             |
+| `probe-media.ts`            | `media`            | INT-11. A focus point, a blurhash and the size, the copy's files loading, sensitive media, four images in order, a video.                                                                                                                                                                                   |
+| `probe-emoji.ts`            | `emoji`            | INT-13. A custom emoji in a post, in a content warning and a poll option, and in a display name and bio.                                                                                                                                                                                                    |
+| `probe-hashtags.ts`         | `hashtags`         | INT-14. A hashtag in Japanese, a mixed-case hashtag, hashtag search, a followed hashtag, a featured hashtag.                                                                                                                                                                                                |
+| `probe-profile.ts`          | `profile`          | INT-15. Bio, fields, avatar and header, the bot and locked flags, a pinned and an unpinned post, a deleted account.                                                                                                                                                                                         |
+| `probe-moderation.ts`       | `moderation`       | INT-7. A block ends the follows both ways and refuses a new one. A blocked account's mention does not notify. A report with `forward` reaches the other server's moderators, with the post, without the reporter's name.                                                                                    |
+| `probe-quotes.ts`           | `quotes`           | INT-5. The `quote` notification. A post that lets nobody, or only followers, quote it. A revoked quote. A deleted quoted post, a deleted quote. An edit that closes a post to quotes.                                                                                                                       |
+| `probe-move.ts`             | `move`             | INT-8. An account moves from each server to the other: its followers on both servers follow the new account, and both show the old one as moved.                                                                                                                                                            |
 
 A step that fails for a tracked gap is a `knownGap` step. It is listed as `gap`, does not fail the sweep, and fails it once it passes, so the marker goes away with the fix.
 
@@ -140,8 +155,9 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - `ALLOWED_PRIVATE_ADDRESSES=172.30.47.0/24` is the Compose network. Without it Mastodon refuses to connect to the proxy's private address (`Mastodon::PrivateNetworkAddressError`).
 - `SECRET_KEY_BASE` and the three `ACTIVE_RECORD_ENCRYPTION_*` keys are generated once into `.state/secrets.env`.
 - `rails db:prepare` loads the schema and the seeds. It does nothing on a prepared database.
-- `provision.rb` creates users the way `tootctl accounts create --confirmed --approve` does, and a Doorkeeper token for each, in one `rails runner` call. It also creates the custom emoji `:interop:`.
+- `provision.rb` creates users the way `tootctl accounts create --confirmed --approve` does, and a Doorkeeper token for each, in one `rails runner` call. It also creates the custom emoji `:interop:`. The user `moderator` gets the Owner role and a token with `admin:read admin:write`.
 - `SMTP_DELIVERY_METHOD=test` keeps notification mails from failing in Sidekiq.
+- The volume `system` is mounted at `public/system` in both `web` and `sidekiq`. Sidekiq downloads a remote attachment, avatar or emoji there and web serves it. Without the shared volume every such URL answers 404.
 
 ### tstodon
 
@@ -162,12 +178,22 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - The id of an `Undo(Follow)` is `<actor>#follows/<n>/undo`. `n` is the follow request's id while the follow is pending, and the follow's id once it is accepted. Those are two sequences, so two different `Undo`s of one actor can carry one id.
 - Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
 - Mastodon allows a user 1500 API requests per five minutes. A second sweep right after the first reaches that as mona. `sweep.ts` waits for the window and goes on.
+- Mastodon dates an edit to the second (`updated`). It applies an `Update` as an edit only when that date is after the one it holds (`ProcessStatusUpdateService`). With an equal date it takes the poll tallies and the quote policy and leaves the text. Two edits within one second are one edit to the other server, on Mastodon and on tstodon.
+- `PUT /api/v1/statuses/:id` carries the whole revision. A field the request leaves out is emptied: the content warning, the sensitive flag, the media, the poll. tstodon keeps a field that is left out (INT-18).
+- A boost of the author's own followers-only post is an `Announce` addressed to the followers. Mastodon accepts such an `Announce` from the post's author only (`announceable?`).
+- A multiple-choice ballot is one `Create` per chosen option, delivered at once.
+- Mastodon sends a poll's tallies three minutes after a vote (`DistributePollUpdateWorker`) and when the poll ends. When a client reads a remote poll that it fetched over a minute ago, Mastodon fetches it again; tstodon does not. The shortest poll runs five minutes. The jobs that end a poll are queued once per poll, so the sweep runs them in `rails runner`.
+- Mastodon calls a short video with no sound `gifv`, its own upload too.
+- Mastodon sends the `Delete` of a post to the author's followers and to the remote accounts that interacted with it. The followers of a local account that boosted it get nothing, and keep the boost. tstodon does the same.
+- Mastodon sends `Add` and `Remove` for a pinned post, and reads `featured` and `featuredTags` when it processes the actor.
+- A forwarded report (`Flag`) comes from the instance actor, not from the reporter.
+- Mastodon has no client API to migrate an account, to add an alias, or to delete an account.
 
 ## What the sweep found
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 84 of 84 steps with both servers open, 85 of 85 with tstodon in secure mode, and 86 of 86 with both in secure mode. Four more steps are known gaps.
+The sweep passes 202 of 202 steps with both servers open, 203 of 203 with tstodon in secure mode, and 204 of 204 with both in secure mode. Seventeen more steps are known gaps.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
@@ -183,14 +209,33 @@ The areas added for INT-1, INT-2, INT-3, INT-4 and INT-6 found five more, also f
 7. A second `Undo(Follow)` with the id of an earlier one was dropped as a duplicate, and the unfollowed account stayed a follower (`server/inbox-claims.test.ts`).
 8. The conversation of a Mastodon direct message left out the recipients on Mastodon (`server/remote-conversations.test.ts`).
 
-The four known gaps (`gap` in the sweep's output):
+The areas added for INT-5 and INT-7 to INT-15 found five more, also fixed and covered:
+
+9. A Mastodon user's boost of their own followers-only post was dropped, so it was missing from a follower's home and from the booster's profile (`server/remote-boosts.test.ts`).
+10. A vote wrote the poll's tallies from the options it had read. Mastodon delivers the choices of one multiple-choice ballot at once, and the second choice was lost: the vote row was stored and the tally was not (`server/remote-poll-vote.test.ts`).
+11. A custom emoji's image answered 404 when the Worker serves the media (`MEDIA_PUBLIC_BASE_URL` on the instance's origin), in tstodon's own UI too (`server/admin-emojis.test.ts`).
+12. A tstodon note carried no `Emoji` tag, so Mastodon showed `:shortcode:` for every custom emoji in a tstodon post (`server/note-emoji-tags.test.ts`).
+13. `GET /api/v1/accounts/:id/featured_tags` answered 404 for every remote account (`server/remote-featured-tags.test.ts`).
+
+The quote and move areas found nothing: every step of both passes.
+
+The 17 known gaps (`gap` in the sweep's output):
 
 - tstodon reports `for_private_mentions: drop` and notifies a Mastodon stranger's direct message all the same: the policy is not applied to a remote sender (INT-2).
 - A tstodon note has no `replies` collection, so Mastodon cannot fetch the replies to a tstodon post it resolved (INT-4, two steps).
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
+- The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
+- An edit through tstodon's API keeps a content warning the request leaves out; Mastodon's removes it (INT-18).
+- tstodon keeps no focus point, and no blurhash or size, of a Mastodon attachment (INT-11, two steps).
+- tstodon keeps no custom emoji of a Mastodon account, so its display name shows `:shortcode:` (INT-13).
+- A hashtag followed on tstodon brings no post to the home timeline (INT-14).
+- A featured hashtag does not reach the other server's profile, in either direction (INT-14, two steps).
+- tstodon keeps no profile fields of a Mastodon account (INT-15).
+- A post pinned on tstodon does not show on Mastodon, and an unpin is seen in neither direction (INT-15, three steps).
+- An account an admin deletes on tstodon stays on Mastodon, with its posts and its follows (INT-15).
 
 The scenarios still to automate are the `INT-*` rows in [open TODOs](../../docs/planning/open-todos.md#interop-with-real-mastodon-open).
 
 ## Not covered yet
 
-Account migration (`Move`), reports (`Flag`), custom emoji from tstodon to Mastodon, pinned posts, and the streaming API.
+The streaming API, domain blocks, audio and GIF media, a cancelled move, delete and redraft, and the end of a tstodon poll as Mastodon sees it. The `INT-*` rows list the rest.

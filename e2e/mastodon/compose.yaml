@@ -13,6 +13,8 @@ x-mastodon: &mastodon
   volumes:
     - ./.state/certs/ca.crt:/certs/ca.crt:ro
     - ./provision.rb:/provision.rb:ro
+    # Sidekiq downloads remote media and web serves it: both need the files.
+    - system:/opt/mastodon/public/system
   networks:
     - interop
 
@@ -83,3 +85,6 @@ networks:
         # (Caddyfile). The bridge is not routed from the LAN.
         - subnet: 172.30.47.0/24
           gateway: 172.30.47.1
+
+volumes:
+  system:
