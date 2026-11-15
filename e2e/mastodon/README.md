@@ -92,7 +92,7 @@ The sweep reads which mode each server is in from an unsigned fetch of an actor.
 | `long_username_for_interop_0123` | The longest username Mastodon allows (30 characters); no tstodon user ever follows it                 |
 | `moderator`                      | The instance's Owner. Its token has the admin scopes, and it reads the reports tstodon forwards       |
 
-A scenario that changes an account for good makes its own Mastodon users for the run (`mastodonUsers` in `sweep.ts`, which runs `provision.rb` again): the profile area locks one and deletes one, the moderation area blocks one, and the move area moves one. Mastodon has no client API for an account migration, an alias, an account deletion or a poll shorter than five minutes, so those steps run a few lines of Ruby in Mastodon's Rails environment (`mastodonRails`, about ten seconds each). Both need Docker on the machine that runs the sweep.
+A scenario that changes an account for good makes its own Mastodon users for the run (`mastodonUsers` in `sweep.ts`, which runs `provision.rb` again): the profile area locks one and deletes one, the moderation area blocks one, and the move area moves one. Mastodon has no client API for an account migration, an alias, an account deletion or a poll shorter than five minutes, so those steps run a few lines of Ruby in Mastodon's Rails environment (`mastodonRails`, about ten seconds each). The threads area dates Mastodon's copy of a tstodon post ten minutes back the same way, because Mastodon fetches a reply tree only for a post older than five minutes. Both need Docker on the machine that runs the sweep.
 
 On tstodon, a step that needs an admin gives its user the admin role in the local D1 database and a token with the admin scopes (`tstodonAdmin`).
 
@@ -175,7 +175,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - Mastodon leaves a reply out of a home feed unless the reader follows the account replied to. To see a reply arrive, mention the reader.
 - A page URL (`https://mastodon.test/@carol`, `/@carol/<id>`) serves the actor or the note under another id (`/ap/users/<id>`, `/ap/users/<id>/statuses/<id>`). Mastodon's own lookup (`FetchResourceService`) fetches the URL, then the id it names, once.
 - A note's `replies` collection embeds a first page with the author's own replies only. Every other account's replies are on the page its `next` links (`?only_other_accounts=true&page=true`).
-- When Mastodon stores a note it fetches up to five replies of the same host from the note's embedded `replies` page (`FetchRepliesService`). It fetches the whole reply tree only for a note older than five minutes (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`).
+- When Mastodon stores a note it fetches up to five replies of the same host from the note's embedded `replies` page (`FetchRepliesService`). It fetches the whole reply tree only for a note older than five minutes (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`), when a signed-in user reads its context (`FetchAllRepliesWorker`), and then not again for fifteen minutes. That fetch follows the `replies` of every reply it finds, on any host.
 - The id of an `Undo(Follow)` is `<actor>#follows/<n>/undo`. `n` is the follow request's id while the follow is pending, and the follow's id once it is accepted. Those are two sequences, so two different `Undo`s of one actor can carry one id.
 - Mastodon answers an inbox POST with 202 and handles the activity later, in Sidekiq, several activities at once. An `Undo(Follow)` handled before the `Follow` is remembered by the `Follow`'s id for six hours, and that `Follow` is then dropped (`delete_arrived_first?`). An `Undo` handled while the `Follow` is being handled is remembered too, but the `Follow` is already past that check: Mastodon keeps the follow and sends an `Accept`. Mastodon ignores an `Accept` of a follow it does not hold. tstodon answers one with the `Undo` again.
 - Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
@@ -187,7 +187,8 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - Mastodon sends a poll's tallies three minutes after a vote (`DistributePollUpdateWorker`) and when the poll ends. When a client reads a remote poll that it fetched over a minute ago, Mastodon fetches it again; tstodon does not. The shortest poll runs five minutes. The jobs that end a poll are queued once per poll, so the sweep runs them in `rails runner`.
 - Mastodon calls a short video with no sound `gifv`, its own upload too.
 - Mastodon sends the `Delete` of a post to the author's followers and to the remote accounts that interacted with it. The followers of a local account that boosted it get nothing, and keep the boost. tstodon does the same.
-- Mastodon sends `Add` and `Remove` for a pinned post, and reads `featured` and `featuredTags` when it processes the actor.
+- Mastodon sends `Add` and `Remove` for a pinned post, and reads `featured` and `featuredTags` when it processes the actor. Both activities come without an `id`. The object of a pin is the note's URI. A featured hashtag is an `Add` to the same `featured` collection whose object is a `Hashtag` (`type`, `href`, `name`, no `id`), and Mastodon tells the two apart by the object's type.
+- Mastodon sends the `Delete` of a deleted account's actor to every inbox it knows, and keeps the account's key to sign it. It verifies a `Delete` it receives with the key it has cached for that actor.
 - A forwarded report (`Flag`) comes from the instance actor, not from the reporter.
 - Mastodon has no client API to migrate an account, to add an alias, or to delete an account.
 
@@ -195,7 +196,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 206 of 206 steps with both servers open, 207 of 207 with tstodon in secure mode, and 208 of 208 with both in secure mode. Thirteen more steps are known gaps.
+The sweep passes 213 of 213 steps with both servers open, 214 of 214 with tstodon in secure mode, and 215 of 215 with both in secure mode. Six more steps are known gaps.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
@@ -231,17 +232,21 @@ Four known gaps were closed since, each with a Worker test, and their steps are 
 - A Mastodon account's custom emoji shows in its display name and bio on tstodon (INT-13; `server/remote-actor-profile.test.ts`).
 - A Mastodon account's profile fields show on tstodon (INT-15; `server/remote-actor-profile.test.ts`). `verified_at` stays null: tstodon does not fetch the linked page.
 
-The 13 known gaps (`gap` in the sweep's output):
+Seven more were closed after that, each with a Worker test, and their steps are plain steps now:
+
+- A post pinned on tstodon shows on Mastodon, and an unpin is seen in both directions (INT-15, three steps; `server/featured-collection.test.ts`). tstodon's actor names a `featured` collection, a pin sends an `Add` and an unpin a `Remove`, and the inbox handles both from a remote actor. Mastodon sends them without an `id`, which the inbox refused before.
+- An account an admin deletes on tstodon is gone from Mastodon, with its posts and its follows (INT-15; `server/account-delete-federation.test.ts`). The `Delete` of the actor is signed with the account's key after the account's row is gone.
+- Mastodon fetches the replies to a tstodon post it resolved, and the replies to those (INT-4, two steps; `server/note-replies.test.ts`). A tstodon note carries a `replies` collection in Mastodon's shape. The sweep dates Mastodon's copy of the post back first ([The Mastodon users](#the-mastodon-users)).
+- A hashtag featured on tstodon shows on the Mastodon profile (INT-14; `server/featured-tags-federation.test.ts`). tstodon's actor names a `featuredTags` collection, and featuring a hashtag sends an `Add`, unfeaturing a `Remove`.
+
+The 6 known gaps (`gap` in the sweep's output):
 
 - tstodon reports `for_private_mentions: drop` and notifies a Mastodon stranger's direct message all the same: the policy is not applied to a remote sender (INT-2).
-- A tstodon note has no `replies` collection, so Mastodon cannot fetch the replies to a tstodon post it resolved (INT-4, two steps).
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
 - The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
 - An edit through tstodon's API keeps a content warning the request leaves out; Mastodon's removes it (INT-18).
 - A hashtag followed on tstodon brings no post to the home timeline (INT-14).
-- A featured hashtag does not reach the other server's profile, in either direction (INT-14, two steps).
-- A post pinned on tstodon does not show on Mastodon, and an unpin is seen in neither direction (INT-15, three steps).
-- An account an admin deletes on tstodon stays on Mastodon, with its posts and its follows (INT-15).
+- A hashtag featured on Mastodon does not show on the tstodon profile: tstodon accepts the `Add` and keeps no remote featured hashtags (INT-14).
 
 The scenarios still to automate are the `INT-*` rows in [open TODOs](../../docs/planning/open-todos.md#interop-with-real-mastodon-open).
 
