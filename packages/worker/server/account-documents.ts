@@ -22,6 +22,7 @@ import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { remoteEmojisJson } from "./remote-emoji-document";
+import { sanitizeRemoteHtml } from "./sanitize-html";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { type CustomEmoji, customEmojiJson, emojisInText } from "./emoji";
 import {
@@ -478,7 +479,12 @@ export const mastodonRemoteAccount = (
     statuses_count: 0,
     last_status_at: null,
     emojis: remoteEmojisJson(profile.emojis),
-    fields: [],
+    // Mastodon also fetches a field's link to verify it (`rel="me"`); that is not done here.
+    fields: profile.fields.map((field) => ({
+      name: field.name,
+      value: sanitizeRemoteHtml(field.value),
+      verified_at: null,
+    })),
   };
 };
 

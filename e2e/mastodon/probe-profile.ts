@@ -95,32 +95,26 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
     );
   });
 
-  await bothWays(
-    "profile fields reach the other server",
-    alice,
-    mona,
-    async (from, to) => {
-      await update(from, (form) => {
-        form.set("fields_attributes[0][name]", "Pronouns");
-        form.set("fields_attributes[0][value]", `they ${stamp}`);
-        form.set("fields_attributes[1][name]", "Site");
-        form.set("fields_attributes[1][value]", "https://example.com/");
-      });
-      await remoteBecomes(
-        to,
-        from,
-        "the remote account has both fields",
-        (account) =>
-          account.fields.length === 2 &&
-          account.fields[0]?.name === "Pronouns" &&
-          account.fields[0].value.includes(`they ${stamp}`) &&
-          account.fields[1]?.name === "Site" &&
-          account.fields[1].value.includes("example.com"),
-        (account) => account.fields,
-      );
-    },
-    { toTstodon: "INT-15" },
-  );
+  await bothWays("profile fields reach the other server", alice, mona, async (from, to) => {
+    await update(from, (form) => {
+      form.set("fields_attributes[0][name]", "Pronouns");
+      form.set("fields_attributes[0][value]", `they ${stamp}`);
+      form.set("fields_attributes[1][name]", "Site");
+      form.set("fields_attributes[1][value]", "https://example.com/");
+    });
+    await remoteBecomes(
+      to,
+      from,
+      "the remote account has both fields",
+      (account) =>
+        account.fields.length === 2 &&
+        account.fields[0]?.name === "Pronouns" &&
+        account.fields[0].value.includes(`they ${stamp}`) &&
+        account.fields[1]?.name === "Site" &&
+        account.fields[1].value.includes("example.com"),
+      (account) => account.fields,
+    );
+  });
 
   await bothWays("an avatar and a header reach the other server", alice, mona, async (from, to) => {
     const before = await remoteBecomes(

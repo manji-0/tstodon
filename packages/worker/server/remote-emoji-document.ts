@@ -62,12 +62,12 @@ export const remoteEmojisInTexts = (
   return emojis.filter((emoji) => used.has(emoji.shortcode.toLowerCase()));
 };
 
-/** A display name and a bio write far fewer; this only bounds a hostile document. */
+/** A profile writes far fewer; this only bounds a hostile document. */
 const MAX_ACTOR_EMOJIS = 50;
 
 /**
- * The custom emoji an actor declares and `texts` (its display name and note)
- * write. A shortcode matches as written, case and all, as Mastodon's
+ * The custom emoji an actor declares and `texts` (its display name, note and
+ * fields) write. A shortcode matches as written, case and all, as Mastodon's
  * `CustomEmoji.from_text` finds an account's emoji.
  */
 export const actorEmojis = (

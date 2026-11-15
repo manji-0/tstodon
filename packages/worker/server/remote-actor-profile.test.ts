@@ -108,3 +108,61 @@ describe("the custom emoji of a remote account", () => {
     expect(shown.fields).toEqual([]);
   });
 });
+
+const field = (name: unknown, value: unknown) => ({ type: "PropertyValue", name, value });
+
+describe("the profile fields of a remote account", () => {
+  it("lists the PropertyValue attachments in order, the value sanitised", async () => {
+    const author = await remoteActor("fields-profile");
+    await updateProfile(author, {
+      name: "Fields",
+      attachment: [
+        field("Pronouns", "  they/them  "),
+        { type: "Note", name: "not a field", value: "skipped" },
+        field(
+          "Site",
+          '<a href="https://example.com/" rel="me" onclick="steal()">example.com</a><script>alert(1)</script>',
+        ),
+        field(7, "a name that is no text"),
+        field("No value", null),
+      ],
+    });
+    const { fields } = await account(author.actorUri);
+    expect(fields.map((entry) => entry.name)).toEqual(["Pronouns", "Site"]);
+    expect(fields[0]).toEqual({ name: "Pronouns", value: "they/them", verified_at: null });
+    expect(fields[1]?.value).toContain('href="https://example.com/"');
+    expect(fields[1]?.value).not.toMatch(/onclick|<script/);
+    expect(fields[1]?.verified_at).toBeNull();
+  });
+
+  it("takes fifty fields and 2047 characters of a name and a value, as Mastodon does", async () => {
+    const author = await remoteActor("fields-profile-limits");
+    await updateProfile(author, {
+      attachment: [
+        field("n".repeat(3000), "v".repeat(3000)),
+        ...Array.from({ length: 60 }, (_, index) => field(`field ${index}`, "x")),
+      ],
+    });
+    const { fields } = await account(author.actorUri);
+    expect(fields).toHaveLength(50);
+    expect(fields[0]?.name).toBe("n".repeat(2047));
+    expect(fields[0]?.value).toBe("v".repeat(2047));
+    expect(fields[49]?.name).toBe("field 48");
+  });
+
+  it("lists the emoji a field writes, and drops the fields when the attachments go", async () => {
+    const author = await remoteActor("fields-profile-emoji");
+    await updateProfile(author, {
+      attachment: [field(":label: Mood", "<p>:mood:</p>")],
+      tag: [emojiTag("label"), emojiTag("mood"), emojiTag("unused")],
+    });
+    const shown = await account(author.actorUri);
+    expect(shown.fields).toEqual([
+      { name: ":label: Mood", value: "<p>:mood:</p>", verified_at: null },
+    ]);
+    expect(shown.emojis).toEqual([emoji("label"), emoji("mood")]);
+
+    await updateProfile(author, { name: "No fields" });
+    expect((await account(author.actorUri)).fields).toEqual([]);
+  });
+});
