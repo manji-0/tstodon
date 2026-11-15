@@ -77,22 +77,35 @@ describe("tagAt", () => {
     "1",
     "&",
     "!",
+    // Multi-character pieces, so a quoted value or a self-closing tag
+    // forms often enough to be checked.
+    '="',
+    "='",
+    "/>",
+    "<a ",
+    "<b x",
   ];
+  // A 32-bit LCG; `Math.imul` keeps every bit, where a float product past
+  // 2^53 drops the low ones and falls into a short cycle.
   let seed = 20261115;
   const random = (below: number): number => {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    return Math.floor((seed / 2147483648) * below);
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return Math.floor((seed / 4294967296) * below);
   };
 
   it("finds the tags the one expression finds, on 30,000 random texts", () => {
+    const texts = new Set<string>();
+    let quotedMatches = 0;
     for (let round = 0; round < 30_000; round += 1) {
       const html = Array.from(
         { length: 1 + random(40) },
         () => alphabet[random(alphabet.length)],
       ).join("");
+      texts.add(html);
       const failed: FailedTagScans = { places: undefined };
       for (let at = html.indexOf("<"); at !== -1; at = html.indexOf("<", at + 1)) {
         const expected = TAG.exec(html.slice(at));
+        if (expected && /=\s*["']/.test(expected[3] ?? "")) quotedMatches += 1;
         expect(tagAt(html, at, failed), JSON.stringify([html, at])).toEqual(
           expected
             ? {
@@ -105,6 +118,9 @@ describe("tagAt", () => {
         );
       }
     }
+    // The generator reaches what it is meant to check.
+    expect(texts.size).toBeGreaterThan(25_000);
+    expect(quotedMatches).toBeGreaterThan(500);
   });
 });
 
