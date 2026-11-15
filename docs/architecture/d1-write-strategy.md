@@ -245,7 +245,7 @@ sequenceDiagram
 **Vote** (`votePoll`):
 
 1. Read poll target (`findPollVoteTarget`) — expiry check in app
-2. Build N × `insertPollVoteOrIgnore` + one `updatePollOptionsIfActive` (`UPDATE … WHERE expires_at > ?`)
+2. Build N × `insertPollVoteOrIgnore` + N × `recountPollOptionIfActive` (`UPDATE … SET` the option's tally to its vote rows `WHERE expires_at > ?`), so a vote written between the read and the batch is still counted
 3. `runD1Batch`; treat final statement `meta.changes === 0` as business “poll expired”
 
 This is the canonical “conditional UPDATE as optimistic concurrency” pattern when a pure UPSERT cannot encode the invariant alone.

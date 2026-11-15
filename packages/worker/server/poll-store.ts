@@ -25,7 +25,7 @@ import {
   releasePollUpdate as releasePollUpdateSql,
   replacePollOptions as replacePollOptionsSql,
   startPollUpdate as startPollUpdateSql,
-  updatePollOptionsIfActive as updatePollOptionsIfActiveSql,
+  recountPollOptionIfActive as recountPollOptionIfActiveSql,
   updateStatusPollId as updateStatusPollIdSql,
 } from "./generated/prisma/sql";
 
@@ -330,21 +330,22 @@ export const votePoll = async (
   if (options.isErr()) {
     return err(options.error);
   }
-  const next = options.value.map((option) => ({ ...option }));
-  const now = nowIso();
-  const statements: D1PreparedStatement[] = [];
-  for (const choice of choices) {
-    const option = next[choice];
-    if (!option) {
-      continue;
-    }
-    next[choice] = { title: option.title, votesCount: option.votesCount + 1 };
-    statements.push(d1PrepareTyped(db, insertPollVoteOrIgnoreSql(pollId, accountId, choice, now)));
+  const chosen = [...new Set(choices)].filter((choice) => options.value[choice] !== undefined);
+  if (chosen.length === 0) {
+    return ok(undefined);
   }
-  statements.push(
-    d1PrepareTyped(db, updatePollOptionsIfActiveSql(JSON.stringify(next), pollId, now)),
-  );
-  const batched = await runD1Batch(db, statements);
+  const now = nowIso();
+  // Each tally is counted from the vote rows in the batch that writes them
+  // (`recountPollOptionIfActive`): a tally computed from the options read
+  // above would drop a vote another request wrote in between.
+  const batched = await runD1Batch(db, [
+    ...chosen.map((choice) =>
+      d1PrepareTyped(db, insertPollVoteOrIgnoreSql(pollId, accountId, choice, now)),
+    ),
+    ...chosen.map((choice) =>
+      d1PrepareTyped(db, recountPollOptionIfActiveSql(pollId, choice, now)),
+    ),
+  ]);
   if (batched.isErr()) {
     return err(batched.error);
   }
@@ -397,16 +398,16 @@ export const recordRemotePollVote = async (
   if (!poll.multiple && earlier.value.length > 0) {
     return ok({ kind: "AlreadyVoted" });
   }
-  const next = poll.options.map((option, index) =>
-    index === choice ? { title: chosen.title, votesCount: chosen.votesCount + 1 } : option,
-  );
   const now = nowIso();
+  // `poll` was read before this vote and may be behind another delivery's
+  // write (Mastodon sends the options of one ballot at once), so the tally is
+  // counted from the vote rows, not from `poll.options`.
   const batched = await runD1Batch(db, [
     d1PrepareTyped(
       db,
       insertRemotePollVoteOrIgnoreSql(poll.id, vote.actorUri, choice, vote.objectUri, now),
     ),
-    d1PrepareTyped(db, updatePollOptionsIfActiveSql(JSON.stringify(next), poll.id, now)),
+    d1PrepareTyped(db, recountPollOptionIfActiveSql(poll.id, choice, now)),
   ]);
   if (batched.isErr()) {
     return err(batched.error);

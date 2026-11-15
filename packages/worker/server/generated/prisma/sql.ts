@@ -820,6 +820,8 @@ export * from "./sql/recordHeaderFileSize";
 
 export * from "./sql/recordMediaFileSizes";
 
+export * from "./sql/recountPollOptionIfActive";
+
 export * from "./sql/refuseReplacedRemoteStatus";
 
 export * from "./sql/rejectFollowRequest";
@@ -923,8 +925,6 @@ export * from "./sql/updateOutboundFollowOptions";
 export * from "./sql/updateOutboxFanout";
 
 export * from "./sql/updateOutboxTarget";
-
-export * from "./sql/updatePollOptionsIfActive";
 
 export * from "./sql/updatePushSubscriptionData";
 
