@@ -193,7 +193,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 202 of 202 steps with both servers open, 203 of 203 with tstodon in secure mode, and 204 of 204 with both in secure mode. Seventeen more steps are known gaps.
+The sweep passes 206 of 206 steps with both servers open, 207 of 207 with tstodon in secure mode, and 208 of 208 with both in secure mode. Thirteen more steps are known gaps.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
@@ -219,18 +219,21 @@ The areas added for INT-5 and INT-7 to INT-15 found five more, also fixed and co
 
 The quote and move areas found nothing: every step of both passes.
 
-The 17 known gaps (`gap` in the sweep's output):
+Four known gaps were closed since, each with a Worker test, and their steps are plain steps now:
+
+- A Mastodon attachment keeps its focus point, its blurhash and its size on tstodon (INT-11, two steps; `server/remote-media-metadata.test.ts`). tstodon does not download the file, so the size is the one the note declares.
+- A Mastodon account's custom emoji shows in its display name and bio on tstodon (INT-13; `server/remote-actor-profile.test.ts`).
+- A Mastodon account's profile fields show on tstodon (INT-15; `server/remote-actor-profile.test.ts`). `verified_at` stays null: tstodon does not fetch the linked page.
+
+The 13 known gaps (`gap` in the sweep's output):
 
 - tstodon reports `for_private_mentions: drop` and notifies a Mastodon stranger's direct message all the same: the policy is not applied to a remote sender (INT-2).
 - A tstodon note has no `replies` collection, so Mastodon cannot fetch the replies to a tstodon post it resolved (INT-4, two steps).
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
 - The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
 - An edit through tstodon's API keeps a content warning the request leaves out; Mastodon's removes it (INT-18).
-- tstodon keeps no focus point, and no blurhash or size, of a Mastodon attachment (INT-11, two steps).
-- tstodon keeps no custom emoji of a Mastodon account, so its display name shows `:shortcode:` (INT-13).
 - A hashtag followed on tstodon brings no post to the home timeline (INT-14).
 - A featured hashtag does not reach the other server's profile, in either direction (INT-14, two steps).
-- tstodon keeps no profile fields of a Mastodon account (INT-15).
 - A post pinned on tstodon does not show on Mastodon, and an unpin is seen in neither direction (INT-15, three steps).
 - An account an admin deletes on tstodon stays on Mastodon, with its posts and its follows (INT-15).
 
