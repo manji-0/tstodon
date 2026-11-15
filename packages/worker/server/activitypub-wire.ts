@@ -68,6 +68,13 @@ export const isHashtagObject = (object: unknown): boolean => parseHashtagObject(
  *   then a duplicate, and a later pin of the same note, signed at another
  *   time, is not;
  * - a `Hashtag` object without an `id` is named by its `href`.
+ *
+ * A known limit: a pin, an unpin and a pin again of one note, all signed in
+ * the same second, send two `Add`s that are the same bytes (the body, the
+ * `Date`, and so the signature), and the second is taken for a redelivery of
+ * the first. Nothing in the request tells them apart, so telling them apart
+ * would mean applying a replayed request. The next read of the actor's
+ * `featured` collection corrects the pin.
  */
 export const nameCollectionActivity = (
   json: unknown,
