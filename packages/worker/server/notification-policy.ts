@@ -206,15 +206,15 @@ const senderProfile = async (
 const senderFacts = async (
   db: D1Database,
   identity: InstanceIdentity,
+  policy: NotificationPolicy,
   input: DispositionInput,
   sender: Sender,
   localCreatedAt: string | undefined,
 ): Promise<Result<NotificationSender, RepositoryError>> => {
   // Independent reads: one D1 round instead of one each.
-  const [profile, follows, unanswered] = await Promise.all([
+  const [profile, follows] = await Promise.all([
     senderProfile(db, sender),
     followFacts(db, input.recipientId, sender),
-    unansweredPrivateMention(db, identity, input, sender),
   ]);
   if (profile.isErr()) {
     return err(profile.error);
@@ -222,6 +222,12 @@ const senderFacts = async (
   if (follows.isErr()) {
     return err(follows.error);
   }
+  const unanswered = NotificationPolicy.readsPrivateMention(
+    policy,
+    follows.value.followedByRecipient,
+  )
+    ? await unansweredPrivateMention(db, identity, input, sender)
+    : ok(false);
   if (unanswered.isErr()) {
     return err(unanswered.error);
   }
@@ -277,6 +283,13 @@ export const notificationDisposition = async (
     }
     sender = { kind: "Remote", actorUri: actorUri.value };
   }
-  const facts = await senderFacts(db, identity, input, sender, account.value?.createdAt);
+  const facts = await senderFacts(
+    db,
+    identity,
+    policy.value,
+    input,
+    sender,
+    account.value?.createdAt,
+  );
   return facts.map((found) => NotificationPolicy.disposition(policy.value, found, Date.now()));
 };

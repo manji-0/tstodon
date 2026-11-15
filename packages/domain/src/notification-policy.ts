@@ -118,6 +118,14 @@ export const NotificationPolicy = {
   ): NotificationPolicyAction =>
     NotificationPolicyAction.mostRestrictive(actions(policy, sender, now)),
   /**
+   * Whether {@link NotificationSender.unansweredPrivateMention} can change
+   * the disposition: `for_private_mentions` spares a sender the recipient
+   * follows, and an `accept` changes nothing. Mastodon walks the thread only
+   * then.
+   */
+  readsPrivateMention: (policy: NotificationPolicy, followedByRecipient: boolean): boolean =>
+    !followedByRecipient && policy.forPrivateMentions !== "accept",
+  /**
    * Whether a direct mention answers the recipient: Mastodon's
    * `response_to_recipient?`. `ancestors` are the statuses above the mention,
    * nearest first. The walk up the thread ends at the mention's parent when
