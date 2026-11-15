@@ -15,7 +15,6 @@ import { signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
 import {
-  dropSettledDepartedSigner,
   ensureOutboxTargets,
   findOutboundActivityWithSigner,
   insertSkippedOutboxTargets,
@@ -127,20 +126,6 @@ export const forwardActivityToInboxes = (
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "Account", accountId }, kind, body, inboxUrls);
 
-/**
- * {@link enqueueActivityToInboxes} for an account that is about to be
- * deleted: the activity keeps the account's name and key, and is delivered
- * and signed after the account's row is gone.
- */
-export const enqueueDepartedAccountActivity = (
-  env: Env,
-  signer: Extract<OutboundSigner, { kind: "DepartedAccount" }>,
-  kind: string,
-  payload: ApActivityDocumentJSON,
-  inboxUrls: ReadonlyArray<string>,
-): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(env, signer, kind, payload, inboxUrls);
-
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
   env: Env,
@@ -150,6 +135,24 @@ export const enqueueInstanceActorActivity = (
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, [inboxUrl]);
 
+/**
+ * `inboxUrls` without repeats and without those this server never contacts:
+ * on a suspended domain, or outside the federation allow list.
+ */
+export const admittedInboxes = async (
+  env: Env,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<string[]> => {
+  const [suspended, allowHosts] = await Promise.all([
+    suspendedDomains(env.DB),
+    federationAllowHosts(env),
+  ]);
+  return [...new Set(inboxUrls)].filter((inboxUrl) => {
+    const inboxHost = Hostname.ofUri(inboxUrl);
+    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
+  });
+};
+
 const enqueueSignedActivity = async (
   env: Env,
   signer: OutboundSigner,
@@ -157,16 +160,8 @@ const enqueueSignedActivity = async (
   payload: unknown,
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
-  // A suspended domain, or one outside the federation allow list, is never
-  // contacted; the activity is dropped quietly.
-  const [suspended, allowHosts] = await Promise.all([
-    suspendedDomains(env.DB),
-    federationAllowHosts(env),
-  ]);
-  const admitted = [...new Set(inboxUrls)].filter((inboxUrl) => {
-    const inboxHost = Hostname.ofUri(inboxUrl);
-    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
-  });
+  // An inbox this server never contacts is dropped quietly.
+  const admitted = await admittedInboxes(env, inboxUrls);
   if (admitted.length === 0) {
     return ok(undefined);
   }
@@ -202,12 +197,6 @@ const enqueueSignedActivity = async (
   }
   if (deliver.length > 0) {
     await startOutboxDeliveryWorkflow(env, activityId.value);
-  } else if (signer.kind === "DepartedAccount") {
-    // Every inbox was skipped: nothing will be signed, so the key goes now.
-    const dropped = await dropSettledDepartedSigner(env.DB, activityId.value);
-    if (dropped.isErr()) {
-      return err(dropped.error);
-    }
   }
   writeMetric(env, "outbox.enqueue", [1], [kind, "targeted"]);
   return ok(undefined);
@@ -258,6 +247,23 @@ export const recordSkippedTargets = async (
   if (inserted.isErr()) {
     return err(inserted.error);
   }
+  logSkippedTargets(env, activityId, inboxUrls, source);
+  return ok(undefined);
+};
+
+/**
+ * The `OutboxDeliverySkipped` line and the `outbox.skip` point of the targets
+ * of an activity stored `Skipped` for an unavailable domain.
+ */
+export const logSkippedTargets = (
+  env: Env,
+  activityId: string,
+  inboxUrls: ReadonlyArray<string>,
+  source: "targeted" | "expand",
+): void => {
+  if (inboxUrls.length === 0) {
+    return;
+  }
   console.log(
     JSON.stringify({
       kind: "OutboxDeliverySkipped",
@@ -268,7 +274,6 @@ export const recordSkippedTargets = async (
     }),
   );
   writeMetric(env, "outbox.skip", [inboxUrls.length], [source, "DomainUnavailable"]);
-  return ok(undefined);
 };
 
 /** The part of the `OUTBOX_DELIVERY_WORKFLOW` binding that starts an instance. */

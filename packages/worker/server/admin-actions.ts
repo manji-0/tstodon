@@ -27,6 +27,7 @@ import {
   getRemoteActorModeration,
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
+import { departedAccountActivityStatements } from "./outbox-store";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { severAndNotify } from "./severance";
 import {
@@ -275,10 +276,12 @@ const deleteObjectsUnder = async (bucket: R2Bucket, prefix: string): Promise<voi
 /**
  * Delete a local account and everything it owns (Mastodon's
  * `DeleteAccountService`): its bucket objects first, then the rows, which
- * cascade from `accounts`, then the `Delete` of its actor is queued for the
- * remote servers that know it (`actor-delete.ts`). Nothing is sent unless
- * the rows are gone, so a deletion that fails part way can be tried again.
- * `false` when there was no such account. Last, it
+ * cascade from `accounts`. The `Delete` of its actor, for the remote servers
+ * that know it (`actor-delete.ts`), is stored in the batch that deletes the
+ * rows and delivered after it: nothing is sent unless the rows are gone, so
+ * a deletion that fails part way can be tried again, and a deletion that
+ * commits always has its `Delete`. `false` when there was no such account.
+ * Last, it
  * deletes whatever is left under the account's attachment prefix: a copy the
  * rekey job pointed a row at after the keys were listed, or one it could not
  * confirm. A copy the job makes after the rows are gone, it deletes itself.
@@ -298,7 +301,11 @@ export const purgeAccount = async (
   for (const objectKey of objects.value) {
     await env.MEDIA.delete(objectKey);
   }
-  const deleted = await deleteAccount(env.DB, accountId);
+  const deleted = await deleteAccount(
+    env.DB,
+    accountId,
+    departing.value ? departedAccountActivityStatements(departing.value) : [],
+  );
   if (deleted.isOk() && deleted.value && departing.value) {
     await announceActorDeleted(env, departing.value);
   }

@@ -17,6 +17,7 @@ import {
   runTyped,
   runTypedBatch,
   runTypedBatchChunked,
+  type TypedSqlLike,
 } from "./typed-sql";
 import {
   findOutboundActivity as findOutboundActivitySql,
@@ -24,11 +25,11 @@ import {
   findNextOutboxTargetDue as findNextOutboxTargetDueSql,
   findOutboxFanout as findOutboxFanoutSql,
   findOutboxTarget as findOutboxTargetSql,
-  deleteSettledDepartedSigner as deleteSettledDepartedSignerSql,
   insertOutboundActivity as insertOutboundActivitySql,
   insertOutboundDepartedSigner as insertOutboundDepartedSignerSql,
   insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
   insertOutboxTargetOrIgnore as insertOutboxTargetOrIgnoreSql,
+  insertOutboxTargets as insertOutboxTargetsSql,
   insertSettledOutboxTargetOrIgnore as insertSettledOutboxTargetOrIgnoreSql,
   listDueOutboxTargets as listDueOutboxTargetsSql,
   listStuckOutboxTargets as listStuckOutboxTargetsSql,
@@ -157,19 +158,10 @@ const outboxDeliveryFromRow = (
   );
 };
 
-/**
- * Who signs an outbound activity: a local account, the instance actor, or an
- * account that is being deleted, whose name and key are stored with the
- * activity because its row will be gone when the activity is delivered.
- */
+/** Who signs an outbound activity: a local account, or the instance actor. */
 export type OutboundSigner =
   | Readonly<{ kind: "Account"; accountId: string }>
-  | Readonly<{ kind: "InstanceActor" }>
-  | Readonly<{
-      kind: "DepartedAccount";
-      username: string;
-      privateKeyJwk: SensitiveValue<string>;
-    }>;
+  | Readonly<{ kind: "InstanceActor" }>;
 
 /**
  * Where an outbound activity goes. `Followers`: the `ExpandFollowers` job
@@ -200,18 +192,6 @@ export const insertOutboundActivity = async (
       db,
       insertOutboundActivitySql(id, accountId, input.kind, payloadJson, createdAt),
     ),
-    ...(input.signer.kind === "DepartedAccount"
-      ? [
-          d1PrepareTyped(
-            db,
-            insertOutboundDepartedSignerSql(
-              id,
-              input.signer.username,
-              input.signer.privateKeyJwk.reveal(),
-            ),
-          ),
-        ]
-      : []),
     d1PrepareTyped(
       db,
       insertOutboxDeliveryFanoutSql(
@@ -234,6 +214,72 @@ export const insertOutboundActivity = async (
     payload_json: payloadJson,
     created_at: createdAt,
   });
+};
+
+/** The last activity of a local account that is being deleted, and where it goes. */
+export type DepartedAccountActivity = Readonly<{
+  id: string;
+  username: string;
+  privateKeyJwk: SensitiveValue<string>;
+  kind: string;
+  payload: unknown;
+  /** The inboxes to deliver to. */
+  deliver: ReadonlyArray<string>;
+  /** The inboxes of unavailable domains, stored `Skipped`. */
+  skipped: ReadonlyArray<string>;
+}>;
+
+/**
+ * The statements that store a deleted account's last activity, for the
+ * batch that deletes the account: the activity with no account, its targets,
+ * and, while a target is to be delivered, the account's name and key that
+ * sign it (`outbound_departed_signers`, dropped when the last target leaves
+ * `Queued`). One batch, so the activity is stored if and only if the account
+ * is deleted. The targets go in one statement however many there are.
+ */
+export const departedAccountActivityStatements = (
+  activity: DepartedAccountActivity,
+): TypedSqlLike[] => {
+  const createdAt = nowIso();
+  const expanded = persistColumns({ kind: "Expanded" });
+  const queued = persistColumns(OutboxDelivery.queued());
+  const skipped = persistColumns(OutboxDelivery.skipped());
+  const targets = [
+    ...activity.deliver.map((inboxUrl) => [newEntityId(), inboxUrl, queued.kind, null]),
+    ...activity.skipped.map((inboxUrl) => [
+      newEntityId(),
+      inboxUrl,
+      skipped.kind,
+      skipped.reasonKind,
+    ]),
+  ];
+  return [
+    insertOutboundActivitySql(
+      activity.id,
+      null,
+      activity.kind,
+      JSON.stringify(activity.payload),
+      createdAt,
+    ),
+    insertOutboxDeliveryFanoutSql(
+      newEntityId(),
+      activity.id,
+      expanded.kind,
+      expanded.attemptCount,
+      createdAt,
+      createdAt,
+    ),
+    insertOutboxTargetsSql(activity.id, JSON.stringify(targets), createdAt),
+    ...(activity.deliver.length > 0
+      ? [
+          insertOutboundDepartedSignerSql(
+            activity.id,
+            activity.username,
+            activity.privateKeyJwk.reveal(),
+          ),
+        ]
+      : []),
+  ];
 };
 
 export const findOutboundActivity = async (
@@ -429,19 +475,6 @@ export type SettledOutboxTarget = Readonly<{
   nextAttemptAt: string | null;
   lastHttpStatus: number | null;
 }>;
-
-/**
- * Delete the key kept for a deleted account's activity once no target of it
- * is still `Queued`: every one was delivered, failed for good or was skipped.
- * Nothing to do for any other activity.
- */
-export const dropSettledDepartedSigner = async (
-  db: D1Database,
-  activityId: string,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await runTyped(db, deleteSettledDepartedSignerSql(activityId));
-  });
 
 /**
  * {@link persistOutboxTarget} for several targets of one activity, in one D1

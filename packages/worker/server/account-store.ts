@@ -11,7 +11,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, okValues, parseRows, type RepositoryError, runD1 } from "./d1";
-import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
+import { queryTyped, runTyped, runTypedBatch, type TypedSqlLike } from "./typed-sql";
 import { quotePolicyFromSql, quotePolicySql, visibilitySql } from "./sql-enums";
 import {
   countAccounts as countAccountsSql,
@@ -293,15 +293,23 @@ export const setAccountLocked = async (
 /**
  * Purge a local account; every dependent row cascades from it. Its username
  * is kept in `deleted_account_names`, in the same batch, so its actor URI
- * answers 410 from then on ({@link isDeletedAccountName}).
+ * answers 410 from then on ({@link isDeletedAccountName}). `alongside` runs
+ * in the same batch, so it commits if and only if the deletion does: the
+ * account's last activity, which must not outlive a failed deletion nor be
+ * lost after one that committed.
  */
 export const deleteAccount = async (
   db: D1Database,
   id: string,
+  alongside: ReadonlyArray<TypedSqlLike> = [],
 ): Promise<Result<boolean, RepositoryError>> =>
-  (await runTypedBatch(db, [recordDeletedAccountNameSql(id, nowIso()), deleteAccountSql(id)])).map(
-    (results) => parseRows(IdRow, results.at(-1)?.results).length > 0,
-  );
+  (
+    await runTypedBatch(db, [
+      ...alongside,
+      recordDeletedAccountNameSql(id, nowIso()),
+      deleteAccountSql(id),
+    ])
+  ).map((results) => parseRows(IdRow, results.at(-1)?.results).length > 0);
 
 /** Whether `username` was a local account that has been deleted. */
 export const isDeletedAccountName = async (

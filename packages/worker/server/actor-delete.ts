@@ -1,11 +1,17 @@
-import type { SensitiveValue } from "@tstodon/core";
 import { InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
 import { actorDeleteActivity } from "./activitypub";
 import { type RepositoryError, toRepositoryError } from "./d1";
-import { enqueueDepartedAccountActivity } from "./delivery";
+import {
+  admittedInboxes,
+  logSkippedTargets,
+  partitionByDomainAvailability,
+  startOutboxDeliveryWorkflow,
+} from "./delivery";
 import { newEntityId } from "./ids";
+import { writeMetric } from "./metrics";
+import type { DepartedAccountActivity } from "./outbox-store";
 import {
   listAcceptedRemoteFollowerInboxes,
   listKnownRemoteInboxes,
@@ -18,8 +24,10 @@ import { parseInstanceIdentity } from "./runtime-config";
  * `DeleteAccountService#delete_actor!`. Mastodon marks the account deleted
  * and then sends; here the rows are gone once the account is deleted. So
  * what the `Delete` needs is read before the deletion, and the `Delete` is
- * queued only after the deletion committed: a deletion that fails part way
- * tells no remote server anything, and can be tried again.
+ * stored in the batch that deletes the account
+ * (`departedAccountActivityStatements`): a deletion that fails part way
+ * tells no remote server anything, and can be tried again, and one that
+ * commits has its `Delete` stored. Its delivery starts after the commit.
  */
 
 /**
@@ -47,30 +55,22 @@ export const actorDeleteInboxes = (
   return [...inboxes, ...known.filter((inbox) => !inboxes.has(inbox)).slice(0, room)];
 };
 
-/** What is left of a local account to announce its deletion with. */
-export type DepartingActor = Readonly<{
-  actorUri: string;
-  username: string;
-  privateKeyJwk: SensitiveValue<string>;
-  /** The inboxes to tell, shared inboxes where there are any. */
-  inboxes: ReadonlyArray<string>;
-}>;
-
 /**
- * Read, while the account's rows still exist, what its `Delete` needs: its
- * name, its key, and the inboxes to tell. As Mastodon's
+ * Read, while the account's rows still exist, its `Delete` with what it
+ * needs: its name, its key, and the inboxes to tell. As Mastodon's
  * `DeleteAccountService` these are the inboxes of its remote followers and,
  * to be sure a server that holds a post, a mention or a boost of it hears
  * too, every other inbox this server knows, up to
  * {@link ACTOR_DELETE_INBOX_LIMIT}. A server that never heard of the account
  * asks for its actor and reads 410. An account no remote follows and that
- * follows no remote sends nothing: it never federated. `undefined` when
- * there is no such account.
+ * follows no remote sends nothing: it never federated. An inbox this server
+ * never contacts (a suspended domain, one outside the allow list) is left
+ * out. `undefined` when there is no such account, or no inbox to tell.
  */
 export const readDepartingActor = async (
   env: Env,
   accountId: string,
-): Promise<Result<DepartingActor | undefined, RepositoryError>> => {
+): Promise<Result<DepartedAccountActivity | undefined, RepositoryError>> => {
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
     return err(toRepositoryError("invalid instance identity"));
@@ -98,36 +98,39 @@ export const readDepartingActor = async (
   if (known.isErr()) {
     return err(known.error);
   }
+  const admitted = await admittedInboxes(
+    env,
+    actorDeleteInboxes(related, known.value, ACTOR_DELETE_INBOX_LIMIT),
+  );
+  if (admitted.length === 0) {
+    return ok(undefined);
+  }
+  const { deliver, skipped } = await partitionByDomainAvailability(env.DB, admitted);
+  const actorUri = InstanceIdentity.actorUrl(identity.value, account.value.username);
   return ok({
-    actorUri: InstanceIdentity.actorUrl(identity.value, account.value.username),
+    id: newEntityId(),
     username: account.value.username,
     privateKeyJwk: account.value.privateKeyJwk,
-    inboxes: actorDeleteInboxes(related, known.value, ACTOR_DELETE_INBOX_LIMIT),
+    kind: "Delete",
+    payload: actorDeleteActivity(actorUri, newEntityId()),
+    deliver,
+    skipped,
   });
 };
 
 /**
- * Queue the `Delete` of an account that has just been deleted, signed with
- * the key read before. Each remote then drops the account, its posts and its
- * follows. Best effort: the account is gone either way, and a `Delete` that
- * could not be queued is logged (`ActorDeleteNotFederated`).
+ * Start the delivery of the `Delete` of an account whose deletion has just
+ * committed with the activity and its targets. A delivery that does not
+ * start is logged (`OutboxWorkflowCreateFailed`), and the stuck-delivery
+ * sweep starts it within the hour, as it finds the targets `Queued`.
  */
-export const announceActorDeleted = async (env: Env, actor: DepartingActor): Promise<void> => {
-  const enqueued = await enqueueDepartedAccountActivity(
-    env,
-    { kind: "DepartedAccount", username: actor.username, privateKeyJwk: actor.privateKeyJwk },
-    "Delete",
-    actorDeleteActivity(actor.actorUri, newEntityId()),
-    actor.inboxes,
-  );
-  if (enqueued.isErr()) {
-    console.error(
-      JSON.stringify({
-        kind: "ActorDeleteNotFederated",
-        actor: actor.actorUri,
-        inboxes: actor.inboxes.length,
-        error: enqueued.error.kind,
-      }),
-    );
+export const announceActorDeleted = async (
+  env: Env,
+  activity: DepartedAccountActivity,
+): Promise<void> => {
+  logSkippedTargets(env, activity.id, activity.skipped, "targeted");
+  if (activity.deliver.length > 0) {
+    await startOutboxDeliveryWorkflow(env, activity.id);
   }
+  writeMetric(env, "outbox.enqueue", [1], [activity.kind, "targeted"]);
 };

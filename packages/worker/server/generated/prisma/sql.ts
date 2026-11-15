@@ -180,8 +180,6 @@ export * from "./sql/deleteRemoteStatusByObjectUri";
 
 export * from "./sql/deleteRemoteStatusRemoteMentions";
 
-export * from "./sql/deleteSettledDepartedSigner";
-
 export * from "./sql/deleteSignupIntentsByEmail";
 
 export * from "./sql/deleteStatusMedia";
@@ -475,6 +473,8 @@ export * from "./sql/insertOutboundFollow";
 export * from "./sql/insertOutboxDeliveryFanout";
 
 export * from "./sql/insertOutboxTargetOrIgnore";
+
+export * from "./sql/insertOutboxTargets";
 
 export * from "./sql/insertPoll";
 

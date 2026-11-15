@@ -1,6 +1,6 @@
 import { schemaResult } from "@tstodon/core";
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApActivityDocument, PUBLIC_COLLECTION } from "@tstodon/api/activitypub";
 import { expectContract } from "../test/api-contract";
@@ -11,9 +11,18 @@ import { actorDeleteInboxes } from "./actor-delete";
 import { purgeAccount } from "./admin-actions";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
-import { findOutboundActivityWithSigner, persistOutboxTarget } from "./outbox-store";
+import {
+  findOutboundActivityWithSigner,
+  listStuckOutboxTargets,
+  persistOutboxTarget,
+} from "./outbox-store";
 import { listKnownRemoteInboxes, purgeRemoteActor } from "./remote-actor-store";
 import { RemoteAccountId } from "./remote-account-id";
+import {
+  type DeliveryWorkflowInstances,
+  stuckDeliveryDeps,
+  sweepStuckDeliveries,
+} from "./stuck-delivery-sweep";
 
 /**
  * INT-15, account deletion over federation: deleting a local account sends a
@@ -241,6 +250,98 @@ describe("deleting a local account", () => {
     const deletes = await queuedActorDeletes(actorUri);
     expect(deletes).toHaveLength(1);
     expect(deletes[0]?.inboxes).toContain(`${fan.actorUri}/inbox`);
+  });
+
+  it("keeps the account when its Delete cannot be stored, and sends one Delete when it is tried again", async () => {
+    const leaver = await signedInAccount("delete-unstored@example.com");
+    const actorUri = `${ORIGIN}/users/${leaver.username}`;
+    const fan = await remoteActor("unstored-fan", "unstored-fans.example");
+    await followedBy(leaver.id, fan.actorUri);
+    const refusingDb = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key === "prepare") {
+          return (sql: string) => {
+            if (sql.includes("INSERT INTO outbound_activities")) {
+              throw new Error("the database refuses the Delete");
+            }
+            return target.prepare(sql);
+          };
+        }
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    await purgeAccount({ ...env, DB: refusingDb }, leaver.id).catch(() => undefined);
+
+    const kept = await SELF.fetch(actorUri, { headers: { accept: "application/activity+json" } });
+    expect(kept.status).toBe(200);
+    expect(await queuedActorDeletes(actorUri)).toEqual([]);
+
+    expect((await purgeAccount(env, leaver.id)).isOk()).toBe(true);
+    const deletes = await queuedActorDeletes(actorUri);
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]?.inboxes).toContain(`${fan.actorUri}/inbox`);
+  });
+
+  it("leaves a Delete whose delivery did not start to the stuck-delivery sweep", async () => {
+    const leaver = await signedInAccount("delete-unstarted@example.com");
+    const actorUri = `${ORIGIN}/users/${leaver.username}`;
+    const fan = await remoteActor("unstarted-fan", "unstarted-fans.example");
+    const fanInbox = `${fan.actorUri}/inbox`;
+    await followedBy(leaver.id, fan.actorUri);
+    const refusing: DeliveryWorkflowInstances = {
+      create: async () => {
+        throw new Error("Workflows refuses the instance");
+      },
+      get: async () => {
+        throw new Error("instance.not_found");
+      },
+    };
+    const refusingBinding = new Proxy(env.OUTBOX_DELIVERY_WORKFLOW, {
+      get: (target, key) => (key === "create" ? refusing.create : Reflect.get(target, key)),
+    });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const purged = await purgeAccount(
+      { ...env, OUTBOX_DELIVERY_WORKFLOW: refusingBinding },
+      leaver.id,
+    );
+    errorLog.mockRestore();
+
+    expect(purged.isOk() && purged.value).toBe(true);
+    const [queued] = await queuedActorDeletes(actorUri);
+    if (!queued) {
+      throw new Error("no Delete stored");
+    }
+    expect(await keepsSignerKey(queued.id)).toBe(true);
+    const created: string[] = [];
+    const workflows: DeliveryWorkflowInstances = {
+      ...refusing,
+      create: async ({ params }) => {
+        created.push(params.activityId);
+      },
+    };
+    const deps = stuckDeliveryDeps(env, workflows);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const swept = await sweepStuckDeliveries(
+      env,
+      {
+        ...deps,
+        list: async (dueBefore) =>
+          (await listStuckOutboxTargets(env.DB, dueBefore, 10_000)).map((targets) =>
+            targets.filter(
+              (target) => target.activityId === queued.id && target.inboxUrl === fanInbox,
+            ),
+          ),
+      },
+      Date.now() + 2 * 3_600_000,
+    );
+    log.mockRestore();
+
+    expect(swept.isOk() && swept.value.created).toBe(1);
+    expect(created).toEqual([queued.id]);
   });
 
   it("gives the Delete of a username that is registered and deleted again another id", async () => {
