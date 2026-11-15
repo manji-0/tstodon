@@ -18,13 +18,18 @@ import { CountedRow, queryTyped } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
 
+/** The boosted status (`ls` or `rs`) is public or unlisted: anyone may see it. */
+const OPEN_TARGET_SQL = `COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')`;
+
 /**
- * The boosted status (`ls` or `rs`) is one a boost (`b`) may show: a public or
- * unlisted one, or the booster's own followers-only one, whose boost is
- * followers-only too (`RemoteBoost.fromAnnounce`).
+ * The boosted status is one a boost (`b`) may show: an open one, or the
+ * booster's own followers-only one. The second is for the booster's followers
+ * only, and the row's own visibility does not say so: a status can be narrowed
+ * after a public boost of it was stored. A query that uses this either reads
+ * for a follower, or asks `OPEN_TARGET_SQL` of what it shows to anyone else.
  */
 const BOOSTABLE_TARGET_SQL = `(
-  COALESCE(ls.visibility, rs.visibility) IN ('public', 'unlisted')
+  ${OPEN_TARGET_SQL}
   OR (rs.visibility = 'private' AND rs.actor_uri = b.actor_uri)
 )`;
 
@@ -173,7 +178,8 @@ export const listFollowedRemoteBoosts = async (
 
 /**
  * A remote actor's boosts on its profile, newest first, as the viewer may see
- * them: a followers-only boost only by the actor's accepted followers. The
+ * them: a followers-only boost, and any boost of a followers-only status, only
+ * by the actor's accepted followers. The
  * boosted status must be one a boost may show, and a block or mute of its
  * author, or a domain block or suspension of that author's domain, hides it.
  */
@@ -197,7 +203,7 @@ export const listActorRemoteBoosts = async (
            LEFT JOIN statuses ls ON ls.id = b.local_status_id
            LEFT JOIN remote_statuses rs ON rs.id = b.remote_status_id
            WHERE b.actor_uri = ?
-             AND (b.visibility IN ('public', 'unlisted') OR EXISTS (
+             AND ((b.visibility IN ('public', 'unlisted') AND ${OPEN_TARGET_SQL}) OR EXISTS (
                SELECT 1 FROM outbound_follows f
                WHERE f.account_id = ? AND f.actor_uri = b.actor_uri AND f.state = 'Accepted'
              ))
