@@ -2,6 +2,7 @@ import type { ApFollowJSON } from "@tstodon/api/activitypub";
 import {
   type AcceptOutboundFollow,
   type FindLocalAccountByUsername,
+  type HoldsOutboundFollow,
   Hostname,
   InstanceIdentity,
   type LocalAccount,
@@ -16,7 +17,7 @@ import { parseLocalActorUsername } from "./activitypub";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
-import { enqueueTargetedActivity } from "./delivery";
+import { type EnqueueLocalActivityError, enqueueTargetedActivity } from "./delivery";
 import { isActorDomainBlocked } from "./domain-block-store";
 import type { FollowOptions } from "./follow-store";
 import { newEntityId } from "./ids";
@@ -128,24 +129,25 @@ export const unfollowRemoteActor = async (
     return err(removed.error);
   }
   if (removed.value !== undefined) {
+    // Best effort: the follow is dropped whether or not the `Undo` is queued.
     await sendFollowUndo(env, identity, follower, actor, removed.value);
   }
   return ok(undefined);
 };
 
 /**
- * Send `actor` the `Undo` of `follower`'s `Follow` of it. Delivery is best
- * effort: the caller has already dropped the follow.
+ * Send `actor` the `Undo` of `follower`'s `Follow` of it. The caller has
+ * already dropped the follow, or never held it.
  */
-export const sendFollowUndo = async (
+export const sendFollowUndo = (
   env: Env,
   identity: InstanceIdentity,
   follower: LocalAccount,
   actor: RemoteActor,
   followActivityId: string,
-): Promise<void> => {
+): Promise<Result<void, EnqueueLocalActivityError>> => {
   const followerUrl = InstanceIdentity.actorUrl(identity, follower.username);
-  await enqueueTargetedActivity(
+  return enqueueTargetedActivity(
     env,
     follower.id,
     "Undo",
@@ -176,64 +178,126 @@ export type ReceivedFollowAnswer = Readonly<{
 }>;
 
 /**
- * Which follow an `Accept` or `Reject` signed by `signer` answers: the one
- * whose `Follow` id is `objectId`. The signer can only answer follows of
- * itself. An embedded `Follow` of the signer by a local actor also names that
- * account's follow, for servers that do not echo our `Follow` id.
+ * What an `Accept` or `Reject` did. `AcceptedUnheld` is an `Accept` of a
+ * `Follow` from a local account that holds no follow of the signer: the
+ * signer stored a follow this server does not have, and `followActivityId`
+ * is the `Follow` to undo there.
  */
-const outboundFollowAnswer = async (
+export type FollowAnswerOutcome =
+  | Readonly<{ kind: "Recorded" }>
+  | Readonly<{ kind: "Unmatched" }>
+  | Readonly<{ kind: "AcceptedUnheld"; follower: LocalAccount; followActivityId: string }>;
+
+const followIdPrefix = (identity: InstanceIdentity, username: string): string =>
+  `${InstanceIdentity.actorUrl(identity, username)}/follows/`;
+
+/**
+ * The local account an embedded `Follow` of `signer` is from, for servers
+ * that do not echo our `Follow` id. The signer can only answer follows of
+ * itself.
+ */
+const embeddedFollower = async (
   findAccountByUsername: FindLocalAccountByUsername,
   identity: InstanceIdentity,
   signer: RemoteActor,
-  received: ReceivedFollowAnswer,
-): Promise<Result<OutboundFollowAnswer, RepositoryError>> => {
-  const answer = {
-    actorUri: signer.actorUri,
-    followActivityId: received.objectId,
-    accountId: undefined,
-  };
-  const embedded = parseEmbeddedFollow(received.object);
+  object: unknown,
+): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
+  const embedded = parseEmbeddedFollow(object);
   if (embedded.isErr()) {
-    return ok(answer);
+    return ok(undefined);
   }
   const followed =
     typeof embedded.value.object === "string" ? embedded.value.object : embedded.value.object.id;
   const username = parseLocalActorUsername(identity, embedded.value.actor);
-  if (followed !== signer.actorUri || !username) {
-    return ok(answer);
-  }
-  const follower = await findAccountByUsername(username);
-  if (follower.isErr()) {
-    return err(follower.error);
-  }
-  return ok({ ...answer, accountId: follower.value?.id });
+  return followed === signer.actorUri && username ? findAccountByUsername(username) : ok(undefined);
 };
 
-/** Record the remote actor's answer to a local account's `Follow` of it. */
+/** The local account `followActivityId` is a `Follow` id of. */
+const followIdOwner = async (
+  findAccountByUsername: FindLocalAccountByUsername,
+  identity: InstanceIdentity,
+  followActivityId: string,
+): Promise<Result<LocalAccount | undefined, RepositoryError>> => {
+  const username = parseLocalActorUsername(identity, followActivityId);
+  return username && followActivityId.startsWith(followIdPrefix(identity, username))
+    ? findAccountByUsername(username)
+    : ok(undefined);
+};
+
+/**
+ * Record the remote actor's answer to a local account's `Follow` of it: the
+ * follow whose `Follow` id the answer names, or the follow of the signer by
+ * the local actor of an embedded `Follow`.
+ *
+ * An `Accept` that matches no follow of an account that follows the signer
+ * no more is `AcceptedUnheld`. The signer stores a `Follow` after it answers
+ * the request (202), and Mastodon handles an `Undo` that arrives meanwhile
+ * as one that came first: it keeps the follow and sends this `Accept`.
+ */
 export const answerOutboundFollow = async (
   contracts: Readonly<{
     findAccountByUsername: FindLocalAccountByUsername;
     acceptOutboundFollow: AcceptOutboundFollow;
     rejectOutboundFollow: RejectOutboundFollow;
+    holdsOutboundFollow: HoldsOutboundFollow;
   }>,
   identity: InstanceIdentity,
   signer: RemoteActor,
   received: ReceivedFollowAnswer,
-): Promise<Result<void, RepositoryError>> => {
-  const answer = await outboundFollowAnswer(
+): Promise<Result<FollowAnswerOutcome, RepositoryError>> => {
+  const embedded = await embeddedFollower(
     contracts.findAccountByUsername,
     identity,
     signer,
-    received,
+    received.object,
   );
-  if (answer.isErr()) {
-    return err(answer.error);
+  if (embedded.isErr()) {
+    return err(embedded.error);
   }
+  const answer: OutboundFollowAnswer = {
+    actorUri: signer.actorUri,
+    followActivityId: received.objectId,
+    accountId: embedded.value?.id,
+  };
   const answered =
     received.kind === "Accept"
-      ? await contracts.acceptOutboundFollow(answer.value)
-      : await contracts.rejectOutboundFollow(answer.value);
-  return answered.map(() => undefined);
+      ? await contracts.acceptOutboundFollow(answer)
+      : await contracts.rejectOutboundFollow(answer);
+  if (answered.isErr()) {
+    return err(answered.error);
+  }
+  if (answered.value) {
+    return ok({ kind: "Recorded" });
+  }
+  if (received.kind === "Reject") {
+    return ok({ kind: "Unmatched" });
+  }
+  const follower =
+    embedded.value === undefined
+      ? await followIdOwner(contracts.findAccountByUsername, identity, received.objectId)
+      : embedded;
+  if (follower.isErr()) {
+    return err(follower.error);
+  }
+  if (follower.value === undefined) {
+    return ok({ kind: "Unmatched" });
+  }
+  const holds = await contracts.holdsOutboundFollow(follower.value.id, signer.actorUri);
+  if (holds.isErr()) {
+    return err(holds.error);
+  }
+  if (holds.value) {
+    return ok({ kind: "Unmatched" });
+  }
+  // A server that rewrote the `Follow` id knows the follow by its actor and object.
+  const prefix = followIdPrefix(identity, follower.value.username);
+  return ok({
+    kind: "AcceptedUnheld",
+    follower: follower.value,
+    followActivityId: received.objectId.startsWith(prefix)
+      ? received.objectId
+      : `${prefix}${newEntityId()}`,
+  });
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

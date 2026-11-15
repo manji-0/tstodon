@@ -21,3 +21,9 @@ export type AcceptOutboundFollow = (
 export type RejectOutboundFollow = (
   answer: OutboundFollowAnswer,
 ) => Promise<Result<boolean, RepositoryError>>;
+
+/** Whether the account follows `actorUri`, or has asked to. */
+export type HoldsOutboundFollow = (
+  accountId: string,
+  actorUri: string,
+) => Promise<Result<boolean, RepositoryError>>;

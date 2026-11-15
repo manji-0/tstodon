@@ -376,3 +376,93 @@ describe("the home timeline of a remote follower", () => {
     expect(await homeUris(email)).toEqual([]);
   });
 });
+
+/** Mastodon's `Accept`: it embeds the `Follow` it stored, under the id the `Follow` came with. */
+const acceptEmbedding = (remote: Remote, username: string, followId: string, slug: string) =>
+  remote.send({
+    id: `${remote.actorUri}/accepts/${slug}`,
+    type: "Accept",
+    object: {
+      id: followId,
+      type: "Follow",
+      actor: `https://example.com/users/${username}`,
+      object: remote.actorUri,
+    },
+  });
+
+describe("an Accept of a follow the account no longer holds", () => {
+  it("sends the Undo again: the actor stored the Follow after it handled the Undo", async () => {
+    const remote = await remoteActor("late-accepting-target");
+    const email = "at-once-unfollower@example.com";
+    const viewer = await signedInAccount(email);
+    expect((await follow(email, remote)).status).toBe(200);
+    const followId = await followActivityId(email);
+    expect((await unfollow(email, remote)).status).toBe(200);
+    expect(await queued(email, "Undo")).toHaveLength(1);
+
+    expect(await acceptEmbedding(remote, viewer.username, followId, "late")).toBe(202);
+
+    const undos = await queued(email, "Undo");
+    expect(undos).toHaveLength(2);
+    expect(undos[1]?.inbox).toBe(`${remote.actorUri}/inbox`);
+    expect(undos[1]?.activity).toMatchObject({
+      type: "Undo",
+      actor: `https://example.com/users/${viewer.username}`,
+      object: { id: followId, type: "Follow", object: remote.actorUri },
+    });
+    expect(await relationship(email, remote)).toMatchObject({ following: false, requested: false });
+  });
+
+  it("sends the Undo for an Accept that names the Follow by id only", async () => {
+    const remote = await remoteActor("late-accepting-by-id");
+    const email = "at-once-unfollower-by-id@example.com";
+    expect((await follow(email, remote)).status).toBe(200);
+    const followId = await followActivityId(email);
+    expect((await unfollow(email, remote)).status).toBe(200);
+
+    expect(await accept(remote, followId, "late-by-id")).toBe(202);
+
+    const undos = await queued(email, "Undo");
+    expect(undos).toHaveLength(2);
+    expect(undos[1]?.activity).toMatchObject({ object: { id: followId, type: "Follow" } });
+  });
+
+  it("sends no Undo when the account follows the actor again", async () => {
+    const remote = await remoteActor("refollowed-target");
+    const email = "refollower-after-undo@example.com";
+    expect((await follow(email, remote)).status).toBe(200);
+    const first = await followActivityId(email);
+    expect((await unfollow(email, remote)).status).toBe(200);
+    expect((await follow(email, remote)).status).toBe(200);
+
+    expect(await accept(remote, first, "stale")).toBe(202);
+
+    expect(await queued(email, "Undo")).toHaveLength(1);
+    expect(await relationship(email, remote)).toMatchObject({ following: false, requested: true });
+  });
+
+  it("sends no Undo for a Reject, or for an Accept of an id that is no Follow of a local account", async () => {
+    const remote = await remoteActor("unmatched-answers");
+    const email = "unmatched-answers-follower@example.com";
+    const viewer = await signedInAccount(email);
+    expect((await follow(email, remote)).status).toBe(200);
+    const followId = await followActivityId(email);
+    expect((await unfollow(email, remote)).status).toBe(200);
+
+    expect(
+      await remote.send({
+        id: `${remote.actorUri}/rejects/late`,
+        type: "Reject",
+        object: followId,
+      }),
+    ).toBe(202);
+    expect(
+      await accept(remote, `https://example.com/users/${viewer.username}/statuses/1`, "no-follow"),
+    ).toBe(202);
+    expect(
+      await accept(remote, "https://example.com/users/nobody-at-all/follows/1", "nobody"),
+    ).toBe(202);
+
+    expect(await queued(email, "Undo")).toHaveLength(1);
+  });
+});

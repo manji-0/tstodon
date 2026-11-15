@@ -221,6 +221,7 @@ export {
 } from "./outbound-follow";
 export type {
   AcceptOutboundFollow,
+  HoldsOutboundFollow,
   OutboundFollowAnswer,
   RejectOutboundFollow,
 } from "./outbound-follow-store";
