@@ -234,8 +234,8 @@ Four known gaps were closed since, each with a Worker test, and their steps are 
 
 Seven more were closed after that, each with a Worker test, and their steps are plain steps now:
 
-- A post pinned on tstodon shows on Mastodon, and an unpin is seen in both directions (INT-15, three steps; `server/featured-collection.test.ts`). tstodon's actor names a `featured` collection, a pin sends an `Add` and an unpin a `Remove`, and the inbox handles both from a remote actor. Mastodon sends them without an `id`, which the inbox refused before.
-- An account an admin deletes on tstodon is gone from Mastodon, with its posts and its follows (INT-15; `server/account-delete-federation.test.ts`). The `Delete` of the actor is signed with the account's key after the account's row is gone.
+- A post pinned on tstodon shows on Mastodon, and an unpin is seen in both directions (INT-15, three steps; `server/featured-collection.test.ts`). tstodon's actor names a `featured` collection of its public and unlisted pins, a pin sends an `Add` and an unpin a `Remove`, and the inbox handles both from a remote actor. Mastodon sends them without an `id`, which the inbox refused before.
+- An account an admin deletes on tstodon is gone from Mastodon, with its posts and its follows (INT-15; `server/account-delete-federation.test.ts`). The `Delete` of the actor is queued once the account's rows are gone and signed with the account's key, which is kept until the last inbox settles.
 - Mastodon fetches the replies to a tstodon post it resolved, and the replies to those (INT-4, two steps; `server/note-replies.test.ts`). A tstodon note carries a `replies` collection in Mastodon's shape. The sweep dates Mastodon's copy of the post back first ([The Mastodon users](#the-mastodon-users)).
 - A hashtag featured on tstodon shows on the Mastodon profile (INT-14; `server/featured-tags-federation.test.ts`). tstodon's actor names a `featuredTags` collection, and featuring a hashtag sends an `Add`, unfeaturing a `Remove`.
 
