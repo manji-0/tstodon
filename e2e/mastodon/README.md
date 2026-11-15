@@ -158,7 +158,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - `provision.rb` creates users the way `tootctl accounts create --confirmed --approve` does, and a Doorkeeper token for each, in one `rails runner` call. It also creates the custom emoji `:interop:`. The user `moderator` gets the Owner role and a token with `admin:read admin:write`.
 - `SMTP_DELIVERY_METHOD=test` keeps notification mails from failing in Sidekiq.
 - The volume `system` is mounted at `public/system` in both `web` and `sidekiq`. Sidekiq downloads a remote attachment, avatar or emoji there and web serves it. Without the shared volume every such URL answers 404.
-- `hold-follow.rb` is mounted as a Rails initializer. Mastodon's `Follow` handler checks whether an `Undo` of the `Follow` came first, and stores the follow some milliseconds later. An `Undo` that Sidekiq handles in between finds no follow, so the follow stays. The two handlers overlap only when the two deliveries arrive within a few milliseconds of each other: one CI run had them 11 ms apart, and 320 rounds on a development machine had none. The initializer holds the `Follow` handler for 300 ms after that check, so the step "follow, then unfollow at once" overlaps them in every run. `MASTODON_FOLLOW_HOLD_MS` sets another time, and `0` turns the hold off.
+- `hold-follow.rb` is mounted as a Rails initializer. Mastodon's `Follow` handler checks whether an `Undo` of the `Follow` came first, and stores the follow some milliseconds later. An `Undo` that Sidekiq handles in between finds no follow, so the follow stays ([finding 14](#what-the-sweep-found)). The two handlers overlap only when the two deliveries arrive within a few milliseconds of each other: one CI run had them 11 ms apart, and 320 rounds on a development machine had none. The initializer holds the `Follow` handler for 300 ms after that check, so the step "follow, then unfollow at once" overlaps them in every run. `MASTODON_FOLLOW_HOLD_MS` sets another time, and `0` turns the hold off.
 
 ### tstodon
 
@@ -177,6 +177,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - A note's `replies` collection embeds a first page with the author's own replies only. Every other account's replies are on the page its `next` links (`?only_other_accounts=true&page=true`).
 - When Mastodon stores a note it fetches up to five replies of the same host from the note's embedded `replies` page (`FetchRepliesService`). It fetches the whole reply tree only for a note older than five minutes (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`).
 - The id of an `Undo(Follow)` is `<actor>#follows/<n>/undo`. `n` is the follow request's id while the follow is pending, and the follow's id once it is accepted. Those are two sequences, so two different `Undo`s of one actor can carry one id.
+- Mastodon answers an inbox POST with 202 and handles the activity later, in Sidekiq, several activities at once. An `Undo(Follow)` handled before the `Follow` is remembered by the `Follow`'s id for six hours, and that `Follow` is then dropped (`delete_arrived_first?`). An `Undo` handled while the `Follow` is being handled is remembered too, but the `Follow` is already past that check: Mastodon keeps the follow and sends an `Accept`. Mastodon ignores an `Accept` of a follow it does not hold. tstodon answers one with the `Undo` again.
 - Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
 - Mastodon allows a user 1500 API requests per five minutes. A second sweep right after the first reaches that as mona. `sweep.ts` waits for the window and goes on.
 - Mastodon dates an edit to the second (`updated`). It applies an `Update` as an edit only when that date is after the one it holds (`ProcessStatusUpdateService`). With an equal date it takes the poll tallies and the quote policy and leaves the text. Two edits within one second are one edit to the other server, on Mastodon and on tstodon.
@@ -219,6 +220,10 @@ The areas added for INT-5 and INT-7 to INT-15 found five more, also fixed and co
 13. `GET /api/v1/accounts/:id/featured_tags` answered 404 for every remote account (`server/remote-featured-tags.test.ts`).
 
 The quote and move areas found nothing: every step of both passes.
+
+A CI run of the `follows` area found one more, also fixed and covered:
+
+14. A follow that was undone at once could stay on Mastodon for good. tstodon sends the `Follow` and the `Undo` as two deliveries, Mastodon handled both at once and kept the follow, and tstodon ignored the `Accept` that came next (`server/outbound-follow.test.ts`).
 
 Four known gaps were closed since, each with a Worker test, and their steps are plain steps now:
 
