@@ -284,9 +284,8 @@ export const editScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
       };
       await eventually("the follower's home has the boost", boostOnHome);
       await call(bob, `/api/v1/statuses/${original.id}`, Anything, { method: "DELETE" });
-      await eventually(
-        "the follower's home no longer has the boost",
-        async () => ((await boostOnHome()) === undefined ? true : undefined),
+      await eventually("the follower's home no longer has the boost", async () =>
+        (await boostOnHome()) === undefined ? true : undefined,
       );
     },
   );
