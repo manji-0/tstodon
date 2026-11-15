@@ -8,6 +8,7 @@ import {
   eventually,
   follow,
   knownGap,
+  mastodonRails,
   notified,
   post,
   resolveStatus,
@@ -42,6 +43,18 @@ const contextBecomes = (
 
 const sameMembers = (actual: readonly string[], expected: readonly string[]): boolean =>
   actual.length === expected.length && expected.every((uri) => actual.includes(uri));
+
+/**
+ * Mastodon fetches the reply tree of a remote post when a signed-in user
+ * reads its context, and only once the post is five minutes old
+ * (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`). This dates Mastodon's copy ten
+ * minutes back, so the next context read starts the fetch.
+ */
+const ageOnMastodon = (copy: Status): void => {
+  mastodonRails(
+    `Status.find(${JSON.stringify(copy.id)}).update_columns(created_at: 10.minutes.ago)`,
+  );
+};
 
 /** A chain of replies on one server: each author replies to the post before. */
 const localChain = async (stamp: string, authors: readonly E2eUser[]): Promise<Status[]> => {
@@ -176,6 +189,9 @@ export const threadScenarios = async ({
       );
     }
     const copy = await resolveStatus(reader, root.uri);
+    if (reader.origin === mona.origin) {
+      ageOnMastodon(copy);
+    }
     await contextBecomes(reader, copy.id, "the root's descendants are its three replies", (seen) =>
       sameMembers(seen.descendants, uris(replies)),
     );
@@ -185,6 +201,9 @@ export const threadScenarios = async ({
   const repliesOfReplies = async (reader: E2eUser, authors: readonly E2eUser[]): Promise<void> => {
     const chain = await localChain(`${stamp} down`, authors);
     const root = await resolveStatus(reader, chain[0]?.uri ?? "");
+    if (reader.origin === mona.origin) {
+      ageOnMastodon(root);
+    }
     await contextBecomes(reader, root.id, "the root's descendants are the three below it", (seen) =>
       sameMembers(seen.descendants, uris(chain.slice(1))),
     );
@@ -194,9 +213,8 @@ export const threadScenarios = async ({
     "context backfills the replies to a resolved root: tstodon reads a Mastodon thread",
     () => repliesOfRoot(alice, [carol, erin, longName]),
   );
-  await knownGap(
+  await step(
     "context backfills the replies to a resolved root: Mastodon reads a tstodon thread",
-    "INT-4",
     () => repliesOfRoot(mona, [bob, tina, alice]),
   );
   await knownGap(
@@ -204,9 +222,7 @@ export const threadScenarios = async ({
     "INT-4",
     () => repliesOfReplies(alice, [carol, erin, carol, erin]),
   );
-  await knownGap(
-    "context backfills replies of replies: Mastodon reads a tstodon thread",
-    "INT-4",
-    () => repliesOfReplies(mona, [bob, tina, bob, tina]),
+  await step("context backfills replies of replies: Mastodon reads a tstodon thread", () =>
+    repliesOfReplies(mona, [bob, tina, bob, tina]),
   );
 };
