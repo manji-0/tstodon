@@ -45,6 +45,39 @@ export const ApInteractionPolicy = z.object({
 });
 export type ApInteractionPolicyJSON = z.infer<typeof ApInteractionPolicy>;
 
+/**
+ * One page of a status's `replies` (Mastodon's `RepliesController`): replies
+ * as their URIs, and the page after it. The page a status embeds has no `id`.
+ */
+export const ApRepliesPage = z.object({
+  id: ApUri.optional(),
+  type: z.literal("CollectionPage"),
+  next: ApUri.optional(),
+  partOf: ApUri,
+  items: z.array(ApUri),
+});
+export type ApRepliesPageJSON = z.infer<typeof ApRepliesPage>;
+
+/**
+ * A status's `replies` collection, as Mastodon's `NoteSerializer` embeds it:
+ * its first page holds a few of the author's own replies, and `next` leads to
+ * the replies of other accounts.
+ */
+export const ApReplies = z.object({
+  id: ApUri,
+  type: z.literal("Collection"),
+  first: ApRepliesPage,
+});
+export type ApRepliesJSON = z.infer<typeof ApReplies>;
+
+/** A status's `replies` collection as served at its URI. */
+export const ApRepliesDocument = withContext(ApReplies);
+export type ApRepliesDocumentJSON = z.infer<typeof ApRepliesDocument>;
+
+/** A page of a status's `replies` as served at its link. */
+export const ApRepliesPageDocument = withContext(ApRepliesPage.extend({ id: ApUri }));
+export type ApRepliesPageDocumentJSON = z.infer<typeof ApRepliesPageDocument>;
+
 const noteFields = {
   id: ApUri,
   attributedTo: ApUri,
@@ -57,6 +90,7 @@ const noteFields = {
   sensitive: z.boolean(),
   summary: z.string().nullable(),
   inReplyTo: ApUri.nullable(),
+  replies: ApReplies,
   attachment: z.array(ApDocument),
   /** Mentions first, then hashtags, then custom emoji, as Mastodon's `virtual_tags`. */
   tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag, ApEmoji])),

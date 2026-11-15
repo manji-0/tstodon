@@ -40,6 +40,64 @@ export const ActivityJsonSchema = z
   })
   .passthrough();
 
+const CollectionActivitySchema = z.looseObject({
+  type: z.literal(["Add", "Remove"]),
+  actor: z.string().min(1),
+});
+
+/** A featured hashtag as an `Add` or `Remove` carries it: no `id`, its page as `href`. */
+const HashtagObjectSchema = z.looseObject({
+  type: z.literal("Hashtag"),
+  href: z.string().min(1),
+});
+
+const parseCollectionActivity = schemaResult(CollectionActivitySchema);
+const parseHashtagObject = schemaResult(HashtagObjectSchema);
+
+/** Whether an activity's `object` is a `Hashtag`, as a featured hashtag's `Add` carries. */
+export const isHashtagObject = (object: unknown): boolean => parseHashtagObject(object).isOk();
+
+/**
+ * Mastodon sends `Add` and `Remove` (a pin, an unpin, a featured hashtag)
+ * without an `id` (`AddNoteSerializer`, `AddHashtagSerializer`), and a
+ * `Hashtag` object has none either. The inbox claims every activity by its
+ * id and reads every object by one, so:
+ *
+ * - an activity without an `id` is named after the signed request that
+ *   carries it, its `Date` and `Digest`: a redelivery of the same request is
+ *   then a duplicate, and a later pin of the same note, signed at another
+ *   time, is not;
+ * - a `Hashtag` object without an `id` is named by its `href`.
+ *
+ * A known limit: a pin, an unpin and a pin again of one note, all signed in
+ * the same second, send two `Add`s that are the same bytes (the body, the
+ * `Date`, and so the signature), and the second is taken for a redelivery of
+ * the first. Nothing in the request tells them apart, so telling them apart
+ * would mean applying a replayed request. The next read of the actor's
+ * `featured` collection corrects the pin.
+ */
+export const nameCollectionActivity = (
+  json: unknown,
+  date: string | undefined,
+  digest: string | undefined,
+): unknown => {
+  const activity = parseCollectionActivity(json);
+  if (activity.isErr()) {
+    return json;
+  }
+  const { actor, type, object } = activity.value;
+  const hashtag = parseHashtagObject(object);
+  return {
+    ...activity.value,
+    ...(activity.value.id === undefined && date && digest
+      ? { id: `${actor}#${type.toLowerCase()}/${date}/${digest}` }
+      : {}),
+    ...(hashtag.isOk() && hashtag.value.id === undefined
+      ? { object: { ...hashtag.value, id: hashtag.value.href } }
+      : {}),
+  };
+};
+
 export const NestedActivityObjectSchema = z
   .object({
     type: z.string().min(1),
@@ -169,6 +227,8 @@ export const PollVoteDocumentSchema = z
 warmSchemas([
   JsonObjectSchema,
   ActivityJsonSchema,
+  CollectionActivitySchema,
+  HashtagObjectSchema,
   NestedActivityObjectSchema,
   ActorPublicKeySchema,
   ActorDocumentSchema,

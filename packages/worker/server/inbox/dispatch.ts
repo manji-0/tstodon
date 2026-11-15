@@ -10,6 +10,7 @@ import { receiveAnswer } from "./answer";
 import { receiveRemoteBlock } from "./block";
 import { receiveRemoteCreate } from "./create";
 import { receiveRemoteDelete } from "./delete";
+import { receiveRemoteAdd, receiveRemoteRemove } from "./featured";
 import { receiveLocalFollow, receiveRemoteFollow } from "./follow";
 import type { InboxReceipt, InboxSigner } from "./handler";
 import { receiveLocalLike, receiveRemoteLike } from "./like";
@@ -55,6 +56,10 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
       return receiveRemoteFlag(env, identity, signer, receipt.body);
     case "QuoteRequest":
       return receiveQuoteRequest({ ...delivery, activity });
+    case "Add":
+      return receiveRemoteAdd({ ...delivery, activity });
+    case "Remove":
+      return receiveRemoteRemove({ ...delivery, activity });
     default:
       return assertNever(activity);
   }
@@ -82,6 +87,8 @@ const dispatchLocal = async (receipt: InboxReceipt, signer: LocalAccount): Dispa
     case "Move":
     case "Flag":
     case "QuoteRequest":
+    case "Add":
+    case "Remove":
       return ok(undefined);
     default:
       return assertNever(activity);

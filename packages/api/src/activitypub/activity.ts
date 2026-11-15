@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApActor } from "./actor";
 import { ApUri, withContext } from "./context";
 import {
+  ApHashtag,
   ApPollVote,
   ApQuoteAuthorization,
   ApStatusDocument,
@@ -89,14 +90,17 @@ export const ApUpdate = z.object({
 });
 export type ApUpdateJSON = z.infer<typeof ApUpdate>;
 
-/** `Delete` of a local status (a `Tombstone`) or of a quote stamp. */
+/**
+ * `Delete` of a local status (a `Tombstone`), of a quote stamp, or of the
+ * actor itself, named by its URI (`DeleteActorSerializer`).
+ */
 export const ApDelete = z.object({
   id: ApUri,
   type: z.literal("Delete"),
   actor: ApUri,
   to: audience,
   cc: audience.optional(),
-  object: z.union([ApTombstone, ApQuoteAuthorization]),
+  object: z.union([ApTombstone, ApQuoteAuthorization, ApUri]),
 });
 export type ApDeleteJSON = z.infer<typeof ApDelete>;
 
@@ -179,6 +183,34 @@ export const ApQuoteRequest = z.object({
 });
 export type ApQuoteRequestJSON = z.infer<typeof ApQuoteRequest>;
 
+/**
+ * `Add` to the actor's `featured` collection: a status by its URI, a pin
+ * (`AddNoteSerializer`), or a `Hashtag`, a featured hashtag
+ * (`AddHashtagSerializer`, which names the same collection). Mastodon sends
+ * it without an `id`; tstodon gives it one.
+ */
+export const ApAdd = z.object({
+  id: ApUri,
+  type: z.literal("Add"),
+  actor: ApUri,
+  target: ApUri,
+  object: z.union([ApUri, ApHashtag]),
+});
+export type ApAddJSON = z.infer<typeof ApAdd>;
+
+/**
+ * `Remove` from the actor's `featured` collection: a status, an unpin
+ * (`RemoveNoteSerializer`), or a `Hashtag` (`RemoveHashtagSerializer`).
+ */
+export const ApRemove = z.object({
+  id: ApUri,
+  type: z.literal("Remove"),
+  actor: ApUri,
+  target: ApUri,
+  object: z.union([ApUri, ApHashtag]),
+});
+export type ApRemoveJSON = z.infer<typeof ApRemove>;
+
 const activities = [
   ApFollow,
   ApBlock,
@@ -193,6 +225,8 @@ const activities = [
   ApMove,
   ApFlag,
   ApQuoteRequest,
+  ApAdd,
+  ApRemove,
 ] as const;
 
 /** Any activity tstodon sends, without its `@context`. */
@@ -214,6 +248,8 @@ export const ApActivityDocument = z.discriminatedUnion("type", [
   withContext(ApMove),
   withContext(ApFlag),
   withContext(ApQuoteRequest),
+  withContext(ApAdd),
+  withContext(ApRemove),
 ]);
 export type ApActivityDocumentJSON = z.infer<typeof ApActivityDocument>;
 

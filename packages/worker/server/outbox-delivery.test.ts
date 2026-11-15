@@ -67,6 +67,7 @@ const targetRow = async (job: DeliverTargetJob) => {
 const deliveryJob = async (host: string): Promise<DeliverTargetJob> => {
   const inserted = await insertOutboundActivity(env.DB, {
     signer: { kind: "InstanceActor" },
+    audience: "Inboxes",
     kind: "Flag",
     payload: { type: "Flag", id: `https://example.com/flags/${crypto.randomUUID()}` },
   });

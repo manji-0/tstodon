@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param id
  */
 export const findOutboundActivityWithSigner = $runtime.makeTypedQueryFactory(
-  "SELECT o.id, o.account_id, o.kind, o.payload_json, o.created_at,\na.username AS signer_username, a.private_key_jwk AS signer_private_key_jwk\nFROM outbound_activities o LEFT JOIN accounts a ON a.id = o.account_id\nWHERE o.id = $1",
+  "SELECT o.id, o.account_id, o.kind, o.payload_json, o.created_at,\nCOALESCE(a.username, d.username) AS signer_username,\nCOALESCE(a.private_key_jwk, d.private_key_jwk) AS signer_private_key_jwk\nFROM outbound_activities o\nLEFT JOIN accounts a ON a.id = o.account_id\nLEFT JOIN outbound_departed_signers d ON d.activity_id = o.id\nWHERE o.id = $1",
 ) as (
   id: string,
 ) => $runtime.TypedSql<
@@ -24,7 +24,7 @@ export namespace findOutboundActivityWithSigner {
     kind: string;
     payload_json: string;
     created_at: string;
-    signer_username: string;
-    signer_private_key_jwk: string;
+    signer_username: null | null;
+    signer_private_key_jwk: null | null;
   };
 }

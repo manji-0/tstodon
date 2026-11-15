@@ -22,6 +22,8 @@ const REVEAL_SITES: Readonly<Record<string, number>> = {
   "packages/worker/server/http-signature.ts": 1,
   // Stores a newly generated instance actor key, first or rotated.
   "packages/worker/server/instance-actor.ts": 2,
+  // Stores a deleted account's private key with the `Delete` of its actor, which it signs.
+  "packages/worker/server/outbox-store.ts": 1,
   // Domain and canonical-hash sign-up block checks.
   "packages/worker/server/registration-block-store.ts": 2,
   // The admin API's `Admin::Account#email`.

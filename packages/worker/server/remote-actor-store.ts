@@ -34,6 +34,8 @@ import {
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
+  listKnownRemoteInboxes as listKnownRemoteInboxesSql,
+  listOutboundFollowInboxes as listOutboundFollowInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listAcceptedRemoteFollowerActors as listAcceptedRemoteFollowerActorsSql,
   listPeerDomains as listPeerDomainsSql,
@@ -73,6 +75,8 @@ const FollowActivityIdRemoteRequestKindRow = z.object({
   remote_request_kind: z.string(),
 });
 const RemoteActorUriRow = z.object({ remote_actor_uri: z.string() });
+const InboxUriRow = z.object({ inbox_uri: z.string() });
+
 const InboxUriSharedInboxUriRow = z.object({
   inbox_uri: z.string(),
   shared_inbox_uri: z.string().nullable(),
@@ -575,6 +579,34 @@ export const listAcceptedRemoteFollowerInboxes = async (
       InboxUriSharedInboxUriRow,
     );
     return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
+  });
+
+/** The inboxes of the remote actors `accountId` follows or asked to follow. */
+export const listOutboundFollowInboxes = async (
+  db: D1Database,
+  accountId: string,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(
+      db,
+      listOutboundFollowInboxesSql(accountId),
+      InboxUriSharedInboxUriRow,
+    );
+    return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
+  });
+
+/**
+ * Up to `limit` inboxes of the remote actors this server knows, one per
+ * shared inbox, those of the most recently fetched actors first (Mastodon's
+ * `Account.inboxes`). It reads every cached actor once.
+ */
+export const listKnownRemoteInboxes = async (
+  db: D1Database,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(db, listKnownRemoteInboxesSql(limit), InboxUriRow);
+    return rows.map((row) => row.inbox_uri);
   });
 
 export const listAcceptedRemoteFollowerUris = async (

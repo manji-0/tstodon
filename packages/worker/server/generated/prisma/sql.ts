@@ -6,6 +6,8 @@ export * from "./sql/acceptOutboundFollow";
 
 export * from "./sql/accountStatsByIdsJson";
 
+export * from "./sql/addRemoteActorPin";
+
 export * from "./sql/advanceBackfillCursor";
 
 export * from "./sql/attachMediaToStatus";
@@ -156,6 +158,8 @@ export * from "./sql/deleteRemoteActor";
 
 export * from "./sql/deleteRemoteActorModeration";
 
+export * from "./sql/deleteRemoteActorPinByObjectUri";
+
 export * from "./sql/deleteRemoteActorPins";
 
 export * from "./sql/deleteRemoteAnnounce";
@@ -259,6 +263,8 @@ export * from "./sql/findCanonicalEmailBlockById";
 export * from "./sql/findCustomEmojiById";
 
 export * from "./sql/findCustomEmojiByShortcode";
+
+export * from "./sql/findDeletedAccountName";
 
 export * from "./sql/findDeliveryDomainHealth";
 
@@ -458,11 +464,15 @@ export * from "./sql/insertOauthAuthorizationCode";
 
 export * from "./sql/insertOutboundActivity";
 
+export * from "./sql/insertOutboundDepartedSigner";
+
 export * from "./sql/insertOutboundFollow";
 
 export * from "./sql/insertOutboxDeliveryFanout";
 
 export * from "./sql/insertOutboxTargetOrIgnore";
+
+export * from "./sql/insertOutboxTargets";
 
 export * from "./sql/insertPoll";
 
@@ -608,6 +618,8 @@ export * from "./sql/listHubStreamSubscriptions";
 
 export * from "./sql/listIpBlocks";
 
+export * from "./sql/listKnownRemoteInboxes";
+
 export * from "./sql/listLegacyMedia";
 
 export * from "./sql/listLinkCards";
@@ -625,6 +637,8 @@ export * from "./sql/listLocalAccountModerations";
 export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";
+
+export * from "./sql/listLocalNoteReplies";
 
 export * from "./sql/listLocalNoteTextsAfter";
 
@@ -647,6 +661,8 @@ export * from "./sql/listNotificationsAscending";
 export * from "./sql/listNotifyingFollowerIds";
 
 export * from "./sql/listOutboundActivities";
+
+export * from "./sql/listOutboundFollowInboxes";
 
 export * from "./sql/listOutboundFollowsByActor";
 
@@ -677,6 +693,8 @@ export * from "./sql/listRemoteActorHomeEntryIds";
 export * from "./sql/listRemoteActorModerations";
 
 export * from "./sql/listRemoteActorPinnedStatuses";
+
+export * from "./sql/listRemoteNoteReplies";
 
 export * from "./sql/listRemotePollVotes";
 
@@ -814,6 +832,8 @@ export * from "./sql/recordAvatarFileSize";
 
 export * from "./sql/recordCustomEmojiFileSize";
 
+export * from "./sql/recordDeletedAccountName";
+
 export * from "./sql/recordHeaderFileSize";
 
 export * from "./sql/recordMediaFileSizes";
@@ -891,6 +911,8 @@ export * from "./sql/sumAccountMediaBytes";
 export * from "./sql/sumStoredMediaBytes";
 
 export * from "./sql/summarizeNotificationGroups";
+
+export * from "./sql/trimRemoteActorPins";
 
 export * from "./sql/unfeatureTag";
 

@@ -18,6 +18,7 @@ import { findAccountById } from "../../account-store";
 import {
   type ActivityObjectRef,
   announceActivity,
+  featuredActivity,
   likeActivity,
   localNoteRef,
   undoActivity,
@@ -83,6 +84,31 @@ import { readOptionalParams } from "../../request-params";
 /** `POST /api/v1/statuses/:id/reblog` — `visibility` is the only parameter. */
 const STATUS_PIN_LIMIT = InstanceLimits.account.maxPinnedStatuses;
 
+/**
+ * Tell the author's remote followers a public or unlisted note was pinned
+ * (`Add`) or unpinned (`Remove`), as Mastodon's pins controller. A
+ * followers-only pin is not in the `featured` collection, so it is not
+ * announced either. Best effort: the pin is stored either way, and a remote
+ * reads the `featured` collection again when it refreshes the actor.
+ */
+const federateFeatured = async (
+  env: Env,
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  note: Readonly<{ id: string; visibility: Visibility }>,
+  type: "Add" | "Remove",
+): Promise<void> => {
+  if (Visibility.isRestricted(note.visibility)) {
+    return;
+  }
+  const statusId = note.id;
+  const activity = featuredActivity(type, localNoteRef(identity, author, statusId), newEntityId());
+  const enqueued = await enqueueLocalActivity(env, author.id, type, activity);
+  if (enqueued.isErr()) {
+    console.error(JSON.stringify({ kind: "PinNotFederated", activity: type, statusId }));
+  }
+};
+
 const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -133,10 +159,16 @@ const setStatusPinned = async (c: Context<{ Bindings: Env }>, pin: boolean): Pro
     if (pinned.isErr()) {
       return jsonRepositoryError(c, pinned.error.message);
     }
+    if (!already.value) {
+      await federateFeatured(c.env, identity.value, user.value, existing, "Add");
+    }
   } else {
     const unpinned = await unpinStatus(c.env.DB, user.value.id, existing.id);
     if (unpinned.isErr()) {
       return jsonRepositoryError(c, unpinned.error.message);
+    }
+    if (unpinned.value) {
+      await federateFeatured(c.env, identity.value, user.value, existing, "Remove");
     }
   }
   const latest = await findStatusById(c.env.DB, existing.id);

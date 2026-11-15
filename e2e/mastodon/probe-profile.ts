@@ -8,7 +8,6 @@ import {
   call,
   type Cast,
   eventually,
-  knownGap,
   follow,
   tstodonAdmin,
   mastodonRails,
@@ -176,38 +175,24 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
   };
   const pinnedBy = new Map<E2eUser, Status>();
 
-  // tstodon's actor has no `featured` collection, so Mastodon never sees a pin.
-  await bothWays(
-    "a pinned post shows on the remote profile",
-    alice,
-    mona,
-    async (from, to) => {
-      const sent = await post(from, { status: `pinned ${stamp}` });
-      await onHome(to, sent.uri);
-      await call(from, `/api/v1/statuses/${sent.id}/pin`, Status, { method: "POST", body: {} });
-      pinnedBy.set(from, sent);
-      await pinnedBecomes(to, from, sent.uri, true);
-    },
-    { toMastodon: "INT-15" },
-  );
+  // A pin is an `Add` to the author's `featured` collection, an unpin a `Remove`.
+  await bothWays("a pinned post shows on the remote profile", alice, mona, async (from, to) => {
+    const sent = await post(from, { status: `pinned ${stamp}` });
+    await onHome(to, sent.uri);
+    await call(from, `/api/v1/statuses/${sent.id}/pin`, Status, { method: "POST", body: {} });
+    pinnedBy.set(from, sent);
+    await pinnedBecomes(to, from, sent.uri, true);
+  });
 
-  // tstodon reads a remote `featured` collection when it backfills the
-  // profile, and does not handle the `Remove` Mastodon sends for an unpin.
-  await bothWays(
-    "an unpinned post leaves the remote profile",
-    alice,
-    mona,
-    async (from, to) => {
-      const sent = pinnedBy.get(from);
-      if (!sent) {
-        throw new StepFailure("no pinned post");
-      }
-      await pinnedBecomes(to, from, sent.uri, true);
-      await call(from, `/api/v1/statuses/${sent.id}/unpin`, Status, { method: "POST", body: {} });
-      await pinnedBecomes(to, from, sent.uri, false);
-    },
-    { toMastodon: "INT-15", toTstodon: "INT-15" },
-  );
+  await bothWays("an unpinned post leaves the remote profile", alice, mona, async (from, to) => {
+    const sent = pinnedBy.get(from);
+    if (!sent) {
+      throw new StepFailure("no pinned post");
+    }
+    await pinnedBecomes(to, from, sent.uri, true);
+    await call(from, `/api/v1/statuses/${sent.id}/unpin`, Status, { method: "POST", body: {} });
+    await pinnedBecomes(to, from, sent.uri, false);
+  });
 
   await bothWays("the locked flag reaches the other server", alice, mona, async (from, to) => {
     await update(from, (form) => form.set("locked", "true"));
@@ -247,31 +232,27 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
     );
   });
 
-  // An admin's deletion of a local account sends no `Delete` of the actor.
-  await knownGap(
-    "a deleted account is gone from the other server: tstodon → Mastodon",
-    "INT-15",
-    async () => {
-      const leaverId = await follow(mona, leaver);
-      const sent = await post(leaver, { status: `last words ${stamp}` });
-      const copy = await onHome(mona, sent.uri);
-      const operator = await tstodonAdmin(admin);
-      await call(operator, `/api/v1/admin/accounts/${leaver.id}`, Anything, { method: "DELETE" });
-      await eventually("the follow is gone", async () =>
-        (await relationship(mona, leaverId).catch(() => ({ following: false }))).following
-          ? undefined
-          : true,
-      );
-      await eventually("the account's post is gone", async () => {
-        const response = await fetch(`${mona.origin}/api/v1/statuses/${copy.id}`, {
-          headers: mona.headers,
-        });
-        await response.arrayBuffer();
-        return response.status === 404 ? true : undefined;
+  // An admin's deletion of a local account sends a `Delete` of the actor.
+  await step("a deleted account is gone from the other server: tstodon → Mastodon", async () => {
+    const leaverId = await follow(mona, leaver);
+    const sent = await post(leaver, { status: `last words ${stamp}` });
+    const copy = await onHome(mona, sent.uri);
+    const operator = await tstodonAdmin(admin);
+    await call(operator, `/api/v1/admin/accounts/${leaver.id}`, Anything, { method: "DELETE" });
+    await eventually("the follow is gone", async () =>
+      (await relationship(mona, leaverId).catch(() => ({ following: false }))).following
+        ? undefined
+        : true,
+    );
+    await eventually("the account's post is gone", async () => {
+      const response = await fetch(`${mona.origin}/api/v1/statuses/${copy.id}`, {
+        headers: mona.headers,
       });
-      await eventually("the account is no longer found", async () =>
-        (await known(mona, leaver)) ? undefined : true,
-      );
-    },
-  );
+      await response.arrayBuffer();
+      return response.status === 404 ? true : undefined;
+    });
+    await eventually("the account is no longer found", async () =>
+      (await known(mona, leaver)) ? undefined : true,
+    );
+  });
 };
