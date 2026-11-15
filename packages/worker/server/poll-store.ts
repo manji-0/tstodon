@@ -11,7 +11,6 @@ import { d1PrepareTyped, queryTyped, runTyped, type TypedSqlLike } from "./typed
 import {
   claimLocalPollExpiryNotice as claimLocalPollExpiryNoticeSql,
   claimPollUpdate as claimPollUpdateSql,
-  countPollVotes as countPollVotesSql,
   findPollById as findPollByIdSql,
   findPollByStatusId as findPollByStatusIdSql,
   findPollVoteTarget as findPollVoteTargetSql,
@@ -31,8 +30,6 @@ import {
 } from "./generated/prisma/sql";
 
 const OptionIndexRow = z.object({ option_index: z.number() });
-const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
-const IdRow = z.object({ id: z.string() });
 const NullableIdRow = z.object({ id: z.string().nullable() });
 
 export const PollOptionSchema = z.object({
@@ -192,41 +189,76 @@ export const loadNotePoll = async (
 ): Promise<PollRecord | undefined> =>
   (await findPollByStatusId(db, statusId, undefined)).unwrapOr(undefined);
 
-/** Total votes cast on a poll, across all accounts and options. */
-export const countPollVotes = async (
+/** A poll's question and settings as an edit leaves them. */
+type PollQuestion = Readonly<{
+  pollId: string;
+  options: ReadonlyArray<string>;
+  multiple: boolean;
+  expiresAt: string;
+  hideTotals: boolean;
+}>;
+
+/**
+ * Replace a poll's options and settings and remove its votes, as Mastodon's
+ * `Poll#reset_votes!`: votes for the old question do not count for the new
+ * one. The poll ends, and tells its author, at its new time.
+ */
+export const replacePollQuestion = async (
+  db: D1Database,
+  input: PollQuestion,
+): Promise<Result<void, RepositoryError>> =>
+  (
+    await runD1Batch(db, [
+      db.prepare("DELETE FROM poll_votes WHERE poll_id = ?").bind(input.pollId),
+      db.prepare("DELETE FROM remote_poll_votes WHERE poll_id = ?").bind(input.pollId),
+      d1PrepareTyped(
+        db,
+        replacePollOptionsSql(
+          input.pollId,
+          JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
+          input.multiple ? 1 : 0,
+          input.expiresAt,
+          input.hideTotals ? 1 : 0,
+        ),
+      ),
+      db.prepare("UPDATE polls SET expiry_notified_at = NULL WHERE id = ?").bind(input.pollId),
+    ])
+  ).map(() => undefined);
+
+/**
+ * Give a poll whose question stays a new end time and `hide_totals`. Its
+ * votes stay, and each voter is told again when it ends at the new time.
+ */
+export const renewPoll = async (
+  db: D1Database,
+  input: Pick<PollQuestion, "pollId" | "expiresAt" | "hideTotals">,
+): Promise<Result<void, RepositoryError>> =>
+  (
+    await runD1Batch(db, [
+      db
+        .prepare(
+          "UPDATE polls SET expires_at = ?, hide_totals = ?, expiry_notified_at = NULL WHERE id = ?",
+        )
+        .bind(input.expiresAt, input.hideTotals ? 1 : 0, input.pollId),
+      db
+        .prepare("UPDATE poll_votes SET expiry_notified_at = NULL WHERE poll_id = ?")
+        .bind(input.pollId),
+    ])
+  ).map(() => undefined);
+
+/** Remove a note's poll and its votes. */
+export const deletePoll = async (
   db: D1Database,
   pollId: string,
-): Promise<Result<number, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(db, countPollVotesSql(pollId), CountRow);
-    return Number(rows[0]?.count ?? 0);
-  });
-
-/** Replace a poll's options. Callers must first confirm no votes and no expiry. */
-export const replacePollOptions = async (
-  db: D1Database,
-  input: {
-    pollId: string;
-    options: ReadonlyArray<string>;
-    multiple: boolean;
-    expiresAt: string;
-    hideTotals: boolean;
-  },
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      replacePollOptionsSql(
-        input.pollId,
-        JSON.stringify(input.options.map((title) => ({ title, votesCount: 0 }))),
-        input.multiple ? 1 : 0,
-        input.expiresAt,
-        input.hideTotals ? 1 : 0,
-      ),
-      IdRow,
-    );
-    return rows.length > 0;
-  });
+): Promise<Result<void, RepositoryError>> =>
+  (
+    await runD1Batch(db, [
+      db.prepare("UPDATE statuses SET poll_id = NULL WHERE poll_id = ?").bind(pollId),
+      db.prepare("DELETE FROM poll_votes WHERE poll_id = ?").bind(pollId),
+      db.prepare("DELETE FROM remote_poll_votes WHERE poll_id = ?").bind(pollId),
+      db.prepare("DELETE FROM polls WHERE id = ?").bind(pollId),
+    ])
+  ).map(() => undefined);
 
 export const findPollsByStatusIds = async (
   db: D1Database,

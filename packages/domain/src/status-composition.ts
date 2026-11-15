@@ -212,7 +212,7 @@ export const LocalStatus = {
     language: draft.language,
     quote: draft.quote,
     mediaIds: draft.mediaIds,
-    poll: note.poll,
+    poll: draft.poll,
     inReplyToId: note.inReplyToId,
     createdAt: note.createdAt,
     editedAt: note.editedAt,

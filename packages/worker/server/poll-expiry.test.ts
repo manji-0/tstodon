@@ -588,16 +588,14 @@ describe("who hears a local poll's Update", () => {
     expect(await updateTargets(poll)).not.toContain(`${former.actorUri}/inbox`);
   });
 
-  it("sends no Update to a stranger who voted before the poll was edited to followers-only", async () => {
+  it("sends no Update to a stranger who voted before the poll was narrowed to followers-only", async () => {
     const poll = await pollAt("poll-reach-narrowed-author@example.com", "public");
     const stranger = await remoteActor("poll-reach-narrowed-voter", "narrowed.example");
     await remoteVote(stranger, poll, "narrowed-vote");
-    const edited = await json(`/api/v1/statuses/${poll.statusId}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", ...(await authHeaders(poll.email)) },
-      body: JSON.stringify({ status: "now followers-only", visibility: "private" }),
-    });
-    expect(edited.status).toBe(200);
+    // An edit no longer changes the visibility; a poll narrowed before that keeps its votes.
+    await env.DB.prepare("UPDATE statuses SET visibility = 'private' WHERE id = ?")
+      .bind(poll.statusId)
+      .run();
 
     expect(await updateTargets(poll)).not.toContain(`${stranger.actorUri}/inbox`);
   });

@@ -181,9 +181,10 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
 - Mastodon allows a user 1500 API requests per five minutes. A second sweep right after the first reaches that as mona. `sweep.ts` waits for the window and goes on.
 - Mastodon dates an edit to the second (`updated`). It applies an `Update` as an edit only when that date is after the one it holds (`ProcessStatusUpdateService`). With an equal date it takes the poll tallies and the quote policy and leaves the text. Two edits within one second are one edit to the other server, on Mastodon and on tstodon.
-- `PUT /api/v1/statuses/:id` carries the whole revision. A field the request leaves out is emptied: the content warning, the sensitive flag, the media, the poll. tstodon keeps a field that is left out (INT-18).
+- `PUT /api/v1/statuses/:id` carries the whole revision (`UpdateStatusService`). A field the request leaves out is emptied: the text, the content warning, the sensitive flag, the media, the poll. A content warning makes the revision sensitive. The language and the quote policy stay when the request names none, and the visibility always stays. A poll whose options or `multiple` change loses its votes; one that repeats them keeps its votes and ends `expires_in` after the edit. tstodon does the same.
 - A boost of the author's own followers-only post is an `Announce` addressed to the followers. Mastodon accepts such an `Announce` from the post's author only (`announceable?`).
 - A multiple-choice ballot is one `Create` per chosen option, delivered at once.
+- A vote Mastodon's `VoteValidator` refuses answers 422 with `Validation failed: ` and its messages, joined by `, `: `The poll has already ended`, `The chosen vote option does not exist`, `You cannot vote in your own polls`, `You have already voted on this poll`. The choices of a ballot are votes created in order, so a second choice on a single-choice poll is `already voted`. tstodon answers the same.
 - Mastodon sends a poll's tallies three minutes after a vote (`DistributePollUpdateWorker`) and when the poll ends. When a client reads a remote poll that it fetched over a minute ago, Mastodon fetches it again; tstodon does not. The shortest poll runs five minutes. The jobs that end a poll are queued once per poll, so the sweep runs them in `rails runner`.
 - Mastodon calls a short video with no sound `gifv`, its own upload too.
 - Mastodon sends the `Delete` of a post to the author's followers and to the remote accounts that interacted with it. The followers of a local account that boosted it get nothing, and keep the boost. tstodon does the same.
@@ -237,7 +238,6 @@ The 13 known gaps (`gap` in the sweep's output):
 - A tstodon note has no `replies` collection, so Mastodon cannot fetch the replies to a tstodon post it resolved (INT-4, two steps).
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
 - The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
-- An edit through tstodon's API keeps a content warning the request leaves out; Mastodon's removes it (INT-18).
 - A hashtag followed on tstodon brings no post to the home timeline (INT-14).
 - A featured hashtag does not reach the other server's profile, in either direction (INT-14, two steps).
 - A post pinned on tstodon does not show on Mastodon, and an unpin is seen in neither direction (INT-15, three steps).

@@ -259,6 +259,11 @@ export {
 } from "./remote-boost";
 export { PollBallot, type BallotPoll, type VoteError } from "./poll-ballot";
 export {
+  StatusRevision,
+  type StatusRevisionContent,
+  type StatusRevisionRequest,
+} from "./status-revision";
+export {
   RemotePoll,
   RemotePollSchema,
   type RemotePoll as RemotePollValue,

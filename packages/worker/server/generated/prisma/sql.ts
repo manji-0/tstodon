@@ -64,8 +64,6 @@ export * from "./sql/countNotificationRequests";
 
 export * from "./sql/countPinnedStatuses";
 
-export * from "./sql/countPollVotes";
-
 export * from "./sql/countSearchAccounts";
 
 export * from "./sql/countStatuses";
