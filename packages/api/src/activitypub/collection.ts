@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApAnnounce, ApCreate } from "./activity";
 import { ApContext, ApUri } from "./context";
+import { ApHashtag } from "./note";
 
 /**
  * An `OrderedCollection` with its items inline. tstodon serves its
@@ -27,6 +28,20 @@ export type ApActorCollectionJSON = z.infer<typeof ApActorCollection>;
  */
 export const ApFeaturedCollection = orderedCollection(ApUri);
 export type ApFeaturedCollectionJSON = z.infer<typeof ApFeaturedCollection>;
+
+/**
+ * A local account's `featuredTags` collection: its featured hashtags, as
+ * Mastodon's `CollectionsController` serves `tags` (an unordered collection
+ * of `Hashtag` objects).
+ */
+export const ApFeaturedTagsCollection = z.object({
+  "@context": ApContext,
+  id: ApUri,
+  type: z.literal("Collection"),
+  totalItems: z.number().int().nonnegative(),
+  items: z.array(ApHashtag),
+});
+export type ApFeaturedTagsCollectionJSON = z.infer<typeof ApFeaturedTagsCollection>;
 
 /**
  * A local account's outbox: its public and unlisted statuses and boosts, as

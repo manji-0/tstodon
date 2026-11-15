@@ -1,16 +1,22 @@
 import { OutboxBackfill, type RemoteActor } from "@tstodon/domain";
 import { err, ok } from "neverthrow";
-import { refId } from "../activitypub-wire";
+import { isHashtagObject, refId } from "../activitypub-wire";
 import { addRemoteActorPin, removeRemoteActorPin } from "../remote-actor-pin-store";
 import { persistRemoteObject } from "../remote-status-persist";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
 /**
- * Whether the activity's `target` is the signer's own `featured` collection,
- * as Mastodon's `Add` and `Remove` check. Any other collection is ignored.
+ * Whether the activity pins or unpins a note: its `target` is the signer's
+ * own `featured` collection, as Mastodon's `Add` and `Remove` check, and its
+ * object is not a `Hashtag`. Mastodon sends a featured hashtag to the same
+ * collection; tstodon keeps no remote featured hashtags yet (INT-14), so
+ * that one is accepted and dropped, without a fetch. Any other collection is
+ * ignored.
  */
-const targetsFeatured = (signer: RemoteActor, target: unknown): boolean =>
-  signer.featuredUri !== undefined && refId(target) === signer.featuredUri;
+const pinsNote = (signer: RemoteActor, target: unknown, object: unknown): boolean =>
+  signer.featuredUri !== undefined &&
+  refId(target) === signer.featuredUri &&
+  !isHashtagObject(object);
 
 /**
  * A remote actor pinned a note (Mastodon's `Add#add_featured`): the note is
@@ -28,7 +34,7 @@ export const receiveRemoteAdd: InboxHandler<RemoteDelivery<"Add">> = async ({
   fetchSigner,
 }) => {
   if (
-    !targetsFeatured(signer, received.target) ||
+    !pinsNote(signer, received.target, received.object) ||
     !OutboxBackfill.onActorHost(activity.object, signer.actorUri)
   ) {
     return ok(undefined);
@@ -56,6 +62,6 @@ export const receiveRemoteRemove: InboxHandler<RemoteDelivery<"Remove">> = async
   activity,
   received,
 }) =>
-  targetsFeatured(signer, received.target)
+  pinsNote(signer, received.target, received.object)
     ? removeRemoteActorPin(env.DB, signer.actorUri, activity.object)
     : ok(undefined);

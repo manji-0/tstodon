@@ -52,6 +52,8 @@ export const ApActor = z.object({
   following: ApUri,
   /** The pinned statuses, an {@link ApFeaturedCollection}. */
   featured: ApUri,
+  /** The featured hashtags, an {@link ApFeaturedTagsCollection}. */
+  featuredTags: ApUri,
   endpoints: z.object({ sharedInbox: ApUri }),
   url: ApUri,
   manuallyApprovesFollowers: z.boolean(),

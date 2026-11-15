@@ -11,6 +11,7 @@ import {
   type ApActivityDocumentOf,
   type ApActorDocumentJSON,
   type ApEmojiJSON,
+  type ApHashtagJSON,
   type ApImageJSON,
   PUBLIC_COLLECTION,
   type ApQuestionJSON,
@@ -53,6 +54,7 @@ const ACTOR_CONTEXT_TERMS = {
   manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
   toot: "http://joinmastodon.org/ns#",
   featured: { "@id": "toot:featured", "@type": "@id" },
+  featuredTags: { "@id": "toot:featuredTags", "@type": "@id" },
   alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
   movedTo: { "@id": "as:movedTo", "@type": "@id" },
   schema: "http://schema.org#",
@@ -88,6 +90,17 @@ const actorImage = (
 /** A local actor's `featured` collection (its pinned statuses), as Mastodon names it. */
 export const featuredCollectionUri = (actorUri: string): string =>
   `${actorUri}/collections/featured`;
+
+/** A local actor's `featuredTags` collection (its featured hashtags), as Mastodon names it. */
+export const featuredTagsCollectionUri = (actorUri: string): string =>
+  `${actorUri}/collections/tags`;
+
+/** A hashtag as ActivityPub names it: its page on this instance and `#name`. */
+export const hashtagObject = (identity: InstanceIdentity, name: string): ApHashtagJSON => ({
+  type: "Hashtag",
+  href: tagUrl(identity, name),
+  name: `#${name}`,
+});
 
 /** Mastodon publishes the day an account joined, not the moment. */
 const publishedDay = (createdAt: string): string => `${createdAt.slice(0, 10)}T00:00:00Z`;
@@ -127,6 +140,7 @@ export const actorDocument = (
     followers: `${id}/followers`,
     following: `${id}/following`,
     featured: featuredCollectionUri(id),
+    featuredTags: featuredTagsCollectionUri(id),
     endpoints: {
       sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
     },
@@ -329,6 +343,26 @@ export const featuredActivity = (
   object: note.uri,
 });
 
+/**
+ * The `Add` or `Remove` of a featured hashtag, as Mastodon's
+ * `AddHashtagSerializer` and `RemoveHashtagSerializer`: the `target` is the
+ * `featured` collection, and the receiver tells a hashtag from a pin by the
+ * object's type. It carries no addressing, so it goes to followers.
+ */
+export const featuredTagActivity = (
+  type: "Add" | "Remove",
+  actorUri: string,
+  hashtag: ApHashtagJSON,
+  activityKey: string,
+): ApActivityDocumentOf<"Add" | "Remove"> => ({
+  "@context": [ACTIVITY_STREAMS, { Hashtag: "as:Hashtag" }],
+  id: `${actorUri}#${type === "Add" ? "adds" : "removes"}/${activityKey}`,
+  type,
+  actor: actorUri,
+  target: featuredCollectionUri(actorUri),
+  object: hashtag,
+});
+
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;
 
@@ -528,11 +562,7 @@ export const noteDocument = (
         href: mention.href,
         name: mention.name,
       })),
-      ...hashtags.map((name) => ({
-        type: "Hashtag" as const,
-        href: tagUrl(identity, name),
-        name: `#${name}`,
-      })),
+      ...hashtags.map((name) => hashtagObject(identity, name)),
       ...emojis.map(emojiTag),
     ],
     interactionPolicy: { canQuote: { automaticApproval } },

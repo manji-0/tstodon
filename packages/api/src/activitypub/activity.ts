@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApActor } from "./actor";
 import { ApUri, withContext } from "./context";
 import {
+  ApHashtag,
   ApPollVote,
   ApQuoteAuthorization,
   ApStatusDocument,
@@ -183,25 +184,30 @@ export const ApQuoteRequest = z.object({
 export type ApQuoteRequestJSON = z.infer<typeof ApQuoteRequest>;
 
 /**
- * `Add` of a status to the actor's `featured` collection, a pin
- * (`AddNoteSerializer`). Mastodon sends it without an `id`; tstodon gives it one.
+ * `Add` to the actor's `featured` collection: a status by its URI, a pin
+ * (`AddNoteSerializer`), or a `Hashtag`, a featured hashtag
+ * (`AddHashtagSerializer`, which names the same collection). Mastodon sends
+ * it without an `id`; tstodon gives it one.
  */
 export const ApAdd = z.object({
   id: ApUri,
   type: z.literal("Add"),
   actor: ApUri,
   target: ApUri,
-  object: ApUri,
+  object: z.union([ApUri, ApHashtag]),
 });
 export type ApAddJSON = z.infer<typeof ApAdd>;
 
-/** `Remove` of a status from the actor's `featured` collection, an unpin (`RemoveNoteSerializer`). */
+/**
+ * `Remove` from the actor's `featured` collection: a status, an unpin
+ * (`RemoveNoteSerializer`), or a `Hashtag` (`RemoveHashtagSerializer`).
+ */
 export const ApRemove = z.object({
   id: ApUri,
   type: z.literal("Remove"),
   actor: ApUri,
   target: ApUri,
-  object: ApUri,
+  object: z.union([ApUri, ApHashtag]),
 });
 export type ApRemoveJSON = z.infer<typeof ApRemove>;
 

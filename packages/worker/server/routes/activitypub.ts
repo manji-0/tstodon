@@ -3,6 +3,7 @@ import {
   ACTIVITY_STREAMS,
   type ApActorCollectionJSON,
   type ApFeaturedCollectionJSON,
+  type ApFeaturedTagsCollectionJSON,
   type ApOutboxJSON,
   type ApRepliesDocumentJSON,
   type ApRepliesPageDocumentJSON,
@@ -29,6 +30,8 @@ import { isActorDomainBlocked } from "../domain-block-store";
 import {
   activityPayloadFromJson,
   featuredCollectionUri,
+  featuredTagsCollectionUri,
+  hashtagObject,
   localNoteRef,
   noteDocument,
   parseLocalActorUsername,
@@ -82,6 +85,7 @@ import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
 import { findStatusById } from "../status-store";
 import { listPinnedStatuses } from "../status-pin-store";
+import { listFeaturedTags } from "../tag-store";
 import { RemoteAccountId } from "../remote-account-id";
 import {
   instanceActorDocument,
@@ -575,6 +579,51 @@ export const getUsersByUsernameCollectionsFeatured = async (
     orderedItems: items,
   };
   return c.json(featured, 200, jsonLd);
+};
+
+/**
+ * The account's featured hashtags, as Mastodon's `CollectionsController`
+ * serves `tags`. In secure mode a signed fetcher the account blocks, or whose
+ * domain it blocks, reads an empty collection.
+ */
+export const getUsersByUsernameCollectionsTags = async (
+  c: Context<{ Bindings: Env }, "/users/:username/collections/tags">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const hidden =
+    access.kind === "Signed"
+      ? await blocksFetcher(c.env.DB, account.value, access.actor.actorUri)
+      : ok(false);
+  if (hidden.isErr()) {
+    return jsonRepositoryError(c, hidden.error.message);
+  }
+  const names = hidden.value ? ok([]) : await listFeaturedTags(c.env.DB, account.value.id);
+  if (names.isErr()) {
+    return jsonRepositoryError(c, names.error.message);
+  }
+  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  const tags: ApFeaturedTagsCollectionJSON = {
+    "@context": [ACTIVITY_STREAMS, { Hashtag: "as:Hashtag" }],
+    id: featuredTagsCollectionUri(actor),
+    type: "Collection",
+    totalItems: names.value.length,
+    items: names.value.map((name) => hashtagObject(identity.value, name)),
+  };
+  return c.json(tags, 200, jsonLd);
 };
 
 /**

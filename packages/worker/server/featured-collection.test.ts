@@ -276,7 +276,8 @@ describe("a remote actor's Add and Remove", () => {
       globalThis.fetch = original;
     }
 
-    expect(asked).toEqual([note.id]);
+    // Other deliveries of this isolate go through the stub too: only this server's count.
+    expect(asked.filter((url) => new URL(url).host === "pins.example")).toEqual([note.id]);
     expect(await pinnedUris(remote)).toEqual([note.id]);
   });
 
