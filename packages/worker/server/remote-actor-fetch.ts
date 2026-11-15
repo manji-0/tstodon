@@ -236,6 +236,7 @@ export const remoteActorFromDocument = (
       : {}),
     outboxUri: linkUrl(document.value.outbox) ?? undefined,
     featuredUri: linkUrl(document.value.featured) ?? undefined,
+    featuredTagsUri: linkUrl(document.value.featuredTags) ?? undefined,
     followersUri: ownCollectionUri(document.value.followers, parsedUri),
     followingUri: ownCollectionUri(document.value.following, parsedUri),
   });

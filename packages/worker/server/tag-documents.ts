@@ -37,17 +37,25 @@ const nonEmptyHistory = (
     : [{ day: "0", uses: "0", accounts: "0" }];
 };
 
-/** Mastodon's FeaturedTag: `statuses_count` is a string on the wire. */
+/**
+ * Mastodon's `REST::FeaturedTagSerializer`: `statuses_count` is a string on
+ * the wire, `last_status_at` a date, and the URL the account's tagged posts
+ * on this server (`acct` is `user` for a local account, `user@domain` for a
+ * remote one). `tagName` is the normalized tag, `name` the spelling shown.
+ */
 export const mastodonFeaturedTag = (
   identity: InstanceIdentity,
-  username: string,
-  name: string,
-  statusesCount: number,
-  lastStatusAt: string | null,
+  tag: Readonly<{
+    acct: string;
+    tagName: string;
+    name: string;
+    statusesCount: number;
+    lastStatusAt: string | null;
+  }>,
 ): ApiFeaturedTagJSON => ({
-  id: name,
-  name,
-  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${username}/tagged/${encodeURIComponent(name)}`,
-  statuses_count: String(statusesCount),
-  last_status_at: lastStatusAt,
+  id: tag.tagName,
+  name: tag.name,
+  url: `${identity.publicOrigin.replace(/\/$/, "")}/@${tag.acct}/tagged/${encodeURIComponent(tag.tagName)}`,
+  statuses_count: String(tag.statusesCount),
+  last_status_at: tag.lastStatusAt?.slice(0, 10) ?? null,
 });

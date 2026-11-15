@@ -127,6 +127,5 @@ export const hashtagScenarios = async ({ stamp, mona, carol }: Cast): Promise<vo
         await call(from, `/api/v1/featured_tags/${featured.id}`, Anything, { method: "DELETE" });
       }
     },
-    { toTstodon: "INT-14" },
   );
 };
