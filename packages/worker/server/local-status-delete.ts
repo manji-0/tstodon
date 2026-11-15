@@ -1,11 +1,19 @@
-import type { InstanceIdentity, LocalAccount, LocalStatusValue } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  type LocalAccount,
+  type LocalStatusValue,
+  RemoteActor,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { noteDeleteActivity, noteDocument } from "./activitypub";
 import type { RepositoryError } from "./d1";
-import { enqueueLocalActivity } from "./delivery";
+import { enqueueActivityToInboxes, enqueueLocalActivity } from "./delivery";
+import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
+import { statusDeleteReach } from "./status-reach";
+import { statusReachOperations } from "./status-reach-operations";
 import { announceRemovedBoosts, startHomeFanOut } from "./home-fan-out";
 import { loadNoteMentions } from "./mention-resolve";
-import { reachesRemoteInboxes } from "./outbox-job";
+import { outboundAudience, reachesRemoteInboxes } from "./outbox-job";
 import { startPublicFanOut } from "./public-fan-out";
 import { loadNoteReply } from "./reply-target";
 import { deleteStatus, type StatusMediaOnDelete } from "./status-store";
@@ -16,7 +24,9 @@ import { publishToAccount } from "./stream-publish";
 /**
  * Delete one of the account's own statuses and tell everyone: the account's
  * streams, the home and public timelines, and the remote servers a `Delete`
- * reaches. `false` means no status of the account had that id. Used by
+ * reaches: the author's followers and those it addresses, then the rest of
+ * {@link statusDeleteReach} as a second activity. `false` means no status
+ * of the account had that id. Used by
  * `DELETE /api/v1/statuses/:id`, the automated post deletion and moderation.
  * With `media: "Delete"` the status's media rows go with it and their
  * objects are removed from the bucket; `Keep` leaves the media unattached
@@ -42,6 +52,10 @@ export const deleteLocalStatus = async (
           }),
         )
       : undefined;
+  // Read before the boosts and interactions go with the status.
+  const reach = tombstone
+    ? await statusDeleteReach(statusReachOperations(env, identity), { kind: "Local", status })
+    : ok([]);
   const deleted = await deleteStatus(env.DB, status.id, account.id, media);
   if (deleted.isErr()) {
     return err(deleted.error);
@@ -66,6 +80,31 @@ export const deleteLocalStatus = async (
     const enqueued = await enqueueLocalActivity(env, account.id, "Delete", tombstone);
     if (enqueued.isErr()) {
       console.error(JSON.stringify({ kind: "StatusDeleteNotFederated", statusId: status.id }));
+    }
+  }
+  if (tombstone) {
+    // The `Delete` above reached the followers and the addressed actors.
+    // A lookup that fails only sends it to them twice.
+    const followers = await listAcceptedRemoteFollowerInboxes(env.DB, account.id);
+    const addressed = await findRemoteActorsByUris(
+      env.DB,
+      outboundAudience(JSON.stringify(tombstone), identity.domain).actorUris,
+    );
+    const sent = new Set([
+      ...followers.unwrapOr([]),
+      ...[...(addressed.isOk() ? addressed.value.values() : [])].map(RemoteActor.deliveryInbox),
+    ]);
+    const enqueued = reach.isErr()
+      ? reach
+      : await enqueueActivityToInboxes(
+          env,
+          account.id,
+          "Delete",
+          tombstone,
+          reach.value.filter((inbox) => !sent.has(inbox)),
+        );
+    if (enqueued.isErr()) {
+      console.error(JSON.stringify({ kind: "StatusDeleteReachNotFederated", statusId: status.id }));
     }
   }
   return ok(true);

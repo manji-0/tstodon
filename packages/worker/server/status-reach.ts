@@ -80,6 +80,37 @@ export const statusReachInboxes = async (
   return ok([...new Set(inboxes)]);
 };
 
+export type StatusDeleteReachOperations = StatusReachOperations &
+  Readonly<{ listLocalBoosterAccountIds: ListLocalBoosterAccountIds }>;
+
+/**
+ * Where the `Delete` of a local status goes: its reach
+ * ({@link statusReachInboxes}, Mastodon's `RemoveStatusService#remove_from_remote_reach`)
+ * and, for a public or unlisted status, the remote followers of the local
+ * accounts that boosted it. Mastodon forwards the `Delete` of a remote status
+ * to those followers (`ActivityPub::Forwarder`) but sends nothing to them for
+ * a local one, so they keep the boost; tstodon sends the author's `Delete`.
+ * Read before the boosts and interactions are deleted with the status.
+ */
+export const statusDeleteReach = async (
+  operations: StatusDeleteReachOperations,
+  status: ThreadStatus,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  const reach = await statusReachInboxes(operations, status);
+  if (reach.isErr() || !distributable(status)) {
+    return reach;
+  }
+  const boosters = await operations.listLocalBoosterAccountIds(status);
+  if (boosters.isErr()) {
+    return err(boosters.error);
+  }
+  const followers = await followerInboxes(operations.listRemoteFollowerInboxes, boosters.value);
+  if (followers.isErr()) {
+    return err(followers.error);
+  }
+  return ok([...new Set([...reach.value, ...followers.value])]);
+};
+
 /**
  * Where the `Delete` of a quote's stamp goes, as Mastodon's
  * `RevokeQuoteService`: the reach of the quoting and the quoted status. A
