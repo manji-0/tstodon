@@ -18,6 +18,7 @@ import {
   type LocalStatus as LocalStatusValue,
   RemoteActor,
   RepliesPage,
+  Visibility,
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
@@ -536,9 +537,11 @@ export const getUsersByUsernameFollowing = async (
 };
 
 /**
- * The account's pinned statuses, newest pin first, as Mastodon's
- * `CollectionsController` serves `featured`. In secure mode a signed fetcher
- * the account blocks, or whose domain it blocks, reads an empty collection.
+ * The account's pinned public and unlisted statuses, newest pin first, as
+ * Mastodon's `CollectionsController` serves `featured`. A followers-only pin
+ * is left out: the collection is read without the audience check a note
+ * gets, and its URI is not for everyone. In secure mode a signed fetcher the
+ * account blocks, or whose domain it blocks, reads an empty collection.
  */
 export const getUsersByUsernameCollectionsFeatured = async (
   c: Context<{ Bindings: Env }, "/users/:username/collections/featured">,
@@ -570,7 +573,9 @@ export const getUsersByUsernameCollectionsFeatured = async (
   if (pinned.isErr()) {
     return jsonRepositoryError(c, pinned.error.message);
   }
-  const items = pinned.value.map((status) => `${actor}/statuses/${status.id}`);
+  const items = pinned.value
+    .filter((status) => !Visibility.isRestricted(status.visibility))
+    .map((status) => `${actor}/statuses/${status.id}`);
   const featured: ApFeaturedCollectionJSON = {
     "@context": ACTIVITY_STREAMS,
     id: featuredCollectionUri(actor),

@@ -98,6 +98,28 @@ describe("a local account's featured collection", () => {
     expect((await featured(account.username)).orderedItems).toEqual([first.uri]);
   });
 
+  it("leaves a followers-only pin out of the collection, and announces neither its pin nor its unpin", async () => {
+    const email = "featured-private@example.com";
+    const account = await signedInAccount(email);
+    const open = await api(email, "/api/v1/statuses", { status: "a public pin" });
+    const restricted = await api(email, "/api/v1/statuses", {
+      status: "a followers-only pin",
+      visibility: "private",
+    });
+
+    await api(email, `/api/v1/statuses/${open.id}/pin`);
+    await api(email, `/api/v1/statuses/${restricted.id}/pin`);
+    expect(await featured(account.username)).toMatchObject({
+      totalItems: 1,
+      orderedItems: [open.uri],
+    });
+    await api(email, `/api/v1/statuses/${restricted.id}/unpin`);
+
+    expect((await queuedFeatured(account.id)).map((activity) => activity.object)).toEqual([
+      open.uri,
+    ]);
+  });
+
   it("answers 404 for an account that does not exist", async () => {
     const response = await SELF.fetch(`${ORIGIN}/users/featured-nobody/collections/featured`);
     expect(response.status).toBe(404);
