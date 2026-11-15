@@ -187,7 +187,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - A vote Mastodon's `VoteValidator` refuses answers 422 with `Validation failed: ` and its messages, joined by `, `: `The poll has already ended`, `The chosen vote option does not exist`, `You cannot vote in your own polls`, `You have already voted on this poll`. The choices of a ballot are votes created in order, so a second choice on a single-choice poll is `already voted`. tstodon answers the same.
 - Mastodon sends a poll's tallies three minutes after a vote (`DistributePollUpdateWorker`) and when the poll ends. When a client reads a remote poll that it fetched over a minute ago, Mastodon fetches it again; tstodon does not. The shortest poll runs five minutes. The jobs that end a poll are queued once per poll, so the sweep runs them in `rails runner`.
 - Mastodon calls a short video with no sound `gifv`, its own upload too.
-- Mastodon sends the `Delete` of a post to the author's followers and to the remote accounts that interacted with it. The followers of a local account that boosted it get nothing, and keep the boost. tstodon does the same.
+- Mastodon sends the `Delete` of a post to the author's followers and to the remote accounts that interacted with it (`StatusReachFinder`). The followers of a local account that boosted it get nothing, and keep the boost (`RemoveStatusService#remove_reblogs`). For a remote post, Mastodon forwards the signed `Delete` to those followers (`ActivityPub::Forwarder`). tstodon sends a deleted post's `Delete` to the same reach and to the remote followers of its local boosters; it does not forward a remote post's `Delete` (INT-9).
 - Mastodon sends `Add` and `Remove` for a pinned post, and reads `featured` and `featuredTags` when it processes the actor. Both activities come without an `id`. The object of a pin is the note's URI. A featured hashtag is an `Add` to the same `featured` collection whose object is a `Hashtag` (`type`, `href`, `name`, no `id`), and Mastodon tells the two apart by the object's type.
 - Mastodon sends the `Delete` of a deleted account's actor to every inbox it knows, and keeps the account's key to sign it. It verifies a `Delete` it receives with the key it has cached for that actor.
 - A forwarded report (`Flag`) comes from the instance actor, not from the reporter.
@@ -197,7 +197,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 217 of 217 steps with both servers open. Before the INT-2 and INT-18 gaps were closed, it passed 214 of 214 with tstodon in secure mode and 215 of 215 with both in secure mode. Four more steps are known gaps.
+The sweep passes 221 of 221 steps with both servers open and 223 of 223 with both in secure mode, with no known gap. Before the INT-2 and INT-18 gaps were closed, it passed 214 of 214 with tstodon in secure mode and 215 of 215 with both in secure mode.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
@@ -242,12 +242,12 @@ Seven more were closed after that, each with a Worker test, and their steps are 
 - Mastodon fetches the replies to a tstodon post it resolved, and the replies to those (INT-4, two steps; `server/note-replies.test.ts`). A tstodon note carries a `replies` collection in Mastodon's shape. The sweep dates Mastodon's copy of the post back first ([The Mastodon users](#the-mastodon-users)).
 - A hashtag featured on tstodon shows on the Mastodon profile (INT-14; `server/featured-tags-federation.test.ts`). tstodon's actor names a `featuredTags` collection, and featuring a hashtag sends an `Add`, unfeaturing a `Remove`.
 
-The 4 known gaps (`gap` in the sweep's output):
+The last four known gaps were closed after that, each with a Worker test, and their steps are plain steps now. No step is a known gap.
 
-- tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
-- The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
-- A hashtag followed on tstodon brings no post to the home timeline (INT-14).
-- A hashtag featured on Mastodon does not show on the tstodon profile: tstodon accepts the `Add` and keeps no remote featured hashtags (INT-14).
+- tstodon fetches the replies to the replies of a remote post it opened, a level of the reply tree per queue job, up to Mastodon's 1000 replies and 500 pages (INT-4; `server/remote-thread-backfill.test.ts`).
+- The delete of a tstodon post that another tstodon account boosted reaches that booster's followers on Mastodon, who lose the boost (INT-9; `server/status-delete-federation.test.ts`). Mastodon does not send it for its own posts; tstodon goes beyond Mastodon here ([what a Mastodon peer does differently](#what-a-mastodon-peer-does-differently-from-a-tstodon-peer)).
+- A hashtag followed on tstodon brings public posts to the home timeline (INT-14; `server/followed-tag-home.test.ts`).
+- A hashtag featured on Mastodon shows on the tstodon profile, from the `Add` and from the actor's `featuredTags` collection (INT-14; `server/remote-featured-tags.test.ts`).
 
 The scenarios still to automate are the `INT-*` rows in [open TODOs](../../docs/planning/open-todos.md#interop-with-real-mastodon-open).
 
