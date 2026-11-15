@@ -6,7 +6,11 @@ import { actorDeleteActivity } from "./activitypub";
 import { type RepositoryError, toRepositoryError } from "./d1";
 import { enqueueDepartedAccountActivity } from "./delivery";
 import { newEntityId } from "./ids";
-import { listAcceptedRemoteFollowerInboxes, listOutboundFollowInboxes } from "./remote-actor-store";
+import {
+  listAcceptedRemoteFollowerInboxes,
+  listKnownRemoteInboxes,
+  listOutboundFollowInboxes,
+} from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 
 /*
@@ -17,6 +21,25 @@ import { parseInstanceIdentity } from "./runtime-config";
  * queued only after the deletion committed: a deletion that fails part way
  * tells no remote server anything, and can be tried again.
  */
+
+/**
+ * The most inboxes one account's `Delete` goes to. Mastodon sends it to
+ * every inbox it knows; here the targets are stored in the request that
+ * deletes the account (100 a D1 batch) and delivered by the delivery
+ * Workflow ten a step, so the number is capped.
+ */
+export const ACTOR_DELETE_INBOX_LIMIT = 1000;
+
+/**
+ * The inboxes a `Delete` goes to, at most `limit`: `related` first (the
+ * account's followers and the accounts it follows, which hold a follow that
+ * must end), then the `known` inboxes not among them.
+ */
+export const actorDeleteInboxes = (
+  related: ReadonlyArray<string>,
+  known: ReadonlyArray<string>,
+  limit: number,
+): string[] => [...new Set([...related, ...known])].slice(0, limit);
 
 /** What is left of a local account to announce its deletion with. */
 export type DepartingActor = Readonly<{
@@ -29,8 +52,14 @@ export type DepartingActor = Readonly<{
 
 /**
  * Read, while the account's rows still exist, what its `Delete` needs: its
- * name, its key, and the inboxes of its remote followers and of the remote
- * accounts it follows. `undefined` when there is no such account.
+ * name, its key, and the inboxes to tell. As Mastodon's
+ * `DeleteAccountService` these are the inboxes of its remote followers and,
+ * to be sure a server that holds a post, a mention or a boost of it hears
+ * too, every other inbox this server knows, up to
+ * {@link ACTOR_DELETE_INBOX_LIMIT}. A server that never heard of the account
+ * asks for its actor and reads 410. An account no remote follows and that
+ * follows no remote sends nothing: it never federated. `undefined` when
+ * there is no such account.
  */
 export const readDepartingActor = async (
   env: Env,
@@ -57,11 +86,17 @@ export const readDepartingActor = async (
   if (followed.isErr()) {
     return err(followed.error);
   }
+  const related = [...followers.value, ...followed.value];
+  const known =
+    related.length === 0 ? ok([]) : await listKnownRemoteInboxes(env.DB, ACTOR_DELETE_INBOX_LIMIT);
+  if (known.isErr()) {
+    return err(known.error);
+  }
   return ok({
     actorUri: InstanceIdentity.actorUrl(identity.value, account.value.username),
     username: account.value.username,
     privateKeyJwk: account.value.privateKeyJwk,
-    inboxes: [...new Set([...followers.value, ...followed.value])],
+    inboxes: actorDeleteInboxes(related, known.value, ACTOR_DELETE_INBOX_LIMIT),
   });
 };
 

@@ -620,6 +620,8 @@ export * from "./sql/listHubStreamSubscriptions";
 
 export * from "./sql/listIpBlocks";
 
+export * from "./sql/listKnownRemoteInboxes";
+
 export * from "./sql/listLegacyMedia";
 
 export * from "./sql/listLinkCards";

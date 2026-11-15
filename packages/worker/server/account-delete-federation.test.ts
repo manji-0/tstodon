@@ -7,6 +7,7 @@ import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliverTarget } from "../test/delivery-fixture";
 import { PNG_40X30 } from "../test/image-fixtures";
+import { actorDeleteInboxes } from "./actor-delete";
 import { purgeAccount } from "./admin-actions";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
@@ -101,6 +102,8 @@ describe("deleting a local account", () => {
       sharedInboxUri: sharedInbox,
     });
     const followed = await remoteActor("followed", "followed.example");
+    // Known to this server, with no tie to the account: it may hold a boost or a mention.
+    const bystander = await remoteActor("bystander", "bystanders.example");
     await followedBy(leaver.id, fan.actorUri);
     await followedBy(leaver.id, otherFan.actorUri);
     const follow = await SELF.fetch(
@@ -142,7 +145,9 @@ describe("deleting a local account", () => {
       to: [PUBLIC_COLLECTION],
       object: actorUri,
     });
-    expect(queued.inboxes).toEqual([sharedInbox, `${followed.actorUri}/inbox`].toSorted());
+    expect(queued.inboxes).toEqual(
+      [sharedInbox, `${followed.actorUri}/inbox`, `${bystander.actorUri}/inbox`].toSorted(),
+    );
 
     const sent = await deliverTarget(queued.id, sharedInbox);
     const body = await sent.clone().text();
@@ -153,9 +158,11 @@ describe("deleting a local account", () => {
 
     // The key is kept while an inbox is still to be attempted, and no longer.
     expect(await keepsSignerKey(queued.id)).toBe(true);
-    expect(
-      (await persistOutboxTarget(env.DB, queued.id, sharedInbox, { kind: "Delivered" })).isOk(),
-    ).toBe(true);
+    for (const inbox of [sharedInbox, `${bystander.actorUri}/inbox`]) {
+      expect(
+        (await persistOutboxTarget(env.DB, queued.id, inbox, { kind: "Delivered" })).isOk(),
+      ).toBe(true);
+    }
     expect(await keepsSignerKey(queued.id)).toBe(true);
     expect(
       (
@@ -204,7 +211,8 @@ describe("deleting a local account", () => {
 
     expect((await purgeAccount(env, leaver.id)).isOk()).toBe(true);
     const deletes = await queuedActorDeletes(actorUri);
-    expect(deletes.map((queued) => queued.inboxes)).toEqual([[`${fan.actorUri}/inbox`]]);
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]?.inboxes).toContain(`${fan.actorUri}/inbox`);
   });
 
   it("gives the Delete of a username that is registered and deleted again another id", async () => {
@@ -222,12 +230,23 @@ describe("deleting a local account", () => {
       await followedBy(leaver.id, fan.actorUri);
       expect(await adminDelete(leaver.id)).toBe(200);
       const deletes = await queuedActorDeletes(actorUri);
-      expect(deletes.at(-1)?.inboxes).toEqual([inbox]);
+      expect(deletes.at(-1)?.inboxes).toContain(inbox);
       ids.push(deletes.at(-1)?.activity.id ?? "");
       // The fixture's sign-in row, which it makes itself and a purge leaves.
       await env.DB.prepare('DELETE FROM "user" WHERE email = ?').bind(email).run();
     }
     expect(new Set(ids).size).toBe(2);
+  });
+
+  it("tells the account's followers and follows first when there are more inboxes than the cap", () => {
+    const related = ["https://a.example/inbox", "https://b.example/inbox"];
+    const known = ["https://c.example/inbox", "https://a.example/inbox", "https://d.example/inbox"];
+    expect(actorDeleteInboxes(related, known, 3)).toEqual([
+      "https://a.example/inbox",
+      "https://b.example/inbox",
+      "https://c.example/inbox",
+    ]);
+    expect(actorDeleteInboxes(related, known, 1)).toEqual(["https://a.example/inbox"]);
   });
 
   it("sends nothing for an account no remote server knows", async () => {
