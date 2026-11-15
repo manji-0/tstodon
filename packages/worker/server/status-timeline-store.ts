@@ -8,6 +8,7 @@ import {
   FEED_LANGUAGES_SQL,
   FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalReblogsSql,
+  followedTagNoteIdsSql,
   reblogOfShownAuthorSql,
 } from "./followed-feed";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -74,10 +75,11 @@ export const listHomeStatuses = async (
     const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(accountId, now);
+    const tagged = followedTagNoteIdsSql("Local", accountId, cursor, limit);
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         ))
+         ) OR id IN ${tagged.sql})
          ${suppressed}
          ${reblogs.sql}
          ${FEED_LANGUAGES_SQL}
@@ -87,6 +89,7 @@ export const listHomeStatuses = async (
       .bind(
         accountId,
         accountId,
+        ...tagged.binds,
         // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
         accountId,
         accountId,

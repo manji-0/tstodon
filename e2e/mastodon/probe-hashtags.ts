@@ -97,7 +97,6 @@ export const hashtagScenarios = async ({ stamp, mona, carol }: Cast): Promise<vo
         await call(reader, `/api/v1/tags/${tag}/unfollow`, Anything, { method: "POST", body: {} });
       }
     },
-    { toTstodon: "INT-14" },
   );
 
   await bothWays(

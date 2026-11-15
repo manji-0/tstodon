@@ -764,7 +764,8 @@ export const listRemoteActorFollowerAccountIds = async (
       const size = Math.min(200, limit - ids.length);
       const page = await queryTyped(
         db,
-        listHomeFanOutAccountsSql("", actorUri, ids.at(-1) ?? "", size),
+        // No entry: no hashtag followers.
+        listHomeFanOutAccountsSql("", actorUri, ids.at(-1) ?? "", size, ""),
         AccountIdRow,
       );
       ids.push(...page.map((row) => row.account_id));

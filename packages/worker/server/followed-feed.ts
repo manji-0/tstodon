@@ -1,5 +1,6 @@
 import { SUPPRESSED_ACCOUNT_IDS_SQL, SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
+import { type IdCursor, idCursorBounds } from "./id-cursor";
 import { ENTITY_ID_DIGITS } from "./ids";
 import type { ListRepliesPolicy } from "./list-store";
 
@@ -77,6 +78,95 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
       )
     )`,
     binds: [viewerId, viewerId, ...shown.binds],
+  };
+};
+
+/**
+ * The followed hashtags a home page reads, the most recently followed first.
+ * Mastodon reads none at all on a home page: it delivers each post to its
+ * hashtags' followers once (`FanOutOnWriteService#deliver_to_hashtag_followers`)
+ * and keeps 800 home entries. Here a page reads at most this many hashtags,
+ * each up to the page's size, so its rows read do not grow with how many
+ * posts carry those hashtags.
+ */
+export const HOME_FOLLOWED_TAG_LIMIT = 25;
+
+/**
+ * Where a side of home finds the notes under a hashtag: its tag index, its
+ * notes table, and which of those notes a followed hashtag brings. The unary
+ * `+` keeps SQLite on the tag index and the notes' primary key.
+ */
+const FOLLOWED_TAG_SIDES = {
+  Local: {
+    tags: "local_status_tags",
+    notes: "statuses",
+    shown: `+n.kind = 'LocalNote' AND +n.visibility = 'public' AND n.account_id NOT IN (
+      SELECT account_id FROM account_moderation WHERE moderation IN ('Silenced', 'Suspended')
+    )`,
+  },
+  Remote: {
+    tags: "remote_status_tags",
+    notes: "remote_statuses",
+    shown: "+n.visibility = 'public'",
+  },
+} as const;
+
+/**
+ * The ids of the notes a followed hashtag brings to the viewer's home page,
+ * as Mastodon's `deliver_to_hashtag_followers`: public notes (not of a
+ * silenced or suspended local author), posted or received since the viewer
+ * followed the hashtag. An id sorts by the instant it was made at, so "since
+ * the follow" is an id floor: the follow's instant shifted above the id's low
+ * 16 bits (`entityIdAt`). For each of the viewer's
+ * {@link HOME_FOLLOWED_TAG_LIMIT} most recently followed hashtags, the newest
+ * `limit` ids within `cursor` (the oldest for a `min_id` page): the `limit`-th
+ * of them is found first (`cut`), reading the hashtag's index in id order up
+ * to it, then the ids up to it are read again. The binds are the viewer and
+ * the cursor's bound, however many hashtags.
+ */
+export const followedTagNoteIdsSql = (
+  side: keyof typeof FOLLOWED_TAG_SIDES,
+  viewerId: string,
+  cursor: IdCursor,
+  limit: number,
+): SqlFragment => {
+  const { tags, notes, shown } = FOLLOWED_TAG_SIDES[side];
+  const { onlyId, after, before, ascending } = idCursorBounds(cursor);
+  const [bound, test] =
+    onlyId.length > 0
+      ? [onlyId, "AND t.status_id = (SELECT v FROM c)"]
+      : after.length > 0
+        ? [after, "AND t.status_id > (SELECT v FROM c)"]
+        : before.length > 0
+          ? [before, "AND t.status_id < (SELECT v FROM c)"]
+          : ["", ""];
+  const within = `t.tag = ft.tag_name AND t.status_id >= ft.floor ${test} AND ${shown}`;
+  // Materialized, so the edge is found once per hashtag, not once per row.
+  const [order, edge, kept] = ascending
+    ? ["ASC", "hi", "t.status_id >= ft.floor AND (ft.hi IS NULL OR t.status_id <= ft.hi)"]
+    : ["DESC", "lo", "t.status_id >= COALESCE(ft.lo, ft.floor)"];
+  return {
+    sql: `(
+      WITH ft AS (
+        SELECT tag_name,
+          printf('%0${ENTITY_ID_DIGITS}d',
+            CAST(round((julianday(created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor
+        FROM followed_tags WHERE account_id = ?
+        ORDER BY created_at DESC, tag_name LIMIT ${HOME_FOLLOWED_TAG_LIMIT}
+      ), c(v) AS (SELECT ?), cut AS MATERIALIZED (
+        SELECT ft.tag_name, ft.floor, (
+          SELECT t.status_id FROM ${tags} t CROSS JOIN ${notes} n ON n.id = t.status_id
+          WHERE ${within}
+          ORDER BY t.status_id ${order} LIMIT 1 OFFSET ${Math.max(0, Math.trunc(limit) - 1)}
+        ) AS ${edge}
+        FROM ft
+      )
+      SELECT DISTINCT t.status_id FROM cut ft
+      CROSS JOIN ${tags} t
+      CROSS JOIN ${notes} n ON n.id = t.status_id
+      WHERE t.tag = ft.tag_name AND ${kept} ${test} AND ${shown}
+    )`,
+    binds: [viewerId, bound],
   };
 };
 

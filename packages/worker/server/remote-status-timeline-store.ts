@@ -7,7 +7,12 @@ import type { AccountStatusFilters, StatusCursor } from "./status-timeline-store
 import type { TagStatusFilters } from "./status-discovery-store";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { DOMAIN_RESTRICTED_ACTORS_SQL, DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
-import { feedFollowSql, feedRepliesSql, type FollowedFeed } from "./followed-feed";
+import {
+  feedFollowSql,
+  feedRepliesSql,
+  type FollowedFeed,
+  followedTagNoteIdsSql,
+} from "./followed-feed";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
 /**
@@ -98,6 +103,54 @@ export const listFollowedRemoteStatuses = async (
         accountId,
         ...follows.binds,
         ...replies.binds,
+        accountId,
+        accountId,
+        accountId,
+        nowIso(),
+        accountId,
+        ...binds,
+        limit,
+      )
+      .all();
+    return okValues(
+      (results ?? []).map((raw) =>
+        parseRemoteStatusRow(raw).andThen((row) => remoteStatusFromRow(row)),
+      ),
+    );
+  });
+
+/**
+ * The remote notes a followed hashtag brings to the account's home
+ * ({@link followedTagNoteIdsSql}), newest first, as Mastodon's
+ * `FeedManager#filter_from_tags?` keeps them: not from an actor it blocks or
+ * mutes or that blocks it, nor from a domain it blocks or the instance limits
+ * or suspends. An actor it follows is left out, as
+ * {@link listFollowedRemoteStatuses} lists its notes already.
+ */
+export const listFollowedTagRemoteStatuses = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: StatusCursor = {},
+): Promise<Result<RemoteStatus[], RepositoryError>> =>
+  runD1(async () => {
+    const { where, order, binds } = idCursorFragment(cursor);
+    const tagged = followedTagNoteIdsSql("Remote", accountId, cursor, limit);
+    const { results } = await db
+      .prepare(
+        `SELECT ${REMOTE_STATUS_SELECT} FROM (
+           SELECT s.* FROM remote_statuses s
+           WHERE s.id IN ${tagged.sql}
+             AND s.actor_uri NOT IN (
+               SELECT actor_uri FROM outbound_follows WHERE account_id = ? AND state = 'Accepted'
+             )
+             AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
+             AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
+         ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+      )
+      .bind(
+        ...tagged.binds,
+        accountId,
         accountId,
         accountId,
         accountId,
