@@ -76,7 +76,7 @@ describe("admin custom emojis", () => {
     expect(served.headers.get("cache-control")).toBe("public, max-age=3600");
     expect([...new Uint8Array(await served.arrayBuffer())]).toEqual([137, 80, 78, 71]);
 
-    const missing = await SELF.fetch("https://example.com/emoji/no-such-emoji");
+    const missing = await SELF.fetch("https://example.com/emoji/1");
     expect(missing.status).toBe(404);
     await missing.arrayBuffer();
   });

@@ -15,6 +15,7 @@ import {
   newAttachmentObjectKey,
   parseMediaObjectKey,
 } from "../media-keys";
+import { notFound } from "../not-found";
 import { imagesBindingAnalyzer, isAnalyzedImageType, processUploadedImage } from "../media-image";
 import { uploadDimensionViolation, uploadSizeViolation } from "../media-limits";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -259,8 +260,14 @@ export const getAttachmentsByAccountIdByBlobId = (
 export const getAvatarsByAccountIdByBlobId = (
   c: Context<{ Bindings: Env }, "/avatars/:accountId/:blobId">,
 ) => serveObjectKeyPath(c);
-/** A custom emoji's image (`emoji/{id}`, `admin-custom-emojis.ts`). */
-export const getEmojiById = (c: Context<{ Bindings: Env }, "/emoji/:id">) => serveObjectKeyPath(c);
+/**
+ * A custom emoji's image (`emoji/{id}`, `admin-custom-emojis.ts`). The static
+ * twemoji files (`public/emoji/1f600.svg`) share the prefix: a path that is
+ * no stored emoji's key goes where it went before this route, to the assets,
+ * with no bucket read.
+ */
+export const getEmojiById = (c: Context<{ Bindings: Env }, "/emoji/:id">) =>
+  parseMediaObjectKey(c.req.path) === undefined ? notFound(c) : serveObjectKeyPath(c);
 export const getHeadersByAccountIdByBlobId = (
   c: Context<{ Bindings: Env }, "/headers/:accountId/:blobId">,
 ) => serveObjectKeyPath(c);
