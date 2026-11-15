@@ -85,6 +85,12 @@ describe("the custom emoji of a remote account", () => {
     expect((await account(author.actorUri)).emojis).toEqual([]);
   });
 
+  it("reads a single Emoji object where a list is usual", async () => {
+    const author = await remoteActor("emoji-profile-single");
+    await updateProfile(author, { name: ":solo: Name", tag: emojiTag("solo") });
+    expect((await account(author.actorUri)).emojis).toEqual([emoji("solo")]);
+  });
+
   it("leaves out an emoji whose image URL is longer than 2048 characters", async () => {
     const author = await remoteActor("emoji-profile-long-url");
     const url = (length: number) =>

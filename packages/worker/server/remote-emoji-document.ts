@@ -6,19 +6,31 @@ import { httpUrl } from "./sanitize-html";
 
 const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
 
-const EmojiTagsSchema = z.object({
-  tag: z
-    .array(
-      z
-        .object({
-          type: z.string().optional(),
-          name: z.string().optional(),
-          icon: z.object({ url: z.string().optional() }).passthrough().optional(),
-        })
-        .passthrough(),
-    )
-    .optional(),
-});
+const parseTagged = schemaResult(z.object({ tag: z.unknown().optional() }));
+
+const parseEmojiTag = schemaResult(
+  z
+    .object({
+      type: z.string().optional(),
+      name: z.string().optional(),
+      icon: z.object({ url: z.string().optional() }).passthrough().optional(),
+    })
+    .passthrough(),
+);
+
+/**
+ * The entries of a document's `tag` that read as objects. `tag` is a list or
+ * one object, as Mastodon's `as_array` takes it.
+ */
+const tagEntries = (raw: unknown) => {
+  const tagged = parseTagged(raw);
+  const tag = tagged.isOk() ? tagged.value.tag : undefined;
+  const entries: ReadonlyArray<unknown> = Array.isArray(tag) ? tag : [tag];
+  return entries.flatMap((entry) => {
+    const parsed = parseEmojiTag(entry);
+    return parsed.isOk() ? [parsed.value] : [];
+  });
+};
 
 /**
  * The longest image URL kept. The URL is stored with the note or the profile
@@ -29,7 +41,7 @@ const MAX_EMOJI_URL_LENGTH = 2048;
 
 /**
  * The custom emoji a note or an actor declares in the `Emoji` objects of its
- * `tag`, the first of each shortcode. `sameAs` gives the form in which two
+ * `tag` (a list or one object), the first of each shortcode. `sameAs` gives the form in which two
  * shortcodes are one. A tag whose image URL is longer than
  * `MAX_EMOJI_URL_LENGTH` is left out.
  */
@@ -37,10 +49,9 @@ export const declaredEmojis = (
   raw: unknown,
   sameAs: (shortcode: string) => string,
 ): ReadonlyArray<RemoteEmoji> => {
-  const tags = schemaResult(EmojiTagsSchema)(raw);
   const seen = new Set<string>();
   const emojis: RemoteEmoji[] = [];
-  for (const tag of tags.isOk() ? (tags.value.tag ?? []) : []) {
+  for (const tag of tagEntries(raw)) {
     const shortcode = tag.name?.replace(/^:|:$/g, "");
     const url = tag.icon?.url;
     if (

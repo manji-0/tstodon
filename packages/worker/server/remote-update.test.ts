@@ -93,6 +93,24 @@ describe("remote Update of a note", () => {
     expect(edited.created_at).toBe("2026-10-20T00:00:00.000Z");
   });
 
+  it("reads a single Emoji object where a list is usual", async () => {
+    const author = await remoteActor("update-single-emoji");
+    const id = await create(author, "single-emoji", "<p>before</p>");
+    await update(
+      author,
+      "single-emoji",
+      note(author, "single-emoji", "<p>:solo:</p>", {
+        tag: { type: "Emoji", name: ":solo:", icon: { url: "https://remote.example/solo.png" } },
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    );
+    const shown = read(
+      z.object({ emojis: z.array(z.object({ shortcode: z.string(), url: z.string() })) }),
+      await json(`/api/v1/statuses/${id}`),
+    );
+    expect(shown.emojis).toEqual([{ shortcode: "solo", url: "https://remote.example/solo.png" }]);
+  });
+
   it("leaves out an emoji whose image URL is longer than 2048 characters", async () => {
     const author = await remoteActor("update-long-emoji");
     const id = await create(author, "long-emoji", "<p>before</p>");
