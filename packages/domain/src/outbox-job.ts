@@ -223,10 +223,30 @@ const BackfillRemoteOutboxSchema = z.object({
     .default({ kind: "Start" }),
 });
 
-/** Store the notes above a cached remote status in its thread, and the replies it lists. */
+/**
+ * Store the notes above a cached remote status in its thread and the replies
+ * it lists (`Root`), then the replies of those, one level of the reply tree at
+ * a time (`Level`): the cached replies `depth` levels below the status, after
+ * the one with id `after`, each expanded by its own `replies` collection.
+ * `listed` and `pages` count the replies listed and the collection pages read
+ * so far, and `stored` the replies stored, for the whole tree.
+ */
 const BackfillRemoteThreadSchema = z.object({
   kind: z.literal("BackfillRemoteThread"),
   statusId: StatusId.schema,
+  from: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("Root") }),
+      z.object({
+        kind: z.literal("Level"),
+        depth: z.number().int().min(1),
+        after: z.string(),
+        listed: z.number().int().nonnegative(),
+        pages: z.number().int().nonnegative(),
+        stored: z.number().int().nonnegative(),
+      }),
+    ])
+    .default({ kind: "Root" }),
 });
 
 /** Whose followers have a home timeline entry: a local account's or a remote actor's. */

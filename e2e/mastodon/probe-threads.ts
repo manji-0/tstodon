@@ -7,7 +7,6 @@ import {
   contextOf,
   eventually,
   follow,
-  knownGap,
   mastodonRails,
   notified,
   post,
@@ -217,10 +216,8 @@ export const threadScenarios = async ({
     "context backfills the replies to a resolved root: Mastodon reads a tstodon thread",
     () => repliesOfRoot(mona, [bob, tina, alice]),
   );
-  await knownGap(
-    "context backfills replies of replies: tstodon reads a Mastodon thread",
-    "INT-4",
-    () => repliesOfReplies(alice, [carol, erin, carol, erin]),
+  await step("context backfills replies of replies: tstodon reads a Mastodon thread", () =>
+    repliesOfReplies(alice, [carol, erin, carol, erin]),
   );
   await step("context backfills replies of replies: Mastodon reads a tstodon thread", () =>
     repliesOfReplies(mona, [bob, tina, bob, tina]),

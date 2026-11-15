@@ -724,6 +724,8 @@ export * from "./sql/listRemoteStatusTags";
 
 export * from "./sql/listRemoteThreadAncestors";
 
+export * from "./sql/listRemoteThreadLevel";
+
 export * from "./sql/listRestrictedDomains";
 
 export * from "./sql/listRestrictedTagNames";
