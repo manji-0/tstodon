@@ -197,7 +197,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 213 of 213 steps with both servers open, 214 of 214 with tstodon in secure mode, and 215 of 215 with both in secure mode. Six more steps are known gaps.
+The sweep passes 217 of 217 steps with both servers open. Before the INT-2 and INT-18 gaps were closed, it passed 214 of 214 with tstodon in secure mode and 215 of 215 with both in secure mode. Four more steps are known gaps.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
@@ -242,7 +242,7 @@ Seven more were closed after that, each with a Worker test, and their steps are 
 - Mastodon fetches the replies to a tstodon post it resolved, and the replies to those (INT-4, two steps; `server/note-replies.test.ts`). A tstodon note carries a `replies` collection in Mastodon's shape. The sweep dates Mastodon's copy of the post back first ([The Mastodon users](#the-mastodon-users)).
 - A hashtag featured on tstodon shows on the Mastodon profile (INT-14; `server/featured-tags-federation.test.ts`). tstodon's actor names a `featuredTags` collection, and featuring a hashtag sends an `Add`, unfeaturing a `Remove`.
 
-The 6 known gaps (`gap` in the sweep's output):
+The 4 known gaps (`gap` in the sweep's output):
 
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
 - The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.
