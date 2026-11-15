@@ -168,9 +168,8 @@ export {
 } from "./notification-group";
 export {
   NotificationPolicy,
-  type LocalNotificationSender,
+  type MentionAncestor,
   type NotificationSender,
-  type RemoteNotificationSender,
 } from "./notification-policy";
 export { NotificationPolicyAction } from "./notification-policy-action";
 export type { ResolveNotificationDisposition } from "./notification-resolver";

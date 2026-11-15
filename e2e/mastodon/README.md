@@ -170,7 +170,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 - A new account's actor URI is `https://mastodon.test/ap/users/<id>`, not `/users/<name>`. Take the URI from the account's `uri` field.
 - Mastodon signs its fetches as the instance actor (`/actor`).
-- Mastodon's default notification policy (`for_private_mentions: filter`) files a private mention from an account the receiver does not follow under a notification request. The status is stored, but there is no notification and no conversation until the receiver accepts the request (`NotifyService`, `UnfilterNotificationsWorker`). A reply in a thread where the receiver mentioned the sender is exempt.
+- Mastodon's default notification policy (`for_private_mentions: filter`) files a private mention from an account the receiver does not follow under a notification request. The status is stored, but there is no notification and no conversation until the receiver accepts the request (`NotifyService`, `UnfilterNotificationsWorker`). A reply in a thread where the receiver mentioned the sender in a direct message is exempt (`private_mention_not_in_response?`). The policy applies to local and remote senders alike. Every category but `for_not_followers` spares a sender the receiver follows, and a follower of less than three days is no follower yet. tstodon applies the same policy with the same default, and lists the filtered message in the receiver's conversations at once (INT-2).
 - Mastodon leaves a boost out of a home feed that already holds the boosted post. To see a boost arrive, boost a post from an account the receiver does not follow.
 - Mastodon leaves a reply out of a home feed unless the reader follows the account replied to. To see a reply arrive, mention the reader.
 - A page URL (`https://mastodon.test/@carol`, `/@carol/<id>`) serves the actor or the note under another id (`/ap/users/<id>`, `/ap/users/<id>/statuses/<id>`). Mastodon's own lookup (`FetchResourceService`) fetches the URL, then the id it names, once.
@@ -226,15 +226,16 @@ A CI run of the `follows` area found one more, also fixed and covered:
 
 14. A follow that was undone at once could stay on Mastodon for good. tstodon sends the `Follow` and the `Undo` as two deliveries, Mastodon handled both at once and kept the follow, and tstodon ignored the `Accept` that came next (`server/outbound-follow.test.ts`).
 
-Four known gaps were closed since, each with a Worker test, and their steps are plain steps now:
+Six known gaps were closed since, each with a Worker test, and their steps are plain steps now:
 
 - A Mastodon attachment keeps its focus point, its blurhash and its size on tstodon (INT-11, two steps; `server/remote-media-metadata.test.ts`). tstodon does not download the file, so the size is the one the note declares.
 - A Mastodon account's custom emoji shows in its display name and bio on tstodon (INT-13; `server/remote-actor-profile.test.ts`).
 - A Mastodon account's profile fields show on tstodon (INT-15; `server/remote-actor-profile.test.ts`). `verified_at` stays null: tstodon does not fetch the linked page.
+- A Mastodon stranger's direct message waits in a notification request on tstodon, and notifies once the request is accepted (INT-2; `server/notification-policy-remote.test.ts`).
+- An edit through tstodon's API that leaves the content warning, the sensitive flag or the poll out removes them, on tstodon and on the Mastodon copy (INT-18; `server/status-edit-whole-revision.test.ts`).
 
 The 13 known gaps (`gap` in the sweep's output):
 
-- tstodon reports `for_private_mentions: drop` and notifies a Mastodon stranger's direct message all the same: the policy is not applied to a remote sender (INT-2).
 - A tstodon note has no `replies` collection, so Mastodon cannot fetch the replies to a tstodon post it resolved (INT-4, two steps).
 - tstodon fetches the direct replies of a remote post it opened, not the replies to those (INT-4).
 - The delete of a tstodon post that another tstodon account boosted does not reach that booster's followers on Mastodon, who keep the boost (INT-9). Mastodon has the same gap in the other direction, which the sweep does not assert.

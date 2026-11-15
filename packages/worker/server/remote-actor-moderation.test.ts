@@ -6,6 +6,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { type Browser, ORIGIN, postForm, signUp } from "../test/passkey-browser";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { testIdentity } from "../test/domain-fixture";
 import { notificationDisposition } from "./notification-policy";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -225,7 +226,7 @@ describe("what moderating a remote account changes here", () => {
     const actor = await remoteActor("noisy", "moderation-notify.example");
     const id = RemoteAccountId.encode(actor.actorUri);
     const disposition = async () => {
-      const result = await notificationDisposition(env.DB, {
+      const result = await notificationDisposition(env.DB, testIdentity(), {
         recipientId: recipient.id,
         senderId: id,
         kind: "mention",

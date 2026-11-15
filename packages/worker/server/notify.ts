@@ -173,7 +173,12 @@ const notifyContracts = (env: Env): NotifyContracts => {
   return {
     screenSender: (notification, mentionedPost) =>
       screenSender(env.DB, notification, mentionedPost),
-    resolveDisposition: (notification) => notificationDisposition(env.DB, notification),
+    resolveDisposition: (notification) =>
+      identity.isOk()
+        ? notificationDisposition(env.DB, identity.value, notification)
+        : Promise.resolve(
+            err({ kind: "RepositoryError", message: "invalid instance configuration" }),
+          ),
     findMutedThreadStatusIds: (accountId, statusIds) =>
       identity.isOk()
         ? mutedThreadStatusIds(env.DB, identity.value, accountId, statusIds)

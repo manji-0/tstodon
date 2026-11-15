@@ -88,7 +88,7 @@ describe("notification policy", () => {
     const initial = await json("/api/v2/notifications/policy", { headers: await auth(email) });
     expect(initial.status).toBe(200);
     const policy = read(PolicySchema, initial.body);
-    expect(policy.for_private_mentions).toBe("drop");
+    expect(policy.for_private_mentions).toBe("filter");
     expect(policy.for_limited_accounts).toBe("filter");
     expect(policy.summary.pending_requests_count).toBe(0);
 
@@ -103,7 +103,7 @@ describe("notification policy", () => {
     expect((await json("/api/v2/notifications/policy")).status).toBe(401);
   });
 
-  it("drops a private mention from a stranger by default", async () => {
+  it("holds a private mention from a stranger as a request by default", async () => {
     const recipientEmail = "policy-recipient@example.com";
     const recipient = await credentials(recipientEmail);
     await credentials("policy-stranger@example.com");
@@ -113,6 +113,36 @@ describe("notification policy", () => {
       visibility: "direct",
     });
     expect(await notifications(recipientEmail)).toHaveLength(0);
+    const policy = await json("/api/v2/notifications/policy", {
+      headers: await auth(recipientEmail),
+    });
+    expect(read(PolicySchema, policy.body).summary).toEqual({
+      pending_requests_count: 1,
+      pending_notifications_count: 1,
+    });
+  });
+
+  it("notifies a private mention that answers the recipient's own", async () => {
+    const recipientEmail = "policy-answered@example.com";
+    const strangerEmail = "policy-answering@example.com";
+    await credentials(recipientEmail);
+    const stranger = await credentials(strangerEmail);
+
+    const opened = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(recipientEmail)) },
+      body: JSON.stringify({ status: `@${stranger.username} hello`, visibility: "direct" }),
+    });
+    const opening = read(
+      z.object({ id: z.string(), account: z.object({ username: z.string() }) }),
+      opened.body,
+    );
+    await postStatus(strangerEmail, {
+      status: `@${opening.account.username} hello back`,
+      visibility: "direct",
+      in_reply_to_id: opening.id,
+    });
+    expect(await notifications(recipientEmail)).toHaveLength(1);
   });
 
   it("holds a mention from a silenced account as a request and merges it on accept", async () => {

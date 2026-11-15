@@ -1,6 +1,6 @@
 /** Sweep area INT-2: direct messages to several recipients, reply chains, and a stranger's DM. */
 import { z } from "zod";
-import { A, signUp, sleep, type E2eUser } from "../lib.js";
+import { A, signUp, type E2eUser } from "../lib.js";
 import {
   Anything,
   call,
@@ -10,10 +10,8 @@ import {
   Conversations,
   eventually,
   follow,
-  knownGap,
   Notifications,
   post,
-  Search,
   Status,
   step,
   StepFailure,
@@ -133,11 +131,13 @@ const groupChain = async (
 };
 
 /**
- * Mastodon files a private mention from an account the receiver does not
- * follow under a notification request (`for_private_mentions: filter`, its
- * default): no notification and no conversation until the receiver accepts.
+ * A private mention from an account the receiver does not follow waits in a
+ * notification request (`for_private_mentions: filter`, Mastodon's default
+ * and tstodon's): no notification until the receiver accepts, and from then
+ * on the sender's messages notify. On Mastodon the message has no
+ * conversation either until then; tstodon lists it at once (INT-2).
  */
-const strangerToMastodon = async (
+const strangerMessage = async (
   stamp: string,
   stranger: E2eUser,
   receiver: E2eUser,
@@ -162,9 +162,13 @@ const strangerToMastodon = async (
   if ((await mentionNotification(receiver, stranger, sent.uri)) !== undefined) {
     throw new StepFailure("the filtered mention is among the notifications");
   }
-  const conversations = await call(receiver, "/api/v1/conversations?limit=40", Conversations);
-  if (conversations.some((entry) => entry.last_status?.uri === sent.uri)) {
-    throw new StepFailure("the filtered message has a conversation before the request is accepted");
+  if (receiver.origin !== A) {
+    const conversations = await call(receiver, "/api/v1/conversations?limit=40", Conversations);
+    if (conversations.some((entry) => entry.last_status?.uri === sent.uri)) {
+      throw new StepFailure(
+        "the filtered message has a conversation before the request is accepted",
+      );
+    }
   }
   await call(receiver, `/api/v1/notifications/requests/${request.id}/accept`, Anything, {
     method: "POST",
@@ -183,47 +187,13 @@ const strangerToMastodon = async (
   );
 };
 
-/**
- * tstodon reports a policy for private mentions too. Whatever it reports, a
- * Mastodon stranger's message is handled by it: `accept` notifies, `filter`
- * files a request, `drop` does neither.
- */
-const strangerToTstodon = async (
-  stamp: string,
-  stranger: E2eUser,
-  receiver: E2eUser,
-): Promise<void> => {
-  const policy = await call(receiver, "/api/v2/notifications/policy", NotificationPolicy);
-  const sent = await post(stranger, {
-    status: `${receiver.acct} from a stranger ${stamp}`,
-    visibility: "direct",
-  });
-  await eventually("the message arrived", async () => {
-    const found = await call(
-      receiver,
-      `/api/v2/search?${new URLSearchParams({ q: sent.uri, resolve: "true" }).toString()}`,
-      Search,
-    );
-    return found.statuses.find((status) => status.uri === sent.uri);
-  });
-  await sleep(2000);
-  const notification = await mentionNotification(receiver, stranger, sent.uri);
-  const requests = await call(receiver, "/api/v1/notifications/requests", NotificationRequests);
-  const requested = requests.some((entry) => entry.account.uri === stranger.uri);
-  const observed = notification !== undefined ? "accept" : requested ? "filter" : "drop";
-  if (observed !== policy.for_private_mentions) {
-    throw new StepFailure(
-      `for_private_mentions is ${policy.for_private_mentions}, but the message was handled as ${observed}`,
-    );
-  }
-};
-
 export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promise<void> => {
   const alice = await signUp(A, "dora");
   const bob = await signUp(A, "dirk");
 
-  // Mastodon files a private mention from an account its receiver does not
-  // follow under a request, so the Mastodon recipients follow every sender.
+  // A private mention from an account its receiver does not follow waits in
+  // a request, and on Mastodon has no conversation until then, so the
+  // Mastodon recipients follow every sender.
   await step("the Mastodon recipients follow the senders", async () => {
     for (const [follower, followed] of [
       [mona, alice],
@@ -242,11 +212,10 @@ export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
 
   await step(
     "a stranger's direct message waits in a notification request: tstodon → Mastodon",
-    () => signUp(A, "stig").then((stranger) => strangerToMastodon(stamp, stranger, dana)),
+    () => signUp(A, "stig").then((stranger) => strangerMessage(stamp, stranger, dana)),
   );
-  await knownGap(
-    "a stranger's direct message follows the receiver's policy: Mastodon → tstodon",
-    "INT-2",
-    () => signUp(A, "rita").then((receiver) => strangerToTstodon(stamp, dana, receiver)),
+  await step(
+    "a stranger's direct message waits in a notification request: Mastodon → tstodon",
+    () => signUp(A, "rita").then((receiver) => strangerMessage(stamp, dana, receiver)),
   );
 };
