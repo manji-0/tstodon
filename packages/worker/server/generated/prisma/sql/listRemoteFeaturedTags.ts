@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param actorUri
  */
 export const listRemoteFeaturedTags = $runtime.makeTypedQueryFactory(
-  "SELECT f.tag_name, f.name, COUNT(s.id) AS statuses_count, MAX(s.published_at) AS last_status_at\nFROM remote_featured_tags f\nLEFT JOIN remote_status_tags t ON t.tag = f.tag_name\nLEFT JOIN remote_statuses s\nON s.id = t.status_id AND s.actor_uri = f.actor_uri AND s.visibility IN ('public', 'unlisted')\nWHERE f.actor_uri = $1\nGROUP BY f.tag_name, f.name, f.position\nORDER BY f.position ASC",
+  "SELECT f.tag_name, f.name,\n(\nSELECT COUNT(*) FROM remote_statuses s\nCROSS JOIN remote_status_tags t ON t.status_id = s.id AND t.tag = f.tag_name\nWHERE s.actor_uri = f.actor_uri AND s.visibility IN ('public', 'unlisted')\n) AS statuses_count,\n(\nSELECT MAX(s.published_at) FROM remote_statuses s\nCROSS JOIN remote_status_tags t ON t.status_id = s.id AND t.tag = f.tag_name\nWHERE s.actor_uri = f.actor_uri AND s.visibility IN ('public', 'unlisted')\n) AS last_status_at\nFROM remote_featured_tags f\nWHERE f.actor_uri = $1\nORDER BY f.position ASC",
 ) as (
   actorUri: string,
 ) => $runtime.TypedSql<listRemoteFeaturedTags.Parameters, listRemoteFeaturedTags.Result>;
