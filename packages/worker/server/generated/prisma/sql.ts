@@ -180,6 +180,8 @@ export * from "./sql/deleteRemoteStatusByObjectUri";
 
 export * from "./sql/deleteRemoteStatusRemoteMentions";
 
+export * from "./sql/deleteSettledDepartedSigner";
+
 export * from "./sql/deleteSignupIntentsByEmail";
 
 export * from "./sql/deleteStatusMedia";

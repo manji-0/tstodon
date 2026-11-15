@@ -15,6 +15,7 @@ import { signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
 import {
+  dropSettledDepartedSigner,
   ensureOutboxTargets,
   findOutboundActivityWithSigner,
   insertSkippedOutboxTargets,
@@ -44,6 +45,7 @@ export const enqueueLocalActivity = async (
     signer: { kind: "Account", accountId },
     kind,
     payload,
+    audience: "Followers",
   });
   if (inserted.isErr()) {
     console.error(
@@ -168,7 +170,12 @@ const enqueueSignedActivity = async (
   if (admitted.length === 0) {
     return ok(undefined);
   }
-  const inserted = await insertOutboundActivity(env.DB, { signer, kind, payload });
+  const inserted = await insertOutboundActivity(env.DB, {
+    signer,
+    kind,
+    payload,
+    audience: "Inboxes",
+  });
   if (inserted.isErr()) {
     console.error(
       JSON.stringify({
@@ -195,6 +202,12 @@ const enqueueSignedActivity = async (
   }
   if (deliver.length > 0) {
     await startOutboxDeliveryWorkflow(env, activityId.value);
+  } else if (signer.kind === "DepartedAccount") {
+    // Every inbox was skipped: nothing will be signed, so the key goes now.
+    const dropped = await dropSettledDepartedSigner(env.DB, activityId.value);
+    if (dropped.isErr()) {
+      return err(dropped.error);
+    }
   }
   writeMetric(env, "outbox.enqueue", [1], [kind, "targeted"]);
   return ok(undefined);

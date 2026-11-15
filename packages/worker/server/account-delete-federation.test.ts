@@ -8,6 +8,7 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliverTarget } from "../test/delivery-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseSignatureHeader, verifyInboxRequest } from "./http-signature";
+import { findOutboundActivityWithSigner, persistOutboxTarget } from "./outbox-store";
 import { RemoteAccountId } from "./remote-account-id";
 
 /**
@@ -66,6 +67,16 @@ const queuedActorDeletes = async (actorUri: string) => {
       };
     }),
   );
+};
+
+/** Whether the private key kept to sign `activityId` is still stored. */
+const keepsSignerKey = async (activityId: string): Promise<boolean> => {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM outbound_departed_signers WHERE activity_id = ?",
+  )
+    .bind(activityId)
+    .first();
+  return read(z.object({ n: z.number() }), row).n > 0;
 };
 
 const adminDelete = async (accountId: string): Promise<number> => {
@@ -132,6 +143,25 @@ describe("deleting a local account", () => {
       `${actorUri}#main-key`,
     );
     expect(await verifyInboxRequest(sent.clone(), publicKeyPem, body)).toBe(true);
+
+    // The key is kept while an inbox is still to be attempted, and no longer.
+    expect(await keepsSignerKey(queued.id)).toBe(true);
+    expect(
+      (await persistOutboxTarget(env.DB, queued.id, sharedInbox, { kind: "Delivered" })).isOk(),
+    ).toBe(true);
+    expect(await keepsSignerKey(queued.id)).toBe(true);
+    expect(
+      (
+        await persistOutboxTarget(env.DB, queued.id, `${followed.actorUri}/inbox`, {
+          kind: "Failed",
+          reasonKind: "Permanent",
+          httpStatus: 410,
+        })
+      ).isOk(),
+    ).toBe(true);
+    expect(await keepsSignerKey(queued.id)).toBe(false);
+    const settled = await findOutboundActivityWithSigner(env.DB, queued.id);
+    expect(settled.isOk() && settled.value?.signer_private_key_jwk).toBeNull();
   });
 
   it("sends nothing for an account no remote server knows", async () => {

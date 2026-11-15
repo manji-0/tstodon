@@ -24,6 +24,7 @@ import {
   findNextOutboxTargetDue as findNextOutboxTargetDueSql,
   findOutboxFanout as findOutboxFanoutSql,
   findOutboxTarget as findOutboxTargetSql,
+  deleteSettledDepartedSigner as deleteSettledDepartedSignerSql,
   insertOutboundActivity as insertOutboundActivitySql,
   insertOutboundDepartedSigner as insertOutboundDepartedSignerSql,
   insertOutboxDeliveryFanout as insertOutboxDeliveryFanoutSql,
@@ -170,19 +171,30 @@ export type OutboundSigner =
       privateKeyJwk: SensitiveValue<string>;
     }>;
 
+/**
+ * Where an outbound activity goes. `Followers`: the `ExpandFollowers` job
+ * lists the inboxes, and the fan-out row waits `Queued` for it. `Inboxes`:
+ * the caller stores the targets itself, so the fan-out row is settled from
+ * the start; left `Queued` it would keep the activity from ever being pruned.
+ */
+export type OutboundAudience = "Followers" | "Inboxes";
+
 export const insertOutboundActivity = async (
   db: D1Database,
   input: {
     signer: OutboundSigner;
     kind: string;
     payload: unknown;
+    audience: OutboundAudience;
   },
 ): Promise<Result<OutboundActivityRow, RepositoryError>> => {
   const accountId = input.signer.kind === "Account" ? input.signer.accountId : null;
   const id = newEntityId();
   const createdAt = nowIso();
   const payloadJson = JSON.stringify(input.payload);
-  const queued = OutboxDelivery.queued();
+  const fanout = persistColumns(
+    input.audience === "Followers" ? OutboxDelivery.queued() : { kind: "Expanded" },
+  );
   const batched = await runD1Batch(db, [
     d1PrepareTyped(
       db,
@@ -205,8 +217,8 @@ export const insertOutboundActivity = async (
       insertOutboxDeliveryFanoutSql(
         newEntityId(),
         id,
-        queued.kind,
-        queued.attemptCount,
+        fanout.kind,
+        fanout.attemptCount,
         createdAt,
         createdAt,
       ),
@@ -418,7 +430,24 @@ export type SettledOutboxTarget = Readonly<{
   lastHttpStatus: number | null;
 }>;
 
-/** {@link persistOutboxTarget} for several targets of one activity, in one D1 batch. */
+/**
+ * Delete the key kept for a deleted account's activity once no target of it
+ * is still `Queued`: every one was delivered, failed for good or was skipped.
+ * Nothing to do for any other activity.
+ */
+export const dropSettledDepartedSigner = async (
+  db: D1Database,
+  activityId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, deleteSettledDepartedSignerSql(activityId));
+  });
+
+/**
+ * {@link persistOutboxTarget} for several targets of one activity, in one D1
+ * batch, which also drops a deleted account's key when these were the last
+ * targets to settle ({@link dropSettledDepartedSigner}).
+ */
 export const persistOutboxTargets = async (
   db: D1Database,
   activityId: string,
@@ -431,9 +460,8 @@ export const persistOutboxTargets = async (
     return ok(undefined);
   }
   const updatedAt = nowIso();
-  const batched = await runTypedBatch(
-    db,
-    settled.map(({ inboxUrl, delivery, nextAttemptAt, lastHttpStatus }) => {
+  const batched = await runTypedBatch(db, [
+    ...settled.map(({ inboxUrl, delivery, nextAttemptAt, lastHttpStatus }) => {
       const columns = persistColumns(delivery);
       const transient =
         delivery.kind === "Queued" ||
@@ -449,7 +477,8 @@ export const persistOutboxTargets = async (
         delivery.kind === "Queued" ? nextAttemptAt : null,
       );
     }),
-  );
+    deleteSettledDepartedSignerSql(activityId),
+  ]);
   return batched.map(() => undefined);
 };
 

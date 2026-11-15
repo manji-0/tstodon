@@ -185,6 +185,7 @@ describe("outbox delivery cost", () => {
     );
     const inserted = await insertOutboundActivity(env.DB, {
       signer: { kind: "Account", accountId: account.id },
+      audience: "Followers",
       kind: "Create",
       payload: {
         type: "Create",
