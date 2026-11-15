@@ -44,6 +44,7 @@ export const enqueueLocalActivity = async (
     signer: { kind: "Account", accountId },
     kind,
     payload,
+    audience: "Followers",
   });
   if (inserted.isErr()) {
     console.error(
@@ -134,6 +135,24 @@ export const enqueueInstanceActorActivity = (
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, [inboxUrl]);
 
+/**
+ * `inboxUrls` without repeats and without those this server never contacts:
+ * on a suspended domain, or outside the federation allow list.
+ */
+export const admittedInboxes = async (
+  env: Env,
+  inboxUrls: ReadonlyArray<string>,
+): Promise<string[]> => {
+  const [suspended, allowHosts] = await Promise.all([
+    suspendedDomains(env.DB),
+    federationAllowHosts(env),
+  ]);
+  return [...new Set(inboxUrls)].filter((inboxUrl) => {
+    const inboxHost = Hostname.ofUri(inboxUrl);
+    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
+  });
+};
+
 const enqueueSignedActivity = async (
   env: Env,
   signer: OutboundSigner,
@@ -141,25 +160,22 @@ const enqueueSignedActivity = async (
   payload: unknown,
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
-  // A suspended domain, or one outside the federation allow list, is never
-  // contacted; the activity is dropped quietly.
-  const [suspended, allowHosts] = await Promise.all([
-    suspendedDomains(env.DB),
-    federationAllowHosts(env),
-  ]);
-  const admitted = [...new Set(inboxUrls)].filter((inboxUrl) => {
-    const inboxHost = Hostname.ofUri(inboxUrl);
-    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
-  });
+  // An inbox this server never contacts is dropped quietly.
+  const admitted = await admittedInboxes(env, inboxUrls);
   if (admitted.length === 0) {
     return ok(undefined);
   }
-  const inserted = await insertOutboundActivity(env.DB, { signer, kind, payload });
+  const inserted = await insertOutboundActivity(env.DB, {
+    signer,
+    kind,
+    payload,
+    audience: "Inboxes",
+  });
   if (inserted.isErr()) {
     console.error(
       JSON.stringify({
         kind: "OutboxEnqueueInsertFailed",
-        signer,
+        signer: signer.kind,
         activityKind: kind,
         message: inserted.error.message,
       }),
@@ -231,6 +247,23 @@ export const recordSkippedTargets = async (
   if (inserted.isErr()) {
     return err(inserted.error);
   }
+  logSkippedTargets(env, activityId, inboxUrls, source);
+  return ok(undefined);
+};
+
+/**
+ * The `OutboxDeliverySkipped` line and the `outbox.skip` point of the targets
+ * of an activity stored `Skipped` for an unavailable domain.
+ */
+export const logSkippedTargets = (
+  env: Env,
+  activityId: string,
+  inboxUrls: ReadonlyArray<string>,
+  source: "targeted" | "expand",
+): void => {
+  if (inboxUrls.length === 0) {
+    return;
+  }
   console.log(
     JSON.stringify({
       kind: "OutboxDeliverySkipped",
@@ -241,7 +274,6 @@ export const recordSkippedTargets = async (
     }),
   );
   writeMetric(env, "outbox.skip", [inboxUrls.length], [source, "DomainUnavailable"]);
-  return ok(undefined);
 };
 
 /** The part of the `OUTBOX_DELIVERY_WORKFLOW` binding that starts an instance. */
@@ -282,13 +314,19 @@ type SigningKey =
   | Readonly<{ kind: "Missing" }>
   | Readonly<{ kind: "Unavailable" }>;
 
-/** The key that signs `activity`: its account's, read with it, or the instance actor's. */
+/**
+ * The key that signs `activity`: its account's or a deleted account's, read
+ * with it, or the instance actor's.
+ */
 const signingKey = async (
   env: Env,
   identity: InstanceIdentity,
   activity: OutboundActivityWithSignerRow,
 ): Promise<SigningKey> => {
-  if (activity.account_id === null) {
+  if (activity.signer_username === null || activity.signer_private_key_jwk === null) {
+    if (activity.account_id !== null) {
+      return { kind: "Missing" };
+    }
     const keys = await instanceActorKeys(env.DB);
     return keys.isOk()
       ? {
@@ -297,9 +335,6 @@ const signingKey = async (
           privateKeyJwk: keys.value.privateKeyJwk,
         }
       : { kind: "Unavailable" };
-  }
-  if (activity.signer_username === null || activity.signer_private_key_jwk === null) {
-    return { kind: "Missing" };
   }
   const username = Username.parse(activity.signer_username);
   if (username.isErr()) {

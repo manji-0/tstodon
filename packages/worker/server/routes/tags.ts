@@ -2,8 +2,11 @@ import { isHashtagName, normalizeHashtag } from "@tstodon/core";
 import type { ApiFeaturedTagJSON, ApiHashtagJSON } from "@tstodon/api";
 import { ApiCreateFeaturedTagParamsSchema } from "@tstodon/api";
 import type { Context } from "hono";
-import { AccountPresentation, type InstanceIdentity } from "@tstodon/domain";
+import { AccountPresentation, InstanceIdentity } from "@tstodon/domain";
 import { accountRefPresentation } from "../account-presentation";
+import { featuredTagActivity, hashtagObject } from "../activitypub";
+import { enqueueLocalActivity } from "../delivery";
+import { newEntityId } from "../ids";
 import { localRef } from "../account-ref";
 import { findAccountById } from "../account-store";
 import { authenticate } from "../auth";
@@ -166,6 +169,32 @@ export const postV1TagsByIdUnfollow = (
   c: Context<{ Bindings: Env }, "/api/v1/tags/:id/unfollow">,
 ) => setTagFollowed(c, false);
 
+/**
+ * Tell the account's remote followers a hashtag was featured (`Add`) or is
+ * no longer (`Remove`), as Mastodon's `CreateFeaturedTagService` and
+ * `RemoveFeaturedTagService`. Best effort: the change is stored either way,
+ * and a remote reads the `featuredTags` collection again when it refreshes
+ * the actor.
+ */
+const federateFeaturedTag = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: Readonly<{ id: string; username: string }>,
+  name: string,
+  type: "Add" | "Remove",
+): Promise<void> => {
+  const activity = featuredTagActivity(
+    type,
+    InstanceIdentity.actorUrl(identity, account.username),
+    hashtagObject(identity, name),
+    newEntityId(),
+  );
+  const enqueued = await enqueueLocalActivity(env, account.id, type, activity);
+  if (enqueued.isErr()) {
+    console.error(JSON.stringify({ kind: "FeaturedTagNotFederated", activity: type, tag: name }));
+  }
+};
+
 const setTagFeatured = async (
   c: Context<{ Bindings: Env }>,
   feature: boolean,
@@ -212,11 +241,15 @@ const setTagFeatured = async (
       if (added.isErr()) {
         return jsonRepositoryError(c, added.error.message);
       }
+      await federateFeaturedTag(c.env, identity.value, user.value, name, "Add");
     }
   } else {
     const removed = await unfeatureTag(c.env.DB, user.value.id, name);
     if (removed.isErr()) {
       return jsonRepositoryError(c, removed.error.message);
+    }
+    if (removed.value) {
+      await federateFeaturedTag(c.env, identity.value, user.value, name, "Remove");
     }
   }
   const built = await buildFeaturedTagDocument(
@@ -339,6 +372,7 @@ export const postV1FeaturedTags = async (
     if (added.isErr()) {
       return jsonRepositoryError(c, added.error.message);
     }
+    await federateFeaturedTag(c.env, identity.value, user.value, name, "Add");
   }
   const built = await buildFeaturedTagDocument(
     c.env,
@@ -370,6 +404,10 @@ export const deleteV1FeaturedTagsById = async (
   }
   if (!removed.value) {
     return tagNotFound(c);
+  }
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isOk()) {
+    await federateFeaturedTag(c.env, identity.value, user.value, name, "Remove");
   }
   return c.json({});
 };

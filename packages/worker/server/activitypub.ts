@@ -11,10 +11,12 @@ import {
   type ApActivityDocumentOf,
   type ApActorDocumentJSON,
   type ApEmojiJSON,
+  type ApHashtagJSON,
   type ApImageJSON,
   PUBLIC_COLLECTION,
   type ApQuestionJSON,
   type ApQuoteRequestRefJSON,
+  type ApRepliesJSON,
   type ApStatusDocumentJSON,
   SECURITY_V1,
 } from "@tstodon/api/activitypub";
@@ -24,6 +26,7 @@ import type { ActivityJsonSchema } from "./activitypub-wire";
 import { type CustomEmoji, emojisInTexts } from "./emoji";
 import { escapeHtml, textToHtml } from "./html";
 import { mediaPublicUrl } from "./media-keys";
+import { emptyNoteReplies } from "./note-replies";
 import type { PollRecord } from "./poll-store";
 import type { QuotePolicy } from "./quote-store";
 
@@ -50,6 +53,8 @@ const SHOWN_EMPTY_PROFILE: ActorProfile = {
 const ACTOR_CONTEXT_TERMS = {
   manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
   toot: "http://joinmastodon.org/ns#",
+  featured: { "@id": "toot:featured", "@type": "@id" },
+  featuredTags: { "@id": "toot:featuredTags", "@type": "@id" },
   alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
   movedTo: { "@id": "as:movedTo", "@type": "@id" },
   schema: "http://schema.org#",
@@ -81,6 +86,21 @@ const actorImage = (
         ...(contentType === null ? {} : { mediaType: contentType }),
         url: mediaPublicUrl(identity, objectKey),
       };
+
+/** A local actor's `featured` collection (its pinned statuses), as Mastodon names it. */
+export const featuredCollectionUri = (actorUri: string): string =>
+  `${actorUri}/collections/featured`;
+
+/** A local actor's `featuredTags` collection (its featured hashtags), as Mastodon names it. */
+export const featuredTagsCollectionUri = (actorUri: string): string =>
+  `${actorUri}/collections/tags`;
+
+/** A hashtag as ActivityPub names it: its page on this instance and `#name`. */
+export const hashtagObject = (identity: InstanceIdentity, name: string): ApHashtagJSON => ({
+  type: "Hashtag",
+  href: tagUrl(identity, name),
+  name: `#${name}`,
+});
 
 /** Mastodon publishes the day an account joined, not the moment. */
 const publishedDay = (createdAt: string): string => `${createdAt.slice(0, 10)}T00:00:00Z`;
@@ -119,6 +139,8 @@ export const actorDocument = (
     outbox: `${id}/outbox`,
     followers: `${id}/followers`,
     following: `${id}/following`,
+    featured: featuredCollectionUri(id),
+    featuredTags: featuredTagsCollectionUri(id),
     endpoints: {
       sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
     },
@@ -201,6 +223,25 @@ export const noteDeleteActivity = (
   to: note.to,
   cc: note.cc,
   object: { id: note.id, type: "Tombstone", atomUri: note.id },
+});
+
+/**
+ * The `Delete` of a local actor, as Mastodon's `DeleteActorSerializer`: the
+ * actor deletes itself, addressed to the public. Mastodon's id is
+ * `<actor>#delete`. Here a username can be registered again and deleted
+ * again, and a peer that drops an activity id it has seen would drop that
+ * second `Delete`, so `deletionKey` makes the id one per deletion.
+ */
+export const actorDeleteActivity = (
+  actorUri: string,
+  deletionKey: string,
+): ApActivityDocumentOf<"Delete"> => ({
+  "@context": ACTIVITY_STREAMS,
+  id: `${actorUri}#deletes/${deletionKey}`,
+  type: "Delete",
+  actor: actorUri,
+  to: [PUBLIC_COLLECTION],
+  object: actorUri,
 });
 
 /** An `Announce` as delivered, with its `@context`. */
@@ -290,6 +331,44 @@ export const undoActivity = (
   };
 };
 
+/**
+ * The `Add` (a pin) or `Remove` (an unpin) of a local note on its author's
+ * `featured` collection, as Mastodon's `AddNoteSerializer` and
+ * `RemoveNoteSerializer`. It carries no addressing, so it goes to followers.
+ */
+export const featuredActivity = (
+  type: "Add" | "Remove",
+  note: ActivityObjectRef,
+  activityKey: string,
+): ApActivityDocumentOf<"Add" | "Remove"> => ({
+  "@context": ACTIVITY_STREAMS,
+  id: `${note.authorUri}#${type === "Add" ? "adds" : "removes"}/${activityKey}`,
+  type,
+  actor: note.authorUri,
+  target: featuredCollectionUri(note.authorUri),
+  object: note.uri,
+});
+
+/**
+ * The `Add` or `Remove` of a featured hashtag, as Mastodon's
+ * `AddHashtagSerializer` and `RemoveHashtagSerializer`: the `target` is the
+ * `featured` collection, and the receiver tells a hashtag from a pin by the
+ * object's type. It carries no addressing, so it goes to followers.
+ */
+export const featuredTagActivity = (
+  type: "Add" | "Remove",
+  actorUri: string,
+  hashtag: ApHashtagJSON,
+  activityKey: string,
+): ApActivityDocumentOf<"Add" | "Remove"> => ({
+  "@context": [ACTIVITY_STREAMS, { Hashtag: "as:Hashtag" }],
+  id: `${actorUri}#${type === "Add" ? "adds" : "removes"}/${activityKey}`,
+  type,
+  actor: actorUri,
+  target: featuredCollectionUri(actorUri),
+  object: hashtag,
+});
+
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;
 
@@ -367,6 +446,12 @@ export const noteDocument = (
     poll?: PollRecord | undefined;
     /** The note's media in order. Required: an `Update` without them clears them remotely. */
     media: NoteMedia;
+    /**
+     * The note's `replies` collection with its first page. Without it the
+     * note says it has no reply of its author's yet, which is so for a new
+     * note; its other pages are read from the links either way.
+     */
+    replies?: ApRepliesJSON | undefined;
     /** Who may quote the note, federated as `interactionPolicy.canQuote`. */
     quotePolicy: QuotePolicy;
     /**
@@ -465,6 +550,7 @@ export const noteDocument = (
     sensitive: note.sensitive || (authorSensitized && attachments.length > 0),
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
     inReplyTo: reply?.inReplyTo ?? null,
+    replies: extras.replies ?? emptyNoteReplies(id),
     attachment: attachments.map((media) => ({
       type: "Document" as const,
       mediaType: media.mediaType,
@@ -482,11 +568,7 @@ export const noteDocument = (
         href: mention.href,
         name: mention.name,
       })),
-      ...hashtags.map((name) => ({
-        type: "Hashtag" as const,
-        href: tagUrl(identity, name),
-        name: `#${name}`,
-      })),
+      ...hashtags.map((name) => hashtagObject(identity, name)),
       ...emojis.map(emojiTag),
     ],
     interactionPolicy: { canQuote: { automaticApproval } },

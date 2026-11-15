@@ -2,7 +2,11 @@ import { recordDeliveryReachability } from "../delivery-domain-health-store";
 import {
   ACTIVITY_STREAMS,
   type ApActorCollectionJSON,
+  type ApFeaturedCollectionJSON,
+  type ApFeaturedTagsCollectionJSON,
   type ApOutboxJSON,
+  type ApRepliesDocumentJSON,
+  type ApRepliesPageDocumentJSON,
   type ApStatusDocumentJSON,
 } from "@tstodon/api/activitypub";
 import {
@@ -11,15 +15,24 @@ import {
   InboxActivity,
   InstanceIdentity,
   type LocalAccount,
+  type LocalStatus as LocalStatusValue,
   RemoteActor,
+  RepliesPage,
+  Visibility,
 } from "@tstodon/domain";
 import type { Context } from "hono";
-import { findAccountByUsername, findAccountsByIds } from "../account-store";
+import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
+import type { RepositoryError } from "../d1";
+import { findAccountByUsername, findAccountsByIds, isDeletedAccountName } from "../account-store";
 import { findBlock } from "../block-mute-store";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import { isActorDomainBlocked } from "../domain-block-store";
 import {
   activityPayloadFromJson,
+  featuredCollectionUri,
+  featuredTagsCollectionUri,
+  hashtagObject,
   localNoteRef,
   noteDocument,
   parseLocalActorUsername,
@@ -62,15 +75,18 @@ import {
   quoteAuthorizationDocument,
   localQuoteAuthorization,
 } from "../quote-authorization-document";
-import { ActivityJsonSchema, JsonObjectSchema } from "../activitypub-wire";
+import { ActivityJsonSchema, JsonObjectSchema, nameCollectionActivity } from "../activitypub-wire";
 import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
 import { loadNoteMentions } from "../mention-resolve";
 import { loadNoteMedia } from "../note-attachments";
+import { loadNoteReplies, loadNoteRepliesPage, type RepliedNote } from "../note-replies";
 import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
 import { findStatusById } from "../status-store";
+import { listPinnedStatuses } from "../status-pin-store";
+import { listFeaturedTags } from "../tag-store";
 import { RemoteAccountId } from "../remote-account-id";
 import {
   instanceActorDocument,
@@ -79,6 +95,51 @@ import {
 } from "../instance-actor";
 
 const parseActivityJson = schemaResult(ActivityJsonSchema);
+
+const RepliesQuerySchema = z.object({
+  page: z.string().optional(),
+  only_other_accounts: z.string().optional(),
+  remote: z.string().optional(),
+  min_id: z.string().min(1).max(64).optional(),
+});
+const parseRepliesQuery = schemaResult(RepliesQuerySchema);
+
+/** The note as its `replies` collection names it. */
+const repliedNote = (
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  note: LocalStatusValue,
+): RepliedNote => {
+  const actorUri = InstanceIdentity.actorUrl(identity, author.username);
+  return {
+    id: note.id,
+    uri: `${actorUri}/statuses/${note.id}`,
+    authorId: author.id,
+    actorUrlPrefix: actorUri.slice(0, actorUri.length - author.username.length),
+  };
+};
+
+/**
+ * Whether `account` blocks the remote actor that signed a fetch, or its
+ * domain: Mastodon then shows that fetcher nothing of the account's.
+ */
+const blocksFetcher = async (
+  db: D1Database,
+  account: LocalAccount,
+  fetcherUri: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const [blocked, domainBlocked] = await Promise.all([
+    findBlock(db, account.id, fetcherUri),
+    isActorDomainBlocked(db, account.id, fetcherUri),
+  ]);
+  if (blocked.isErr()) {
+    return err(blocked.error);
+  }
+  if (domainBlocked.isErr()) {
+    return err(domainBlocked.error);
+  }
+  return ok(blocked.value || domainBlocked.value);
+};
 
 const jsonLd = {
   "content-type": "application/activity+json",
@@ -98,7 +159,12 @@ export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:
     return jsonRepositoryError(c, account.error.message);
   }
   if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
+    // As Mastodon: a deleted account's actor is gone for good, an unknown name is not found.
+    const deleted = await isDeletedAccountName(c.env.DB, c.req.param("username"));
+    if (deleted.isErr()) {
+      return jsonRepositoryError(c, deleted.error.message);
+    }
+    return deleted.value ? c.json({ kind: "Gone" }, 410) : c.json({ kind: "NotFound" }, 404);
   }
   const document = await localActorDocument(c.env, identity.value, account.value);
   if (document.isErr()) {
@@ -144,16 +210,25 @@ export const getUsersByUsernameStatusesById = async (
   if (media.isErr()) {
     return jsonRepositoryError(c, media.error.message);
   }
+  const visibility = status.value.visibility.kind;
+  // Only a note anyone may read lists its replies; the others carry an empty page.
+  const replies =
+    visibility === "Public" || visibility === "Unlisted"
+      ? await loadNoteReplies(c.env.DB, repliedNote(identity.value, account.value, status.value))
+      : ok(undefined);
+  if (replies.isErr()) {
+    return jsonRepositoryError(c, replies.error.message);
+  }
   const note = noteDocument(identity.value, account.value, status.value, {
     quote: await noteQuote(c.env, identity.value, status.value.id),
     mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
     reply: await loadNoteReply(c.env.DB, identity.value, status.value),
+    replies: replies.value,
     poll: await loadNotePoll(c.env.DB, status.value.id),
     media: media.value,
     quotePolicy: await loadNoteQuotePolicy(c.env.DB, account.value, status.value),
     emojis: await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl),
   });
-  const visibility = status.value.visibility.kind;
   if (visibility !== "Public" && visibility !== "Unlisted") {
     // Followers-only and direct notes go to a signed fetch from an actor they
     // address (Mastodon's authorized fetch), and never into a shared cache.
@@ -165,6 +240,72 @@ export const getUsersByUsernameStatusesById = async (
     c.header("Vary", "Signature");
   }
   return c.json(note, 200, jsonLd);
+};
+
+/**
+ * The `replies` collection of a public or unlisted note, or one page of it
+ * (`?page=true`), as Mastodon's `RepliesController`: public and unlisted
+ * replies as URIs, the author's own first, then other local accounts', then
+ * the ones cached from other servers. 404 for a note not everyone may read,
+ * and for a signed fetcher the author blocks.
+ */
+export const getUsersByUsernameStatusesByIdReplies = async (
+  c: Context<{ Bindings: Env }, "/users/:username/statuses/:id/replies">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
+  const query = parseRepliesQuery(c.req.query());
+  if (query.isErr()) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  const status = account.value ? await findStatusById(c.env.DB, c.req.param("id")) : ok(undefined);
+  if (status.isErr()) {
+    return jsonRepositoryError(c, status.error.message);
+  }
+  const visibility = status.value?.visibility.kind;
+  if (
+    !account.value ||
+    !status.value ||
+    status.value.kind !== "LocalNote" ||
+    status.value.accountId !== account.value.id ||
+    (visibility !== "Public" && visibility !== "Unlisted")
+  ) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  if (access.kind === "Signed") {
+    const blocked = await blocksFetcher(c.env.DB, account.value, access.actor.actorUri);
+    if (blocked.isErr()) {
+      return jsonRepositoryError(c, blocked.error.message);
+    }
+    if (blocked.value) {
+      return c.json({ kind: "NotFound" }, 404);
+    }
+  }
+  const note = repliedNote(identity.value, account.value, status.value);
+  if (!["1", "true"].includes(query.value.page ?? "")) {
+    const replies = await loadNoteReplies(c.env.DB, note);
+    if (replies.isErr()) {
+      return jsonRepositoryError(c, replies.error.message);
+    }
+    const collection: ApRepliesDocumentJSON = { "@context": ACTIVITY_STREAMS, ...replies.value };
+    return c.json(collection, 200, jsonLd);
+  }
+  const page = await loadNoteRepliesPage(c.env.DB, note, RepliesPage.fromQuery(query.value));
+  if (page.isErr()) {
+    return jsonRepositoryError(c, page.error.message);
+  }
+  const document: ApRepliesPageDocumentJSON = { "@context": ACTIVITY_STREAMS, ...page.value };
+  return c.json(document, 200, jsonLd);
 };
 
 /**
@@ -401,6 +542,101 @@ export const getUsersByUsernameFollowing = async (
 };
 
 /**
+ * The account's pinned public and unlisted statuses, newest pin first, as
+ * Mastodon's `CollectionsController` serves `featured`. A followers-only pin
+ * is left out: the collection is read without the audience check a note
+ * gets, and its URI is not for everyone. In secure mode a signed fetcher the
+ * account blocks, or whose domain it blocks, reads an empty collection.
+ */
+export const getUsersByUsernameCollectionsFeatured = async (
+  c: Context<{ Bindings: Env }, "/users/:username/collections/featured">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  const hidden =
+    access.kind === "Signed"
+      ? await blocksFetcher(c.env.DB, account.value, access.actor.actorUri)
+      : ok(false);
+  if (hidden.isErr()) {
+    return jsonRepositoryError(c, hidden.error.message);
+  }
+  const pinned = hidden.value ? ok([]) : await listPinnedStatuses(c.env.DB, account.value.id);
+  if (pinned.isErr()) {
+    return jsonRepositoryError(c, pinned.error.message);
+  }
+  const items = pinned.value
+    .filter((status) => !Visibility.isRestricted(status.visibility))
+    .map((status) => `${actor}/statuses/${status.id}`);
+  const featured: ApFeaturedCollectionJSON = {
+    "@context": ACTIVITY_STREAMS,
+    id: featuredCollectionUri(actor),
+    type: "OrderedCollection",
+    totalItems: items.length,
+    orderedItems: items,
+  };
+  return c.json(featured, 200, jsonLd);
+};
+
+/**
+ * The account's featured hashtags, as Mastodon's `CollectionsController`
+ * serves `tags`. In secure mode a signed fetcher the account blocks, or whose
+ * domain it blocks, reads an empty collection.
+ */
+export const getUsersByUsernameCollectionsTags = async (
+  c: Context<{ Bindings: Env }, "/users/:username/collections/tags">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const hidden =
+    access.kind === "Signed"
+      ? await blocksFetcher(c.env.DB, account.value, access.actor.actorUri)
+      : ok(false);
+  if (hidden.isErr()) {
+    return jsonRepositoryError(c, hidden.error.message);
+  }
+  const names = hidden.value ? ok([]) : await listFeaturedTags(c.env.DB, account.value.id);
+  if (names.isErr()) {
+    return jsonRepositoryError(c, names.error.message);
+  }
+  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  const tags: ApFeaturedTagsCollectionJSON = {
+    "@context": [ACTIVITY_STREAMS, { Hashtag: "as:Hashtag" }],
+    id: featuredTagsCollectionUri(actor),
+    type: "Collection",
+    totalItems: names.value.length,
+    items: names.value.map((name) => hashtagObject(identity.value, name)),
+  };
+  return c.json(tags, 200, jsonLd);
+};
+
+/**
  * Why a key that `resolveRemoteActor` refused did not verify, read only on
  * that failure path: its signature was checked and failed, the key is cached
  * for (or served from the host of) another actor, or the key was unusable.
@@ -443,7 +679,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     refuse({ reason: "UnparseableBody", status: 400 });
     return c.json({ kind: "ValidationError" }, 400);
   }
-  const activityJson = parseActivityJson(json.value);
+  const activityJson = parseActivityJson(
+    nameCollectionActivity(json.value, c.req.header("Date"), c.req.header("Digest")),
+  );
   if (activityJson.isErr()) {
     refuse({ reason: "UnparseableBody", status: 400 });
     return c.json({ kind: "ValidationError" }, 400);

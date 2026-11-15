@@ -86,12 +86,14 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   tstodon sends and serves, as Mastodon's `ActivityPub::*Serializer`s shape
   them: `ApActorDocument` / `ApActor` (an actor `Update`'s object),
   `ApInstanceActorDocument`, `ApStatusDocument` (`ApNote` / `ApQuestion`),
-  `ApPollVote`, `ApTombstone`, `ApQuoteAuthorizationDocument`, each activity
-  (`ApCreate`, `ApUpdate`, `ApDelete`, `ApAnnounce`, `ApLike`, `ApFollow`,
-  `ApAccept`, `ApReject`, `ApUndo`, `ApBlock`, `ApMove`, `ApFlag`,
-  `ApQuoteRequest`) and `ApActivityDocument` (any of them with its
-  `@context`, what the delivery queue takes), `ApActorCollection` and
-  `ApOutbox`, `WebFingerJrd`, `NodeInfoDiscovery`, `NodeInfo20` and `NodeInfo21`, plus the
+  `ApPollVote`, `ApTombstone`, `ApQuoteAuthorizationDocument`, a status's
+  `replies` (`ApReplies`, `ApRepliesDocument`, `ApRepliesPageDocument`), each
+  activity (`ApCreate`, `ApUpdate`, `ApDelete`, `ApAnnounce`, `ApLike`,
+  `ApFollow`, `ApAccept`, `ApReject`, `ApUndo`, `ApBlock`, `ApMove`, `ApFlag`,
+  `ApQuoteRequest`, `ApAdd`, `ApRemove`) and `ApActivityDocument` (any of
+  them with its `@context`, what the delivery queue takes), the collections
+  `ApActorCollection`, `ApOutbox`, `ApFeaturedCollection` and
+  `ApFeaturedTagsCollection`, `WebFingerJrd`, `NodeInfoDiscovery`, `NodeInfo20` and `NodeInfo21`, plus the
   constants `ACTIVITY_STREAMS`, `PUBLIC_COLLECTION` and `SECURITY_V1`. These
   describe tstodon's output only: what other servers send is read leniently
   in the Worker (`server/activitypub-wire.ts`). A schema with `@context` is
