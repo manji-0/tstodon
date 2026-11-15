@@ -158,6 +158,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - `provision.rb` creates users the way `tootctl accounts create --confirmed --approve` does, and a Doorkeeper token for each, in one `rails runner` call. It also creates the custom emoji `:interop:`. The user `moderator` gets the Owner role and a token with `admin:read admin:write`.
 - `SMTP_DELIVERY_METHOD=test` keeps notification mails from failing in Sidekiq.
 - The volume `system` is mounted at `public/system` in both `web` and `sidekiq`. Sidekiq downloads a remote attachment, avatar or emoji there and web serves it. Without the shared volume every such URL answers 404.
+- `hold-follow.rb` is mounted as a Rails initializer. Mastodon's `Follow` handler checks whether an `Undo` of the `Follow` came first, and stores the follow some milliseconds later. An `Undo` that Sidekiq handles in between finds no follow, so the follow stays. The two handlers overlap only when the two deliveries arrive within a few milliseconds of each other: one CI run had them 11 ms apart, and 320 rounds on a development machine had none. The initializer holds the `Follow` handler for 300 ms after that check, so the step "follow, then unfollow at once" overlaps them in every run. `MASTODON_FOLLOW_HOLD_MS` sets another time, and `0` turns the hold off.
 
 ### tstodon
 

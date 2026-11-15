@@ -10,9 +10,12 @@ x-mastodon: &mastodon
   environment:
     # Secure mode: `MASTODON_AUTHORIZED_FETCH=true ./bootstrap.sh`.
     AUTHORIZED_FETCH: ${MASTODON_AUTHORIZED_FETCH:-false}
+    # How long hold-follow.rb holds a `Follow` before Mastodon stores it; 0 turns it off.
+    INTEROP_FOLLOW_HOLD_MS: ${MASTODON_FOLLOW_HOLD_MS:-300}
   volumes:
     - ./.state/certs/ca.crt:/certs/ca.crt:ro
     - ./provision.rb:/provision.rb:ro
+    - ./hold-follow.rb:/opt/mastodon/config/initializers/zz_interop_hold_follow.rb:ro
     # Sidekiq downloads remote media and web serves it: both need the files.
     - system:/opt/mastodon/public/system
   networks:
