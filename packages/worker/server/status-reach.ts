@@ -2,6 +2,7 @@ import type {
   FindRemoteActorInbox,
   FindThreadParent,
   ListLocalBoosterAccountIds,
+  ListLocalBoosterFollowerInboxes,
   ListRemoteFollowerInboxes,
   ListStatusInteractorInboxes,
   RemoteActor,
@@ -81,7 +82,10 @@ export const statusReachInboxes = async (
 };
 
 export type StatusDeleteReachOperations = StatusReachOperations &
-  Readonly<{ listLocalBoosterAccountIds: ListLocalBoosterAccountIds }>;
+  Readonly<{
+    listLocalBoosterAccountIds: ListLocalBoosterAccountIds;
+    listLocalBoosterFollowerInboxes: ListLocalBoosterFollowerInboxes;
+  }>;
 
 /**
  * Where the `Delete` of a local status goes: its reach
@@ -100,11 +104,7 @@ export const statusDeleteReach = async (
   if (reach.isErr() || !distributable(status)) {
     return reach;
   }
-  const boosters = await operations.listLocalBoosterAccountIds(status);
-  if (boosters.isErr()) {
-    return err(boosters.error);
-  }
-  const followers = await followerInboxes(operations.listRemoteFollowerInboxes, boosters.value);
+  const followers = await operations.listLocalBoosterFollowerInboxes(status);
   if (followers.isErr()) {
     return err(followers.error);
   }

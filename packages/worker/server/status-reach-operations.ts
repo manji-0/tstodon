@@ -1,10 +1,18 @@
-import { type InstanceIdentity, RemoteActor, StatusTarget } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  RemoteActor,
+  StatusTarget,
+  type ThreadStatus,
+} from "@tstodon/domain";
 import { err, ok } from "neverthrow";
 import { findAccountById } from "./account-store";
 import { localNoteRef } from "./activitypub";
 import { findRemoteActorByUri, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { listStatusInteractorInboxes } from "./remote-interaction-store";
-import { listLocalBoosterAccountIds } from "./status-interaction-store";
+import {
+  listLocalBoosterAccountIds,
+  listLocalBoosterFollowerInboxes,
+} from "./status-interaction-store";
 import type { StatusDeleteReachOperations } from "./status-reach";
 import { findThreadParent } from "./thread-context";
 
@@ -40,11 +48,12 @@ export const statusReachOperations = (
       actor ? RemoteActor.deliveryInbox(actor) : undefined,
     ),
   findThreadParent: (status) => findThreadParent(env.DB, identity, status),
-  listLocalBoosterAccountIds: (status) =>
-    listLocalBoosterAccountIds(
-      env.DB,
-      status.kind === "Local"
-        ? StatusTarget.local(status.status.id)
-        : StatusTarget.remote(status.status.id),
-    ),
+  listLocalBoosterAccountIds: (status) => listLocalBoosterAccountIds(env.DB, targetOf(status)),
+  listLocalBoosterFollowerInboxes: (status) =>
+    listLocalBoosterFollowerInboxes(env.DB, targetOf(status)),
 });
+
+const targetOf = (status: ThreadStatus) =>
+  status.kind === "Local"
+    ? StatusTarget.local(status.status.id)
+    : StatusTarget.remote(status.status.id);

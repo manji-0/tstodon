@@ -642,6 +642,8 @@ export * from "./sql/listListsForAccount";
 
 export * from "./sql/listLocalAccountModerations";
 
+export * from "./sql/listLocalBoosterFollowerInboxes";
+
 export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";

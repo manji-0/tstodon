@@ -19,6 +19,7 @@ import {
   deleteFavourite as deleteFavouriteSql,
   insertBookmarkOrIgnore as insertBookmarkOrIgnoreSql,
   insertFavouriteOrIgnore as insertFavouriteOrIgnoreSql,
+  listLocalBoosterFollowerInboxes as listLocalBoosterFollowerInboxesSql,
   statusStatsByIdsJson as statusStatsByIdsJsonSql,
 } from "./generated/prisma/sql";
 
@@ -346,6 +347,25 @@ export const listStatusRebloggedBy = async (
       limit,
       cursorAscending(cursor),
     );
+  });
+
+const BoosterFollowerInboxRow = z.object({
+  inbox_uri: z.string(),
+  shared_inbox_uri: z.string().nullable(),
+});
+
+/** The delivery inboxes of the accepted remote followers of the local accounts that boost the target. */
+export const listLocalBoosterFollowerInboxes = async (
+  db: D1Database,
+  target: StatusTargetValue,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      listLocalBoosterFollowerInboxesSql(...statusTargetColumns(target)),
+      BoosterFollowerInboxRow,
+    );
+    return [...new Set(rows.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
   });
 
 /** Every local account that currently boosts the target, for notifying them when it changes. */

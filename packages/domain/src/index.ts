@@ -314,6 +314,7 @@ export type { FindThreadParent, ThreadStatus } from "./thread-status";
 export type {
   FindRemoteActorInbox,
   ListLocalBoosterAccountIds,
+  ListLocalBoosterFollowerInboxes,
   ListRemoteFollowerInboxes,
   ListStatusInteractorInboxes,
 } from "./status-reach-resolver";
