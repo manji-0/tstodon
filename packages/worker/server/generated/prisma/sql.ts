@@ -634,6 +634,8 @@ export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";
 
+export * from "./sql/listLocalNoteReplies";
+
 export * from "./sql/listLocalNoteTextsAfter";
 
 export * from "./sql/listLocalThreadAncestors";
@@ -687,6 +689,8 @@ export * from "./sql/listRemoteActorHomeEntryIds";
 export * from "./sql/listRemoteActorModerations";
 
 export * from "./sql/listRemoteActorPinnedStatuses";
+
+export * from "./sql/listRemoteNoteReplies";
 
 export * from "./sql/listRemotePollVotes";
 

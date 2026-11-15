@@ -15,6 +15,7 @@ import {
   PUBLIC_COLLECTION,
   type ApQuestionJSON,
   type ApQuoteRequestRefJSON,
+  type ApRepliesJSON,
   type ApStatusDocumentJSON,
   SECURITY_V1,
 } from "@tstodon/api/activitypub";
@@ -24,6 +25,7 @@ import type { ActivityJsonSchema } from "./activitypub-wire";
 import { type CustomEmoji, emojisInTexts } from "./emoji";
 import { escapeHtml, textToHtml } from "./html";
 import { mediaPublicUrl } from "./media-keys";
+import { emptyNoteReplies } from "./note-replies";
 import type { PollRecord } from "./poll-store";
 import type { QuotePolicy } from "./quote-store";
 
@@ -404,6 +406,12 @@ export const noteDocument = (
     poll?: PollRecord | undefined;
     /** The note's media in order. Required: an `Update` without them clears them remotely. */
     media: NoteMedia;
+    /**
+     * The note's `replies` collection with its first page. Without it the
+     * note says it has no reply of its author's yet, which is so for a new
+     * note; its other pages are read from the links either way.
+     */
+    replies?: ApRepliesJSON | undefined;
     /** Who may quote the note, federated as `interactionPolicy.canQuote`. */
     quotePolicy: QuotePolicy;
     /**
@@ -502,6 +510,7 @@ export const noteDocument = (
     sensitive: note.sensitive || (authorSensitized && attachments.length > 0),
     summary: note.spoilerText.length > 0 ? note.spoilerText : null,
     inReplyTo: reply?.inReplyTo ?? null,
+    replies: extras.replies ?? emptyNoteReplies(id),
     attachment: attachments.map((media) => ({
       type: "Document" as const,
       mediaType: media.mediaType,

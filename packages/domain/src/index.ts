@@ -17,6 +17,7 @@ export {
   type AccountPresentation as AccountPresentationValue,
 } from "./account-presentation";
 export { ContentFilter, type ContentFilterMatch, type FilteredContent } from "./content-filter";
+export { RepliesPage, type RepliesPageQuery } from "./replies-page";
 export {
   OutboxBackfill,
   type OutboxBackfillDecision,
