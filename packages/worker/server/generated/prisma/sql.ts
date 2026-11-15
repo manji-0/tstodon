@@ -6,6 +6,8 @@ export * from "./sql/acceptOutboundFollow";
 
 export * from "./sql/accountStatsByIdsJson";
 
+export * from "./sql/addRemoteActorPin";
+
 export * from "./sql/advanceBackfillCursor";
 
 export * from "./sql/attachMediaToStatus";
@@ -157,6 +159,8 @@ export * from "./sql/deleteReblogOf";
 export * from "./sql/deleteRemoteActor";
 
 export * from "./sql/deleteRemoteActorModeration";
+
+export * from "./sql/deleteRemoteActorPinByObjectUri";
 
 export * from "./sql/deleteRemoteActorPins";
 
@@ -893,6 +897,8 @@ export * from "./sql/sumAccountMediaBytes";
 export * from "./sql/sumStoredMediaBytes";
 
 export * from "./sql/summarizeNotificationGroups";
+
+export * from "./sql/trimRemoteActorPins";
 
 export * from "./sql/unfeatureTag";
 

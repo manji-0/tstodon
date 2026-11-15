@@ -21,6 +21,14 @@ export const ApActorCollection = orderedCollection(ApUri);
 export type ApActorCollectionJSON = z.infer<typeof ApActorCollection>;
 
 /**
+ * A local account's `featured` collection: its pinned statuses, newest pin
+ * first, as their URIs. Mastodon embeds the notes it may distribute; a reader
+ * resolves either form.
+ */
+export const ApFeaturedCollection = orderedCollection(ApUri);
+export type ApFeaturedCollectionJSON = z.infer<typeof ApFeaturedCollection>;
+
+/**
  * A local account's outbox: its public and unlisted statuses and boosts, as
  * the `Create` and `Announce` activities that were delivered (each keeps the
  * `@context` it was sent with).

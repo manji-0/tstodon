@@ -179,6 +179,29 @@ export const ApQuoteRequest = z.object({
 });
 export type ApQuoteRequestJSON = z.infer<typeof ApQuoteRequest>;
 
+/**
+ * `Add` of a status to the actor's `featured` collection, a pin
+ * (`AddNoteSerializer`). Mastodon sends it without an `id`; tstodon gives it one.
+ */
+export const ApAdd = z.object({
+  id: ApUri,
+  type: z.literal("Add"),
+  actor: ApUri,
+  target: ApUri,
+  object: ApUri,
+});
+export type ApAddJSON = z.infer<typeof ApAdd>;
+
+/** `Remove` of a status from the actor's `featured` collection, an unpin (`RemoveNoteSerializer`). */
+export const ApRemove = z.object({
+  id: ApUri,
+  type: z.literal("Remove"),
+  actor: ApUri,
+  target: ApUri,
+  object: ApUri,
+});
+export type ApRemoveJSON = z.infer<typeof ApRemove>;
+
 const activities = [
   ApFollow,
   ApBlock,
@@ -193,6 +216,8 @@ const activities = [
   ApMove,
   ApFlag,
   ApQuoteRequest,
+  ApAdd,
+  ApRemove,
 ] as const;
 
 /** Any activity tstodon sends, without its `@context`. */
@@ -214,6 +239,8 @@ export const ApActivityDocument = z.discriminatedUnion("type", [
   withContext(ApMove),
   withContext(ApFlag),
   withContext(ApQuoteRequest),
+  withContext(ApAdd),
+  withContext(ApRemove),
 ]);
 export type ApActivityDocumentJSON = z.infer<typeof ApActivityDocument>;
 

@@ -40,6 +40,33 @@ export const ActivityJsonSchema = z
   })
   .passthrough();
 
+const UnnamedCollectionActivitySchema = z.looseObject({
+  type: z.literal(["Add", "Remove"]),
+  actor: z.string().min(1),
+});
+
+const parseUnnamedCollectionActivity = schemaResult(UnnamedCollectionActivitySchema);
+
+/**
+ * Mastodon sends `Add` and `Remove` (a pin, an unpin) without an `id`
+ * (`AddNoteSerializer`). The inbox claims every activity by its id, so one
+ * that has none is named after the signed request that carries it: its
+ * `Date` and `Digest`. A redelivery of the same request is then a duplicate,
+ * and a later pin of the same note, signed at another time, is not.
+ */
+export const nameCollectionActivity = (
+  json: unknown,
+  date: string | undefined,
+  digest: string | undefined,
+): unknown => {
+  const unnamed = parseUnnamedCollectionActivity(json);
+  if (unnamed.isErr() || unnamed.value.id !== undefined || !date || !digest) {
+    return json;
+  }
+  const { actor, type } = unnamed.value;
+  return { ...unnamed.value, id: `${actor}#${type.toLowerCase()}/${date}/${digest}` };
+};
+
 export const NestedActivityObjectSchema = z
   .object({
     type: z.string().min(1),
@@ -169,6 +196,7 @@ export const PollVoteDocumentSchema = z
 warmSchemas([
   JsonObjectSchema,
   ActivityJsonSchema,
+  UnnamedCollectionActivitySchema,
   NestedActivityObjectSchema,
   ActorPublicKeySchema,
   ActorDocumentSchema,

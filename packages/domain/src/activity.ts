@@ -95,6 +95,25 @@ const QuoteRequestSchema = z.object({
   object: z.string().min(1),
 });
 
+/**
+ * The actor adds `object` to a collection of its own, named by the `target`
+ * read from the raw activity: a note to its `featured` collection is a pin.
+ */
+const AddSchema = z.object({
+  kind: z.literal("Add"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
+/** The actor removes `object` from the collection its `target` names: an unpin. */
+const RemoveSchema = z.object({
+  kind: z.literal("Remove"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
 const RelationshipActivitySchema = z.discriminatedUnion("kind", [
   FollowSchema,
   UndoSchema,
@@ -113,6 +132,8 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
   AnnounceSchema,
   FlagSchema,
   QuoteRequestSchema,
+  AddSchema,
+  RemoveSchema,
 ]);
 
 export type Activity = z.infer<typeof ActivitySchema>;

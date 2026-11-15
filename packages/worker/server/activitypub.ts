@@ -50,6 +50,7 @@ const SHOWN_EMPTY_PROFILE: ActorProfile = {
 const ACTOR_CONTEXT_TERMS = {
   manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
   toot: "http://joinmastodon.org/ns#",
+  featured: { "@id": "toot:featured", "@type": "@id" },
   alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
   movedTo: { "@id": "as:movedTo", "@type": "@id" },
   schema: "http://schema.org#",
@@ -81,6 +82,10 @@ const actorImage = (
         ...(contentType === null ? {} : { mediaType: contentType }),
         url: mediaPublicUrl(identity, objectKey),
       };
+
+/** A local actor's `featured` collection (its pinned statuses), as Mastodon names it. */
+export const featuredCollectionUri = (actorUri: string): string =>
+  `${actorUri}/collections/featured`;
 
 /** Mastodon publishes the day an account joined, not the moment. */
 const publishedDay = (createdAt: string): string => `${createdAt.slice(0, 10)}T00:00:00Z`;
@@ -119,6 +124,7 @@ export const actorDocument = (
     outbox: `${id}/outbox`,
     followers: `${id}/followers`,
     following: `${id}/following`,
+    featured: featuredCollectionUri(id),
     endpoints: {
       sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
     },
@@ -289,6 +295,24 @@ export const undoActivity = (
     object,
   };
 };
+
+/**
+ * The `Add` (a pin) or `Remove` (an unpin) of a local note on its author's
+ * `featured` collection, as Mastodon's `AddNoteSerializer` and
+ * `RemoveNoteSerializer`. It carries no addressing, so it goes to followers.
+ */
+export const featuredActivity = (
+  type: "Add" | "Remove",
+  note: ActivityObjectRef,
+  activityKey: string,
+): ApActivityDocumentOf<"Add" | "Remove"> => ({
+  "@context": ACTIVITY_STREAMS,
+  id: `${note.authorUri}#${type === "Add" ? "adds" : "removes"}/${activityKey}`,
+  type,
+  actor: note.authorUri,
+  target: featuredCollectionUri(note.authorUri),
+  object: note.uri,
+});
 
 /** An account a note mentions, as its `Mention` tag names it. */
 export type NoteMention = Readonly<{ href: string; name: string }>;

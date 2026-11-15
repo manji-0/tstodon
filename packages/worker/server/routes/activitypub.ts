@@ -2,6 +2,7 @@ import { recordDeliveryReachability } from "../delivery-domain-health-store";
 import {
   ACTIVITY_STREAMS,
   type ApActorCollectionJSON,
+  type ApFeaturedCollectionJSON,
   type ApOutboxJSON,
   type ApStatusDocumentJSON,
 } from "@tstodon/api/activitypub";
@@ -14,12 +15,15 @@ import {
   RemoteActor,
 } from "@tstodon/domain";
 import type { Context } from "hono";
+import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "../d1";
 import { findAccountByUsername, findAccountsByIds } from "../account-store";
 import { findBlock } from "../block-mute-store";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import { isActorDomainBlocked } from "../domain-block-store";
 import {
   activityPayloadFromJson,
+  featuredCollectionUri,
   localNoteRef,
   noteDocument,
   parseLocalActorUsername,
@@ -62,7 +66,7 @@ import {
   quoteAuthorizationDocument,
   localQuoteAuthorization,
 } from "../quote-authorization-document";
-import { ActivityJsonSchema, JsonObjectSchema } from "../activitypub-wire";
+import { ActivityJsonSchema, JsonObjectSchema, nameCollectionActivity } from "../activitypub-wire";
 import { parseJsonColumn, parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
@@ -71,6 +75,7 @@ import { loadNoteMedia } from "../note-attachments";
 import { loadNoteReply } from "../reply-target";
 import { loadNotePoll } from "../poll-store";
 import { findStatusById } from "../status-store";
+import { listPinnedStatuses } from "../status-pin-store";
 import { RemoteAccountId } from "../remote-account-id";
 import {
   instanceActorDocument,
@@ -79,6 +84,28 @@ import {
 } from "../instance-actor";
 
 const parseActivityJson = schemaResult(ActivityJsonSchema);
+
+/**
+ * Whether `account` blocks the remote actor that signed a fetch, or its
+ * domain: Mastodon then shows that fetcher nothing of the account's.
+ */
+const blocksFetcher = async (
+  db: D1Database,
+  account: LocalAccount,
+  fetcherUri: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const [blocked, domainBlocked] = await Promise.all([
+    findBlock(db, account.id, fetcherUri),
+    isActorDomainBlocked(db, account.id, fetcherUri),
+  ]);
+  if (blocked.isErr()) {
+    return err(blocked.error);
+  }
+  if (domainBlocked.isErr()) {
+    return err(domainBlocked.error);
+  }
+  return ok(blocked.value || domainBlocked.value);
+};
 
 const jsonLd = {
   "content-type": "application/activity+json",
@@ -401,6 +428,52 @@ export const getUsersByUsernameFollowing = async (
 };
 
 /**
+ * The account's pinned statuses, newest pin first, as Mastodon's
+ * `CollectionsController` serves `featured`. In secure mode a signed fetcher
+ * the account blocks, or whose domain it blocks, reads an empty collection.
+ */
+export const getUsersByUsernameCollectionsFeatured = async (
+  c: Context<{ Bindings: Env }, "/users/:username/collections/featured">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  const hidden =
+    access.kind === "Signed"
+      ? await blocksFetcher(c.env.DB, account.value, access.actor.actorUri)
+      : ok(false);
+  if (hidden.isErr()) {
+    return jsonRepositoryError(c, hidden.error.message);
+  }
+  const pinned = hidden.value ? ok([]) : await listPinnedStatuses(c.env.DB, account.value.id);
+  if (pinned.isErr()) {
+    return jsonRepositoryError(c, pinned.error.message);
+  }
+  const items = pinned.value.map((status) => `${actor}/statuses/${status.id}`);
+  const featured: ApFeaturedCollectionJSON = {
+    "@context": ACTIVITY_STREAMS,
+    id: featuredCollectionUri(actor),
+    type: "OrderedCollection",
+    totalItems: items.length,
+    orderedItems: items,
+  };
+  return c.json(featured, 200, jsonLd);
+};
+
+/**
  * Why a key that `resolveRemoteActor` refused did not verify, read only on
  * that failure path: its signature was checked and failed, the key is cached
  * for (or served from the host of) another actor, or the key was unusable.
@@ -443,7 +516,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     refuse({ reason: "UnparseableBody", status: 400 });
     return c.json({ kind: "ValidationError" }, 400);
   }
-  const activityJson = parseActivityJson(json.value);
+  const activityJson = parseActivityJson(
+    nameCollectionActivity(json.value, c.req.header("Date"), c.req.header("Digest")),
+  );
   if (activityJson.isErr()) {
     refuse({ reason: "UnparseableBody", status: 400 });
     return c.json({ kind: "ValidationError" }, 400);
