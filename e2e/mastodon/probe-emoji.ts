@@ -114,6 +114,5 @@ export const emojiScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
         account.emojis.find((entry) => entry.shortcode === shortcode)?.url ?? "",
       );
     },
-    { toTstodon: "INT-13" },
   );
 };

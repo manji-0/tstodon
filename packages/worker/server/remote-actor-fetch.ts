@@ -22,6 +22,7 @@ import {
   isFederatedHostRefused,
 } from "./federated-fetch";
 import { ActorDocumentSchema, refId } from "./activitypub-wire";
+import { actorEmojis } from "./remote-emoji-document";
 import {
   claimRemoteActorKeyRefetch,
   claimRemoteActorRefresh,
@@ -90,6 +91,7 @@ export const summaryText = (html: string): string =>
 
 const actorProfile = (
   document: Readonly<{
+    name?: string | undefined;
     type?: string | undefined;
     summary?: string | null | undefined;
     url?: unknown;
@@ -100,14 +102,16 @@ const actorProfile = (
   }>,
 ): RemoteActorProfile => {
   const published = IsoInstant.parseRemote(document.published ?? "");
+  const note = summaryText(document.summary ?? "");
   return {
-    note: summaryText(document.summary ?? ""),
+    note,
     avatarUrl: linkUrl(document.icon),
     headerUrl: linkUrl(document.image),
     profileUrl: linkUrl(document.url),
     locked: document.manuallyApprovesFollowers === true,
     bot: document.type === "Service" || document.type === "Application",
     publishedAt: published.isOk() ? published.value : null,
+    emojis: [...actorEmojis(document, [document.name ?? "", note])],
   };
 };
 

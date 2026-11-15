@@ -21,6 +21,7 @@ import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
+import { remoteEmojisJson } from "./remote-emoji-document";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { type CustomEmoji, customEmojiJson, emojisInText } from "./emoji";
 import {
@@ -476,7 +477,7 @@ export const mastodonRemoteAccount = (
     following_count: 0,
     statuses_count: 0,
     last_status_at: null,
-    emojis: [],
+    emojis: remoteEmojisJson(profile.emojis),
     fields: [],
   };
 };

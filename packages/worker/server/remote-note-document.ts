@@ -3,7 +3,6 @@ import {
   QuoteInteractionPolicy,
   RemoteActor,
   type RemoteEmoji,
-  RemoteEmojiSchema,
   RemoteStatus,
   type RemoteStatus as RemoteStatusValue,
   StatusId,
@@ -18,7 +17,7 @@ import { nowIso } from "./clock";
 import { isTruthy, stringList } from "./form-values";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { remoteAttachmentMetadata } from "./remote-attachment";
-import { remoteEmojisInTexts } from "./remote-emoji-document";
+import { declaredEmojis, remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
@@ -33,8 +32,6 @@ const noteLanguage = (
   return tag ? { kind: "Present", value: tag } : { kind: "None" };
 };
 
-const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
-
 const parseInteractionPolicy = schemaResult(z.object({ canQuote: z.unknown().optional() }));
 
 /** The `canQuote` of a note's `interactionPolicy`, when it has one. */
@@ -42,20 +39,6 @@ const canQuoteOf = (interactionPolicy: unknown): unknown => {
   const parsed = parseInteractionPolicy(interactionPolicy);
   return parsed.isOk() ? parsed.value.canQuote : undefined;
 };
-
-const EmojiTagsSchema = z.object({
-  tag: z
-    .array(
-      z
-        .object({
-          type: z.string().optional(),
-          name: z.string().optional(),
-          icon: z.object({ url: z.string().optional() }).passthrough().optional(),
-        })
-        .passthrough(),
-    )
-    .optional(),
-});
 
 /** Mastodon caps a status's emoji far below this; it only bounds a hostile document. */
 const MAX_EMOJIS = 50;
@@ -67,24 +50,11 @@ const MAX_EMOJIS = 50;
 export const noteEmojis = (
   raw: unknown,
   texts: ReadonlyArray<string>,
-): ReadonlyArray<RemoteEmoji> => {
-  const tags = schemaResult(EmojiTagsSchema)(raw);
-  const seen = new Set<string>();
-  const emojis: RemoteEmoji[] = [];
-  for (const tag of tags.isOk() ? (tags.value.tag ?? []) : []) {
-    const shortcode = tag.name?.replace(/^:|:$/g, "");
-    const url = tag.icon?.url;
-    if (tag.type !== "Emoji" || !shortcode || !url || seen.has(shortcode.toLowerCase())) {
-      continue;
-    }
-    seen.add(shortcode.toLowerCase());
-    const parsed = parseRemoteEmoji({ shortcode, url });
-    if (parsed.isOk()) {
-      emojis.push(parsed.value);
-    }
-  }
-  return remoteEmojisInTexts(texts, emojis).slice(0, MAX_EMOJIS);
-};
+): ReadonlyArray<RemoteEmoji> =>
+  remoteEmojisInTexts(
+    texts,
+    declaredEmojis(raw, (shortcode) => shortcode.toLowerCase()),
+  ).slice(0, MAX_EMOJIS);
 
 const TaggedSchema = z.object({ tag: z.unknown().optional() });
 const HashtagTagSchema = z.object({
