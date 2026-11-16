@@ -165,6 +165,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - `FEDERATION_ALLOW_HOSTS=tstodon.localhost,mastodon.test` (`tstodon.wrangler.jsonc`). A listed host skips the private-address refusal and the DNS check, which would ask a public resolver for `mastodon.test`.
 - `BETTER_AUTH_SECRET` goes in the untracked `e2e/mastodon/.dev.vars`. The Worker reads bindings. A variable exported to the `vp dev` process did not reach it. `start-tstodon.sh` writes `AUTHORIZED_FETCH` there too, from `TSTODON_AUTHORIZED_FETCH`.
 - `NO_PROXY` names both hosts. With `HTTPS_PROXY` set, the Worker's fetches and `curl` go to the proxy otherwise, and it cannot reach these names.
+- `vp dev` sometimes loses its connection to workerd and answers 500 with its own error page (`"message":"fetch failed"`). The request never reached the Worker. The sweep's `call` sends a `GET` that got that page once more, and logs it. It does not resend any other method.
 
 ## What a Mastodon peer does differently from a tstodon peer
 

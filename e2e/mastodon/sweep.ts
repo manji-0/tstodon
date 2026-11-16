@@ -127,6 +127,10 @@ export const Anything = z.unknown();
 
 export class StepFailure extends Error {}
 
+/** Vite's error page for a request it could not hand to workerd. */
+const isDevTransportFailure = (body: string): boolean =>
+  body.includes("<title>Error</title>") && body.includes('"message":"fetch failed"');
+
 /** Call a client API endpoint as `user`; a non-2xx answer or an unexpected body fails the step. */
 export const call = async <T>(
   user: E2eUser,
@@ -156,7 +160,16 @@ export const call = async <T>(
     await sleep(wait);
     response = await fetch(`${user.origin}${path}`, request);
   }
-  const text = await response.text();
+  let text = await response.text();
+  // `vp dev` answers 500 with its own error page when its connection to
+  // workerd drops ("fetch failed"): the request never reached the Worker.
+  // Read requests are safe to send again; anything else fails the step.
+  if (method === "GET" && response.status === 500 && isDevTransportFailure(text)) {
+    console.log(`     dev server lost its connection to workerd on GET ${path}: retrying once`);
+    await sleep(500);
+    response = await fetch(`${user.origin}${path}`, request);
+    text = await response.text();
+  }
   if (!response.ok) {
     throw new StepFailure(
       `${init.method ?? "GET"} ${user.origin}${path} → ${response.status} ${text.slice(0, 300)}`,
