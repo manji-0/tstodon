@@ -354,4 +354,47 @@ describe("D1 statements do not grow with how many things a request names", () =>
       }
     },
   );
+
+  it(
+    "checks who may see a status's quotes in a fixed number of queries",
+    { timeout: 60_000 },
+    async () => {
+      const [reader, author, quoter] = await Promise.all(
+        ["budget-quotes-reader", "budget-quotes-author", "budget-quotes-quoter"].map((name) =>
+          signedInAccount(`${name}@example.com`),
+        ),
+      );
+      if (!reader || !author || !quoter) throw new Error("accounts");
+      const [readerToken, authorToken, quoterToken] = await Promise.all(
+        [reader, author, quoter].map((account) => accessTokenFor(account.id)),
+      );
+      if (!readerToken || !authorToken || !quoterToken) throw new Error("tokens");
+      const quoted = async (count: number) => {
+        const original = idOf(await post(authorToken, "/api/v1/statuses", { status: "quote me" }));
+        for (let n = 0; n < count; n += 1) {
+          await post(quoterToken, "/api/v1/statuses", {
+            status: `quoting ${n}`,
+            quoted_status_id: original,
+          });
+        }
+        return original;
+      };
+      const [one, eight] = [await quoted(1), await quoted(8)];
+      const quotes = (id: string) =>
+        metered(() =>
+          SELF.fetch(`https://example.com/api/v1/statuses/${id}/quotes`, {
+            headers: { Authorization: `Bearer ${readerToken}` },
+          }),
+        );
+      patchD1();
+      await quotes(one);
+      const few = await quotes(one);
+      const many = await quotes(eight);
+      expect([few.status, many.status]).toEqual([200, 200]);
+      expect(
+        many.statements,
+        `listing 8 quotes made ${many.statements} statements, listing one ${few.statements}`,
+      ).toBe(few.statements);
+    },
+  );
 });
