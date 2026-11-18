@@ -325,3 +325,17 @@ Every request with a body passes `app/middleware/03.body-limit.ts` (`server/body
 A `Content-Length` over the cap is answered `413` before the route runs. A body without one (chunked) is read through a counter that fails once it passes the cap, and the request is answered `413` (`{"kind":"PayloadTooLarge"}`); the rest of the body is not read. Each upload is still held to its own type's limit by the route. The inbox answers an oversized delivery with an empty `413` and logs `InboxRefused` reason `PayloadTooLarge`.
 
 Documents this server fetches (ActivityPub objects and actors, WebFinger answers) are read up to 1 MB, Mastodon's `body_with_limit` default; a larger one is refused as unusable. There is nothing to configure.
+
+## Security headers
+
+<!-- derived-from #web-ui -->
+
+`app/middleware/00.security-headers.ts` (`server/security-headers.ts`) adds these headers, modelled on Mastodon's (`config/initializers/content_security_policy.rb` in v4.7.5). Every answer gets `Referrer-Policy` and `X-Content-Type-Options`; the policy and `X-Frame-Options` go on HTML pages only. A script must not carry a page's policy: a worker runs under its script's policy, and the web app's service worker (`/sw.js`) fetches remote avatars and media, which this `connect-src` would refuse. Mastodon serves its static files without a policy too.
+
+- `Content-Security-Policy`: `default-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `form-action 'self'`, `script-src 'self' 'wasm-unsafe-eval'` (the alt-text OCR runs WebAssembly), `style-src 'self'` plus, on the web app shell, a per-response nonce (rendered as `<meta name="style-nonce">`, which the web app gives to the styles it inserts) and the hashes of the four `style` attributes of the embed code, with `'unsafe-hashes'`, because the "Get embed code" preview writes that code into a frame that inherits the shell's policy, `worker-src` and `child-src 'self' blob:`, `connect-src 'self' data: blob:` with the media origin and the streaming socket's `wss://` origin, `img-src` and `media-src 'self' data: blob: https:` with the media origin, `frame-src 'self' https:`, `font-src` and `manifest-src 'self'`. Remote images, media and emoji come from any `https:` host because this server links them where their server put them (Mastodon caches them on its own media host). A server answering on plain `http:` (local development, the e2e suites) also allows `http:` images and media. Under `pnpm dev`, Vite's HMR client and React Refresh need `'unsafe-inline'` and `'unsafe-eval'` for scripts and `'unsafe-inline'` for styles, as Mastodon allows in development.
+- `X-Frame-Options: DENY` with the `frame-ancestors 'none'` policy.
+- `Referrer-Policy: same-origin` and `X-Content-Type-Options: nosniff`.
+
+Two pages differ: a status's embed page (`/@user/:id/embed`) may be framed by any site, so it has no `frame-ancestors` and no `X-Frame-Options`; the OAuth consent page (`/oauth/authorize`) has no `form-action`, since its answer redirects to the client's `redirect_uri`, which Chrome would block. The WebSocket handshake is left as it is. The pages the Worker renders run no inline script.
+
+HSTS is not set by the Worker. Turn it on at Cloudflare's edge (zone → SSL/TLS → Edge Certificates → HTTP Strict Transport Security), which adds `Strict-Transport-Security` to every response of the zone, together with Always Use HTTPS.

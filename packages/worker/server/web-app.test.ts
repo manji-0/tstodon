@@ -102,6 +102,7 @@ describe("Mastodon web app", () => {
       vapidKey: null,
       state: { meta: { title: "</script><script>alert(1)</script>" } },
       appearance: { colorScheme: "auto", contrast: "auto" },
+      styleNonce: "test-nonce",
     });
     expect(html).toContain('<html lang="ja"');
     expect(html).toContain('<script type="module" src="/packs/application.js"');

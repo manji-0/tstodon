@@ -141,6 +141,13 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 
   Within a minute, any request from the hotspot gets `403 Forbidden` (even `/api/v1/instance`); from your main network everything still works. Delete it: `curl -s -H "Authorization: Bearer $TOKEN" -X DELETE $O/api/v1/admin/ip_blocks/<id>`. If you blocked yourself, remove the row with `wrangler d1 execute` ([runbook](./runbook.md#inbox-flood)).
 
+### Security headers and HTTPS
+
+<!-- constrained-by ../reference/configuration.md#security-headers -->
+
+- [ ] `curl -sI $O/home | grep -iE '^(content-security-policy|x-frame-options|referrer-policy|x-content-type-options)'` shows the four headers, with `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+- [ ] HSTS comes from Cloudflare's edge, not the Worker: zone → SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) enabled, with Always Use HTTPS on. `curl -sI $O/ | grep -i strict-transport-security` shows it.
+
 ### Crons and the queue consumer
 
 - [ ] After the next minute 17, the `cron` metric has a point for `17 * * * *` (query in the [runbook](./runbook.md#analytics-engine-metrics)), and `wrangler tail tstodon --format pretty` around that minute shows the scheduled event followed by queue batches.

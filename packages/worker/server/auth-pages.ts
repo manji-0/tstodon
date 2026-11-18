@@ -14,7 +14,13 @@ import { webManifest } from "./web-manifest";
  * page-appearance middleware sets the signed-in account's choice.
  */
 
-export const page = (title: string, body: string, script = ""): string => `<!doctype html>
+/**
+ * A page's script, from `public/`: the content security policy runs no
+ * inline script.
+ */
+export type PageScript = "/sign-out.js" | "/page-refresh.js";
+
+export const page = (title: string, body: string, script?: PageScript): string => `<!doctype html>
 <html lang="en" data-color-scheme="auto" data-contrast="auto">
   <head>
     <meta charset="utf-8" />
@@ -29,7 +35,7 @@ export const page = (title: string, body: string, script = ""): string => `<!doc
   <body>
     <main>
 ${body}
-    </main>${script.length > 0 ? `\n    <script>\n${script}\n    </script>` : ""}
+    </main>${script === undefined ? "" : `\n    <script src="${script}"></script>`}
   </body>
 </html>`;
 
@@ -56,21 +62,9 @@ export const signInPage = (
       : `      <h1>Signed in</h1>
       <p>You are signed in to ${escapeHtml(instanceName)} as <strong>@${escapeHtml(signedInAs)}</strong> through Cloudflare Access.
       Use the web app, or an app that works with Mastodon-compatible servers, to read and post.</p>
-      <form id="sign-out"><button type="submit">Sign out</button></form>
+      <form id="sign-out" data-logout-path="${ACCESS_LOGOUT_PATH}"><button type="submit">Sign out</button></form>
       <p id="error" class="error" role="alert"></p>`,
-    signedInAs === undefined
-      ? ""
-      : `
-      document.getElementById("sign-out").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const response = await fetch("/auth/sign_out", { method: "DELETE", headers: { Accept: "application/json" } });
-        if (!response.ok) {
-          document.getElementById("error").textContent = response.statusText;
-          return;
-        }
-        const body = await response.json();
-        location.assign(typeof body.redirect_to === "string" ? body.redirect_to : "${ACCESS_LOGOUT_PATH}");
-      });`,
+    signedInAs === undefined ? undefined : "/sign-out.js",
   );
 
 export type ConsentRequest = Readonly<{
