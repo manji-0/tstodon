@@ -7,8 +7,10 @@ import { expectContract } from "../test/api-contract";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, settle } from "../test/meter";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { openStream } from "../test/stream-fixture";
 import { parseRows } from "./d1";
 import { handleQueue } from "./queue-handler";
+import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
 
 /**
  * A remote note may name any number of local accounts, as in Mastodon: each
@@ -138,9 +140,19 @@ describe("a remote direct note to many local accounts", () => {
 
       const thirty = await accounts("crowd-dm-a", 30);
       const sixty = await accounts("crowd-dm-b", 60);
+      // Every recipient of the 30 has its `direct` stream open, as do the ones
+      // of the 60 the request serves itself, so the request and the queued
+      // jobs render each one's conversation too: the costliest case.
+      const sockets = await Promise.all(
+        [
+          ...thirty.map((_, n) => `crowd-dm-a-${n}@example.com`),
+          ...sixty.slice(0, INLINE_NOTE_RECIPIENTS).map((_, n) => `crowd-dm-b-${n}@example.com`),
+        ].map((email) => openStream({ email, query: "?stream=direct" })),
+      );
       patchD1();
       const queued = holdQueue();
-      await deliver("warm", thirty.slice(0, 1));
+      // To an account of neither set, so their conversation lists start alike.
+      await deliver("warm", await accounts("crowd-dm-warm", 1));
       queued.bodies.length = 0;
       const toThirty = await deliver("thirty", thirty);
       const thirtyJobs = queued.bodies.filter((body) => kindOf(body) !== "ProcessLinkCard");
@@ -148,10 +160,12 @@ describe("a remote direct note to many local accounts", () => {
       const toSixty = await deliver("sixty", sixty);
       const sixtyJobs = queued.bodies.filter((body) => kindOf(body) !== "ProcessLinkCard");
 
+      // A few statements of the stream renders vary from run to run; 30 more
+      // recipients served inline would add over a thousand.
       expect(
-        toSixty.statements,
+        Math.abs(toSixty.statements - toThirty.statements),
         `the inbox request made ${toThirty.statements} statements for 30 recipients, ${toSixty.statements} for 60`,
-      ).toBe(toThirty.statements);
+      ).toBeLessThan(20);
       expect(toThirty.statements).toBeLessThan(QUERIES_PER_INVOCATION);
       const mostPerInvocation = await drain([...thirtyJobs, ...sixtyJobs]);
       expect(
@@ -183,6 +197,9 @@ describe("a remote direct note to many local accounts", () => {
           ),
           account.username,
         ).toHaveLength(1);
+      }
+      for (const socket of sockets) {
+        socket.close();
       }
     },
   );

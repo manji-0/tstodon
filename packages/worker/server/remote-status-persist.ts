@@ -66,13 +66,14 @@ const MentionTagsSchema = z.object({
  * How many of the local accounts a remote note names its inbox request
  * notifies, or tells about the conversation; the rest are left to queued
  * `FinishRemoteNoteRecipient` jobs. Mastodon works through every one in
- * Sidekiq. A mention notification costs about 40 D1 queries here (the
- * policy checks and the streamed document), and an account with a `direct`
- * stream open has its conversation rendered, so 16 keeps the request under
- * D1's 1000 queries per Worker invocation. Every account it names can read
- * the note: those rows are written for all of them, in one batch.
+ * Sidekiq. Here a mention notification costs about 40 D1 queries (the
+ * policy checks and the streamed document), and so does the conversation of
+ * an account with its `direct` stream open, so 8 keeps the request under
+ * D1's 1000 queries per Worker invocation (`remote-note-recipients.test.ts`
+ * measures it). Every account the note names can read it: those rows are
+ * written for all of them, in one batch.
  */
-export const INLINE_NOTE_RECIPIENTS = 16;
+export const INLINE_NOTE_RECIPIENTS = 8;
 
 /** The `href` of each `Mention` tag of a note document, each once. */
 const mentionHrefs = (raw: unknown): string[] => {
