@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
 import { remoteActor } from "../test/remote-actor-fixture";
@@ -273,6 +274,84 @@ describe("D1 statements do not grow with how many things a request names", () =>
         twenty.statements,
         `familiar followers of 20 accounts made ${twenty.statements} statements, of one ${one.statements}`,
       ).toBe(one.statements);
+    },
+  );
+
+  it(
+    "accepts and dismisses notification requests in a fixed number of queries",
+    { timeout: 120_000 },
+    async () => {
+      const admin = await signedInAccount("budget-nr-admin@example.com", { admin: true });
+      const adminToken = await accessTokenFor(admin.id);
+      /** A recipient with `senders` held requests of `each` mentions; its token and their ids. */
+      const held = async (name: string, senders: number, each: number) => {
+        const recipient = await signedInAccount(`budget-nr-${name}@example.com`);
+        for (let n = 0; n < senders; n += 1) {
+          const sender = await signedInAccount(`budget-nr-${name}-sender-${n}@example.com`);
+          await post(adminToken, `/api/v1/admin/accounts/${sender.id}/silence`);
+          const senderToken = await accessTokenFor(sender.id);
+          for (let m = 0; m < each; m += 1) {
+            await post(senderToken, "/api/v1/statuses", {
+              status: `@${recipient.username} held ${m}`,
+            });
+          }
+        }
+        const token = await accessTokenFor(recipient.id);
+        const listed = await SELF.fetch("https://example.com/api/v1/notifications/requests", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const ids = z.array(z.object({ id: z.string() })).parse(await listed.json());
+        expect(ids).toHaveLength(senders);
+        return { token, ids: ids.map((request) => request.id) };
+      };
+      const send = (token: string, path: string, body?: unknown) =>
+        metered(() =>
+          SELF.fetch(`https://example.com${path}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(body ?? {}),
+          }),
+        );
+      const [oneOne, fourByThree, acceptOne, acceptFour, singleOne, singleThree] =
+        await Promise.all([
+          held("d1", 1, 1),
+          held("d4", 4, 3),
+          held("a1", 1, 1),
+          held("a4", 4, 3),
+          held("s1", 1, 1),
+          held("s3", 1, 3),
+        ]);
+      patchD1();
+      const counts = {
+        dismiss: [
+          await send(oneOne.token, "/api/v1/notifications/requests/dismiss", { id: oneOne.ids }),
+          await send(fourByThree.token, "/api/v1/notifications/requests/dismiss", {
+            id: fourByThree.ids,
+          }),
+        ],
+        accept: [
+          await send(acceptOne.token, "/api/v1/notifications/requests/accept", {
+            id: acceptOne.ids,
+          }),
+          await send(acceptFour.token, "/api/v1/notifications/requests/accept", {
+            id: acceptFour.ids,
+          }),
+        ],
+        single: [
+          await send(singleOne.token, `/api/v1/notifications/requests/${singleOne.ids[0]}/dismiss`),
+          await send(
+            singleThree.token,
+            `/api/v1/notifications/requests/${singleThree.ids[0]}/dismiss`,
+          ),
+        ],
+      };
+      for (const [action, [few, many]] of Object.entries(counts)) {
+        expect([few?.status, many?.status], action).toEqual([200, 200]);
+        expect(
+          many?.statements,
+          `${action}: ${many?.statements} statements for more requests or notifications, ${few?.statements} for one`,
+        ).toBe(few?.statements);
+      }
     },
   );
 });

@@ -116,6 +116,8 @@ export * from "./sql/deleteDomainBlock";
 
 export * from "./sql/deleteEmailDomainBlock";
 
+export * from "./sql/deleteEmptyNotificationRequestGroupsJson";
+
 export * from "./sql/deleteEndorsement";
 
 export * from "./sql/deleteExpiredOauthAuthorizationCodes";
@@ -144,7 +146,7 @@ export * from "./sql/deleteMedia";
 
 export * from "./sql/deleteMute";
 
-export * from "./sql/deleteNotificationRequests";
+export * from "./sql/deleteNotificationRequestsJson";
 
 export * from "./sql/deleteOauthAccessToken";
 
@@ -207,6 +209,8 @@ export * from "./sql/detachStatusMedia";
 export * from "./sql/dismissNotification";
 
 export * from "./sql/dismissNotificationGroup";
+
+export * from "./sql/dismissNotificationRequestsJson";
 
 export * from "./sql/dismissSuggestion";
 
@@ -458,7 +462,7 @@ export * from "./sql/insertMedia";
 
 export * from "./sql/insertNotification";
 
-export * from "./sql/insertNotificationAcceptance";
+export * from "./sql/insertNotificationAcceptancesJson";
 
 export * from "./sql/insertNotificationRequest";
 
@@ -661,6 +665,8 @@ export * from "./sql/listMediaRejectedDomains";
 export * from "./sql/listMutersOfActor";
 
 export * from "./sql/listNotersOfActor";
+
+export * from "./sql/listNotificationRequestSendersJson";
 
 export * from "./sql/listNotifications";
 

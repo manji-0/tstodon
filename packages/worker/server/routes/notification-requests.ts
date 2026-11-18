@@ -28,12 +28,12 @@ import {
   dismissNotificationRequests,
   findNotificationPolicy,
   findNotificationRequest,
+  findNotificationRequestSenders,
   listNotificationRequests,
   type NotificationRequest,
   saveNotificationPolicy,
 } from "../notification-policy-store";
 import { parseInstanceIdentity } from "../runtime-config";
-import { dismissNotification } from "../notification-store";
 import { publishToAccount } from "../stream-publish";
 import { paramsCursor, readParams, readQueryParams } from "../request-params";
 
@@ -296,32 +296,27 @@ const acceptOrDismiss = async (c: Context<{ Bindings: Env }>, accept: boolean) =
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  if (accept) {
-    const released = await acceptNotificationRequests(
-      c.env.DB,
-      user.value.id,
-      resolved.fromAccountId,
-    );
-    if (released.isErr()) {
-      return jsonRepositoryError(c, released.error.message);
-    }
-    // Clients refresh the notification list when the merge lands.
-    await publishToAccount(c.env, user.value.id, { kind: "notifications_merged" });
-    return c.json({});
-  }
-  const dismissed = await dismissNotificationRequests(
+  return closeRequests(c, user.value.id, [resolved.fromAccountId], accept);
+};
+
+/** Accept or dismiss the senders' requests, in one batch however many there are. */
+const closeRequests = async (
+  c: Context<{ Bindings: Env }>,
+  accountId: string,
+  fromAccountIds: ReadonlyArray<string>,
+  accept: boolean,
+): Promise<Response> => {
+  const closed = await (accept ? acceptNotificationRequests : dismissNotificationRequests)(
     c.env.DB,
-    user.value.id,
-    resolved.fromAccountId,
+    accountId,
+    fromAccountIds,
   );
-  if (dismissed.isErr()) {
-    return jsonRepositoryError(c, dismissed.error.message);
+  if (closed.isErr()) {
+    return jsonRepositoryError(c, closed.error.message);
   }
-  for (const notificationId of dismissed.value) {
-    const gone = await dismissNotification(c.env.DB, user.value.id, notificationId);
-    if (gone.isErr()) {
-      return jsonRepositoryError(c, gone.error.message);
-    }
+  if (accept && fromAccountIds.length > 0) {
+    // Clients refresh the notification list when the merge lands.
+    await publishToAccount(c.env, accountId, { kind: "notifications_merged" });
   }
   return c.json({});
 };
@@ -342,44 +337,13 @@ const bulkRequests = async (c: Context<{ Bindings: Env }>, accept: boolean): Pro
   if (body.isErr()) {
     return jsonValidationError(c);
   }
-  const ids = body.value.id ?? [];
-  let acceptedAny = false;
-  for (const id of [...new Set(ids)]) {
-    const request = await findNotificationRequest(c.env.DB, user.value.id, id);
-    if (request.isErr()) {
-      return jsonRepositoryError(c, request.error.message);
-    }
-    if (!request.value) {
-      continue;
-    }
-    if (accept) {
-      const released = await acceptNotificationRequests(
-        c.env.DB,
-        user.value.id,
-        request.value.fromAccountId,
-      );
-      if (released.isErr()) {
-        return jsonRepositoryError(c, released.error.message);
-      }
-      acceptedAny = true;
-      continue;
-    }
-    const dismissed = await dismissNotificationRequests(
-      c.env.DB,
-      user.value.id,
-      request.value.fromAccountId,
-    );
-    if (dismissed.isErr()) {
-      return jsonRepositoryError(c, dismissed.error.message);
-    }
-    for (const notificationId of dismissed.value) {
-      await dismissNotification(c.env.DB, user.value.id, notificationId);
-    }
+  const senders = await findNotificationRequestSenders(c.env.DB, user.value.id, [
+    ...new Set(body.value.id ?? []),
+  ]);
+  if (senders.isErr()) {
+    return jsonRepositoryError(c, senders.error.message);
   }
-  if (acceptedAny) {
-    await publishToAccount(c.env, user.value.id, { kind: "notifications_merged" });
-  }
-  return c.json({});
+  return closeRequests(c, user.value.id, senders.value, accept);
 };
 
 export const postV1NotificationsRequestsAccept = (
