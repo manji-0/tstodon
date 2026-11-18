@@ -68,6 +68,7 @@ import { listOutboxStatusIds, type OutboxReader } from "../actor-outbox-store";
 import { loadLocalNoteDocument, noteCreateActivity } from "../local-note-document";
 import type { CustomEmoji } from "../emoji";
 import { accountCounts } from "../account-count-store";
+import { findAccountStanding } from "../account-moderation-store";
 import { findAccountProfile } from "../account-profile-store";
 import { type IdCursor } from "../id-cursor";
 import { resolveRemoteActor } from "../remote-actor-fetch";
@@ -427,7 +428,8 @@ const pageLinks = (
   ...(links.prev ? { prev: `${collection}${CollectionPage.query(links.prev)}` } : {}),
 });
 
-const HIDDEN_COLLECTION = { error: "This action is not allowed", kind: "Forbidden" } as const;
+/** Mastodon's `forbidden` body. */
+const NOT_ALLOWED = { error: "This action is not allowed", kind: "Forbidden" } as const;
 
 /**
  * A local account's `followers` or `following`, as Mastodon's
@@ -484,7 +486,7 @@ const followCollection = async (
     return c.json(root, 200, jsonLd);
   }
   if (hidden) {
-    return c.json(HIDDEN_COLLECTION, 403);
+    return c.json(NOT_ALLOWED, 403);
   }
   const list = name === "followers" ? listFollowers : listFollowing;
   const edges = await list(
@@ -627,6 +629,16 @@ export const getUsersByUsernameOutbox = async (
   }
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
+  }
+  // Mastodon's `check_account_suspension`: neither the count nor a page of a
+  // suspended account, for 3 minutes.
+  const standing = await findAccountStanding(c.env.DB, account.value.id);
+  if (standing.isErr()) {
+    return jsonRepositoryError(c, standing.error.message);
+  }
+  if (standing.value.kind === "Suspended") {
+    c.header("Cache-Control", "max-age=180, public");
+    return c.json(NOT_ALLOWED, 403);
   }
   const id = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}/outbox`;
   const request = CollectionPage.fromQuery(query.value, "Truthy");

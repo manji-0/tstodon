@@ -231,6 +231,41 @@ describe("ActivityPub followers, following and outbox collections", () => {
     expect(await noteUris(await blocked.fetch(path))).toEqual([]);
   });
 
+  it("refuses the outbox of a suspended account, its followers included, as Mastodon", async () => {
+    const email = "collections-suspended@example.com";
+    const account = await signedInAccount(email);
+    const follower = await remoteActor("outbox-suspended-follower", "outbox-suspended.example");
+    expect(
+      await follower.send({
+        id: `${follower.actorUri}/follows/1`,
+        type: "Follow",
+        object: `${ORIGIN}/users/${account.username}`,
+      }),
+    ).toBe(202);
+    await api(email, "POST", "/api/v1/statuses", {
+      status: "for followers",
+      visibility: "private",
+    });
+    await env.DB.prepare(
+      "INSERT INTO account_moderation (account_id, moderation) VALUES (?, 'Suspended')",
+    )
+      .bind(account.id)
+      .run();
+
+    // Mastodon's `check_account_suspension`: 403, cached for 3 minutes.
+    const base = `/users/${account.username}/outbox`;
+    for (const response of [
+      await SELF.fetch(new URL(base, ORIGIN)),
+      await SELF.fetch(new URL(`${base}?page=true`, ORIGIN)),
+      await follower.fetch(base),
+      await follower.fetch(`${base}?page=true`),
+    ]) {
+      expect(response.status).toBe(403);
+      expect(response.headers.get("Cache-Control")).toBe("max-age=180, public");
+      expect(JSON.stringify(await response.json())).not.toContain("for followers");
+    }
+  });
+
   it("sends Mastodon's cache headers on the outbox", async () => {
     const email = "collections-cache@example.com";
     const account = await signedInAccount(email);
