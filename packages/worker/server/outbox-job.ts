@@ -57,6 +57,7 @@ import {
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
+import { processAuthorizeFollowRequestsJob } from "./follow-request-approval";
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
@@ -345,6 +346,8 @@ export const processOutboxJob = async (
       return processCsvImportJob(env, job);
     case "SeverBlockedDomainFollows":
       return processSeverBlockedDomainFollowsJob(env, job);
+    case "AuthorizeFollowRequests":
+      return processAuthorizeFollowRequestsJob(env, job);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
     case "FanOutRemovedStatuses":

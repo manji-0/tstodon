@@ -221,6 +221,16 @@ const SeverBlockedDomainFollowsSchema = z.object({
 });
 
 /**
+ * Accept the next page of a local account's pending follow requests after it
+ * was unlocked (Mastodon's `AuthorizeFollowWorker`s): those still pending are
+ * the next page, so the job carries no cursor.
+ */
+const AuthorizeFollowRequestsSchema = z.object({
+  kind: z.literal("AuthorizeFollowRequests"),
+  accountId: AccountId.schema,
+});
+
+/**
  * Store the recent public notes and boosts in a remote actor's outbox, and its
  * pinned notes. `from` says which page: the collection's first (`Start`, which
  * also reads the pins), or a later one an earlier job found by following
@@ -362,6 +372,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteThreadSchema,
   ProcessCsvImportSchema,
   SeverBlockedDomainFollowsSchema,
+  AuthorizeFollowRequestsSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
 ]);
