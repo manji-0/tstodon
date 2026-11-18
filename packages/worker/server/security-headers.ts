@@ -107,8 +107,8 @@ export const policyOptions = (c: Context<{ Bindings: Env }>): PolicyOptions => {
 };
 
 /**
- * Request-wide: every answer is `nosniff` and `same-origin` referrer, and an
- * HTML page carries the default policy unless its route set its own (the
+ * Request-wide: every answer is `nosniff` and, unless its route chose
+ * another, `same-origin` referrer; an HTML page carries the default policy unless its route set its own (the
  * web app shell, for its nonce; the embed page, which any site may frame).
  * `X-Frame-Options: DENY` goes with a policy that forbids framing. Other
  * answers get no policy: a script's would bind the worker it starts (the
@@ -125,7 +125,9 @@ export const securityHeadersMiddleware = async (
   if (c.res.status === 101) {
     return;
   }
-  c.header("Referrer-Policy", "same-origin");
+  if (!c.res.headers.has("Referrer-Policy")) {
+    c.header("Referrer-Policy", "same-origin");
+  }
   c.header("X-Content-Type-Options", "nosniff");
   if (!(c.res.headers.get("Content-Type") ?? "").toLowerCase().startsWith("text/html")) {
     return;
