@@ -92,9 +92,8 @@ export type ApOutboxJSON = z.infer<typeof ApOutbox>;
 
 /**
  * A page of a local account's outbox: the statuses and boosts the fetcher
- * may read, as the `Create` and `Announce` activities that were delivered
- * (each keeps the `@context` it was sent with). Like Mastodon's, it carries
- * no `totalItems`.
+ * may read, as a `Create` of the note as it is now or an `Announce`, each
+ * with its `@context`. Like Mastodon's, it carries no `totalItems`.
  */
 export const ApOutboxPage = orderedCollectionPage(
   z.discriminatedUnion("type", [

@@ -231,6 +231,35 @@ describe("ActivityPub followers, following and outbox collections", () => {
     expect(await noteUris(await blocked.fetch(path))).toEqual([]);
   });
 
+  it("sends Mastodon's cache headers on the outbox", async () => {
+    const email = "collections-cache@example.com";
+    const account = await signedInAccount(email);
+    await api(email, "POST", "/api/v1/statuses", { status: "cached" });
+    const reader = await remoteActor("outbox-cache-reader", "outbox-cache.example");
+    const headersOf = (response: Response) => ({
+      status: response.status,
+      cacheControl: response.headers.get("cache-control"),
+      vary: response.headers.get("vary"),
+    });
+    const outbox = `/users/${account.username}/outbox`;
+    expect(headersOf(await SELF.fetch(new URL(outbox, ORIGIN)))).toEqual({
+      status: 200,
+      cacheControl: "max-age=180, public",
+      vary: null,
+    });
+    // A page differs by who signed for it, so each one varies by `Signature`.
+    expect(headersOf(await SELF.fetch(new URL(`${outbox}?page=true`, ORIGIN)))).toEqual({
+      status: 200,
+      cacheControl: "max-age=60, public",
+      vary: "Signature",
+    });
+    expect(headersOf(await reader.fetch(`${outbox}?page=true`))).toEqual({
+      status: 200,
+      cacheControl: "max-age=60, private",
+      vary: "Signature",
+    });
+  });
+
   it("leaves direct statuses out of the statuses count, as Mastodon", async () => {
     const email = "collections-direct-count@example.com";
     const account = await signedInAccount(email);
@@ -248,5 +277,70 @@ describe("ActivityPub followers, following and outbox collections", () => {
     expect(await counts()).toEqual({ rest: 2, ap: 2 });
     await api(email, "DELETE", `/api/v1/statuses/${direct.id}`);
     expect(await counts()).toEqual({ rest: 2, ap: 2 });
+  });
+
+  it("lists each status as it is now: deleted, edited and unboosted ones too", async () => {
+    const email = "collections-current@example.com";
+    const account = await signedInAccount(email);
+    const follower = await remoteActor("outbox-current-follower", "outbox-current.example");
+    const recipient = await remoteActor("outbox-current-dm", "outbox-current-dm.example");
+    expect(
+      await follower.send({
+        id: `${follower.actorUri}/follows/1`,
+        type: "Follow",
+        object: `${ORIGIN}/users/${account.username}`,
+      }),
+    ).toBe(202);
+    const Posted = z.object({ id: z.string(), uri: z.string() });
+    const postAs = async (status: string, visibility: string) =>
+      Posted.parse(await api(email, "POST", "/api/v1/statuses", { status, visibility }));
+    const boosted = await postAs("boosted then not", "public");
+    await api(email, "POST", `/api/v1/statuses/${boosted.id}/reblog`);
+    await api(email, "POST", `/api/v1/statuses/${boosted.id}/unreblog`);
+    const kept = await postAs("boosted", "public");
+    await api(email, "POST", `/api/v1/statuses/${kept.id}/reblog`);
+    const edited = await postAs("first version", "public");
+    await api(email, "PUT", `/api/v1/statuses/${edited.id}`, { status: "second version" });
+    const gonePrivate = await postAs("followers only, then deleted", "private");
+    const goneDirect = await postAs(
+      "@outbox-current-dm@outbox-current-dm.example a direct note, then deleted",
+      "direct",
+    );
+    const keptDirect = await postAs(
+      "@outbox-current-dm@outbox-current-dm.example a direct note",
+      "direct",
+    );
+    await api(email, "DELETE", `/api/v1/statuses/${gonePrivate.id}`);
+    await api(email, "DELETE", `/api/v1/statuses/${goneDirect.id}`);
+
+    const path = `/users/${account.username}/outbox?page=true`;
+    const page = async (response: Response) => {
+      expect(response.status).toBe(200);
+      return expectContract(ApOutboxPage, await response.json()).orderedItems;
+    };
+    const summary = (items: Awaited<ReturnType<typeof page>>) =>
+      items.map((item) =>
+        item.type === "Create"
+          ? {
+              type: item.type,
+              id: item.object.id,
+              content: "content" in item.object ? item.object.content : undefined,
+            }
+          : { type: item.type, id: item.object },
+      );
+    const contentOf = (text: string) => expect.stringContaining(text);
+    expect(summary(await page(await follower.fetch(path)))).toEqual([
+      { type: "Create", id: edited.uri, content: contentOf("second version") },
+      { type: "Announce", id: kept.uri },
+      { type: "Create", id: kept.uri, content: contentOf("boosted") },
+      { type: "Create", id: boosted.uri, content: contentOf("boosted then not") },
+    ]);
+    expect(summary(await page(await recipient.fetch(path)))).toEqual([
+      { type: "Create", id: keptDirect.uri, content: contentOf("a direct note") },
+      { type: "Create", id: edited.uri, content: contentOf("second version") },
+      { type: "Announce", id: kept.uri },
+      { type: "Create", id: kept.uri, content: contentOf("boosted") },
+      { type: "Create", id: boosted.uri, content: contentOf("boosted then not") },
+    ]);
   });
 });

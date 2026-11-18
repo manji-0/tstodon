@@ -183,8 +183,9 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       if (!owner) throw new Error("account");
       const ownerToken = await accessTokenFor(owner.id);
       if (!ownerToken) throw new Error("token");
+      const posted: string[] = [];
       for (let n = 0; n < 25; n += 1) {
-        await post(ownerToken, "/api/v1/statuses", { status: `collected ${n}` });
+        posted.push(idOf(await post(ownerToken, "/api/v1/statuses", { status: `collected ${n}` })));
       }
       const series = (from: number) =>
         `WITH RECURSIVE series(n) AS (SELECT ${from} UNION ALL SELECT n + 1 FROM series WHERE n < ${from + NOISE - 1})`;
@@ -222,26 +223,36 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       for (const path of paths) {
         before.set(path, await get(ownerToken, path));
       }
-      // Older follows than every page's, and statuses the outbox counts.
-      await env.DB.batch([
-        ...follows(1),
+      // Older follows than every page's. Statuses an unsigned outbox page
+      // must pass over, newer than its own: direct and followers-only notes
+      // and followers-only boosts. And older public notes than any page shows.
+      const statuses = (from: number, idFormat: string, kind: string, visibility: string) =>
         env.DB.prepare(
-          `${series(1)} INSERT INTO statuses (id, account_id, kind, content_text, content_html, visibility, sensitive, spoiler_text, created_at, updated_at)
-           SELECT printf('collected%07d', n), ?, 'LocalNote', 'old', '<p>old</p>', 'public', 0, '',
+          `${series(from)} INSERT INTO statuses (id, account_id, kind, reblog_of_id, content_text, content_html, visibility, sensitive, spoiler_text, created_at, updated_at)
+           SELECT printf('${idFormat}', n), ?, '${kind}', ${kind === "LocalReblog" ? "?" : "NULL"},
+                  'noise', '<p>noise</p>', '${visibility}', 0, '',
                   '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'
            FROM series`,
-        ).bind(owner.id),
+        ).bind(owner.id, ...(kind === "LocalReblog" ? [posted[0] ?? ""] : []));
+      await env.DB.batch([
+        ...follows(1),
+        statuses(1, "9%017d", "LocalNote", "direct"),
+        statuses(NOISE + 1, "9%017d", "LocalNote", "private"),
+        statuses(2 * NOISE + 1, "9%017d", "LocalReblog", "private"),
+        statuses(1, "0%017d", "LocalNote", "public"),
       ]);
       for (const path of paths) {
         const rows = (await get(ownerToken, path)) - (before.get(path) ?? 0);
-        expect(rows, `${path} read ${rows} more rows after ${NOISE} more follows`).toBeLessThan(
-          MAX_GROWTH,
-        );
+        expect(
+          rows,
+          `${path} read ${rows} more rows after ${NOISE} more follows and statuses of each kind`,
+        ).toBeLessThan(MAX_GROWTH);
       }
       const followers = await SELF.fetch(`https://example.com${base}/followers`);
       expect(await followers.json()).toMatchObject({ totalItems: 2 * NOISE });
       const outbox = await SELF.fetch(`https://example.com${base}/outbox`);
-      expect(await outbox.json()).toMatchObject({ totalItems: 25 + NOISE });
+      // Direct statuses are not counted.
+      expect(await outbox.json()).toMatchObject({ totalItems: 25 + 3 * NOISE });
     },
   );
 });

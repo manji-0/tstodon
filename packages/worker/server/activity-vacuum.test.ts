@@ -1,4 +1,4 @@
-import { SELF, createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
+import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
 import { ActivityVacuum } from "@tstodon/domain";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
@@ -185,23 +185,6 @@ describe("the activity vacuum", () => {
       fixedId(prefix, 103),
       fixedId(prefix, 104),
     ]);
-
-    // The outbox's pages still list every item kept, newest first.
-    const OutboxPage = z.object({
-      next: z.string().optional(),
-      orderedItems: z.array(z.object({ id: z.string() })),
-    });
-    const listed: string[] = [];
-    let next: string | undefined = `https://example.com/users/${account.username}/outbox?page=true`;
-    while (next !== undefined) {
-      const response = await SELF.fetch(next);
-      expect(response.status).toBe(200);
-      const page = OutboxPage.parse(await response.json());
-      listed.push(...page.orderedItems.map((item) => item.id));
-      next = page.orderedItems.length > 0 ? page.next : undefined;
-    }
-    expect(listed).toHaveLength(ActivityVacuum.keepOutboxItems);
-    expect(listed[0]).toBe(note(publicCount - 1, [PUBLIC]).id);
 
     // A second pass finds nothing more to do.
     expect((await vacuumActivities(env, NOW))._unsafeUnwrap()).toMatchObject({
