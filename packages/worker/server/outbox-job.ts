@@ -17,6 +17,7 @@ import { processExpiredPolls } from "./poll-expiry";
 import { elapsedMs, measureJobPage, writeMetric } from "./metrics";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
+import { processFinishRemoteNoteRecipientJob } from "./remote-status-persist";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
 import { processFanOutHomeJob, processFanOutRemovedStatusesJob } from "./home-fan-out";
@@ -332,6 +333,8 @@ export const processOutboxJob = async (
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);
+    case "FinishRemoteNoteRecipient":
+      return processFinishRemoteNoteRecipientJob(env, job);
     case "DistributePollUpdate":
       return processDistributePollUpdateJob(env, job);
     case "DeliverPush":

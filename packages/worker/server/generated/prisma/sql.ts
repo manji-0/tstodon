@@ -504,9 +504,9 @@ export * from "./sql/insertRemoteStatus";
 
 export * from "./sql/insertRemoteStatusEdit";
 
-export * from "./sql/insertRemoteStatusMention";
+export * from "./sql/insertRemoteStatusMentionsJson";
 
-export * from "./sql/insertRemoteStatusRemoteMention";
+export * from "./sql/insertRemoteStatusRemoteMentionsJson";
 
 export * from "./sql/insertReport";
 
@@ -514,7 +514,7 @@ export * from "./sql/insertSettledOutboxTargetOrIgnore";
 
 export * from "./sql/insertSignupIntent";
 
-export * from "./sql/insertSilentRemoteStatusMention";
+export * from "./sql/insertSilentRemoteStatusMentionsJson";
 
 export * from "./sql/insertStatusEdit";
 

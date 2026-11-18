@@ -137,6 +137,20 @@ const ProcessLinkCardSchema = z.object({
   url: z.url(),
 });
 
+/**
+ * Finish a stored remote note for one local account its inbox request left
+ * to the queue: notify it of the mention (`Mention`), and tell its `direct`
+ * stream the conversation changed (`Conversation`). A note may name any
+ * number of local accounts; the request serves a fixed number of them.
+ */
+const FinishRemoteNoteRecipientSchema = z.object({
+  kind: z.literal("FinishRemoteNoteRecipient"),
+  statusId: z.string().min(1),
+  actorUri: z.string().min(1),
+  accountId: z.string().min(1),
+  steps: z.array(z.union([z.literal("Mention"), z.literal("Conversation")])).min(1),
+});
+
 /** Federate one `Update(Question)` with the poll's current counts (debounced). */
 const DistributePollUpdateSchema = z.object({
   kind: z.literal("DistributePollUpdate"),
@@ -337,6 +351,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   CleanUpStatusesSchema,
   CleanUpAccountStatusesSchema,
   ProcessLinkCardSchema,
+  FinishRemoteNoteRecipientSchema,
   DistributePollUpdateSchema,
   DeliverPushSchema,
   MoveFollowsSchema,

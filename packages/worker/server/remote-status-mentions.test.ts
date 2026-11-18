@@ -7,7 +7,6 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
-import { MAX_NOTE_MENTIONS } from "./remote-status-persist";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -160,8 +159,8 @@ describe("a remote note's mentions", () => {
     expect(status.mentions).toEqual([]);
   });
 
-  it("keep the first MAX_NOTE_MENTIONS, in the order the note tags them", async () => {
-    const count = MAX_NOTE_MENTIONS + 10;
+  it("are kept however many the note tags, in its order, as Mastodon does", async () => {
+    const count = 30;
     await env.DB.prepare(
       `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?)
        INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
@@ -193,9 +192,7 @@ describe("a remote note's mentions", () => {
       ApiStatus,
       await call("rsm-crowd-reader@example.com", `/api/v1/statuses/${await storedId(noteUri)}`),
     );
-    expect(status.mentions.map((mention) => mention.url)).toEqual(
-      crowd.slice(0, MAX_NOTE_MENTIONS),
-    );
+    expect(status.mentions.map((mention) => mention.url)).toEqual(crowd);
   });
 });
 
