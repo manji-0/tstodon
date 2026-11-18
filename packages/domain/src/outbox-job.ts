@@ -221,6 +221,19 @@ const SeverBlockedDomainFollowsSchema = z.object({
 });
 
 /**
+ * Sever the follows between a remote actor an admin suspended and the next
+ * page of local accounts (by id after `afterAccountId`, empty for the first),
+ * recorded under the `account_suspension` severance event `eventId`, and send
+ * the actor a `Reject(Follow)` or `Undo(Follow)` for each.
+ */
+const SeverSuspendedActorFollowsSchema = z.object({
+  kind: z.literal("SeverSuspendedActorFollows"),
+  actorUri: z.url(),
+  eventId: z.string().min(1),
+  afterAccountId: z.string(),
+});
+
+/**
  * Accept the next page of a local account's pending follow requests after it
  * was unlocked (Mastodon's `AuthorizeFollowWorker`s): those still pending are
  * the next page, so the job carries no cursor.
@@ -373,6 +386,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ProcessCsvImportSchema,
   SeverBlockedDomainFollowsSchema,
   AuthorizeFollowRequestsSchema,
+  SeverSuspendedActorFollowsSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
 ]);

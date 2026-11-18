@@ -34,6 +34,7 @@ import {
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
+  listAccountReachInboxes as listAccountReachInboxesSql,
   listKnownRemoteInboxes as listKnownRemoteInboxesSql,
   listOutboundFollowInboxes as listOutboundFollowInboxesSql,
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
@@ -587,6 +588,31 @@ export const listAcceptedRemoteFollowerInboxes = async (
       InboxUriSharedInboxUriRow,
     );
     return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
+  });
+
+/** How far back Mastodon's `AccountReachFinder` looks for mentions and follows. */
+const ACCOUNT_REACH_SINCE_MS = 2 * 24 * 60 * 60 * 1000;
+/** The most inboxes {@link listAccountReachInboxes} answers, Mastodon's `RECENT_LIMIT`. */
+const ACCOUNT_REACH_LIMIT = 2000;
+
+/**
+ * The inboxes beyond its followers' that may hold a copy of a local account
+ * (Mastodon's `AccountReachFinder`): its remote reporters, and the actors it
+ * mentioned, followed or asked to follow in the last two days.
+ */
+export const listAccountReachInboxes = async (
+  db: D1Database,
+  accountId: string,
+  now: number = Date.now(),
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const since = new Date(now - ACCOUNT_REACH_SINCE_MS).toISOString();
+    const results = await queryTyped(
+      db,
+      listAccountReachInboxesSql(accountId, since, ACCOUNT_REACH_LIMIT),
+      InboxUriRow,
+    );
+    return results.map((row) => row.inbox_uri);
   });
 
 /** The inboxes of the remote actors `accountId` follows or asked to follow. */
