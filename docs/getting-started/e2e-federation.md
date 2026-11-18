@@ -44,6 +44,8 @@ process-compose up
 pnpm e2e:federation
 ```
 
+`e2e/federation-ci.sh` does a whole run in one command, without process-compose: fresh databases for A and B, both Workers, the scenarios below one after another, then both Workers stopped. It leaves out Follow→Create, Interactions, Delete + shared inbox and Accept: each forges B's user's `Follow` from the host, B answers A's `Accept` of a follow it never sent with an `Undo`, and the follow the scenario then checks is gone. It keeps the logs in `.cache/e2e-federation/` and sets `NO_PROXY` for loopback. CI calls it (`.github/workflows/e2e-federation.yml`) on a pull request that touches the Worker or these scripts, and every night.
+
 ## Scenarios
 
 | Script                | Command                                   | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                  |

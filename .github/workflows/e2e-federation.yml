@@ -1,0 +1,74 @@
+name: e2e-federation
+
+# tstodon-to-tstodon federation e2e (docs/getting-started/e2e-federation.md):
+# two Workers in `vp dev` on loopback, each scenario of `pnpm e2e:federation:*`
+# against them. A workflow of its own, not a job in ci.yml, for the same
+# reason as e2e-mastodon.yml: a run takes several minutes, so a pull request
+# runs it only when it touches what the two servers say to each other, and a
+# nightly run covers the rest.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - packages/worker/server/**
+      - packages/worker/app/**
+      - packages/worker/vite.config.ts
+      - packages/worker/void-plugins.ts
+      - packages/worker/package.json
+      - packages/api/**
+      - packages/domain/**
+      - packages/core/**
+      - e2e/federation-*.ts
+      - e2e/federation-ci.sh
+      - e2e/lib.ts
+      - e2e/schemas.ts
+      - e2e/a.wrangler.jsonc
+      - e2e/b.wrangler.jsonc
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/e2e-federation.yml
+  schedule:
+    - cron: "43 19 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-federation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # From nothing to nothing: fresh databases, both Workers, every
+      # scenario, the logs, the teardown.
+      - name: Federation e2e
+        run: e2e/federation-ci.sh
+
+      - name: Upload the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-federation-logs
+          path: .cache/e2e-federation
+          include-hidden-files: true
+          retention-days: 7
