@@ -692,8 +692,6 @@ export * from "./sql/listPollVotesForAccount";
 
 export * from "./sql/listPublicDomainBlocks";
 
-export * from "./sql/listPublicOutboxActivities";
-
 export * from "./sql/listPublicStreamSubscriptions";
 
 export * from "./sql/listPublishedAnnouncements";

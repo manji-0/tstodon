@@ -73,13 +73,13 @@ describe("an activity sent to named inboxes", () => {
     const activityId = fanout?.activity_id ?? "";
 
     // The target is still to be attempted: the activity stays.
-    expect((await pruneOutboundActivities(env.DB, FAR_FUTURE, 40, 500)).isOk()).toBe(true);
+    expect((await pruneOutboundActivities(env.DB, FAR_FUTURE, 500)).isOk()).toBe(true);
     expect(await stored(activityId)).toBe(true);
 
     expect(
       (await persistOutboxTarget(env.DB, activityId, inbox, { kind: "Delivered" })).isOk(),
     ).toBe(true);
-    expect((await pruneOutboundActivities(env.DB, FAR_FUTURE, 40, 500)).isOk()).toBe(true);
+    expect((await pruneOutboundActivities(env.DB, FAR_FUTURE, 500)).isOk()).toBe(true);
     expect(await stored(activityId)).toBe(false);
   });
 });

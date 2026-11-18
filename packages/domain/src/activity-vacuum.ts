@@ -37,13 +37,11 @@ export type PruneTerminalDeliveries = (
 
 /**
  * Delete up to `limit` of the `outbound_activities` created before
- * `createdBefore` that no read still needs: none of its delivery rows is
- * unfinished, and it is not among the newest `keepPerAccount` public
- * `Create` / `Announce` of its account (what the ActivityPub outbox lists).
+ * `createdBefore` that no delivery still needs: none of its delivery rows is
+ * unfinished. The ActivityPub outbox renders the statuses, not these.
  */
 export type PruneOutboundActivities = (
   createdBefore: string,
-  keepPerAccount: number,
   limit: number,
 ) => Promise<Result<number, RepositoryError>>;
 
@@ -83,13 +81,6 @@ const DEFAULT_DAYS = { deliveries: 30, outbound: 30, inbox: 30 } as const;
  */
 const MIN_INBOX_DAYS = 7;
 
-/**
- * The most items the ActivityPub outbox lists (`queryLimit`'s cap of 40):
- * each account keeps at least that many public `Create` / `Announce`
- * activities whatever their age, so its outbox still renders a full page.
- */
-const KEEP_OUTBOX_ITEMS = 40;
-
 const OFF_VALUES = new Set(["0", "off", "false", "no", "none"]);
 
 const parseWindow = (raw: string | undefined, fallback: number, min: number): RetentionWindow => {
@@ -125,7 +116,6 @@ export const ActivityVacuum = {
   batch: BATCH,
   defaultDays: DEFAULT_DAYS,
   minInboxDays: MIN_INBOX_DAYS,
-  keepOutboxItems: KEEP_OUTBOX_ITEMS,
 
   /**
    * The retention from its vars: empty is the default, `0` / `off` turns a
@@ -168,9 +158,7 @@ export const ActivityVacuum = {
     if (deliveries.isErr()) {
       return err(deliveries.error);
     }
-    const outbound = await run(retention.outbound, (cutoff) =>
-      deps.pruneOutbound(cutoff, KEEP_OUTBOX_ITEMS, BATCH),
-    );
+    const outbound = await run(retention.outbound, (cutoff) => deps.pruneOutbound(cutoff, BATCH));
     if (outbound.isErr()) {
       return err(outbound.error);
     }

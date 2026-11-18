@@ -78,7 +78,7 @@ const accountStatus = async (id: string): Promise<number> =>
 const followerUris = async (username: string): Promise<string[]> => {
   const collection = read(
     z.object({ orderedItems: z.array(z.string()) }),
-    await (await call(`/users/${username}/followers`)).json(),
+    await (await call(`/users/${username}/followers?page=1`)).json(),
   );
   return collection.orderedItems;
 };

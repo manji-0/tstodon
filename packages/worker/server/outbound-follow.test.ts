@@ -214,7 +214,7 @@ describe("following a remote account", () => {
     expect(read(z.array(z.object({ id: z.string() })), following.body).map((a) => a.id)).toEqual([
       RemoteAccountId.encode(remote.actorUri),
     ]);
-    const collection = await json(`/users/${viewer.username}/following`);
+    const collection = await json(`/users/${viewer.username}/following?page=1`);
     expect(collection.body).toMatchObject({ orderedItems: [remote.actorUri] });
   });
 

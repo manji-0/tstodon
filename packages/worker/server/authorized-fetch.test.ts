@@ -106,7 +106,10 @@ describe("secure mode off (the default)", () => {
     for (const path of objectPaths().slice(0, 4)) {
       const response = await open(path);
       expect(response.status, path).toBe(200);
-      expect(response.headers.get("cache-control"), path).toBeNull();
+      // The outbox sends Mastodon's `expires_in(3.minutes, public: true)`.
+      expect(response.headers.get("cache-control"), path).toBe(
+        path.endsWith("/outbox") ? "max-age=180, public" : null,
+      );
     }
   });
 });
@@ -173,7 +176,9 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
     for (const path of objectPaths().slice(0, 4)) {
       const response = await secure(await bob.signedGet(path));
       expect(response.status, path).toBe(200);
-      expect(response.headers.get("cache-control"), path).toBe("private");
+      expect(response.headers.get("cache-control"), path).toBe(
+        path.endsWith("/outbox") ? "max-age=180, private" : "private",
+      );
       expect(response.headers.get("vary"), path).toBe("Signature");
     }
     const actor = await secure(await bob.signedGet(`/users/${USERNAME}`));

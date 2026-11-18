@@ -92,7 +92,7 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   `ApFollow`, `ApAccept`, `ApReject`, `ApUndo`, `ApBlock`, `ApMove`, `ApFlag`,
   `ApQuoteRequest`, `ApAdd`, `ApRemove`) and `ApActivityDocument` (any of
   them with its `@context`, what the delivery queue takes), the collections
-  `ApActorCollection`, `ApOutbox`, `ApFeaturedCollection` and
+  `ApActorCollection` and `ApActorCollectionPage`, `ApOutbox` and `ApOutboxPage`, `ApFeaturedCollection` and
   `ApFeaturedTagsCollection`, `WebFingerJrd`, `NodeInfoDiscovery`, `NodeInfo20` and `NodeInfo21`, plus the
   constants `ACTIVITY_STREAMS`, `PUBLIC_COLLECTION` and `SECURITY_V1`. These
   describe tstodon's output only: what other servers send is read leniently
