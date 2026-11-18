@@ -15,7 +15,7 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import type { IdClock } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
-import { findAccountByUsername } from "./account-store";
+import { findAccountsByUsernames } from "./account-store";
 import { startLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemoteOnce } from "./notify";
 import { startHomeFanOut } from "./home-fan-out";
@@ -45,7 +45,7 @@ import {
 } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
 import {
-  isActiveRemoteStatusMention,
+  listActiveRemoteStatusMentionAccountIds,
   recordRemoteStatusMentions,
   replaceRemoteStatusRemoteMentions,
 } from "./mention-store";
@@ -59,23 +59,38 @@ const MentionTagsSchema = z.object({
     .optional(),
 });
 
-/** The `href` of each `Mention` tag of a note document. */
+/**
+ * How many mentions, and how many local accounts in `to`/`cc`, a remote note
+ * is stored with; the rest are dropped. Mastodon has no such cap: it bounds a
+ * note by the 1 MB an inbox accepts and works through its mentions in
+ * Sidekiq. Here they are written and notified while the inbox request waits,
+ * and each mention notification costs about 40 D1 queries (the policy checks
+ * and the streamed document), so 20 keeps a note under D1's queries per
+ * Worker invocation, as `MAX_MENTION_LOOKUPS` bounds a local post's.
+ */
+export const MAX_NOTE_MENTIONS = 20;
+
+/** The `href` of each `Mention` tag of a note document, each once, the first {@link MAX_NOTE_MENTIONS}. */
 const mentionHrefs = (raw: unknown): string[] => {
   const tags = schemaResult(MentionTagsSchema)(raw);
-  return (tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
+  const hrefs = (tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
     entry.type === "Mention" && entry.href ? [entry.href] : [],
   );
+  return [...new Set(hrefs)].slice(0, MAX_NOTE_MENTIONS);
 };
 
-/** The usernames of the exact local actor URLs among `uris`, each once. */
-const localUsernames = (identity: InstanceIdentity, uris: ReadonlyArray<string>): string[] => [
-  ...new Set(
-    uris.flatMap((uri) => {
-      const username = parseLocalActorUsername(identity, uri);
-      return username && InstanceIdentity.actorUrl(identity, username) === uri ? [username] : [];
-    }),
-  ),
-];
+/** The usernames of the exact local actor URLs among `uris`, each once, the first {@link MAX_NOTE_MENTIONS}. */
+const localUsernames = (identity: InstanceIdentity, uris: ReadonlyArray<string>): string[] =>
+  [
+    ...new Set(
+      uris.flatMap((uri) => {
+        const username = parseLocalActorUsername(identity, uri);
+        return username && InstanceIdentity.actorUrl(identity, username) === uri
+          ? [username.toLowerCase()]
+          : [];
+      }),
+    ),
+  ].slice(0, MAX_NOTE_MENTIONS);
 
 /**
  * The remote actors a remote note's `Mention` tags name: http(s) URIs off
@@ -112,30 +127,32 @@ type LocalAddressees = Readonly<{
   addressed: ReadonlyArray<string>;
 }>;
 
+/** Every local account a remote note names, read in one query. */
 const localAddressees = async (
-  env: Env,
+  db: D1Database,
   identity: InstanceIdentity,
   raw: unknown,
-): Promise<LocalAddressees> => {
-  const accountIds = async (usernames: ReadonlyArray<string>): Promise<string[]> => {
-    const ids: string[] = [];
-    for (const username of usernames) {
-      const account = await findAccountByUsername(env.DB, username);
-      if (account.isOk() && account.value) {
-        ids.push(account.value.id);
-      }
-    }
-    return ids;
-  };
+): Promise<Result<LocalAddressees, RepositoryError>> => {
   const note = parseNoteDocument(raw);
-  const mentioned = await accountIds(localUsernames(identity, mentionHrefs(raw)));
-  const audience = await accountIds(
-    localUsernames(
-      identity,
-      note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : [],
-    ),
+  const tagged = localUsernames(identity, mentionHrefs(raw));
+  const audience = localUsernames(
+    identity,
+    note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : [],
   );
-  return { mentioned, addressed: audience.filter((id) => !mentioned.includes(id)) };
+  const accounts = await findAccountsByUsernames(db, [...tagged, ...audience]);
+  if (accounts.isErr()) {
+    return err(accounts.error);
+  }
+  const ids = new Map<string, string>(
+    accounts.value.map((account) => [account.username, account.id]),
+  );
+  const accountIds = (usernames: ReadonlyArray<string>) =>
+    usernames.flatMap((username) => ids.get(username) ?? []);
+  const mentioned = accountIds(tagged);
+  return ok({
+    mentioned,
+    addressed: accountIds(audience).filter((id) => !mentioned.includes(id)),
+  });
 };
 
 /**
@@ -203,15 +220,16 @@ export const newlyMentionedAccountIds = async (
   identity: InstanceIdentity,
   raw: unknown,
   statusId: string,
-): Promise<ReadonlyArray<string>> => {
-  const added: string[] = [];
-  for (const accountId of (await localAddressees(env, identity, raw)).mentioned) {
-    const already = await isActiveRemoteStatusMention(env.DB, statusId, accountId);
-    if (already.isOk() && !already.value) {
-      added.push(accountId);
-    }
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  const addressees = await localAddressees(env.DB, identity, raw);
+  if (addressees.isErr()) {
+    return err(addressees.error);
   }
-  return added;
+  const already = await listActiveRemoteStatusMentionAccountIds(env.DB, statusId);
+  if (already.isErr()) {
+    return err(already.error);
+  }
+  return ok(addressees.value.mentioned.filter((accountId) => !already.value.has(accountId)));
 };
 
 /**
@@ -299,7 +317,11 @@ const writeLateSteps = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const { mentioned, addressed } = await localAddressees(env, identity, raw);
+  const addressees = await localAddressees(env.DB, identity, raw);
+  if (addressees.isErr()) {
+    return err(addressees.error);
+  }
+  const { mentioned, addressed } = addressees.value;
   const notified = mentionsToNotify(late, mentioned);
   const recorded = await recordRemoteStatusMentions(env.DB, status.id, { mentioned, addressed });
   if (recorded.isErr()) {

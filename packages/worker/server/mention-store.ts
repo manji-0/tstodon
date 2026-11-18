@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
-import { d1PrepareTyped, CountedRow, queryTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped } from "./typed-sql";
 import {
   deleteRemoteStatusRemoteMentions as deleteRemoteStatusRemoteMentionsSql,
   deleteStatusMentions as deleteStatusMentionsSql,
@@ -9,7 +9,6 @@ import {
   insertRemoteStatusMention as insertRemoteStatusMentionSql,
   insertRemoteStatusRemoteMention as insertRemoteStatusRemoteMentionSql,
   insertSilentRemoteStatusMention as insertSilentRemoteStatusMentionSql,
-  isActiveRemoteStatusMention as isActiveRemoteStatusMentionSql,
   insertStatusMention as insertStatusMentionSql,
   insertStatusRemoteMention as insertStatusRemoteMentionSql,
   listRemoteStatusMentions as listRemoteStatusMentionsSql,
@@ -87,16 +86,22 @@ export const recordSilentRemoteStatusMention = async (
   return batched.isErr() ? err(batched.error) : ok(undefined);
 };
 
-/** A mention the note addressed the account with, not one that only grants access. */
-export const isActiveRemoteStatusMention = async (
+/**
+ * The local accounts a cached remote note addresses with a mention, not the
+ * silent ones that only grant access to it.
+ */
+export const listActiveRemoteStatusMentionAccountIds = async (
   db: D1Database,
   statusId: string,
-  accountId: string,
-): Promise<Result<boolean, RepositoryError>> => {
+): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
   const rows = await runD1(async () =>
-    queryTyped(db, isActiveRemoteStatusMentionSql(statusId, accountId), CountedRow),
+    queryTyped(
+      db,
+      listShownRemoteStatusMentionsSql(jsonStringArray([statusId])),
+      StatusIdAccountIdRow,
+    ),
   );
-  return rows.isErr() ? err(rows.error) : ok(rows.value.length > 0);
+  return rows.map((found) => new Set(found.map((row) => row.account_id)));
 };
 
 export const replaceStatusMentions = async (

@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
+import { remoteActor } from "../test/remote-actor-fixture";
 import { HOME_HORIZON_STEPS } from "./timeline-documents";
 
 /**
@@ -13,6 +14,7 @@ import { HOME_HORIZON_STEPS } from "./timeline-documents";
  */
 
 const NOISE = 3_000;
+const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 /** Allowed growth in rows read: well under the noise, well over a page. */
 const MAX_GROWTH = 200;
 
@@ -172,6 +174,67 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       expect(growth, `home read ${growth} more rows after ${2 * NOISE} tagged posts`).toBeLessThan(
         MAX_GROWTH * 3 * HOME_HORIZON_STEPS,
       );
+    },
+  );
+});
+
+/**
+ * A request that names ids, accounts or actors runs a fixed number of D1
+ * statements however many it names: one batched read for all of them, not
+ * one per name, so a client or a remote server cannot buy thousands of
+ * sequential queries with one request.
+ */
+describe("D1 statements do not grow with how many things a request names", () => {
+  /** The D1 statements, and the rows they read, of one request. */
+  const metered = async (send: () => Promise<Response>) => {
+    await settle();
+    resetMeter();
+    const response = await send();
+    await response.text();
+    await settle();
+    return { status: response.status, ...meter.tally };
+  };
+
+  it(
+    "reads the local actors an inbound note names in one query, however many it names",
+    { timeout: 60_000 },
+    async () => {
+      const mentioned = await signedInAccount("budget-note-mentioned@example.com");
+      const author = await remoteActor("budgetnoteauthor", "budget-notes.example");
+      const local = `https://example.com/users/${mentioned.username}`;
+      const unknown = (count: number, prefix: string) =>
+        Array.from({ length: count }, (_, n) => `https://example.com/users/${prefix}${n}`);
+      const deliver = async (name: string, count: number) => {
+        const noteUri = `https://budget-notes.example/notes/${name}`;
+        const activity = await author.delivery({
+          id: `${noteUri}/create`,
+          type: "Create",
+          object: {
+            id: noteUri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: "<p>hello</p>",
+            published: new Date().toISOString(),
+            to: [PUBLIC, ...unknown(count, `${name}to`)],
+            cc: [local],
+            tag: [local, ...unknown(count, `${name}tag`)].map((href) => ({
+              type: "Mention",
+              href,
+            })),
+          },
+        });
+        return metered(() => SELF.fetch(activity));
+      };
+      patchD1();
+      // The first delivery from a sender also stores what later ones read back.
+      await deliver("warm", 2);
+      const few = await deliver("few", 2);
+      const many = await deliver("many", 400);
+      expect([few.status, many.status]).toEqual([202, 202]);
+      expect(
+        many.statements,
+        `a note naming 800 unknown local actors made ${many.statements} statements, one naming 4 made ${few.statements}`,
+      ).toBe(few.statements);
     },
   );
 });
