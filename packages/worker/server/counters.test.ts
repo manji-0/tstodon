@@ -8,7 +8,7 @@ import { purgeAccount } from "./admin-actions";
 import { RemoteAccountId } from "./remote-account-id";
 
 /**
- * The counters migration 0138 keeps in `account_stats` and `status_stats`
+ * The counters migrations 0138 and 0148 keep in `account_stats` and `status_stats`
  * must equal counting the rows they summarize. A seeded random run sends
  * local API requests and signed remote activities (posts, replies, deletes,
  * favourites, boosts, quotes, follows, requests, answers, undos), deletes an
@@ -62,7 +62,7 @@ const countedAccounts = () =>
   rows(
     AccountCountsRow,
     `SELECT a.id,
-       (SELECT COUNT(*) FROM statuses WHERE account_id = a.id) AS statuses,
+       (SELECT COUNT(*) FROM statuses WHERE account_id = a.id AND visibility <> 'direct') AS statuses,
        (SELECT COUNT(*) FROM follows WHERE target_account_id = a.id AND kind = 'Accepted')
          + (SELECT COUNT(*) FROM remote_follows WHERE target_account_id = a.id AND follow_kind = 'Accepted')
          AS followers,
@@ -511,7 +511,8 @@ describe("trigger-kept counters", () => {
     ).toBe(202);
     await expectConsistent();
 
-    // The migration's backfill computes the same counters from scratch.
+    // The migrations' backfills compute the same counters from scratch: 0138's,
+    // then 0148's recount of statuses without the direct ones.
     await env.DB.batch([
       env.DB.prepare("DELETE FROM account_stats"),
       env.DB.prepare("DELETE FROM status_stats"),
@@ -523,8 +524,12 @@ describe("trigger-kept counters", () => {
     const backfill = (migration?.queries ?? []).filter((query) =>
       /^(?:\s*--[^\n]*\n)*\s*INSERT INTO (account|status)_stats/.test(query),
     );
+    const recount = (
+      migrations.find((entry) => entry.name.startsWith("0148_"))?.queries ?? []
+    ).filter((query) => /^(?:\s*--[^\n]*\n)*\s*UPDATE account_stats/.test(query));
     expect(backfill.length).toBeGreaterThan(0);
-    await env.DB.batch(backfill.map((query) => env.DB.prepare(query)));
+    expect(recount).toHaveLength(1);
+    await env.DB.batch([...backfill, ...recount].map((query) => env.DB.prepare(query)));
     await expectConsistent();
   });
 
@@ -589,6 +594,8 @@ describe("trigger-kept counters", () => {
       `UPDATE statuses SET reblog_of_id = '${second}' WHERE reblog_of_id = '${first}'`,
       `UPDATE statuses SET kind = 'LocalNote' WHERE reblog_of_id = '${second}'`,
       `UPDATE status_quotes SET quoted_status_id = '${second}' WHERE quoted_status_id = '${first}'`,
+      `UPDATE statuses SET visibility = 'direct' WHERE id = '${second}'`,
+      `UPDATE statuses SET visibility = 'public' WHERE id = '${second}'`,
       `UPDATE remote_statuses SET visibility = 'private' WHERE actor_uri = '${remote.actorUri}'`,
       `UPDATE remote_statuses SET visibility = 'public' WHERE actor_uri = '${remote.actorUri}'`,
       `UPDATE remote_statuses SET in_reply_to_uri = '${ORIGIN}/users/${fay.username}/statuses/${second}'

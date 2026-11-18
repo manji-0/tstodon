@@ -230,4 +230,23 @@ describe("ActivityPub followers, following and outbox collections", () => {
     expect(await noteUris(await SELF.fetch(new URL(path, ORIGIN)))).toEqual([shared.uri]);
     expect(await noteUris(await blocked.fetch(path))).toEqual([]);
   });
+
+  it("leaves direct statuses out of the statuses count, as Mastodon", async () => {
+    const email = "collections-direct-count@example.com";
+    const account = await signedInAccount(email);
+    await api(email, "POST", "/api/v1/statuses", { status: "public" });
+    await api(email, "POST", "/api/v1/statuses", { status: "followers", visibility: "private" });
+    const direct = z
+      .object({ id: z.string() })
+      .parse(
+        await api(email, "POST", "/api/v1/statuses", { status: "secret", visibility: "direct" }),
+      );
+    const counts = async () => ({
+      rest: Counts.parse(await api(email, "GET", `/api/v1/accounts/${account.id}`)).statuses_count,
+      ap: expectContract(ApOutbox, await fetchJson(`/users/${account.username}/outbox`)).totalItems,
+    });
+    expect(await counts()).toEqual({ rest: 2, ap: 2 });
+    await api(email, "DELETE", `/api/v1/statuses/${direct.id}`);
+    expect(await counts()).toEqual({ rest: 2, ap: 2 });
+  });
 });
