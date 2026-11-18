@@ -180,6 +180,12 @@ An existing account links only when the Access email equals `access_email` exact
 openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTER_AUTH_SECRET
 ```
 
+### Streaming tokens
+
+<!-- constrained-by ../operations/runbook.md#logs -->
+
+The streaming API (`/api/v1/streaming`) takes the access token as Mastodon's does: in `Authorization: Bearer`, as the WebSocket subprotocol (`Sec-WebSocket-Protocol`, echoed back in the handshake), or as the `access_token` query parameter, which a browser's `EventSource` and many third-party clients use. The web UI sends it as the subprotocol, as upstream does. The query parameter stays supported, so `wrangler.jsonc` sets `observability.redact_query_string` to keep it out of Workers Logs and traces (see the runbook's Logs section for what that does not cover).
+
 ## Local development authentication
 
 <!-- derived-from #authentication -->

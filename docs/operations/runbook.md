@@ -200,7 +200,7 @@ Keep these in a password manager or vault, outside Cloudflare:
 
 ### Logs
 
-`wrangler.jsonc` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation). Where to read them:
+`wrangler.jsonc` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation), and sets `observability.redact_query_string`, so request URLs in invocation logs and traces are recorded without their query string. That keeps the bearer tokens out of them that streaming clients may send as `?access_token=` (Mastodon's streaming API accepts it, and third-party clients use it; this web UI sends its token as the WebSocket subprotocol instead). Keep the setting if you change `observability`. A Tail Worker, `wrangler tail` and Logpush receive the request as the Worker saw it and may still carry the query string **(verify)**: treat their output as holding credentials. The Worker's own log lines never include a token. Where to read them:
 
 - **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome.
 - **Live tail**: `wrangler tail tstodon --format pretty` (add `--status error`, `--search OutboxWorkflowCreateFailed`, `--method POST`, `--ip self`). Tail sees queue, cron and Workflow invocations too.
