@@ -52,7 +52,7 @@
     "detect-passive-events": "2.0.3",
     "emoji-mart": "npm:emoji-mart-lazyload@latest",
     "emojibase": "16.0.0",
-    "emojibase-data": "16.0.3",
+    "emojibase-data": "18.0.0",
     "emojibase-regex": "16.0.0",
     "escape-html": "1.0.3",
     "fast-glob": "3.3.3",
