@@ -116,6 +116,8 @@ export * from "./sql/deleteDomainBlock";
 
 export * from "./sql/deleteEmailDomainBlock";
 
+export * from "./sql/deleteEmptyNotificationRequestGroupsJson";
+
 export * from "./sql/deleteEndorsement";
 
 export * from "./sql/deleteExpiredOauthAuthorizationCodes";
@@ -144,7 +146,7 @@ export * from "./sql/deleteMedia";
 
 export * from "./sql/deleteMute";
 
-export * from "./sql/deleteNotificationRequests";
+export * from "./sql/deleteNotificationRequestsJson";
 
 export * from "./sql/deleteOauthAccessToken";
 
@@ -207,6 +209,8 @@ export * from "./sql/detachStatusMedia";
 export * from "./sql/dismissNotification";
 
 export * from "./sql/dismissNotificationGroup";
+
+export * from "./sql/dismissNotificationRequestsJson";
 
 export * from "./sql/dismissSuggestion";
 
@@ -458,7 +462,7 @@ export * from "./sql/insertMedia";
 
 export * from "./sql/insertNotification";
 
-export * from "./sql/insertNotificationAcceptance";
+export * from "./sql/insertNotificationAcceptancesJson";
 
 export * from "./sql/insertNotificationRequest";
 
@@ -500,9 +504,9 @@ export * from "./sql/insertRemoteStatus";
 
 export * from "./sql/insertRemoteStatusEdit";
 
-export * from "./sql/insertRemoteStatusMention";
+export * from "./sql/insertRemoteStatusMentionsJson";
 
-export * from "./sql/insertRemoteStatusRemoteMention";
+export * from "./sql/insertRemoteStatusRemoteMentionsJson";
 
 export * from "./sql/insertReport";
 
@@ -510,7 +514,7 @@ export * from "./sql/insertSettledOutboxTargetOrIgnore";
 
 export * from "./sql/insertSignupIntent";
 
-export * from "./sql/insertSilentRemoteStatusMention";
+export * from "./sql/insertSilentRemoteStatusMentionsJson";
 
 export * from "./sql/insertStatusEdit";
 
@@ -525,8 +529,6 @@ export * from "./sql/insertTagNames";
 export * from "./sql/insertUnindexedRemoteStatusTags";
 
 export * from "./sql/insertUnindexedRemoteTagNames";
-
-export * from "./sql/isActiveRemoteStatusMention";
 
 export * from "./sql/isStatusPinned";
 
@@ -606,7 +608,7 @@ export * from "./sql/listEndedRemotePollVoters";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 
-export * from "./sql/listFamiliarFollowerIds";
+export * from "./sql/listFamiliarFollowerIdsJson";
 
 export * from "./sql/listFeaturedTags";
 
@@ -663,6 +665,8 @@ export * from "./sql/listMediaRejectedDomains";
 export * from "./sql/listMutersOfActor";
 
 export * from "./sql/listNotersOfActor";
+
+export * from "./sql/listNotificationRequestSendersJson";
 
 export * from "./sql/listNotifications";
 

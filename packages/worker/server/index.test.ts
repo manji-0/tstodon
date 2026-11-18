@@ -120,6 +120,13 @@ describe("worker http", () => {
     expect(await page.text()).toContain("Cloudflare Access");
   });
 
+  it("sends sign-up to sign-in, where Access provisions the account", async () => {
+    const response = await SELF.fetch("https://example.com/auth/sign_up", { redirect: "manual" });
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/auth/sign_in");
+    await response.body?.cancel();
+  });
+
   it("serves Mastodon instance metadata", async () => {
     const response = await SELF.fetch("https://example.com/api/v1/instance");
     expect(response.status).toBe(200);

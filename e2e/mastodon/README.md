@@ -60,7 +60,7 @@ TSTODON_AUTHORIZED_FETCH=true MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/ci.sh 
 
 Do not run it beside a stack you started by hand: step 1 removes that stack. The certificates and Mastodon's secrets in `.state/`, `.dev.vars` and the `/etc/hosts` lines stay. `E2E_PROBE_AREAS` limits the sweep here too. A run takes about thirteen minutes once the images are pulled.
 
-The workflow `.github/workflows/e2e-mastodon.yml` installs the dependencies and calls this script, once for each mode: both servers open, tstodon in secure mode, both in secure mode. It runs:
+The workflow `.github/workflows/e2e-mastodon.yml` installs the dependencies and calls this script, once for each of the four modes: both servers open, tstodon in secure mode, Mastodon in secure mode, both in secure mode. It runs:
 
 - on a pull request that changes `packages/worker/server`, `packages/worker/app`, `packages/api`, `packages/domain`, `packages/core`, `e2e/mastodon`, `e2e/lib.ts` or the lockfile;
 - every night, on `main`;

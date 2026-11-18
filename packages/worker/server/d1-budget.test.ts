@@ -1,7 +1,9 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
+import { remoteActor } from "../test/remote-actor-fixture";
 import { HOME_HORIZON_STEPS } from "./timeline-documents";
 
 /**
@@ -13,6 +15,7 @@ import { HOME_HORIZON_STEPS } from "./timeline-documents";
  */
 
 const NOISE = 3_000;
+const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 /** Allowed growth in rows read: well under the noise, well over a page. */
 const MAX_GROWTH = 200;
 
@@ -172,6 +175,226 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       expect(growth, `home read ${growth} more rows after ${2 * NOISE} tagged posts`).toBeLessThan(
         MAX_GROWTH * 3 * HOME_HORIZON_STEPS,
       );
+    },
+  );
+});
+
+/**
+ * A request that names ids, accounts or actors runs a fixed number of D1
+ * statements however many it names: one batched read for all of them, not
+ * one per name, so a client or a remote server cannot buy thousands of
+ * sequential queries with one request.
+ */
+describe("D1 statements do not grow with how many things a request names", () => {
+  /** The D1 statements, and the rows they read, of one request. */
+  const metered = async (send: () => Promise<Response>) => {
+    await settle();
+    resetMeter();
+    const response = await send();
+    await response.text();
+    await settle();
+    return { status: response.status, ...meter.tally };
+  };
+
+  it(
+    "reads the local actors an inbound note names in one query, however many it names",
+    { timeout: 60_000 },
+    async () => {
+      const mentioned = await signedInAccount("budget-note-mentioned@example.com");
+      const author = await remoteActor("budgetnoteauthor", "budget-notes.example");
+      const local = `https://example.com/users/${mentioned.username}`;
+      const unknown = (count: number, prefix: string) =>
+        Array.from({ length: count }, (_, n) => `https://example.com/users/${prefix}${n}`);
+      const deliver = async (name: string, count: number) => {
+        const noteUri = `https://budget-notes.example/notes/${name}`;
+        const activity = await author.delivery({
+          id: `${noteUri}/create`,
+          type: "Create",
+          object: {
+            id: noteUri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: "<p>hello</p>",
+            published: new Date().toISOString(),
+            to: [PUBLIC, ...unknown(count, `${name}to`)],
+            cc: [local],
+            tag: [local, ...unknown(count, `${name}tag`)].map((href) => ({
+              type: "Mention",
+              href,
+            })),
+          },
+        });
+        return metered(() => SELF.fetch(activity));
+      };
+      patchD1();
+      // The first delivery from a sender also stores what later ones read back.
+      await deliver("warm", 2);
+      const few = await deliver("few", 2);
+      const many = await deliver("many", 400);
+      expect([few.status, many.status]).toEqual([202, 202]);
+      expect(
+        many.statements,
+        `a note naming 800 unknown local actors made ${many.statements} statements, one naming 4 made ${few.statements}`,
+      ).toBe(few.statements);
+    },
+  );
+
+  it(
+    "reads familiar followers for every requested account in a fixed number of queries",
+    { timeout: 60_000 },
+    async () => {
+      const [viewer, friend, ...targets] = await Promise.all(
+        Array.from({ length: 22 }, (_, n) => signedInAccount(`budget-fam-${n}@example.com`)),
+      );
+      if (!viewer || !friend) throw new Error("accounts");
+      const [viewerToken, friendToken] = await Promise.all(
+        [viewer, friend].map((account) => accessTokenFor(account.id)),
+      );
+      if (!viewerToken || !friendToken) throw new Error("tokens");
+      await post(viewerToken, `/api/v1/accounts/${friend.id}/follow`);
+      for (const target of targets) {
+        await post(friendToken, `/api/v1/accounts/${target.id}/follow`);
+      }
+      const familiar = (count: number) =>
+        metered(() =>
+          SELF.fetch(
+            `https://example.com/api/v1/accounts/familiar_followers?${targets
+              .slice(0, count)
+              .map((target) => `id[]=${target.id}`)
+              .join("&")}`,
+            { headers: { Authorization: `Bearer ${viewerToken}` } },
+          ),
+        );
+      patchD1();
+      await familiar(1);
+      const one = await familiar(1);
+      const twenty = await familiar(20);
+      expect([one.status, twenty.status]).toEqual([200, 200]);
+      expect(
+        twenty.statements,
+        `familiar followers of 20 accounts made ${twenty.statements} statements, of one ${one.statements}`,
+      ).toBe(one.statements);
+    },
+  );
+
+  it(
+    "accepts and dismisses notification requests in a fixed number of queries",
+    { timeout: 120_000 },
+    async () => {
+      const admin = await signedInAccount("budget-nr-admin@example.com", { admin: true });
+      const adminToken = await accessTokenFor(admin.id);
+      /** A recipient with `senders` held requests of `each` mentions; its token and their ids. */
+      const held = async (name: string, senders: number, each: number) => {
+        const recipient = await signedInAccount(`budget-nr-${name}@example.com`);
+        for (let n = 0; n < senders; n += 1) {
+          const sender = await signedInAccount(`budget-nr-${name}-sender-${n}@example.com`);
+          await post(adminToken, `/api/v1/admin/accounts/${sender.id}/silence`);
+          const senderToken = await accessTokenFor(sender.id);
+          for (let m = 0; m < each; m += 1) {
+            await post(senderToken, "/api/v1/statuses", {
+              status: `@${recipient.username} held ${m}`,
+            });
+          }
+        }
+        const token = await accessTokenFor(recipient.id);
+        const listed = await SELF.fetch("https://example.com/api/v1/notifications/requests", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const ids = z.array(z.object({ id: z.string() })).parse(await listed.json());
+        expect(ids).toHaveLength(senders);
+        return { token, ids: ids.map((request) => request.id) };
+      };
+      const send = (token: string, path: string, body?: unknown) =>
+        metered(() =>
+          SELF.fetch(`https://example.com${path}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(body ?? {}),
+          }),
+        );
+      const [oneOne, fourByThree, acceptOne, acceptFour, singleOne, singleThree] =
+        await Promise.all([
+          held("d1", 1, 1),
+          held("d4", 4, 3),
+          held("a1", 1, 1),
+          held("a4", 4, 3),
+          held("s1", 1, 1),
+          held("s3", 1, 3),
+        ]);
+      patchD1();
+      const counts = {
+        dismiss: [
+          await send(oneOne.token, "/api/v1/notifications/requests/dismiss", { id: oneOne.ids }),
+          await send(fourByThree.token, "/api/v1/notifications/requests/dismiss", {
+            id: fourByThree.ids,
+          }),
+        ],
+        accept: [
+          await send(acceptOne.token, "/api/v1/notifications/requests/accept", {
+            id: acceptOne.ids,
+          }),
+          await send(acceptFour.token, "/api/v1/notifications/requests/accept", {
+            id: acceptFour.ids,
+          }),
+        ],
+        single: [
+          await send(singleOne.token, `/api/v1/notifications/requests/${singleOne.ids[0]}/dismiss`),
+          await send(
+            singleThree.token,
+            `/api/v1/notifications/requests/${singleThree.ids[0]}/dismiss`,
+          ),
+        ],
+      };
+      for (const [action, [few, many]] of Object.entries(counts)) {
+        expect([few?.status, many?.status], action).toEqual([200, 200]);
+        expect(
+          many?.statements,
+          `${action}: ${many?.statements} statements for more requests or notifications, ${few?.statements} for one`,
+        ).toBe(few?.statements);
+      }
+    },
+  );
+
+  it(
+    "checks who may see a status's quotes in a fixed number of queries",
+    { timeout: 60_000 },
+    async () => {
+      const [reader, author, quoter] = await Promise.all(
+        ["budget-quotes-reader", "budget-quotes-author", "budget-quotes-quoter"].map((name) =>
+          signedInAccount(`${name}@example.com`),
+        ),
+      );
+      if (!reader || !author || !quoter) throw new Error("accounts");
+      const [readerToken, authorToken, quoterToken] = await Promise.all(
+        [reader, author, quoter].map((account) => accessTokenFor(account.id)),
+      );
+      if (!readerToken || !authorToken || !quoterToken) throw new Error("tokens");
+      const quoted = async (count: number) => {
+        const original = idOf(await post(authorToken, "/api/v1/statuses", { status: "quote me" }));
+        for (let n = 0; n < count; n += 1) {
+          await post(quoterToken, "/api/v1/statuses", {
+            status: `quoting ${n}`,
+            quoted_status_id: original,
+          });
+        }
+        return original;
+      };
+      const [one, eight] = [await quoted(1), await quoted(8)];
+      const quotes = (id: string) =>
+        metered(() =>
+          SELF.fetch(`https://example.com/api/v1/statuses/${id}/quotes`, {
+            headers: { Authorization: `Bearer ${readerToken}` },
+          }),
+        );
+      patchD1();
+      await quotes(one);
+      const few = await quotes(one);
+      const many = await quotes(eight);
+      expect([few.status, many.status]).toEqual([200, 200]);
+      expect(
+        many.statements,
+        `listing 8 quotes made ${many.statements} statements, listing one ${few.statements}`,
+      ).toBe(few.statements);
     },
   );
 });

@@ -88,6 +88,29 @@ describe("account profiles", () => {
     expect(read(AccountSchema, stillThere.body).avatar).toBe(account.avatar);
   });
 
+  it("serves the stored header image at its URL", async () => {
+    const email = "profile-header-serve@example.com";
+    const header = new Uint8Array([71, 73, 70, 56, 57, 97]);
+    const form = new FormData();
+    form.set("header", new File([header], "h.gif", { type: "image/gif" }));
+    const uploaded = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: await auth(email),
+      body: form,
+    });
+    const account = read(AccountSchema, uploaded.body);
+    const path = new URL(account.header).pathname;
+    expect(path.startsWith(`/headers/${account.id}/`)).toBe(true);
+
+    const served = await SELF.fetch(`https://example.com${path}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/gif");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(header);
+    const missing = await SELF.fetch(`https://example.com/headers/${account.id}/missing.gif`);
+    expect(missing.status).toBe(404);
+    await missing.body?.cancel();
+  });
+
   it("deletes the avatar and header separately", async () => {
     const email = "profile-image-delete@example.com";
     const form = new FormData();
