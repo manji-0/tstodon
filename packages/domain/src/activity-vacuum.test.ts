@@ -43,8 +43,8 @@ describe("ActivityVacuum.pass", () => {
           calls.push(`deliveries ${before} ${limit}`);
           return ok(2);
         },
-        pruneOutbound: async (before, keep, limit) => {
-          calls.push(`outbound ${before} ${keep} ${limit}`);
+        pruneOutbound: async (before, limit) => {
+          calls.push(`outbound ${before} ${limit}`);
           return ok(1);
         },
         pruneInbox: async (before, limit) => {
@@ -58,7 +58,7 @@ describe("ActivityVacuum.pass", () => {
     expect(pass._unsafeUnwrap()).toEqual({ deliveries: 2, outbound: 1, inbox: 0, chained: false });
     expect(calls).toEqual([
       `deliveries 2026-10-10T12:00:00.000Z ${ActivityVacuum.batch}`,
-      `outbound 2026-09-10T12:00:00.000Z ${ActivityVacuum.keepOutboxItems} ${ActivityVacuum.batch}`,
+      `outbound 2026-09-10T12:00:00.000Z ${ActivityVacuum.batch}`,
       `inbox 2026-11-02T12:00:00.000Z ${ActivityVacuum.batch}`,
     ]);
   });

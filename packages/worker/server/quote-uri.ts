@@ -5,34 +5,40 @@ import {
   StatusTarget,
   type StatusTargetValue,
 } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
 import { type ActivityObjectRef, localNoteRef, type NoteQuote } from "./activitypub";
 import { findAccountById } from "./account-store";
+import type { RepositoryError } from "./d1";
 import { quoteAuthorizationUri } from "./quote-authorization-document";
 import { findQuoteByQuoting } from "./quote-store";
 import { findRemoteStatusById } from "./remote-status-store";
 import { findStatusById } from "./status-store";
 
-/** A status's ActivityPub URI and its author's, while both still exist. */
+/**
+ * A status's ActivityPub URI and its author's, or `undefined` once either is
+ * gone; an error when they could not be read.
+ */
 export const statusTargetRef = async (
   env: Env,
   identity: InstanceIdentity,
   target: StatusTargetValue,
-): Promise<ActivityObjectRef | undefined> => {
+): Promise<Result<ActivityObjectRef | undefined, RepositoryError>> => {
   if (target.kind === "RemoteStatus") {
     const remote = await findRemoteStatusById(env.DB, target.statusId);
-    return remote.isOk() && remote.value
-      ? { uri: remote.value.objectUri, authorUri: remote.value.actorUri }
-      : undefined;
+    return remote.map((found) =>
+      found ? { uri: found.objectUri, authorUri: found.actorUri } : undefined,
+    );
   }
   const status = await findStatusById(env.DB, target.statusId);
-  if (status.isErr() || !status.value) {
-    return undefined;
+  if (status.isErr()) {
+    return err(status.error);
   }
-  const author = await findAccountById(env.DB, status.value.accountId);
-  if (author.isErr() || !author.value) {
-    return undefined;
+  if (!status.value) {
+    return ok(undefined);
   }
-  return localNoteRef(identity, author.value, status.value.id);
+  const { id, accountId } = status.value;
+  const author = await findAccountById(env.DB, accountId);
+  return author.map((found) => (found ? localNoteRef(identity, found, id) : undefined));
 };
 
 /**
@@ -85,7 +91,8 @@ export const noteQuote = async (
   if (quoted.kind === "Unresolved") {
     return undefined;
   }
-  const ref = await statusTargetRef(env, identity, quoted);
+  const found = await statusTargetRef(env, identity, quoted);
+  const ref = found.isOk() ? found.value : undefined;
   return ref === undefined
     ? undefined
     : {

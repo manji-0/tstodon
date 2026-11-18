@@ -19,12 +19,16 @@ const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 /** Allowed growth in rows read: well under the noise, well over a page. */
 const MAX_GROWTH = 200;
 
-const get = async (token: string, path: string): Promise<number> => {
+const get = async (token: string, path: string): Promise<number> =>
+  measure(path, () =>
+    SELF.fetch(`https://example.com${path}`, { headers: { Authorization: `Bearer ${token}` } }),
+  );
+
+/** The rows read by the request `send` makes, after the writes before it settle. */
+const measure = async (path: string, send: () => Promise<Response>): Promise<number> => {
   await settle();
   resetMeter();
-  const response = await SELF.fetch(`https://example.com${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await send();
   expect(response.status, path).toBe(200);
   await response.text();
   await settle();
@@ -175,6 +179,104 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       expect(growth, `home read ${growth} more rows after ${2 * NOISE} tagged posts`).toBeLessThan(
         MAX_GROWTH * 3 * HOME_HORIZON_STEPS,
       );
+    },
+  );
+
+  it(
+    "keeps the ActivityPub collections' rows read independent of what they count",
+    { timeout: 120_000 },
+    async () => {
+      const owner = await signedInAccount("budget-collections@example.com");
+      if (!owner) throw new Error("account");
+      const ownerToken = await accessTokenFor(owner.id);
+      if (!ownerToken) throw new Error("token");
+      const posted: string[] = [];
+      for (let n = 0; n < 25; n += 1) {
+        posted.push(idOf(await post(ownerToken, "/api/v1/statuses", { status: `collected ${n}` })));
+      }
+      const series = (from: number) =>
+        `WITH RECURSIVE series(n) AS (SELECT ${from} UNION ALL SELECT n + 1 FROM series WHERE n < ${from + NOISE - 1})`;
+      // Follows in both directions, newer than any noise, so the pages show them.
+      const follows = (from: number) => [
+        env.DB.prepare(
+          `${series(from)} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+           SELECT 'https://many.example/users/u' || n, 'u' || n, 'many.example', 'https://many.example/inbox',
+                  'https://many.example/users/u' || n || '#main-key', 'x', '2020-01-01T00:00:00.000Z'
+           FROM series`,
+        ),
+        env.DB.prepare(
+          `${series(from)} INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind)
+           SELECT printf('9%017d', n), 'https://many.example/users/u' || n, ?, 'Fulfilled', 'Accepted' FROM series`,
+        ).bind(owner.id),
+        env.DB.prepare(
+          `${series(from)} INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
+           SELECT printf('9%017d', n), ?, 'https://many.example/users/u' || n,
+                  'https://example.com/budget-follows/' || n, 'Accepted' FROM series`,
+        ).bind(owner.id),
+      ];
+      const base = `/users/${owner.username}`;
+      const paths = [
+        `${base}/followers`,
+        `${base}/followers?page=1`,
+        `${base}/following`,
+        `${base}/following?page=1`,
+        `${base}/outbox`,
+        `${base}/outbox?page=true`,
+        `${base}/outbox?min_id=0&page=true`,
+      ];
+      // A signed outbox page also reads the statuses that mention its
+      // signer; this one is mentioned nowhere.
+      const signer = await remoteActor("budget-outbox-signer", "budget-signer.example");
+      const signedPaths = [`${base}/outbox?page=true`, `${base}/outbox?min_id=0&page=true`];
+      const signedGet = async (path: string) =>
+        measure(path, async () => SELF.fetch(await signer.signedGet(path)));
+      await env.DB.batch(follows(NOISE + 1));
+      patchD1();
+      const before = new Map<string, number>();
+      for (const path of paths) {
+        before.set(path, await get(ownerToken, path));
+      }
+      const signedBefore = new Map<string, number>();
+      for (const path of signedPaths) {
+        signedBefore.set(path, await signedGet(path));
+      }
+      // Older follows than every page's. Statuses an unsigned outbox page
+      // must pass over, newer than its own: direct and followers-only notes
+      // and followers-only boosts. And older public notes than any page shows.
+      const statuses = (from: number, idFormat: string, kind: string, visibility: string) =>
+        env.DB.prepare(
+          `${series(from)} INSERT INTO statuses (id, account_id, kind, reblog_of_id, content_text, content_html, visibility, sensitive, spoiler_text, created_at, updated_at)
+           SELECT printf('${idFormat}', n), ?, '${kind}', ${kind === "LocalReblog" ? "?" : "NULL"},
+                  'noise', '<p>noise</p>', '${visibility}', 0, '',
+                  '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'
+           FROM series`,
+        ).bind(owner.id, ...(kind === "LocalReblog" ? [posted[0] ?? ""] : []));
+      await env.DB.batch([
+        ...follows(1),
+        statuses(1, "9%017d", "LocalNote", "direct"),
+        statuses(NOISE + 1, "9%017d", "LocalNote", "private"),
+        statuses(2 * NOISE + 1, "9%017d", "LocalReblog", "private"),
+        statuses(1, "0%017d", "LocalNote", "public"),
+      ]);
+      for (const path of paths) {
+        const rows = (await get(ownerToken, path)) - (before.get(path) ?? 0);
+        expect(
+          rows,
+          `${path} read ${rows} more rows after ${NOISE} more follows and statuses of each kind`,
+        ).toBeLessThan(MAX_GROWTH);
+      }
+      for (const path of signedPaths) {
+        const rows = (await signedGet(path)) - (signedBefore.get(path) ?? 0);
+        expect(
+          rows,
+          `signed ${path} read ${rows} more rows after ${NOISE} more statuses of each kind`,
+        ).toBeLessThan(MAX_GROWTH);
+      }
+      const followers = await SELF.fetch(`https://example.com${base}/followers`);
+      expect(await followers.json()).toMatchObject({ totalItems: 2 * NOISE });
+      const outbox = await SELF.fetch(`https://example.com${base}/outbox`);
+      // Direct statuses are not counted.
+      expect(await outbox.json()).toMatchObject({ totalItems: 25 + 3 * NOISE });
     },
   );
 });

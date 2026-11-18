@@ -23,6 +23,7 @@ import { loadNoteMentions, mentionLinks, resolveMentions } from "./mention-resol
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { noteDocument, quoteRequestActivity } from "./activitypub";
+import { noteCreateActivity } from "./local-note-document";
 import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll, loadNotePoll } from "./poll-store";
 import { startLinkCard } from "./link-card";
@@ -321,13 +322,12 @@ export const publishLocalNote = async (
   const enqueued =
     object === undefined
       ? ok(undefined)
-      : await enqueueLocalActivity(env, user.id, "Create", {
-          "@context": "https://www.w3.org/ns/activitystreams",
-          id: `${actor}/statuses/${note.id}/activity`,
-          type: "Create",
-          actor,
-          object,
-        });
+      : await enqueueLocalActivity(
+          env,
+          user.id,
+          "Create",
+          noteCreateActivity(identity, user, object),
+        );
   if (enqueued.isErr()) {
     return err(
       enqueued.error.kind === "RepositoryError"

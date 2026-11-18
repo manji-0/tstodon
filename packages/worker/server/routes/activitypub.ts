@@ -2,15 +2,20 @@ import { recordDeliveryReachability } from "../delivery-domain-health-store";
 import {
   ACTIVITY_STREAMS,
   type ApActorCollectionJSON,
+  type ApActorCollectionPageJSON,
   type ApFeaturedCollectionJSON,
   type ApFeaturedTagsCollectionJSON,
   type ApOutboxJSON,
+  type ApOutboxPageJSON,
   type ApRepliesDocumentJSON,
   type ApRepliesPageDocumentJSON,
   type ApStatusDocumentJSON,
 } from "@tstodon/api/activitypub";
 import {
   ActivityId,
+  CollectionPage,
+  type CollectionCursor,
+  type CollectionPageLinks,
   Hostname,
   InboxActivity,
   InstanceIdentity,
@@ -33,11 +38,11 @@ import {
   featuredCollectionUri,
   featuredTagsCollectionUri,
   hashtagObject,
+  announceActivity,
   localNoteRef,
-  noteDocument,
   parseLocalActorUsername,
 } from "../activitypub";
-import { jsonRepositoryError, queryLimit } from "../http";
+import { jsonRepositoryError } from "../http";
 import {
   checkSignatureStrength,
   parseSignatureHeader,
@@ -59,7 +64,13 @@ import {
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
-import { listPublicOutboxActivities } from "../outbox-store";
+import { listOutboxStatusIds, type OutboxReader } from "../actor-outbox-store";
+import { loadLocalNoteDocument, noteCreateActivity } from "../local-note-document";
+import type { CustomEmoji } from "../emoji";
+import { accountCounts } from "../account-count-store";
+import { findAccountStanding } from "../account-moderation-store";
+import { findAccountProfile } from "../account-profile-store";
+import { type IdCursor } from "../id-cursor";
 import { resolveRemoteActor } from "../remote-actor-fetch";
 import {
   findRemoteActorByPublicKeyId,
@@ -68,23 +79,18 @@ import {
 } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
-import { loadNoteQuotePolicy } from "../quote-policy-name";
-import { noteQuote, statusTargetRef } from "../quote-uri";
+import { statusTargetRef } from "../quote-uri";
 import { findQuoteById } from "../quote-store";
 import {
   quoteAuthorizationDocument,
   localQuoteAuthorization,
 } from "../quote-authorization-document";
-import { ActivityJsonSchema, JsonObjectSchema, nameCollectionActivity } from "../activitypub-wire";
-import { parseJsonColumn, parseJsonText } from "../json-column";
+import { ActivityJsonSchema, nameCollectionActivity } from "../activitypub-wire";
+import { parseJsonText } from "../json-column";
 import { schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
-import { loadNoteMentions } from "../mention-resolve";
-import { loadNoteMedia } from "../note-attachments";
 import { loadNoteReplies, loadNoteRepliesPage, type RepliedNote } from "../note-replies";
-import { loadNoteReply } from "../reply-target";
-import { loadNotePoll } from "../poll-store";
-import { findStatusById } from "../status-store";
+import { findStatusById, findStatusesByIds } from "../status-store";
 import { listPinnedStatuses } from "../status-pin-store";
 import { listFeaturedTags } from "../tag-store";
 import { RemoteAccountId } from "../remote-account-id";
@@ -207,10 +213,6 @@ export const getUsersByUsernameStatusesById = async (
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const media = await loadNoteMedia(c.env.DB, identity.value, status.value);
-  if (media.isErr()) {
-    return jsonRepositoryError(c, media.error.message);
-  }
   const visibility = status.value.visibility.kind;
   // Only a note anyone may read lists its replies; the others carry an empty page.
   const replies =
@@ -220,16 +222,14 @@ export const getUsersByUsernameStatusesById = async (
   if (replies.isErr()) {
     return jsonRepositoryError(c, replies.error.message);
   }
-  const note = noteDocument(identity.value, account.value, status.value, {
-    quote: await noteQuote(c.env, identity.value, status.value.id),
-    mentions: await loadNoteMentions(c.env.DB, identity.value, status.value.id),
-    reply: await loadNoteReply(c.env.DB, identity.value, status.value),
+  const document = await loadLocalNoteDocument(c.env, identity.value, account.value, status.value, {
     replies: replies.value,
-    poll: await loadNotePoll(c.env.DB, status.value.id),
-    media: media.value,
-    quotePolicy: await loadNoteQuotePolicy(c.env.DB, account.value, status.value),
     emojis: await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl),
   });
+  if (document.isErr()) {
+    return jsonRepositoryError(c, document.error.message);
+  }
+  const note = document.value;
   if (visibility !== "Public" && visibility !== "Unlisted") {
     // Followers-only and direct notes go to a signed fetch from an actor they
     // address (Mastodon's authorized fetch), and never into a shared cache.
@@ -346,11 +346,14 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   }
   const visibility = quoted.value?.visibility.kind;
   const quoting = await statusTargetRef(c.env, identity.value, quote.value.quoting);
+  if (quoting.isErr()) {
+    return jsonRepositoryError(c, quoting.error.message);
+  }
   if (
     !quoted.value ||
     quoted.value.accountId !== account.value.id ||
     (visibility !== "Public" && visibility !== "Unlisted") ||
-    !quoting
+    !quoting.value
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
@@ -375,7 +378,7 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
     }
   }
   const document = quoteAuthorizationDocument(
-    localQuoteAuthorization(target, quote.value.id, quoting.uri),
+    localQuoteAuthorization(target, quote.value.id, quoting.value.uri),
   );
   if (access.kind === "Public") {
     c.header("Cache-Control", "max-age=30, public");
@@ -406,23 +409,208 @@ const noteAddresses = async (
   return follow.isOk() && follow.value?.requestKind === "Fulfilled";
 };
 
-const collection = (id: string, items: ReadonlyArray<string>): ApActorCollectionJSON => ({
-  "@context": ACTIVITY_STREAMS,
-  id,
-  type: "OrderedCollection",
-  totalItems: items.length,
-  orderedItems: [...items],
+const parseCollectionQuery = schemaResult(CollectionPage.querySchema);
+
+const idCursorOf = (cursor: CollectionCursor): IdCursor => {
+  switch (cursor.kind) {
+    case "Newest":
+      return {};
+    case "Before":
+      return { maxId: cursor.id };
+    case "After":
+      return { minId: cursor.id };
+  }
+};
+
+/** `next` and `prev` as links into `collection`; absent where there is no page. */
+const pageLinks = (
+  collection: string,
+  links: CollectionPageLinks,
+): Readonly<{ next?: string; prev?: string }> => ({
+  ...(links.next ? { next: `${collection}${CollectionPage.query(links.next)}` } : {}),
+  ...(links.prev ? { prev: `${collection}${CollectionPage.query(links.prev)}` } : {}),
 });
 
-/**
- * The outbox: the activities as they were delivered, read back from
- * `outbound_activities.payload_json`. They were typed as
- * `ApActivityDocument`s when enqueued; the column is read as plain JSON
- * objects so an activity stored by an older build still shows.
- */
-type OutboxDocument = Omit<ApOutboxJSON, "orderedItems"> &
-  Readonly<{ orderedItems: ReadonlyArray<Readonly<Record<string, unknown>>> }>;
+/** Mastodon's `forbidden` body. */
+const NOT_ALLOWED = { error: "This action is not allowed", kind: "Forbidden" } as const;
 
+/**
+ * A local account's `followers` or `following`, as Mastodon's
+ * `FollowerAccountsController` / `FollowingAccountsController`. Without
+ * `page`: the account's count and a link to the first page, or the count
+ * alone when the account hides its collections. With `page`: 12 actor URIs,
+ * newest follow first, or 403 when the account hides them, whoever asks.
+ */
+const followCollection = async (
+  c: Context<{ Bindings: Env }, "/users/:username/followers" | "/users/:username/following">,
+  name: "followers" | "following",
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const access = await authorizeObjectFetch(c, identity.value);
+  if (access.kind === "Denied") {
+    return access.response;
+  }
+  const query = parseCollectionQuery(c.req.query());
+  if (query.isErr()) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
+  if (account.isErr()) {
+    return jsonRepositoryError(c, account.error.message);
+  }
+  if (!account.value) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
+  const [profile, counts] = await Promise.all([
+    findAccountProfile(c.env.DB, account.value.id),
+    accountCounts(c.env.DB, account.value.id),
+  ]);
+  if (profile.isErr()) {
+    return jsonRepositoryError(c, profile.error.message);
+  }
+  if (counts.isErr()) {
+    return jsonRepositoryError(c, counts.error.message);
+  }
+  const id = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}/${name}`;
+  const totalItems = counts.value[name];
+  const hidden = profile.value.hideCollections;
+  const request = CollectionPage.fromQuery(query.value, "Present");
+  if (request.kind === "Root") {
+    const root: ApActorCollectionJSON = {
+      "@context": ACTIVITY_STREAMS,
+      id,
+      type: "OrderedCollection",
+      totalItems,
+      ...(hidden ? {} : { first: `${id}${CollectionPage.query({ kind: "Newest" }, "1")}` }),
+    };
+    return c.json(root, 200, jsonLd);
+  }
+  if (hidden) {
+    return c.json(NOT_ALLOWED, 403);
+  }
+  const list = name === "followers" ? listFollowers : listFollowing;
+  const edges = await list(
+    c.env.DB,
+    account.value.id,
+    CollectionPage.FOLLOWS_LIMIT + 1,
+    idCursorOf(request.cursor),
+  );
+  if (edges.isErr()) {
+    return jsonRepositoryError(c, edges.error.message);
+  }
+  const page = CollectionPage.take(request.cursor, edges.value, CollectionPage.FOLLOWS_LIMIT);
+  const locals = await findAccountsByIds(
+    c.env.DB,
+    page.items.map((edge) => edge.accountId),
+  );
+  if (locals.isErr()) {
+    return jsonRepositoryError(c, locals.error.message);
+  }
+  const items = page.items.flatMap((edge) => {
+    const remote = RemoteAccountId.decode(edge.accountId);
+    if (remote.isOk()) {
+      return [remote.value];
+    }
+    const local = locals.value.get(edge.accountId);
+    return local ? [InstanceIdentity.actorUrl(identity.value, local.username)] : [];
+  });
+  const links = CollectionPage.followsLinks(
+    request.cursor,
+    page.items.map((edge) => edge.id),
+    page.more,
+  );
+  const document: ApActorCollectionPageJSON = {
+    "@context": ACTIVITY_STREAMS,
+    id: `${id}${CollectionPage.query(request.cursor, query.value.page)}`,
+    type: "OrderedCollectionPage",
+    totalItems,
+    partOf: id,
+    ...pageLinks(id, links),
+    orderedItems: items,
+  };
+  return c.json(document, 200, jsonLd);
+};
+
+export const getUsersByUsernameFollowers = (
+  c: Context<{ Bindings: Env }, "/users/:username/followers">,
+) => followCollection(c, "followers");
+
+export const getUsersByUsernameFollowing = (
+  c: Context<{ Bindings: Env }, "/users/:username/following">,
+) => followCollection(c, "following");
+
+/**
+ * Who reads an outbox page, as Mastodon's `AccountStatusesFilter`: an
+ * unsigned fetch reads the public and unlisted statuses; a signed one also
+ * those that mention its actor, and an accepted follower the followers-only
+ * ones too. A fetcher the account blocks, or whose domain it blocks, reads
+ * nothing (`undefined`).
+ */
+const outboxReader = async (
+  db: D1Database,
+  account: LocalAccount,
+  signer: RemoteActor | undefined,
+): Promise<Result<OutboxReader | undefined, RepositoryError>> => {
+  if (!signer) {
+    return ok({ visibilities: ["public", "unlisted"] });
+  }
+  const [blocked, follow] = await Promise.all([
+    blocksFetcher(db, account, signer.actorUri),
+    findRemoteFollow(db, account.id, signer.actorUri),
+  ]);
+  if (blocked.isErr()) {
+    return err(blocked.error);
+  }
+  if (follow.isErr()) {
+    return err(follow.error);
+  }
+  if (blocked.value) {
+    return ok(undefined);
+  }
+  return ok(
+    follow.value?.requestKind === "Fulfilled"
+      ? {
+          visibilities: ["public", "unlisted", "private"],
+          mentioned: { actorUri: signer.actorUri, visibilities: ["direct"] },
+        }
+      : {
+          visibilities: ["public", "unlisted"],
+          mentioned: { actorUri: signer.actorUri, visibilities: ["private", "direct"] },
+        },
+  );
+};
+
+type OutboxItem = ApOutboxPageJSON["orderedItems"][number];
+
+/**
+ * A status of an outbox page as Mastodon's `OutboxSerializer` renders it: a
+ * note's `Create` with the note as it is now, or a boost's `Announce`.
+ * Nothing for a boost whose status is gone.
+ */
+const outboxItem = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  status: LocalStatusValue,
+  emojis: ReadonlyArray<CustomEmoji>,
+): Promise<Result<OutboxItem | undefined, RepositoryError>> => {
+  if (status.kind === "LocalNote") {
+    const note = await loadLocalNoteDocument(env, identity, account, status, { emojis });
+    return note.map((object) => noteCreateActivity(identity, account, object));
+  }
+  const boosted = await statusTargetRef(env, identity, status.target);
+  return boosted.map((ref) => (ref ? announceActivity(identity, account, status, ref) : undefined));
+};
+
+/**
+ * The outbox, as Mastodon's `OutboxesController`. Without `page`: the
+ * account's status count, and links to the newest and the oldest page. With
+ * `page`: 20 of the statuses and boosts the fetcher may read, newest first,
+ * rendered as they are now and paged by status id (`max_id`, `min_id`).
+ */
 export const getUsersByUsernameOutbox = async (
   c: Context<{ Bindings: Env }, "/users/:username/outbox">,
 ) => {
@@ -434,6 +622,10 @@ export const getUsersByUsernameOutbox = async (
   if (access.kind === "Denied") {
     return access.response;
   }
+  const query = parseCollectionQuery(c.req.query());
+  if (query.isErr()) {
+    return c.json({ kind: "NotFound" }, 404);
+  }
   const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
@@ -441,105 +633,96 @@ export const getUsersByUsernameOutbox = async (
   if (!account.value) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  // What anyone may read, as in Mastodon: public or unlisted notes and boosts.
-  // The query filters before its LIMIT, so a page is not cut short.
-  const rows = await listPublicOutboxActivities(
-    c.env.DB,
-    account.value.id,
-    queryLimit(c.req.query("limit"), 20),
-  );
-  if (rows.isErr()) {
-    return jsonRepositoryError(c, rows.error.message);
+  // Mastodon's `check_account_suspension`: neither the count nor a page of a
+  // suspended account, for 3 minutes.
+  const standing = await findAccountStanding(c.env.DB, account.value.id);
+  if (standing.isErr()) {
+    return jsonRepositoryError(c, standing.error.message);
   }
-  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
-  const items = rows.value.flatMap((row) => {
-    const payload = parseJsonColumn(JsonObjectSchema, row.payload_json);
-    return payload.isOk() ? [payload.value] : [];
-  });
-  const outbox: OutboxDocument = {
+  if (standing.value.kind === "Suspended") {
+    c.header("Cache-Control", "max-age=180, public");
+    return c.json(NOT_ALLOWED, 403);
+  }
+  const id = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}/outbox`;
+  const request = CollectionPage.fromQuery(query.value, "Truthy");
+  if (request.kind === "Root") {
+    const counts = await accountCounts(c.env.DB, account.value.id);
+    if (counts.isErr()) {
+      return jsonRepositoryError(c, counts.error.message);
+    }
+    const outbox: ApOutboxJSON = {
+      "@context": ACTIVITY_STREAMS,
+      id,
+      type: "OrderedCollection",
+      totalItems: counts.value.statuses,
+      first: `${id}${CollectionPage.query({ kind: "Newest" })}`,
+      last: `${id}${CollectionPage.query({ kind: "After", id: "0" })}`,
+    };
+    // Mastodon's `expires_in(3.minutes, public: public_fetch_mode?)`.
+    c.header("Cache-Control", `max-age=180, ${access.kind === "Public" ? "public" : "private"}`);
+    return c.json(outbox, 200, jsonLd);
+  }
+  const signer =
+    access.kind === "Signed"
+      ? access.actor
+      : await signedFetchActor(c.env, identity.value, c.req.raw);
+  const reader = await outboxReader(c.env.DB, account.value, signer);
+  if (reader.isErr()) {
+    return jsonRepositoryError(c, reader.error.message);
+  }
+  const ids = reader.value
+    ? await listOutboxStatusIds(
+        c.env.DB,
+        account.value.id,
+        reader.value,
+        idCursorOf(request.cursor),
+        CollectionPage.OUTBOX_LIMIT,
+      )
+    : ok([]);
+  if (ids.isErr()) {
+    return jsonRepositoryError(c, ids.error.message);
+  }
+  const owner = account.value;
+  const page = CollectionPage.take(request.cursor, ids.value, CollectionPage.OUTBOX_LIMIT);
+  const statuses = await findStatusesByIds(c.env.DB, page.items);
+  if (statuses.isErr()) {
+    return jsonRepositoryError(c, statuses.error.message);
+  }
+  const emojis =
+    page.items.length > 0 ? await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl) : [];
+  const rendered = await Promise.all(
+    page.items.map((statusId) => {
+      const status = statuses.value.get(statusId);
+      return status
+        ? outboxItem(c.env, identity.value, owner, status, emojis)
+        : Promise.resolve(ok(undefined));
+    }),
+  );
+  const items: OutboxItem[] = [];
+  for (const item of rendered) {
+    if (item.isErr()) {
+      return jsonRepositoryError(c, item.error.message);
+    }
+    if (item.value) {
+      items.push(item.value);
+    }
+  }
+  const document: ApOutboxPageJSON = {
     "@context": ACTIVITY_STREAMS,
-    id: `${actor}/outbox`,
-    type: "OrderedCollection",
-    totalItems: items.length,
+    id: `${id}${CollectionPage.query(request.cursor)}`,
+    type: "OrderedCollectionPage",
+    partOf: id,
+    ...pageLinks(id, CollectionPage.outboxLinks(page.items, CollectionPage.OUTBOX_LIMIT)),
     orderedItems: items,
   };
-  return c.json(outbox, 200, jsonLd);
-};
-
-export const getUsersByUsernameFollowers = async (
-  c: Context<{ Bindings: Env }, "/users/:username/followers">,
-) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const access = await authorizeObjectFetch(c, identity.value);
-  if (access.kind === "Denied") {
-    return access.response;
-  }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
-  }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
-  const ids = await listFollowers(c.env.DB, account.value.id, queryLimit(c.req.query("limit")));
-  if (ids.isErr()) {
-    return jsonRepositoryError(c, ids.error.message);
-  }
-  const followers = await findAccountsByIds(
-    c.env.DB,
-    ids.value.map((edge) => edge.accountId),
+  // Mastodon's `expires_in(1.minute, public: public_fetch_mode? && signed_request_account.nil?)`,
+  // varying by `Signature`: what a page holds depends on who signed for it.
+  c.header(
+    "Cache-Control",
+    `max-age=60, ${access.kind === "Public" && !signer ? "public" : "private"}`,
   );
-  const items = ids.value.flatMap((edge) => {
-    const remote = RemoteAccountId.decode(edge.accountId);
-    if (remote.isOk()) {
-      return [remote.value];
-    }
-    const follower = followers.isOk() ? followers.value.get(edge.accountId) : undefined;
-    return follower ? [InstanceIdentity.actorUrl(identity.value, follower.username)] : [];
-  });
-  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
-  return c.json(collection(`${actor}/followers`, items), 200, jsonLd);
-};
-
-export const getUsersByUsernameFollowing = async (
-  c: Context<{ Bindings: Env }, "/users/:username/following">,
-) => {
-  const identity = parseInstanceIdentity(c.env);
-  if (identity.isErr()) {
-    return c.json(identity.error, 500);
-  }
-  const access = await authorizeObjectFetch(c, identity.value);
-  if (access.kind === "Denied") {
-    return access.response;
-  }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
-  }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
-  const ids = await listFollowing(c.env.DB, account.value.id, queryLimit(c.req.query("limit")));
-  if (ids.isErr()) {
-    return jsonRepositoryError(c, ids.error.message);
-  }
-  const targets = await findAccountsByIds(
-    c.env.DB,
-    ids.value.map((edge) => edge.accountId),
-  );
-  const items = ids.value.flatMap((edge) => {
-    const remote = RemoteAccountId.decode(edge.accountId);
-    if (remote.isOk()) {
-      return [remote.value];
-    }
-    const target = targets.isOk() ? targets.value.get(edge.accountId) : undefined;
-    return target ? [InstanceIdentity.actorUrl(identity.value, target.username)] : [];
-  });
-  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
-  return c.json(collection(`${actor}/following`, items), 200, jsonLd);
+  c.header("Vary", "Signature");
+  return c.json(document, 200, jsonLd);
 };
 
 /**

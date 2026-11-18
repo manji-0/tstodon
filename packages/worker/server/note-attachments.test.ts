@@ -142,7 +142,7 @@ describe("note attachments", () => {
     expect(created?.id).toBe(status.uri);
     expect(created?.attachment).toEqual(expected);
 
-    const outbox = await json(`/users/${status.account.username}/outbox`);
+    const outbox = await json(`/users/${status.account.username}/outbox?page=true`);
     const items = read(z.object({ orderedItems: z.array(Activity) }), outbox.body).orderedItems;
     expect(items.find((item) => item.object.id === status.uri)?.object.attachment).toEqual(
       expected,

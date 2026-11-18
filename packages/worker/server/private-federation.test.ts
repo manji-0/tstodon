@@ -81,7 +81,7 @@ describe("non-public notes on the federation surface", () => {
     // The outbox lists the public note's Create only.
     const outbox = read(
       z.object({ orderedItems: z.array(z.object({ type: z.string(), object: z.unknown() })) }),
-      (await json(`/users/${account.username}/outbox`)).body,
+      (await json(`/users/${account.username}/outbox?page=true`)).body,
     );
     expect(
       outbox.orderedItems.map((item) =>
