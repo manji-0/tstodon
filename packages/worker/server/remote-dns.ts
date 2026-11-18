@@ -13,13 +13,21 @@ import { schemaResult } from "@tstodon/core";
 /** What a host's DNS lookup came to. */
 export type HostResolution =
   | Readonly<{ kind: "Resolved"; addresses: ReadonlyArray<string> }>
+  /** DNS answered with an error status: NXDOMAIN (3), SERVFAIL (2), ... */
+  | Readonly<{ kind: "DnsError"; status: number }>
+  /** The resolver could not be asked (network, HTTP error, unreadable answer). */
   | Readonly<{ kind: "Failed" }>;
 
 /** Resolves a hostname's A and AAAA records. Never throws. */
 export type HostResolver = (host: string) => Promise<HostResolution>;
 
-/** The verdict on a hostname: admitted, refused, or not decidable now (retry later). */
-export type HostDnsVerdict = "Admitted" | "Refused" | "Unavailable";
+/**
+ * The verdict on a hostname: admitted, refused, not decidable now because
+ * the resolver could not be asked (`Unavailable`, this server's failure), or
+ * not resolvable because DNS answered with an error (`Unresolvable`, the
+ * remote's: a fetch would fail the same way). Both of the last two retry.
+ */
+export type HostDnsVerdict = "Admitted" | "Refused" | "Unavailable" | "Unresolvable";
 
 const DOH_ENDPOINT = "https://cloudflare-dns.com/dns-query";
 const DOH_TIMEOUT_MS = 3000;
@@ -34,7 +42,7 @@ const DohResponseSchema = z.object({
 });
 const parseDohResponse = schemaResult(DohResponseSchema);
 
-const queryDoh = async (host: string, type: "A" | "AAAA"): Promise<string[] | undefined> => {
+const queryDoh = async (host: string, type: "A" | "AAAA"): Promise<HostResolution> => {
   try {
     const response = await fetch(`${DOH_ENDPOINT}?name=${encodeURIComponent(host)}&type=${type}`, {
       headers: { Accept: "application/dns-json" },
@@ -42,26 +50,39 @@ const queryDoh = async (host: string, type: "A" | "AAAA"): Promise<string[] | un
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return undefined;
+      return { kind: "Failed" };
     }
     const body = parseDohResponse(await response.json());
-    // As cfwdon: any non-zero status (SERVFAIL, NXDOMAIN, ...) fails the lookup.
-    if (body.isErr() || body.value.Status !== 0) {
-      return undefined;
+    if (body.isErr()) {
+      return { kind: "Failed" };
+    }
+    if (body.value.Status !== 0) {
+      return { kind: "DnsError", status: body.value.Status };
     }
     // CNAME answers carry names, not addresses; they are not addresses to judge.
-    return (body.value.Answer ?? []).map((a) => a.data).filter(IpRange.isAddress);
+    const addresses = (body.value.Answer ?? []).map((a) => a.data).filter(IpRange.isAddress);
+    return { kind: "Resolved", addresses };
   } catch {
-    return undefined;
+    return { kind: "Failed" };
   }
 };
 
-/** Cloudflare DNS-over-HTTPS: A and AAAA in parallel; either failing fails the lookup. */
+/**
+ * Cloudflare DNS-over-HTTPS: A and AAAA in parallel. Either query that could
+ * not be made fails the lookup; otherwise a DNS error on either is the answer.
+ */
 export const dohHostResolver: HostResolver = async (host) => {
   const [a, aaaa] = await Promise.all([queryDoh(host, "A"), queryDoh(host, "AAAA")]);
-  return a === undefined || aaaa === undefined
-    ? { kind: "Failed" }
-    : { kind: "Resolved", addresses: [...a, ...aaaa] };
+  if (a.kind === "Failed" || aaaa.kind === "Failed") {
+    return { kind: "Failed" };
+  }
+  if (a.kind === "DnsError") {
+    return a;
+  }
+  if (aaaa.kind === "DnsError") {
+    return aaaa;
+  }
+  return { kind: "Resolved", addresses: [...a.addresses, ...aaaa.addresses] };
 };
 
 const verdicts = new Map<
@@ -120,6 +141,9 @@ export const judgeHostDns = async (
   const resolution = await resolver(host);
   if (resolution.kind === "Failed") {
     return "Unavailable";
+  }
+  if (resolution.kind === "DnsError") {
+    return "Unresolvable";
   }
   const verdict = RemoteDnsPolicy.judge(resolution.addresses);
   switch (verdict.kind) {

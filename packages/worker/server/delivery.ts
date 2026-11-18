@@ -416,6 +416,11 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
     if (admitted === "Unavailable") {
       return local(DeliveryAttemptOutcome.Local);
     }
+    // DNS says the name does not resolve: the remote is as unreachable as if
+    // the connection failed, which is what its domain health should count.
+    if (admitted === "Unresolvable") {
+      return { outcome: DeliveryAttemptOutcome.Network, remote: true };
+    }
     if (admitted === "Refused") {
       console.warn(JSON.stringify({ kind: "OutboxInboxRefused", activityId, host: inbox.host }));
       return local(DeliveryAttemptOutcome.forHttpStatus(400));

@@ -83,6 +83,23 @@ describe("inbox delivery host guard", () => {
     }
   });
 
+  it("counts a name DNS says does not exist against the remote, without posting", async () => {
+    setDefaultHostResolver(async () => ({ kind: "DnsError", status: 3 }));
+    try {
+      const post = await prepareInboxDelivery(env, await queuedActivity());
+      const fetchSpy = spyFetch();
+      const attempt = await post("https://nxdomain.example/inbox");
+      expect(fetchSpy).not.toHaveBeenCalled();
+      // As a failed connection: retried, and held against the domain's health.
+      expect(attempt).toEqual({
+        outcome: { kind: "TransientFailure", cause: { kind: "Network" } },
+        remote: true,
+      });
+    } finally {
+      setDefaultHostResolver(async () => ({ kind: "Resolved", addresses: ["93.184.216.34"] }));
+    }
+  });
+
   it("does not follow a redirect, and retries the delivery later", async () => {
     const post = await prepareInboxDelivery(env, await queuedActivity());
     const fetchSpy = spyFetch(302, { location: "http://169.254.169.254/" });
