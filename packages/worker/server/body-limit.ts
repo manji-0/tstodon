@@ -147,7 +147,10 @@ export const readBodyBytes = async (
   if (message.body === null) {
     return ok(new Uint8Array(0));
   }
-  const reader = message.body.getReader();
+  // An identity transform types the chunks, which the runtime's body leaves untyped.
+  const reader = message.body
+    .pipeThrough(new TransformStream<Uint8Array, Uint8Array>())
+    .getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {

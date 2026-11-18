@@ -70,7 +70,10 @@ describe("security headers", () => {
 
   it("use a fresh style nonce for each page", async () => {
     const headers = await authHeaders("security-headers-nonce@example.com");
-    const [first, second] = await Promise.all([get("/home", { headers }), get("/home", { headers })]);
+    const [first, second] = await Promise.all([
+      get("/home", { headers }),
+      get("/home", { headers }),
+    ]);
     expect(first?.headers.get("content-security-policy")).not.toBe(
       second?.headers.get("content-security-policy"),
     );
