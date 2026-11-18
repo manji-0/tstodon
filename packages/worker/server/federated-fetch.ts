@@ -4,6 +4,7 @@ import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
 import { MAX_FETCHED_BYTES, readBodyJson } from "./body-limit";
 import { signFetchRequest } from "./http-signature";
+import { hostsExemptFromAddressChecks } from "./federation-allow-hosts";
 import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
 
 export type FederatedFetchError =
@@ -127,7 +128,7 @@ export const isFederatedHostRefused = (
     return true;
   }
   return (
-    isBlockedFederatedHost(hostname, instanceDomain, allowHosts) ||
+    isBlockedFederatedHost(hostname, instanceDomain, hostsExemptFromAddressChecks(allowHosts)) ||
     (options.blockedHosts?.has(Hostname.ofAuthority(hostname)) ?? false)
   );
 };
@@ -151,7 +152,7 @@ export const checkFederatedHost = async (
     host === undefined ||
     host.startsWith("[") ||
     /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
-    namedIn(options.allowHosts ?? new Set(), host)
+    namedIn(hostsExemptFromAddressChecks(options.allowHosts), host)
   ) {
     return "Admitted";
   }
@@ -315,7 +316,8 @@ const followWebfingerRedirects = async (
   for (let redirects = 0; ; redirects += 1) {
     if (
       fetched.has(url.href) ||
-      url.protocol !== `${webfingerScheme(url.hostname, options.allowHosts)}:`
+      url.protocol !==
+        `${webfingerScheme(url.hostname, hostsExemptFromAddressChecks(options.allowHosts))}:`
     ) {
       return err({ kind: "InvalidSignature" });
     }
@@ -371,7 +373,7 @@ export const fetchWebfinger = async (
   const resource = `acct:${user}@${domain}`;
   const host = domain.replace(/:\d+$/, "");
   const url = parseFederatedUrl(
-    `${webfingerScheme(host, options.allowHosts)}://${domain}/.well-known/webfinger?resource=${encodeURIComponent(resource)}`,
+    `${webfingerScheme(host, hostsExemptFromAddressChecks(options.allowHosts))}://${domain}/.well-known/webfinger?resource=${encodeURIComponent(resource)}`,
   );
   if (url.isErr()) {
     return err(url.error);

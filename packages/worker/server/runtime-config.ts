@@ -3,6 +3,7 @@ import { InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { domainAllowHosts } from "./domain-allow-store";
+import { FederationAllowHosts } from "./federation-allow-hosts";
 import type { CustomEmoji } from "./emoji";
 import { parseJsonText } from "./json-column";
 
@@ -238,17 +239,14 @@ const envFederationAllowHosts = (env: Env): ReadonlySet<string> => {
  * read falls back to the configured hosts, which is the narrower answer when
  * the config already lists domains.
  */
-export const federationAllowHosts = async (env: Env): Promise<ReadonlySet<string>> => {
+export const federationAllowHosts = async (env: Env): Promise<FederationAllowHosts> => {
   const configured = envFederationAllowHosts(env);
   const db = schemaResult(D1BindingSchema)(Reflect.get(env, "DB"));
   if (db.isErr()) {
-    return configured;
+    return new FederationAllowHosts(configured);
   }
   const stored = await domainAllowHosts(db.value);
-  if (stored.isErr() || stored.value.size === 0) {
-    return configured;
-  }
-  return new Set([...configured, ...stored.value]);
+  return new FederationAllowHosts(configured, stored.isOk() ? stored.value : []);
 };
 
 /**

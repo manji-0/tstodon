@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { prepareInboxDelivery } from "./delivery";
+import { deleteDomainAllow, insertDomainAllow } from "./domain-allow-store";
 import { insertOutboundActivity } from "./outbox-store";
 import { clearDnsVerdictCache, setDefaultHostResolver } from "./remote-dns";
 import { envWith } from "../test/env-fixture";
@@ -110,6 +111,24 @@ describe("inbox delivery host guard", () => {
       outcome: { kind: "TransientFailure", cause: { kind: "HttpStatus", httpStatus: 302 } },
       remote: true,
     });
+  });
+
+  it("still checks the DNS of a domain an admin allowed (limited federation)", async () => {
+    const allowed = await insertDomainAllow(env.DB, "admin-allowed.example");
+    if (allowed.isErr()) {
+      throw new Error("domain allow not stored");
+    }
+    try {
+      await withHostAddresses({ "admin-allowed.example": ["10.0.0.9"] }, async () => {
+        const post = await prepareInboxDelivery(env, await queuedActivity());
+        const fetchSpy = spyFetch();
+        const attempt = await post("https://admin-allowed.example/inbox");
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(attempt.outcome.kind).toBe("PermanentFailure");
+      });
+    } finally {
+      await deleteDomainAllow(env.DB, allowed.value.id);
+    }
   });
 
   it("posts to a loopback host FEDERATION_ALLOW_HOSTS names", async () => {
