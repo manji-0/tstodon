@@ -51,15 +51,26 @@ describe("ActivityVacuum.pass", () => {
           calls.push(`inbox ${before} ${limit}`);
           return ok(0);
         },
+        pruneUndone: async (before, limit) => {
+          calls.push(`undone ${before} ${limit}`);
+          return ok(3);
+        },
       },
       retention,
       NOW,
     );
-    expect(pass._unsafeUnwrap()).toEqual({ deliveries: 2, outbound: 1, inbox: 0, chained: false });
+    expect(pass._unsafeUnwrap()).toEqual({
+      deliveries: 2,
+      outbound: 1,
+      inbox: 0,
+      undone: 3,
+      chained: false,
+    });
     expect(calls).toEqual([
       `deliveries 2026-10-10T12:00:00.000Z ${ActivityVacuum.batch}`,
       `outbound 2026-09-10T12:00:00.000Z ${ActivityVacuum.batch}`,
       `inbox 2026-11-02T12:00:00.000Z ${ActivityVacuum.batch}`,
+      `undone 2026-11-09T06:00:00.000Z ${ActivityVacuum.batch}`,
     ]);
   });
 
@@ -69,6 +80,7 @@ describe("ActivityVacuum.pass", () => {
         pruneDeliveries: async () => ok(0),
         pruneOutbound: async () => ok(0),
         pruneInbox: async (_before, limit) => ok(limit),
+        pruneUndone: async () => ok(0),
       },
       retention,
       NOW,
@@ -92,11 +104,18 @@ describe("ActivityVacuum.pass", () => {
           calls.push("inbox");
           return ok(0);
         },
+        pruneUndone: async () => ok(0),
       },
       ActivityVacuum.retention({ deliveries: "off", outbound: "off", inbox: "off" }),
       NOW,
     );
-    expect(pass._unsafeUnwrap()).toEqual({ deliveries: 0, outbound: 0, inbox: 0, chained: false });
+    expect(pass._unsafeUnwrap()).toEqual({
+      deliveries: 0,
+      outbound: 0,
+      inbox: 0,
+      undone: 0,
+      chained: false,
+    });
     expect(calls).toEqual([]);
   });
 
@@ -110,6 +129,7 @@ describe("ActivityVacuum.pass", () => {
           inboxCalled = true;
           return ok(0);
         },
+        pruneUndone: async () => ok(0),
       },
       retention,
       NOW,

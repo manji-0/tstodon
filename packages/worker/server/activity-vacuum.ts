@@ -13,6 +13,7 @@ import {
   pruneInboxActivities as pruneInboxActivitiesSql,
   pruneOutboundActivities as pruneOutboundActivitiesSql,
   pruneTerminalDeliveries as pruneTerminalDeliveriesSql,
+  pruneUndoneBeforeArrival as pruneUndoneBeforeArrivalSql,
 } from "./generated/prisma/sql";
 
 /**
@@ -50,6 +51,13 @@ export const pruneInboxActivities = (
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => changes(await runTyped(db, pruneInboxActivitiesSql(receivedBefore, limit))));
 
+export const pruneUndoneBeforeArrival = (
+  db: D1Database,
+  createdBefore: string,
+  limit: number,
+): Promise<Result<number, RepositoryError>> =>
+  runD1(async () => changes(await runTyped(db, pruneUndoneBeforeArrivalSql(createdBefore, limit))));
+
 const windowDays = (window: RetentionWindow): number | "off" =>
   window.kind === "Off" ? "off" : window.days;
 
@@ -69,6 +77,7 @@ export const vacuumActivities = async (
       pruneDeliveries: (before, limit) => pruneTerminalDeliveries(env.DB, before, limit),
       pruneOutbound: (before, limit) => pruneOutboundActivities(env.DB, before, limit),
       pruneInbox: (before, limit) => pruneInboxActivities(env.DB, before, limit),
+      pruneUndone: (before, limit) => pruneUndoneBeforeArrival(env.DB, before, limit),
     },
     retention,
     nowMs,
@@ -76,16 +85,17 @@ export const vacuumActivities = async (
   const ms = elapsedMs(startedAt);
   if (pass.isErr()) {
     console.error(JSON.stringify({ kind: "ActivityVacuumFailed", message: pass.error.message }));
-    writeMetric(env, "activity.vacuum", [0, 0, 0, ms], ["error", ""]);
+    writeMetric(env, "activity.vacuum", [0, 0, 0, ms, 0], ["error", ""]);
     return pass;
   }
-  const { deliveries, outbound, inbox, chained } = pass.value;
+  const { deliveries, outbound, inbox, undone, chained } = pass.value;
   console.log(
     JSON.stringify({
       kind: "ActivityVacuumPass",
       deliveries,
       outbound,
       inbox,
+      undone,
       chained,
       retentionDays: {
         deliveries: windowDays(retention.deliveries),
@@ -95,11 +105,11 @@ export const vacuumActivities = async (
       ms,
     }),
   );
-  // doubles: [deliveries, outbound, inbox, ms]; blobs: [ok | error, chained | ""]
+  // doubles: [deliveries, outbound, inbox, ms, undone]; blobs: [ok | error, chained | ""]
   writeMetric(
     env,
     "activity.vacuum",
-    [deliveries, outbound, inbox, ms],
+    [deliveries, outbound, inbox, ms, undone],
     ["ok", chained ? "chained" : ""],
   );
   return pass;
