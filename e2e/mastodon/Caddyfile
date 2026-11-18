@@ -13,4 +13,11 @@ https://mastodon.test {
 https://tstodon.localhost {
 	tls /certs/leaf.crt /certs/leaf.key
 	reverse_proxy 172.30.47.1:8791
+	# One line per request with its status, so a step that fails on what
+	# tstodon answered Mastodon can be read from compose-proxy.log. The `vp dev`
+	# log has no request lines. Caddy redacts Authorization and Cookie.
+	log {
+		output stdout
+		format json
+	}
 }
