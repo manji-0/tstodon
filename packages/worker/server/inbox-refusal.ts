@@ -19,7 +19,7 @@ export type InboxRefusalReason =
   | "DateNotSigned"
   /** 401: the signature does not cover `digest` (SIG-1). */
   | "DigestNotSigned"
-  /** 401: the signed `Date` is unparseable, over 12 hours old or over 1 hour ahead (SIG-1). */
+  /** 401: the signed `Date` is unparseable, over 65 minutes old or over 1 hour ahead (SIG-1). */
   | "SignatureExpired"
   /** 401: `Digest` is missing or does not match the body. */
   | "DigestMismatch"

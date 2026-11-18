@@ -188,14 +188,16 @@ export const parseSignatureHeader = (header: string): ParsedSignature | undefine
 };
 
 /**
- * How old a signature's `Date` may be: Mastodon's
- * `SignatureVerification::EXPIRATION_WINDOW_LIMIT` (12 hours).
+ * How long a signature stays valid after its `Date`: Mastodon's
+ * `SignedRequest#matches_time_window?` gives a signature with no `expires`
+ * 5 minutes from its creation.
  */
-export const SIGNATURE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+export const SIGNATURE_VALIDITY_MS = 5 * 60 * 1000;
 
 /**
- * How far ahead of this server's clock a `Date` may be: Mastodon's
- * `CLOCK_SKEW_MARGIN` (1 hour).
+ * The clock skew allowed on either side of the window: Mastodon's
+ * `SignedRequest::CLOCK_SKEW_MARGIN` (1 hour). A `Date` may be this far
+ * ahead, and at most {@link SIGNATURE_VALIDITY_MS} plus this old (65 minutes).
  */
 export const SIGNATURE_CLOCK_SKEW_MS = 60 * 60 * 1000;
 
@@ -214,10 +216,12 @@ const hasBody = (method: string): boolean => !["GET", "HEAD"].includes(method.to
  * Whether a parsed signature is one this server accepts at all, before any
  * key is fetched, as Mastodon's `verify_signature_strength!` and
  * `matches_time_window?`: it must sign `date`, a request with a body must
- * sign `digest`, and the `Date` must be at most {@link SIGNATURE_MAX_AGE_MS}
- * old and at most {@link SIGNATURE_CLOCK_SKEW_MS} ahead. A captured signed
- * request therefore cannot be replayed after the window. `(created)` is not
- * accepted in place of `date`: the signing string here has no `(created)`.
+ * sign `digest`, and the `Date` must be at most 65 minutes old
+ * ({@link SIGNATURE_VALIDITY_MS} plus {@link SIGNATURE_CLOCK_SKEW_MS}) and at
+ * most {@link SIGNATURE_CLOCK_SKEW_MS} ahead. A captured signed request
+ * therefore cannot be replayed after the window. `(created)` is not accepted
+ * in place of `date`: the signing string here has no `(created)`. An
+ * `expires` parameter does not stretch the window, as nothing signs it.
  */
 export const checkSignatureStrength = (
   request: Request,
@@ -235,7 +239,7 @@ export const checkSignatureStrength = (
   if (Number.isNaN(date)) {
     return { kind: "SignatureExpired", detail: "invalid" };
   }
-  if (now - date > SIGNATURE_MAX_AGE_MS) {
+  if (now - date > SIGNATURE_VALIDITY_MS + SIGNATURE_CLOCK_SKEW_MS) {
     return { kind: "SignatureExpired", detail: "past" };
   }
   if (date - now > SIGNATURE_CLOCK_SKEW_MS) {
