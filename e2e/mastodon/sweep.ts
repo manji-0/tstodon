@@ -112,6 +112,7 @@ export const Relationships = z.array(
     followed_by: z.boolean(),
     requested: z.boolean(),
     requested_by: z.boolean().optional(),
+    blocked_by: z.boolean().optional(),
   }),
 );
 export const Conversations = z.array(
@@ -126,6 +127,28 @@ export const Media = z.looseObject({ id: z.string(), url: z.string().nullable() 
 export const Anything = z.unknown();
 
 export class StepFailure extends Error {}
+
+/**
+ * `fetch` as `user`, once more after the rate-limit window when the answer is
+ * a 429. Mastodon allows a user 1500 API requests per five minutes
+ * (Rack::Attack); a second sweep right after the first reaches that.
+ */
+export const fetchWaitingOutRateLimit = async (
+  user: E2eUser,
+  path: string,
+  request: RequestInit = { headers: user.headers },
+): Promise<Response> => {
+  const response = await fetch(`${user.origin}${path}`, request);
+  const reset = Date.parse(response.headers.get("x-ratelimit-reset") ?? "");
+  if (response.status !== 429 || !Number.isFinite(reset)) {
+    return response;
+  }
+  const wait = Math.min(Math.max(reset - Date.now(), 0) + 1000, 330_000);
+  console.log(`     rate limited as ${user.username}: waiting ${Math.round(wait / 1000)} s`);
+  await response.arrayBuffer();
+  await sleep(wait);
+  return fetch(`${user.origin}${path}`, request);
+};
 
 /** Vite's error page for a request it could not hand to workerd. */
 const isDevTransportFailure = (body: string): boolean =>
@@ -149,17 +172,7 @@ export const call = async <T>(
             body: JSON.stringify(init.body),
           }
         : { method, headers: user.headers };
-  let response = await fetch(`${user.origin}${path}`, request);
-  // Mastodon allows a user 1500 API requests per five minutes (Rack::Attack);
-  // a second sweep right after the first reaches that. Wait for the window.
-  const reset = Date.parse(response.headers.get("x-ratelimit-reset") ?? "");
-  if (response.status === 429 && Number.isFinite(reset)) {
-    const wait = Math.min(Math.max(reset - Date.now(), 0) + 1000, 330_000);
-    console.log(`     rate limited as ${user.username}: waiting ${Math.round(wait / 1000)} s`);
-    await response.arrayBuffer();
-    await sleep(wait);
-    response = await fetch(`${user.origin}${path}`, request);
-  }
+  let response = await fetchWaitingOutRateLimit(user, path, request);
   let text = await response.text();
   // `vp dev` answers 500 with its own error page when its connection to
   // workerd drops ("fetch failed"): the request never reached the Worker.

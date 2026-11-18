@@ -20,7 +20,8 @@ jobs:
   ci:
     name: ci
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A run takes about 12 minutes; a slow runner took 15 and was cancelled.
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4

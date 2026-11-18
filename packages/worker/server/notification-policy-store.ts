@@ -1,25 +1,27 @@
 import { schemaResult } from "@tstodon/core";
 import { type Hostname, NotificationPolicy, NotificationPolicyAction } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { err, ok, type Result } from "neverthrow";
+import { ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 import {
   countNotificationRequests as countNotificationRequestsSql,
-  deleteNotificationRequests as deleteNotificationRequestsSql,
+  deleteEmptyNotificationRequestGroupsJson as deleteEmptyNotificationRequestGroupsJsonSql,
+  deleteNotificationRequestsJson as deleteNotificationRequestsJsonSql,
+  dismissNotificationRequestsJson as dismissNotificationRequestsJsonSql,
   findNotificationPolicy as findNotificationPolicySql,
   hasNotificationAcceptance as hasNotificationAcceptanceSql,
-  insertNotificationAcceptance as insertNotificationAcceptanceSql,
+  insertNotificationAcceptancesJson as insertNotificationAcceptancesJsonSql,
   insertNotificationRequest as insertNotificationRequestSql,
+  listNotificationRequestSendersJson as listNotificationRequestSendersJsonSql,
   upsertNotificationPolicy as upsertNotificationPolicySql,
 } from "./generated/prisma/sql";
 import { RemoteAccountId } from "./remote-account-id";
-import { queryTyped, runTyped } from "./typed-sql";
+import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 
 const RequestsNotificationsRow = z.object({ requests: z.number(), notifications: z.number() });
-const NotificationIdRow = z.object({ notification_id: z.string() });
 const FromAccountIdRow = z.object({ from_account_id: z.string() });
 
 const PolicyRowSchema = z.object({
@@ -222,65 +224,71 @@ export const holdNotification = async (
   return written.map(() => undefined);
 };
 
-/** Drop a request group once its last held notification is gone. */
-const deleteEmptyRequestGroup = async (
+/**
+ * The senders whose requests `ids` name, by request id or by sender id; ids
+ * that name none of the account's requests are left out.
+ */
+export const findNotificationRequestSenders = async (
   db: D1Database,
   accountId: string,
-  fromAccountId: string,
-): Promise<void> => {
-  await db
-    .prepare(
-      `DELETE FROM notification_request_groups
-       WHERE account_id = ? AND from_account_id = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM notification_requests n
-           WHERE n.account_id = notification_request_groups.account_id
-             AND n.from_account_id = notification_request_groups.from_account_id
-         )`,
-    )
-    .bind(accountId, fromAccountId)
-    .run();
-};
+  ids: ReadonlyArray<string>,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  ids.length === 0
+    ? ok([])
+    : runD1(async () =>
+        (
+          await queryTyped(
+            db,
+            listNotificationRequestSendersJsonSql(accountId, jsonStringArray([...ids])),
+            FromAccountIdRow,
+          )
+        ).map((row) => row.from_account_id),
+      );
 
-/** Accept a sender: their held notifications merge back into the list. */
-export const acceptNotificationRequests = async (
+/** Delete the senders' requests and then their emptied groups, after `first`. */
+const closeNotificationRequests = async (
   db: D1Database,
   accountId: string,
-  fromAccountId: string,
-): Promise<Result<number, RepositoryError>> => {
-  const released = await runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      deleteNotificationRequestsSql(accountId, fromAccountId),
-      NotificationIdRow,
-    );
-    await runTyped(db, insertNotificationAcceptanceSql(accountId, fromAccountId, nowIso()));
-    await deleteEmptyRequestGroup(db, accountId, fromAccountId);
-    return rows.length;
-  });
-  return released;
-};
-
-/** Dismiss a sender: their held notifications are discarded. */
-export const dismissNotificationRequests = async (
-  db: D1Database,
-  accountId: string,
-  fromAccountId: string,
-): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
-  const dismissed = await runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      deleteNotificationRequestsSql(accountId, fromAccountId),
-      NotificationIdRow,
-    );
-    await deleteEmptyRequestGroup(db, accountId, fromAccountId);
-    return rows.map((row) => row.notification_id);
-  });
-  if (dismissed.isErr()) {
-    return err(dismissed.error);
+  fromAccountIds: ReadonlyArray<string>,
+  first: (sendersJson: string) => D1PreparedStatement,
+): Promise<Result<void, RepositoryError>> => {
+  if (fromAccountIds.length === 0) {
+    return ok(undefined);
   }
-  return ok(dismissed.value);
+  const senders = jsonStringArray([...fromAccountIds]);
+  const batched = await runD1Batch(db, [
+    first(senders),
+    d1PrepareTyped(db, deleteNotificationRequestsJsonSql(accountId, senders)),
+    d1PrepareTyped(db, deleteEmptyNotificationRequestGroupsJsonSql(accountId, senders)),
+  ]);
+  return batched.map(() => undefined);
 };
+
+/**
+ * Accept senders: their held notifications merge back into the list and
+ * later ones are not held. One batch however many senders.
+ */
+export const acceptNotificationRequests = (
+  db: D1Database,
+  accountId: string,
+  fromAccountIds: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> =>
+  closeNotificationRequests(db, accountId, fromAccountIds, (senders) =>
+    d1PrepareTyped(db, insertNotificationAcceptancesJsonSql(accountId, senders, nowIso())),
+  );
+
+/**
+ * Dismiss senders: their held notifications are discarded. One batch however
+ * many senders and notifications.
+ */
+export const dismissNotificationRequests = (
+  db: D1Database,
+  accountId: string,
+  fromAccountIds: ReadonlyArray<string>,
+): Promise<Result<void, RepositoryError>> =>
+  closeNotificationRequests(db, accountId, fromAccountIds, (senders) =>
+    d1PrepareTyped(db, dismissNotificationRequestsJsonSql(accountId, senders, nowIso())),
+  );
 
 export const isSenderAccepted = async (
   db: D1Database,

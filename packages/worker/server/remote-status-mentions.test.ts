@@ -158,6 +158,42 @@ describe("a remote note's mentions", () => {
     );
     expect(status.mentions).toEqual([]);
   });
+
+  it("are kept however many the note tags, in its order, as Mastodon does", async () => {
+    const count = 30;
+    await env.DB.prepare(
+      `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?)
+       INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+       SELECT 'https://crowd.example/users/c' || n, 'c' || n, 'crowd.example', 'https://crowd.example/inbox',
+              'https://crowd.example/users/c' || n || '#main-key', 'x', '2030-01-01T00:00:00.000Z'
+       FROM series`,
+    )
+      .bind(count)
+      .run();
+    const crowd = Array.from({ length: count }, (_, n) => `https://crowd.example/users/c${n + 1}`);
+    const author = await remoteActor("rsmcrowd", "mentions.example");
+    const noteUri = "https://mentions.example/notes/rsm-crowd";
+    expect(
+      await author.send({
+        id: `${noteUri}/create`,
+        type: "Create",
+        object: {
+          id: noteUri,
+          type: "Note",
+          attributedTo: author.actorUri,
+          content: "<p>hello everyone</p>",
+          published: new Date().toISOString(),
+          to: [PUBLIC],
+          tag: crowd.map((href) => ({ type: "Mention", href })),
+        },
+      }),
+    ).toBe(202);
+    const status = expectContract(
+      ApiStatus,
+      await call("rsm-crowd-reader@example.com", `/api/v1/statuses/${await storedId(noteUri)}`),
+    );
+    expect(status.mentions.map((mention) => mention.url)).toEqual(crowd);
+  });
 });
 
 const mentionNotified = async (email: string, statusId: string): Promise<boolean> =>

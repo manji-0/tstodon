@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync, crc32 } from "node:zlib";
 import type { E2eUser } from "../lib.js";
-import { call, eventually, Media, StepFailure } from "./sweep.js";
+import { call, eventually, fetchWaitingOutRateLimit, Media, StepFailure } from "./sweep.js";
 
 /** A PNG of one colour; 32×32 and red unless told otherwise. */
 export const png = (
@@ -78,9 +78,7 @@ export const upload = async (
   await eventually(
     `${user.username}'s upload is processed`,
     async () => {
-      const response = await fetch(`${user.origin}/api/v1/media/${media.id}`, {
-        headers: user.headers,
-      });
+      const response = await fetchWaitingOutRateLimit(user, `/api/v1/media/${media.id}`);
       if (response.status >= 400 && response.status !== 404) {
         throw new StepFailure(`the upload failed: ${response.status} ${await response.text()}`);
       }

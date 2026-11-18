@@ -118,6 +118,9 @@ const applyNoteUpdate = async (
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
     : refreshed;
   const added = await newlyMentionedAccountIds(env, identity, target.raw, cached.value.id);
+  if (added.isErr()) {
+    return err(added.error);
+  }
   // An edit whose late steps failed left its marker. The sender's redelivery
   // carries content that is already stored, so it is not an edit, and
   // finishes that one's instead. A newer edit replaces the marker, and takes
@@ -129,7 +132,7 @@ const applyNoteUpdate = async (
   const pending = owed.value.find((entry) => entry.kind === "Edited");
   // An edit owes its late steps until they finish.
   const marker = edited
-    ? newOwedMarker("Edited", [...new Set([...added, ...(pending?.mentions ?? [])])])
+    ? newOwedMarker("Edited", [...new Set([...added.value, ...(pending?.mentions ?? [])])])
     : undefined;
   const stored = await upsertRemoteStatus(
     env.DB,
@@ -164,7 +167,7 @@ const applyNoteUpdate = async (
     raw: target.raw,
     status: stored.value,
     options,
-    added,
+    added: added.value,
     edit: marker ?? resumed.value,
   });
 };

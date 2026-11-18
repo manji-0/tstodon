@@ -87,6 +87,14 @@ export const moderationScenarios = async ({ stamp, erin }: Cast): Promise<void> 
       } finally {
         await block(from, blockedId, "unblock");
       }
+      // The `Undo(Block)` is delivered, not applied at once: until it is,
+      // the blocked side's server refuses a follow (Mastodon answers 403).
+      await relationshipBecomes(
+        to,
+        blockerId,
+        "the unblock arrived",
+        (state) => state.blocked_by !== true,
+      );
       // The refused follow may still read `requested` on the blocked side.
       await call(to, `/api/v1/accounts/${blockerId}/unfollow`, Anything, {
         method: "POST",

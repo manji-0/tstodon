@@ -1,10 +1,5 @@
 import { StatusAuthors } from "../../account-presentation";
-import {
-  type InstanceIdentity,
-  type LocalStatus as LocalStatusValue,
-  Quote,
-  type RemoteStatusValue,
-} from "@tstodon/domain";
+import { type InstanceIdentity, Quote } from "@tstodon/domain";
 import type { Context } from "hono";
 import { authenticate } from "../../auth";
 import {
@@ -31,7 +26,7 @@ import { findRemoteStatusesByIds } from "../../remote-status-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
-import { canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
+import { viewableStatusIds } from "../../visibility-guard";
 import { findQuoteByQuoting, listQuotingTargets, saveQuoteState } from "../../quote-store";
 import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
@@ -136,18 +131,14 @@ export const getV1StatusesByIdQuotes = async (
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  const visibleLocals: LocalStatusValue[] = [];
-  for (const local of locals.value.values()) {
-    if (await canViewStatus(c.env.DB, local, viewerId)) {
-      visibleLocals.push(local);
-    }
-  }
-  const visibleRemotes: RemoteStatusValue[] = [];
-  for (const remote of remotes.value.values()) {
-    if (await canViewRemoteStatus(c.env.DB, remote, viewerId)) {
-      visibleRemotes.push(remote);
-    }
-  }
+  const viewable = await viewableStatusIds(
+    c.env.DB,
+    [...locals.value.values()],
+    [...remotes.value.values()],
+    viewerId,
+  );
+  const visibleLocals = [...locals.value.values()].filter((local) => viewable.has(local.id));
+  const visibleRemotes = [...remotes.value.values()].filter((remote) => viewable.has(remote.id));
   const [localDocuments, remoteDocuments] = await Promise.all([
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),

@@ -52,6 +52,9 @@ jobs:
           - mode: tstodon-secure
             tstodon_authorized_fetch: "true"
             mastodon_authorized_fetch: "false"
+          - mode: mastodon-secure
+            tstodon_authorized_fetch: "false"
+            mastodon_authorized_fetch: "true"
           - mode: both-secure
             tstodon_authorized_fetch: "true"
             mastodon_authorized_fetch: "true"
@@ -63,7 +66,7 @@ jobs:
       # it), as a developer's shell does. The version is package.json's
       # `packageManager`.
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup Node
         uses: actions/setup-node@v4

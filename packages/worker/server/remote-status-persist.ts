@@ -5,17 +5,19 @@ import {
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
   type MentionedPost,
+  type OutboxJob,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
-import { readableRow, type RepositoryError } from "./d1";
+import { readableRow, type RepositoryError, toRepositoryError } from "./d1";
+import { parseInstanceIdentity } from "./runtime-config";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import type { IdClock } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
-import { findAccountByUsername } from "./account-store";
+import { findAccountsByUsernames } from "./account-store";
 import { startLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemoteOnce } from "./notify";
 import { startHomeFanOut } from "./home-fan-out";
@@ -39,15 +41,16 @@ import { findThreadParent } from "./thread-context";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
+  findRemoteStatusesByIds,
   type InvalidRemoteStatusRow,
   type KnownRemoteStatus,
   upsertRemoteStatus,
 } from "./remote-status-store";
 import { publishConversationUpdate } from "./conversation-stream";
 import {
-  isActiveRemoteStatusMention,
+  listActiveRemoteStatusMentionAccountIds,
+  listShownRemoteStatusMentions,
   recordRemoteStatusMentions,
-  replaceRemoteStatusRemoteMentions,
 } from "./mention-store";
 import { listLocalBoosterAccountIds } from "./status-interaction-store";
 import { stringList } from "./form-values";
@@ -59,12 +62,26 @@ const MentionTagsSchema = z.object({
     .optional(),
 });
 
-/** The `href` of each `Mention` tag of a note document. */
+/**
+ * How many of the local accounts a remote note names its inbox request
+ * notifies, or tells about the conversation; the rest are left to queued
+ * `FinishRemoteNoteRecipient` jobs. Mastodon works through every one in
+ * Sidekiq. Here a mention notification costs about 40 D1 queries (the
+ * policy checks and the streamed document), and so does the conversation of
+ * an account with its `direct` stream open, so 8 keeps the request under
+ * D1's 1000 queries per Worker invocation (`remote-note-recipients.test.ts`
+ * measures it). Every account the note names can read it: those rows are
+ * written for all of them, in one batch.
+ */
+export const INLINE_NOTE_RECIPIENTS = 8;
+
+/** The `href` of each `Mention` tag of a note document, each once. */
 const mentionHrefs = (raw: unknown): string[] => {
   const tags = schemaResult(MentionTagsSchema)(raw);
-  return (tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
+  const hrefs = (tags.isOk() ? (tags.value.tag ?? []) : []).flatMap((entry) =>
     entry.type === "Mention" && entry.href ? [entry.href] : [],
   );
+  return [...new Set(hrefs)];
 };
 
 /** The usernames of the exact local actor URLs among `uris`, each once. */
@@ -72,7 +89,9 @@ const localUsernames = (identity: InstanceIdentity, uris: ReadonlyArray<string>)
   ...new Set(
     uris.flatMap((uri) => {
       const username = parseLocalActorUsername(identity, uri);
-      return username && InstanceIdentity.actorUrl(identity, username) === uri ? [username] : [];
+      return username && InstanceIdentity.actorUrl(identity, username) === uri
+        ? [username.toLowerCase()]
+        : [];
     }),
   ),
 ];
@@ -112,51 +131,66 @@ type LocalAddressees = Readonly<{
   addressed: ReadonlyArray<string>;
 }>;
 
+/** Every local account a remote note names, read in one query. */
 const localAddressees = async (
-  env: Env,
-  identity: InstanceIdentity,
-  raw: unknown,
-): Promise<LocalAddressees> => {
-  const accountIds = async (usernames: ReadonlyArray<string>): Promise<string[]> => {
-    const ids: string[] = [];
-    for (const username of usernames) {
-      const account = await findAccountByUsername(env.DB, username);
-      if (account.isOk() && account.value) {
-        ids.push(account.value.id);
-      }
-    }
-    return ids;
-  };
-  const note = parseNoteDocument(raw);
-  const mentioned = await accountIds(localUsernames(identity, mentionHrefs(raw)));
-  const audience = await accountIds(
-    localUsernames(
-      identity,
-      note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : [],
-    ),
-  );
-  return { mentioned, addressed: audience.filter((id) => !mentioned.includes(id)) };
-};
-
-/**
- * The `MentionedPost` of a stored remote note: the local accounts it
- * mentions, the actors its `Mention` tags name, and the author of the
- * stored status it replies to.
- */
-const remoteMentionedPost = async (
   db: D1Database,
   identity: InstanceIdentity,
   raw: unknown,
-  status: RemoteStatusValue,
-  localAccountIds: ReadonlyArray<string>,
-): Promise<MentionedPost> => {
-  // The note is already stored: a failed parent read screens without the
-  // parent author rather than failing the delivery after its writes.
-  const parent = await findThreadParent(db, identity, { kind: "Remote", status });
-  return mentionedPost(
-    [...localAccountIds, ...mentionHrefs(raw)],
-    parent.isOk() ? parent.value : undefined,
+): Promise<Result<LocalAddressees, RepositoryError>> => {
+  const note = parseNoteDocument(raw);
+  const tagged = localUsernames(identity, mentionHrefs(raw));
+  const audience = localUsernames(
+    identity,
+    note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : [],
   );
+  const accounts = await findAccountsByUsernames(db, [...tagged, ...audience]);
+  if (accounts.isErr()) {
+    return err(accounts.error);
+  }
+  const ids = new Map<string, string>(
+    accounts.value.map((account) => [account.username, account.id]),
+  );
+  const accountIds = (usernames: ReadonlyArray<string>) =>
+    usernames.flatMap((username) => ids.get(username) ?? []);
+  const mentioned = accountIds(tagged);
+  const mentionedSet = new Set(mentioned);
+  return ok({
+    mentioned,
+    addressed: accountIds(audience).filter((id) => !mentionedSet.has(id)),
+  });
+};
+
+/**
+ * The stored mentions of a remote note, as its notifications screen them:
+ * the local accounts it mentions now (`mentioned`), and its `MentionedPost`
+ * (those, the remote actors its `Mention` tags name, and the author of the
+ * stored status it replies to). A failed mention read is an error: without
+ * it the mute check on the other involved accounts would be skipped. A
+ * failed parent read screens without the parent's author.
+ */
+const storedMentions = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+): Promise<
+  Result<Readonly<{ mentioned: ReadonlySet<string>; post: MentionedPost }>, RepositoryError>
+> => {
+  const [mentions, parent] = await Promise.all([
+    listShownRemoteStatusMentions(db, [status.id]),
+    findThreadParent(db, identity, { kind: "Remote", status }),
+  ]);
+  if (mentions.isErr()) {
+    return err(mentions.error);
+  }
+  const stored = mentions.value.get(status.id);
+  const accountIds = stored?.accountIds ?? [];
+  return ok({
+    mentioned: new Set(accountIds),
+    post: mentionedPost(
+      [...accountIds, ...(stored?.actorUris ?? [])],
+      parent.isOk() ? parent.value : undefined,
+    ),
+  });
 };
 
 /**
@@ -203,15 +237,16 @@ export const newlyMentionedAccountIds = async (
   identity: InstanceIdentity,
   raw: unknown,
   statusId: string,
-): Promise<ReadonlyArray<string>> => {
-  const added: string[] = [];
-  for (const accountId of (await localAddressees(env, identity, raw)).mentioned) {
-    const already = await isActiveRemoteStatusMention(env.DB, statusId, accountId);
-    if (already.isOk() && !already.value) {
-      added.push(accountId);
-    }
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  const addressees = await localAddressees(env.DB, identity, raw);
+  if (addressees.isErr()) {
+    return err(addressees.error);
   }
-  return added;
+  const already = await listActiveRemoteStatusMentionAccountIds(env.DB, statusId);
+  if (already.isErr()) {
+    return err(already.error);
+  }
+  return ok(addressees.value.mentioned.filter((accountId) => !already.value.has(accountId)));
 };
 
 /**
@@ -292,6 +327,138 @@ const runLateSteps = async (
   return clearOwed(env.DB, status.id, held ? [held] : []);
 };
 
+type RecipientStep = "Mention" | "Conversation";
+
+/**
+ * Notify `recipients.mention` of their mention of the stored note `status`,
+ * and tell `recipients.conversation` their conversation changed. The first
+ * {@link INLINE_NOTE_RECIPIENTS} accounts are served here; each of the rest
+ * gets a `FinishRemoteNoteRecipient` job, which does the same for it. A
+ * notification is stored once (`notifyFromRemoteOnce`), so a redelivery that
+ * queues an account again notifies it once.
+ */
+const reachRecipients = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actor: RemoteActor,
+  status: RemoteStatusValue,
+  recipients: Readonly<{
+    mention: ReadonlyArray<string>;
+    conversation: ReadonlyArray<string>;
+  }>,
+): Promise<Result<void, RepositoryError>> => {
+  const steps = new Map<string, RecipientStep[]>();
+  const add = (step: RecipientStep) => (accountId: string) => {
+    steps.set(accountId, [...(steps.get(accountId) ?? []), step]);
+  };
+  recipients.mention.forEach(add("Mention"));
+  recipients.conversation.forEach(add("Conversation"));
+  const ordered = [...steps];
+  const inline = ordered.slice(0, INLINE_NOTE_RECIPIENTS);
+  const queued = ordered.slice(INLINE_NOTE_RECIPIENTS);
+  const served = await serveRecipients(env, identity, actor.actorUri, status, inline);
+  if (served.isErr()) {
+    return err(served.error);
+  }
+  return queueRecipients(
+    env,
+    queued.map(([accountId, accountSteps]) => ({
+      kind: "FinishRemoteNoteRecipient",
+      statusId: status.id,
+      actorUri: actor.actorUri,
+      accountId,
+      steps: accountSteps,
+    })),
+  );
+};
+
+/** What {@link reachRecipients} does for each account it serves itself, and the job for each one it queues. */
+const serveRecipients = async (
+  env: Env,
+  identity: InstanceIdentity,
+  actorUri: string,
+  status: RemoteStatusValue,
+  recipients: ReadonlyArray<readonly [string, ReadonlyArray<RecipientStep>]>,
+): Promise<Result<void, RepositoryError>> => {
+  const taking = (step: RecipientStep) =>
+    recipients.flatMap(([accountId, steps]) => (steps.includes(step) ? [accountId] : []));
+  const mention = taking("Mention");
+  if (mention.length > 0) {
+    const stored = await storedMentions(env.DB, identity, status);
+    if (stored.isErr()) {
+      return err(stored.error);
+    }
+    // A queued account an `Update` has since made silent is mentioned no more.
+    for (const accountId of mention.filter((id) => stored.value.mentioned.has(id))) {
+      const sent = await notifyFromRemoteOnce(
+        env,
+        { accountId, actorUri, kind: "mention", statusId: status.id },
+        undefined,
+        stored.value.post,
+      );
+      if (sent.isErr()) {
+        return err(sent.error);
+      }
+    }
+  }
+  const conversation = taking("Conversation");
+  if (conversation.length > 0) {
+    await publishConversationUpdate(env, identity, conversation, status.id);
+  }
+  return ok(undefined);
+};
+
+/** Workers Queues takes at most 100 messages in one `sendBatch`. */
+const SEND_BATCH_LIMIT = 100;
+
+const queueRecipients = async (
+  env: Env,
+  jobs: ReadonlyArray<Extract<OutboxJob, { kind: "FinishRemoteNoteRecipient" }>>,
+): Promise<Result<void, RepositoryError>> => {
+  for (let start = 0; start < jobs.length; start += SEND_BATCH_LIMIT) {
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.sendBatch(
+        jobs.slice(start, start + SEND_BATCH_LIMIT).map((body) => ({ body })),
+      );
+    } catch (cause) {
+      // Unqueued: the delivery fails and its redelivery queues them again.
+      return err(
+        toRepositoryError(
+          `queueing note recipients failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+        ),
+      );
+    }
+  }
+  return ok(undefined);
+};
+
+/**
+ * `FinishRemoteNoteRecipient`: what the inbox request that stored the note
+ * left to the queue for one account. A note that is gone has nothing left to
+ * finish.
+ */
+export const processFinishRemoteNoteRecipientJob = async (
+  env: Env,
+  job: Extract<OutboxJob, { kind: "FinishRemoteNoteRecipient" }>,
+): Promise<"ok" | "retry"> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return "retry";
+  }
+  const found = await findRemoteStatusesByIds(env.DB, [job.statusId]);
+  if (found.isErr()) {
+    return "retry";
+  }
+  const status = found.value.get(job.statusId);
+  if (status === undefined) {
+    return "ok";
+  }
+  const served = await serveRecipients(env, identity.value, job.actorUri, status, [
+    [job.accountId, job.steps],
+  ]);
+  return served.isOk() ? "ok" : "retry";
+};
+
 /** The steps of {@link finishRemoteNote} before the stream events: every write and notification. */
 const writeLateSteps = async (
   env: Env,
@@ -299,40 +466,32 @@ const writeLateSteps = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const { mentioned, addressed } = await localAddressees(env, identity, raw);
-  const notified = mentionsToNotify(late, mentioned);
-  const recorded = await recordRemoteStatusMentions(env.DB, status.id, { mentioned, addressed });
+  const addressees = await localAddressees(env.DB, identity, raw);
+  if (addressees.isErr()) {
+    return err(addressees.error);
+  }
+  const { mentioned, addressed } = addressees.value;
+  const recorded = await recordRemoteStatusMentions(env.DB, status.id, {
+    mentioned,
+    addressed,
+    remotes: mentionedRemoteActorUris(identity, raw),
+  });
   if (recorded.isErr()) {
     return err(recorded.error);
   }
   // Mention rows exist before the notifications that point at them. They are
   // sent before the later writes: an `Update` that edits nothing owes no
   // marker, so its redelivery finds the rows and would notify nobody.
-  if (notified.length > 0) {
-    const post = await remoteMentionedPost(env.DB, identity, raw, status, mentioned);
-    for (const accountId of notified) {
-      const sent = await notifyFromRemoteOnce(
-        env,
-        { accountId, actorUri: actor.actorUri, kind: "mention", statusId: status.id },
-        undefined,
-        post,
-      );
-      if (sent.isErr()) {
-        return err(sent.error);
-      }
-    }
-  }
-  const remote = await replaceRemoteStatusRemoteMentions(
-    env.DB,
-    status.id,
-    mentionedRemoteActorUris(identity, raw),
-  );
-  if (remote.isErr()) {
-    return err(remote.error);
-  }
-  if (late.kind === "Created" && status.visibility.kind === "Direct") {
-    // Everyone the note reaches here: the conversation lists it for each.
-    await publishConversationUpdate(env, identity, [...mentioned, ...addressed], status.id);
+  const reached = await reachRecipients(env, identity, actor, status, {
+    mention: mentionsToNotify(late, mentioned),
+    // Everyone a new direct note reaches here: the conversation lists it for each.
+    conversation:
+      late.kind === "Created" && status.visibility.kind === "Direct"
+        ? [...mentioned, ...addressed]
+        : [],
+  });
+  if (reached.isErr()) {
+    return err(reached.error);
   }
   const quote = await syncRemoteQuote(
     env,
