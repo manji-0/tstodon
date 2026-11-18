@@ -2,6 +2,7 @@ import { err, ok, type Result } from "neverthrow";
 import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
+import { MAX_FETCHED_BYTES, readBodyJson } from "./body-limit";
 import { signFetchRequest } from "./http-signature";
 import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
 
@@ -278,9 +279,11 @@ export const fetchActivityJson = async (
         return err({ kind: "VerificationUnavailable" });
       }
       if (!response.ok) {
+        await response.body?.cancel();
         return err({ kind: "InvalidSignature" });
       }
-      return ok(await response.json());
+      const document = await readBodyJson(response, MAX_FETCHED_BYTES);
+      return document.isOk() ? ok(document.value) : err({ kind: "InvalidSignature" });
     }
   } catch {
     return err({ kind: "VerificationUnavailable" });
@@ -388,7 +391,11 @@ export const fetchWebfinger = async (
     if (!response.ok) {
       return err({ kind: "InvalidSignature" });
     }
-    const parsed = parseWebfinger(await response.json());
+    const document = await readBodyJson(response, MAX_FETCHED_BYTES);
+    if (document.isErr()) {
+      return err({ kind: "InvalidSignature" });
+    }
+    const parsed = parseWebfinger(document.value);
     if (parsed.isErr()) {
       return err({ kind: "InvalidSignature" });
     }

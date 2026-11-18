@@ -7,6 +7,8 @@ import { writeMetric } from "./metrics";
  * event catalogue.
  */
 export type InboxRefusalReason =
+  /** 413: the body passes Mastodon's `MAX_JSON_SIZE` (1 MB). */
+  | "PayloadTooLarge"
   /** 400: the body is not JSON, or not an activity. */
   | "UnparseableBody"
   /** 400: the activity's `id` is not a usable activity id. */
@@ -48,7 +50,7 @@ export type InboxRefusalReason =
 
 export type InboxRefusal = Readonly<{
   reason: InboxRefusalReason;
-  status: 400 | 401 | 403 | 429 | 503;
+  status: 400 | 401 | 403 | 413 | 429 | 503;
   path: string;
   /** The `Signature` header's `keyId`, when there is one. Only its host is logged. */
   keyId?: string | undefined;

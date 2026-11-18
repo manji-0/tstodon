@@ -57,6 +57,7 @@ Void serves HTTP from file routes in `packages/worker/app/routes/` (`void.json` 
 
 - `app/middleware/01.cors.ts`: CORS for `/api/*` and the media paths.
 - `app/middleware/02.rate-limit.ts`: rate limits (see "Rate limits" in `docs/reference/configuration.md`).
+- `app/middleware/03.body-limit.ts`: request body caps, 413 over them (see "Request body limits" in `docs/reference/configuration.md`).
 - `app/middleware/03.well-known.ts`: `/.well-known/webfinger` and `/.well-known/nodeinfo`. Void's route scanner skips dot directories, so these cannot be route files.
 - `app/routes/[...].ts`: requests no route matched. GET and HEAD fall back to static assets; other methods get `{ "kind": "NotFound" }`.
 

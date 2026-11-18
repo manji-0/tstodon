@@ -11,6 +11,7 @@ import {
 import type { LocalAccount } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
+import { bodyCapExceeded } from "./body-limit";
 
 /** Read a `limit` query parameter, defaulted to `fallback` and clamped to `max`. */
 const queryLimitMax = (raw: string | number | undefined, fallback: number, max: number): number => {
@@ -212,7 +213,11 @@ export const readOptionalBody = async <T>(
   let raw: unknown = {};
   try {
     raw = await readUnknownBody(c);
-  } catch {
+  } catch (cause) {
+    // An oversized body is not an absent one: the body cap answers 413.
+    if (bodyCapExceeded(c.req.raw)) {
+      throw cause;
+    }
     raw = {};
   }
   return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));

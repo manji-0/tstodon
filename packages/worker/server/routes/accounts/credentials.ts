@@ -37,6 +37,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { newEntityId } from "../../ids";
 import { sendActorUpdate } from "../../local-actor";
 import { avatarObjectKey, headerObjectKey } from "../../media-keys";
+import { PROFILE_IMAGE_MAX_BYTES } from "../../body-limit";
 import { ApiRefusal } from "../api-refusal";
 import { buildFeaturedTagDocuments } from "../tags";
 import { z } from "zod";
@@ -89,7 +90,6 @@ export const credentialAccountDocument = async (
 };
 
 /** Avatar and header uploads: image types only, up to the advertised size cap. */
-const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 const storeProfileImage = async (
   env: Env,

@@ -108,8 +108,9 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
       422,
     );
   }
-  // The size, matrix and frame-rate limits /api/v2/instance advertises; the
-  // size is checked before the file is read.
+  // The size, matrix and frame-rate limits /api/v2/instance advertises. The
+  // form was parsed, so the file is in memory already: the request-wide body
+  // cap (`server/body-limit.ts`) is what keeps a larger one from being read.
   const tooLarge = uploadSizeViolation(contentType, file.size);
   if (tooLarge !== undefined) {
     return c.json({ error: tooLarge, kind: "ValidationError" }, 422);
