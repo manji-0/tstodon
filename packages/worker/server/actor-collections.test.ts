@@ -314,6 +314,43 @@ describe("ActivityPub followers, following and outbox collections", () => {
     expect(await counts()).toEqual({ rest: 2, ap: 2 });
   });
 
+  it("fails a page whose boosted status could not be read, uncached", async () => {
+    const email = "collections-boost-error@example.com";
+    const other = "collections-boost-error-other@example.com";
+    const account = await signedInAccount(email);
+    await signedInAccount(other);
+    const target = z
+      .object({ id: z.string() })
+      .parse(await api(other, "POST", "/api/v1/statuses", { status: "boosted" }));
+    await api(email, "POST", `/api/v1/statuses/${target.id}/reblog`);
+    const path = `/users/${account.username}/outbox?page=true`;
+    expect((await SELF.fetch(new URL(path, ORIGIN))).status).toBe(200);
+
+    // Every D1 read that binds the boosted status's id fails, as a transient error.
+    const prototype: object = Object.getPrototypeOf(env.DB.prepare("SELECT 1"));
+    const originals = new Map(
+      ["first", "all", "raw", "run"].map((name) => [name, Reflect.get(prototype, name)]),
+    );
+    for (const [name, original] of originals) {
+      Reflect.set(prototype, name, function (this: object, ...args: unknown[]) {
+        const params: unknown = Reflect.get(this, "params");
+        if (Array.isArray(params) && params.includes(target.id)) {
+          return Promise.reject(new Error("D1_ERROR: injected"));
+        }
+        return Reflect.apply(original, this, args);
+      });
+    }
+    try {
+      const response = await SELF.fetch(new URL(path, ORIGIN));
+      expect(response.status).toBe(500);
+      expect(response.headers.get("Cache-Control")).toBeNull();
+    } finally {
+      for (const [name, original] of originals) {
+        Reflect.set(prototype, name, original);
+      }
+    }
+  });
+
   it("lists each status as it is now: deleted, edited and unboosted ones too", async () => {
     const email = "collections-current@example.com";
     const account = await signedInAccount(email);

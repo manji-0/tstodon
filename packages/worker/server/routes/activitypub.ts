@@ -346,11 +346,14 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   }
   const visibility = quoted.value?.visibility.kind;
   const quoting = await statusTargetRef(c.env, identity.value, quote.value.quoting);
+  if (quoting.isErr()) {
+    return jsonRepositoryError(c, quoting.error.message);
+  }
   if (
     !quoted.value ||
     quoted.value.accountId !== account.value.id ||
     (visibility !== "Public" && visibility !== "Unlisted") ||
-    !quoting
+    !quoting.value
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
@@ -375,7 +378,7 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
     }
   }
   const document = quoteAuthorizationDocument(
-    localQuoteAuthorization(target, quote.value.id, quoting.uri),
+    localQuoteAuthorization(target, quote.value.id, quoting.value.uri),
   );
   if (access.kind === "Public") {
     c.header("Cache-Control", "max-age=30, public");
@@ -599,7 +602,7 @@ const outboxItem = async (
     return note.map((object) => noteCreateActivity(identity, account, object));
   }
   const boosted = await statusTargetRef(env, identity, status.target);
-  return ok(boosted ? announceActivity(identity, account, status, boosted) : undefined);
+  return boosted.map((ref) => (ref ? announceActivity(identity, account, status, ref) : undefined));
 };
 
 /**

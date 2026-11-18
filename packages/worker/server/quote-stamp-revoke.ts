@@ -38,7 +38,8 @@ export const federateStampDeletion = async (
   quoteId: string,
 ): Promise<void> => {
   const target = localNoteRef(identity, quotedAuthor, quoted.id);
-  const interacting = await statusTargetRef(env, identity, foundStatusTarget(quoting));
+  const found = await statusTargetRef(env, identity, foundStatusTarget(quoting));
+  const interacting = found.isOk() ? found.value : undefined;
   if (!interacting) {
     return;
   }
