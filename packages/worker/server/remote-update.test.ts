@@ -151,7 +151,9 @@ describe("remote Update of a note this server never stored", () => {
     expect(await storedCount(object.id)).toBe(0);
   });
 
-  it("drops the note of an author an admin suspended", async () => {
+  // Mastodon drops only the unknown note of a suspended author; the inbox
+  // here refuses the whole activity before `Update` runs.
+  it("refuses the Update of a suspended author with 403 and stores nothing", async () => {
     const author = await remoteActor("update-unknown-suspended");
     await env.DB.prepare(
       "INSERT INTO remote_actor_moderation (actor_uri, moderation) VALUES (?, 'Suspended')",
@@ -161,11 +163,11 @@ describe("remote Update of a note this server never stored", () => {
     const object = note(author, "unknown-suspended", "<p>suspended</p>", {
       published: hoursAgo(1),
     });
-    await update(author, "unknown-suspended", object);
+    expect(await update(author, "unknown-suspended", object)).toBe(403);
     expect(await storedCount(object.id)).toBe(0);
   });
 
-  it("drops a note that a Create would not store", async () => {
+  it("drops a note the signer did not write", async () => {
     const author = await remoteActor("update-unknown-checks");
     const other = await remoteActor("update-unknown-other", "elsewhere.example");
     const forged = note(other, "unknown-forged", "<p>not the signer's</p>", {
@@ -173,13 +175,44 @@ describe("remote Update of a note this server never stored", () => {
     });
     expect(await update(author, "unknown-forged", forged)).toBe(202);
     expect(await storedCount(forged.id)).toBe(0);
+  });
 
+  // Mastodon's `non_matching_uri_hosts?`, which `Update` checks first.
+  it("drops a note whose id is on another host than the signer's", async () => {
+    const author = await remoteActor("update-unknown-off-host");
     const offHost = {
       ...note(author, "unknown-off-host", "<p>another host</p>", { published: hoursAgo(1) }),
       id: "https://elsewhere.example/notes/unknown-off-host",
     };
     expect(await update(author, "unknown-off-host", offHost)).toBe(202);
     expect(await storedCount(offHost.id)).toBe(0);
+  });
+
+  it("stores the note as edited when its updated differs from its published", async () => {
+    const author = await remoteActor("update-unknown-edited");
+    const updated = hoursAgo(1);
+    const object = note(author, "unknown-edited", "<p>edited before we heard</p>", {
+      published: hoursAgo(2),
+      updated,
+    });
+    expect(await update(author, "unknown-edited", object)).toBe(202);
+    expect((await status(await storedStatusId(object.id))).edited_at).toBe(updated);
+  });
+
+  it("keeps the newer version when an older Update arrives after the one stored as a Create", async () => {
+    const author = await remoteActor("update-unknown-order");
+    const published = hoursAgo(3);
+    const v3 = note(author, "unknown-order", "<p>v3 newer</p>", {
+      published,
+      updated: hoursAgo(1),
+    });
+    const v2 = note(author, "unknown-order", "<p>v2 older</p>", {
+      published,
+      updated: hoursAgo(2),
+    });
+    expect(await update(author, "unknown-order-v3", v3)).toBe(202);
+    expect(await update(author, "unknown-order-v2", v2)).toBe(202);
+    expect((await status(await storedStatusId(v3.id))).content).toBe("<p>v3 newer</p>");
   });
 
   it("notifies an account the note mentions once, and a replayed Update notifies nobody again", async () => {
@@ -319,6 +352,37 @@ describe("remote Update of a note", () => {
 
     const unchanged = await status(id);
     expect(unchanged.content).toBe("<p>mine</p>");
+    expect(unchanged.edited_at).toBeNull();
+  });
+
+  // The `Create` path does not check the object's host (a gap of its own), so
+  // a signer can have a cached note whose id is on another host. Mastodon's
+  // `Update#update_status` ignores the `Update` of such a note
+  // (`non_matching_uri_hosts?`).
+  it("ignores an Update of a cached note whose id is on another host than the signer's", async () => {
+    const author = await remoteActor("update-cached-off-host");
+    const original = {
+      ...note(author, "cached-off-host", "<p>before</p>"),
+      id: "https://elsewhere.example/notes/cached-off-host",
+    };
+    expect(
+      await author.send({
+        id: "https://remote.example/activities/create-cached-off-host",
+        type: "Create",
+        object: original,
+      }),
+    ).toBe(202);
+    const id = await storedStatusId(original.id);
+
+    expect(
+      await update(author, "cached-off-host", {
+        ...original,
+        content: "<p>after</p>",
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    ).toBe(202);
+    const unchanged = await status(id);
+    expect(unchanged.content).toBe("<p>before</p>");
     expect(unchanged.edited_at).toBeNull();
   });
 

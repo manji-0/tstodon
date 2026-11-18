@@ -160,29 +160,6 @@ const applyNoteUpdate = async (
   const status: RemoteStatusValue = edited
     ? { ...refreshed, editedAt: { kind: "Edited", at: editedAt.value } }
     : refreshed;
-  const owed = await listOwed(env.DB, cached.value.id);
-  if (owed.isErr()) {
-    return err(owed.error);
-  }
-  // A note stored from a `Create`, or from an `Update` handled as one, whose
-  // late steps failed left its marker. A delivery of the same content is not
-  // an edit, and finishes them as a redelivered `Create` does. Once the note
-  // was edited they are left to the sweep, as a redelivered `Create` leaves them.
-  if (
-    !edited &&
-    previous.kind !== "Edited" &&
-    owed.value.some((entry) => entry.kind === "Created")
-  ) {
-    const resumed = await persistRemoteObject(
-      env,
-      identity,
-      signer,
-      target.raw,
-      { ...options, delivery: "Create" },
-      { objectUri: target.objectUri, row: cached.value },
-    );
-    return resumed.map(() => undefined);
-  }
   const added = await newlyMentionedAccountIds(env, identity, target.raw, cached.value.id);
   if (added.isErr()) {
     return err(added.error);
@@ -191,6 +168,10 @@ const applyNoteUpdate = async (
   // carries content that is already stored, so it is not an edit, and
   // finishes that one's instead. A newer edit replaces the marker, and takes
   // over the mentions the failed one still owes a notification.
+  const owed = await listOwed(env.DB, cached.value.id);
+  if (owed.isErr()) {
+    return err(owed.error);
+  }
   const pending = owed.value.find((entry) => entry.kind === "Edited");
   // An edit owes its late steps until they finish.
   const marker = edited
@@ -212,6 +193,22 @@ const applyNoteUpdate = async (
   }
   if (stored.value === undefined) {
     return ok(undefined);
+  }
+  // A note stored from a `Create`, or from an `Update` handled as one, whose
+  // late steps failed left its marker. A delivery that edits nothing, with no
+  // edit pending, finishes them as a redelivered `Create` does, once the
+  // counts it carries are stored; `resumeCreated` runs them only from the
+  // version the row holds.
+  if (!edited && pending === undefined && owed.value.some((entry) => entry.kind === "Created")) {
+    const finished = await persistRemoteObject(
+      env,
+      identity,
+      signer,
+      target.raw,
+      { ...options, delivery: "Create" },
+      { objectUri: target.objectUri, row: stored.value },
+    );
+    return finished.map(() => undefined);
   }
   // A pending edit is finished by one delivery at a time. When another holds
   // it, this `Update` runs the steps of its own document only and is done:
