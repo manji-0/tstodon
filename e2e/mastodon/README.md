@@ -198,7 +198,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 
 <!-- constrained-by ../../docs/planning/open-todos.md#interop-with-real-mastodon-open -->
 
-The sweep passes 221 of 221 steps with both servers open and 223 of 223 with both in secure mode, with no known gap. Before the INT-2 and INT-18 gaps were closed, it passed 214 of 214 with tstodon in secure mode and 215 of 215 with both in secure mode.
+The sweep passes 222 of 222 steps with both servers open and 224 of 224 with both in secure mode, with no known gap. Before the INT-2 and INT-18 gaps were closed, it passed 214 of 214 with tstodon in secure mode and 215 of 215 with both in secure mode.
 
 Its first run (41 steps) found three tstodon bugs, each now fixed and covered by a Worker test:
 
