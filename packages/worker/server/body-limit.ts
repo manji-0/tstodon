@@ -1,7 +1,11 @@
 import { InstanceLimits } from "@tstodon/core";
 import type { Context, Next } from "hono";
 import { err, ok, type Result } from "neverthrow";
+import { errorPage } from "./auth-pages";
 import { MAX_IMPORT_BYTES } from "./csv-import-file";
+import { parseSignatureHeader } from "./http-signature";
+import { recordInboxRefusal } from "./inbox-refusal";
+import { humanSize } from "./media-limits";
 
 /** A body over the cap its reader set. */
 export type BodyTooLarge = Readonly<{ kind: "BodyTooLarge"; limitBytes: number }>;
@@ -21,8 +25,10 @@ const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 /** An avatar or a header image (`update_credentials`): 5 MB each. */
 export const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
-/** Mastodon's `CustomEmoji::LOCAL_LIMIT` (256 KB). */
+/** Mastodon's `CustomEmoji::LOCAL_LIMIT` (256 KB); the handler checks each image against it. */
 export const CUSTOM_EMOJI_MAX_BYTES = 256 * 1024;
+
+const { imageSizeLimit, videoSizeLimit } = InstanceLimits.media;
 
 /**
  * The largest body each upload route takes, by method and path: its files'
@@ -30,12 +36,14 @@ export const CUSTOM_EMOJI_MAX_BYTES = 256 * 1024;
  * Every other request with a body is held to {@link MAX_JSON_BYTES}.
  */
 const UPLOAD_CAPS: ReadonlyArray<readonly [method: string, path: RegExp, limitBytes: number]> = [
+  // The file, and a `thumbnail` image (a video's or an audio file's cover).
   [
     "POST",
     /^\/api\/v[12]\/media$/,
-    Math.max(InstanceLimits.media.imageSizeLimit, InstanceLimits.media.videoSizeLimit) +
-      MULTIPART_OVERHEAD_BYTES,
+    Math.max(imageSizeLimit, videoSizeLimit) + imageSizeLimit + MULTIPART_OVERHEAD_BYTES,
   ],
+  // A changed `thumbnail` (the web UI sends one for a video or audio file).
+  ["PUT", /^\/api\/v1\/media\/[^/]+$/, imageSizeLimit + MULTIPART_OVERHEAD_BYTES],
   [
     "PATCH",
     /^\/api\/v1\/(accounts\/update_credentials|profile)$/,
@@ -48,7 +56,7 @@ const UPLOAD_CAPS: ReadonlyArray<readonly [method: string, path: RegExp, limitBy
     CUSTOM_EMOJI_MAX_BYTES + MULTIPART_OVERHEAD_BYTES,
   ],
   ["POST", /^\/admin\/custom_emojis$/, CUSTOM_EMOJI_MAX_BYTES + MULTIPART_OVERHEAD_BYTES],
-  ["POST", /^\/settings\/import$/, MAX_IMPORT_BYTES + MULTIPART_OVERHEAD_BYTES],
+  ["POST", /^\/settings\/imports?$/, MAX_IMPORT_BYTES + MULTIPART_OVERHEAD_BYTES],
 ];
 
 /** The cap on a request's body; undefined for a method that sends none. */
@@ -107,26 +115,74 @@ export const capRequestBody = (c: Context, limitBytes: number): Result<void, Bod
   return ok(undefined);
 };
 
-/** Mastodon's answer to an oversized body: 413. */
-export const jsonBodyTooLarge = (c: Context, limitBytes: number): Response =>
-  c.json({ error: `Request body exceeds ${limitBytes} bytes`, kind: "PayloadTooLarge" }, 413);
+/** The inbox paths, whose refusals are logged as `InboxRefused`. */
+const INBOX_PATH = /^\/(inbox|actor\/inbox|users\/[^/]+\/inbox)$/;
+
+/**
+ * How a route's clients read a refusal: the API's JSON error, the inbox's
+ * empty answer (logged as an inbox refusal), or, for the pages the Worker
+ * renders, an HTML page a browser shows.
+ */
+type RefusalAudience = "Api" | "Inbox" | "Page";
+
+const audienceOf = (path: string): RefusalAudience => {
+  if (INBOX_PATH.test(path)) {
+    return "Inbox";
+  }
+  return path.startsWith("/api/") || path === "/oauth/token" || path === "/oauth/revoke"
+    ? "Api"
+    : "Page";
+};
+
+/** Mastodon's answer to an oversized body: 413, in the form the route's clients read. */
+const bodyTooLarge = (c: Context, limitBytes: number): Response => {
+  switch (audienceOf(c.req.path)) {
+    case "Api":
+      return c.json(
+        { error: `Request body exceeds ${limitBytes} bytes`, kind: "PayloadTooLarge" },
+        413,
+      );
+    case "Inbox": {
+      const signature = c.req.header("Signature");
+      recordInboxRefusal(c.env, {
+        reason: "PayloadTooLarge",
+        status: 413,
+        path: c.req.path,
+        keyId: signature === undefined ? undefined : parseSignatureHeader(signature)?.keyId,
+      });
+      return c.body(null, 413);
+    }
+    case "Page":
+      return c.html(
+        errorPage(
+          c.env.INSTANCE_NAME || "tstodon",
+          `This form sent more than this page accepts (${humanSize(limitBytes)}). Go back and choose a smaller file.`,
+        ),
+        413,
+      );
+  }
+};
 
 /**
  * The request-wide body cap ({@link requestBodyCap}): a 413 before the
  * handler for a declared length over it, or in place of the handler's answer
- * when the handler's read of a chunked body passed it.
+ * when the handler's read of a chunked body passed it (unless the handler
+ * already answered 413, as the inbox does, having logged it).
  */
-export const bodyLimitMiddleware = async (c: Context, next: Next): Promise<Response | void> => {
+export const bodyLimitMiddleware = async (
+  c: Context<{ Bindings: Env }>,
+  next: Next,
+): Promise<Response | void> => {
   const limitBytes = requestBodyCap(c.req.method, c.req.path);
   if (limitBytes === undefined) {
     return next();
   }
   if (capRequestBody(c, limitBytes).isErr()) {
-    return jsonBodyTooLarge(c, limitBytes);
+    return bodyTooLarge(c, limitBytes);
   }
   await next();
-  if (bodyCapExceeded(c.req.raw)) {
-    c.res = jsonBodyTooLarge(c, limitBytes);
+  if (bodyCapExceeded(c.req.raw) && c.res.status !== 413) {
+    c.res = bodyTooLarge(c, limitBytes);
   }
 };
 

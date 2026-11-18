@@ -89,8 +89,10 @@ export const credentialAccountDocument = async (
   };
 };
 
-/** Avatar and header uploads: image types only, up to the advertised size cap. */
-
+/**
+ * Store an avatar or a header: image types only, up to
+ * `PROFILE_IMAGE_MAX_BYTES` (5 MB) each.
+ */
 const storeProfileImage = async (
   env: Env,
   accountId: string,

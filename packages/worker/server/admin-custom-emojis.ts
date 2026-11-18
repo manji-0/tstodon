@@ -12,7 +12,9 @@ import {
   replaceCustomEmojiImage,
   updateCustomEmojiAttributes,
 } from "./custom-emoji-store";
+import { CUSTOM_EMOJI_MAX_BYTES } from "./body-limit";
 import { newEntityId } from "./ids";
+import { humanSize } from "./media-limits";
 
 /**
  * What both the admin API (`/api/v1/admin/custom_emojis`) and the admin web
@@ -20,12 +22,15 @@ import { newEntityId } from "./ids";
  * media bucket under `emoji/` and keep a row for it.
  */
 
-export type UnsupportedEmojiImage = Readonly<{ kind: "UnsupportedImage" }>;
+/** Why an emoji image is refused: its type, or its size over Mastodon's 256 KB. */
+export type EmojiImageRejected =
+  | Readonly<{ kind: "UnsupportedImage" }>
+  | Readonly<{ kind: "ImageTooLarge" }>;
 
 export type UploadEmojiError =
   | Readonly<{ kind: "InvalidShortcode" }>
   | Readonly<{ kind: "ImageRequired" }>
-  | UnsupportedEmojiImage
+  | EmojiImageRejected
   | Readonly<{ kind: "ShortcodeTaken" }>
   | RepositoryError;
 
@@ -34,6 +39,7 @@ export const UPLOAD_EMOJI_ERRORS = {
   InvalidShortcode: "shortcode is invalid",
   ImageRequired: "image is required",
   UnsupportedImage: "image must be a PNG, GIF or WebP file",
+  ImageTooLarge: `image must be less than ${humanSize(CUSTOM_EMOJI_MAX_BYTES)}`,
   ShortcodeTaken: "shortcode has already been taken",
 } as const satisfies Record<Exclude<UploadEmojiError["kind"], "RepositoryError">, string>;
 
@@ -53,6 +59,14 @@ const EMOJI_IMAGE_TYPES: ReadonlyArray<string> = [
 export const emojiImageType = (contentType: string): string | undefined => {
   const type = (contentType.split(";")[0] ?? "").trim().toLowerCase();
   return EMOJI_IMAGE_TYPES.includes(type) ? type : undefined;
+};
+
+/** Why `image` cannot be an emoji's image, or undefined when it can. */
+const rejectEmojiImage = (image: File): EmojiImageRejected | undefined => {
+  if (emojiImageType(image.type) === undefined) {
+    return { kind: "UnsupportedImage" };
+  }
+  return image.size > CUSTOM_EMOJI_MAX_BYTES ? { kind: "ImageTooLarge" } : undefined;
 };
 
 /** A file part of a form that holds bytes; an empty file input sends none. */
@@ -77,9 +91,10 @@ export const uploadCustomEmoji = async (
   if (!input.image) {
     return err({ kind: "ImageRequired" });
   }
+  const rejected = rejectEmojiImage(input.image);
   const contentType = emojiImageType(input.image.type);
-  if (contentType === undefined) {
-    return err({ kind: "UnsupportedImage" });
+  if (rejected !== undefined || contentType === undefined) {
+    return err(rejected ?? { kind: "UnsupportedImage" });
   }
   const existing = await findCustomEmojiRowByShortcode(env.DB, shortcode);
   if (existing.isErr()) {
@@ -129,11 +144,12 @@ export const changeCustomEmoji = async (
     category: string | null | undefined;
     image: File | undefined;
   }>,
-): Promise<Result<CustomEmojiRow | undefined, UnsupportedEmojiImage | RepositoryError>> => {
-  const imageType = changes.image ? emojiImageType(changes.image.type) : undefined;
-  if (changes.image && imageType === undefined) {
-    return err({ kind: "UnsupportedImage" });
+): Promise<Result<CustomEmojiRow | undefined, EmojiImageRejected | RepositoryError>> => {
+  const rejected = changes.image ? rejectEmojiImage(changes.image) : undefined;
+  if (rejected !== undefined) {
+    return err(rejected);
   }
+  const imageType = changes.image ? emojiImageType(changes.image.type) : undefined;
   const row = await findCustomEmojiRowById(env.DB, id);
   if (row.isErr() || !row.value) {
     return row;

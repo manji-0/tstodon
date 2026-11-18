@@ -12,6 +12,7 @@ import {
 } from "./inbox-refusal";
 import { createRateLimiter, rateLimitMiddleware } from "./rate-limit";
 import { postInbox } from "./routes/activitypub";
+import { bodyLimitMiddleware } from "./body-limit";
 import { ok } from "neverthrow";
 import { RateLimit, type RateLimitCounterTable } from "@tstodon/domain";
 
@@ -433,5 +434,46 @@ describe("inbox refusal sampling", () => {
       [1, 0],
       [1, 1],
     ]);
+  });
+});
+
+describe("oversized deliveries", () => {
+  const cappedInbox = (testEnv: Env) => {
+    const app = new Hono<{ Bindings: Env }>();
+    app.use(bodyLimitMiddleware);
+    app.post("/inbox", postInbox);
+    return (request: Request) => app.request(request, undefined, testEnv, createExecutionContext());
+  };
+  const oversized = "x".repeat(1_048_577);
+
+  it("logs PayloadTooLarge for a declared length over 1 MB", async () => {
+    const { testEnv, refusals } = metricsEnv();
+    const response = await cappedInbox(testEnv)(
+      new Request("https://example.com/inbox", {
+        method: "POST",
+        headers: { "content-length": String(oversized.length) },
+        body: oversized,
+      }),
+    );
+    await expectRefusal(response, 413, "PayloadTooLarge", refusals);
+    expect(await response.text()).toBe("");
+  });
+
+  it("logs PayloadTooLarge once for a chunked body over 1 MB", async () => {
+    const { testEnv, refusals } = metricsEnv();
+    const bytes = new TextEncoder().encode(oversized);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let at = 0; at < bytes.length; at += 65_536) {
+          controller.enqueue(bytes.subarray(at, at + 65_536));
+        }
+        controller.close();
+      },
+    });
+    const response = await cappedInbox(testEnv)(
+      new Request("https://example.com/inbox", { method: "POST", body }),
+    );
+    await expectRefusal(response, 413, "PayloadTooLarge", refusals);
+    expect(refusals()).toHaveLength(1);
   });
 });

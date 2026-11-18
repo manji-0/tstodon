@@ -315,14 +315,15 @@ The Workers Rate Limiting binding (`ratelimits` in `wrangler.jsonc`) was not use
 
 Every request with a body passes `app/middleware/03.body-limit.ts` (`server/body-limit.ts`) after the rate limits and before any route reads it. A body is held to 1 MB (Mastodon's `MAX_JSON_SIZE`), except on the upload routes:
 
-| Route                                                                   | Cap                                                         |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `POST /api/v1/media`, `POST /api/v2/media`                              | the video size limit (99 MB), plus 64 KB of form overhead   |
-| `PATCH /api/v1/accounts/update_credentials`, `PATCH /api/v1/profile`    | two 5 MB images (avatar and header), plus 64 KB             |
-| `POST`/`PATCH /api/v1/admin/custom_emojis`, `POST /admin/custom_emojis` | 256 KB (Mastodon's `CustomEmoji::LOCAL_LIMIT`), plus 64 KB  |
-| `POST /settings/import`                                                 | 1 MB, plus 64 KB (the route also requires `Content-Length`) |
+| Route                                                                   | Cap                                                                                                 |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/media`, `POST /api/v2/media`                              | the video size limit (99 MB) and a 16 MB `thumbnail` image, plus 64 KB of form overhead             |
+| `PUT /api/v1/media/:id`                                                 | a 16 MB `thumbnail` image, plus 64 KB                                                               |
+| `PATCH /api/v1/accounts/update_credentials`, `PATCH /api/v1/profile`    | two 5 MB images (avatar and header), plus 64 KB                                                     |
+| `POST`/`PATCH /api/v1/admin/custom_emojis`, `POST /admin/custom_emojis` | 256 KB (Mastodon's `CustomEmoji::LOCAL_LIMIT`), plus 64 KB; the image itself is refused over 256 KB |
+| `POST /settings/import`, `POST /settings/imports`                       | 1 MB, plus 64 KB (the route also requires `Content-Length`)                                         |
 
-A `Content-Length` over the cap is answered `413` before the route runs. A body without one (chunked) is read through a counter that fails once it passes the cap, and the request is answered `413` (`{"kind":"PayloadTooLarge"}`); the rest of the body is not read. Each upload is still held to its own type's limit by the route. The inbox answers an oversized delivery with an empty `413` and logs `InboxRefused` reason `PayloadTooLarge`.
+A `Content-Length` over the cap is answered `413` before the route runs. A body without one (chunked) is read through a counter that fails once it passes the cap, and the request is answered `413`; the rest of the body is not read. Endpoints whose body is optional (deleting a status, a boost, a mute) stop before they act. Each upload is still held to its own type's limit by the route. The `413` takes the form its clients read: the API's JSON (`{"kind":"PayloadTooLarge"}`), an HTML error page for the pages the Worker renders (settings, admin, sign-in), and for the inbox an empty `413` logged as `InboxRefused` reason `PayloadTooLarge`.
 
 Documents this server fetches (ActivityPub objects and actors, WebFinger answers) are read up to 1 MB, Mastodon's `body_with_limit` default; a larger one is refused as unusable. There is nothing to configure.
 
