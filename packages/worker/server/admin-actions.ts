@@ -99,10 +99,8 @@ export const moderateLocalAccount = async (
   if (stored.isErr() || wasSuspended === (next.standing.kind === "Suspended")) {
     return stored;
   }
-  const [identity, account] = [
-    parseInstanceIdentity(env),
-    await findAccountById(env.DB, accountId),
-  ];
+  const identity = parseInstanceIdentity(env);
+  const account = await findAccountById(env.DB, accountId);
   if (identity.isOk() && account.isOk() && account.value) {
     await federateActorChange(env, identity.value, account.value, "Suspension");
   }
