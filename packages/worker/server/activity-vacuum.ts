@@ -39,12 +39,9 @@ export const pruneTerminalDeliveries = (
 export const pruneOutboundActivities = (
   db: D1Database,
   createdBefore: string,
-  keepPerAccount: number,
   limit: number,
 ): Promise<Result<number, RepositoryError>> =>
-  runD1(async () =>
-    changes(await runTyped(db, pruneOutboundActivitiesSql(createdBefore, keepPerAccount, limit))),
-  );
+  runD1(async () => changes(await runTyped(db, pruneOutboundActivitiesSql(createdBefore, limit))));
 
 export const pruneInboxActivities = (
   db: D1Database,
@@ -70,7 +67,7 @@ export const vacuumActivities = async (
   const pass = await ActivityVacuum.pass(
     {
       pruneDeliveries: (before, limit) => pruneTerminalDeliveries(env.DB, before, limit),
-      pruneOutbound: (before, keep, limit) => pruneOutboundActivities(env.DB, before, keep, limit),
+      pruneOutbound: (before, limit) => pruneOutboundActivities(env.DB, before, limit),
       pruneInbox: (before, limit) => pruneInboxActivities(env.DB, before, limit),
     },
     retention,

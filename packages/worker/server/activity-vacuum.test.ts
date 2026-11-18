@@ -119,7 +119,7 @@ describe("the activity vacuum", () => {
     ).toEqual(["vd-delivered-recent", "vd-queued-old", "vd-unknown-old"]);
   });
 
-  it("keeps the outbound activities a delivery or the outbox still reads", async () => {
+  it("keeps only the outbound activities a delivery still reads", async () => {
     const account = await signedInAccount("vacuum-outbox@example.com");
     const prefix = 1;
     const note = (n: number, to: ReadonlyArray<string>) => ({
@@ -127,16 +127,16 @@ describe("the activity vacuum", () => {
       id: `https://example.com/users/${account.username}/statuses/${n}/activity`,
       object: { type: "Note", id: `https://example.com/n/${n}`, to, cc: [] },
     });
-    const publicCount = ActivityVacuum.keepOutboxItems + 5;
+    const publicCount = 45;
     const statements = [
-      // Old public notes, oldest first: the newest 40 are the outbox page.
+      // Old public notes, delivered: the outbox renders statuses, not these.
       ...Array.from({ length: publicCount }, (_, n) =>
         insertActivity(fixedId(prefix, n), account.id, "Create", note(n, [PUBLIC]), OLD),
       ),
       ...Array.from({ length: publicCount }, (_, n) =>
         insertDelivery(`vo-fanout-${n}`, fixedId(prefix, n), "Expanded", null, OLD),
       ),
-      // Newer by id, but followers-only: not on the outbox page, so not kept for it.
+      // A delivered followers-only note.
       insertActivity(
         fixedId(prefix, 100),
         account.id,
@@ -179,12 +179,7 @@ describe("the activity vacuum", () => {
       "SELECT id FROM outbound_activities WHERE id LIKE ? ORDER BY id",
       `${String(prefix).padStart(6, "0")}%`,
     );
-    expect(left).toEqual([
-      ...Array.from({ length: ActivityVacuum.keepOutboxItems }, (_, n) => fixedId(prefix, n + 5)),
-      fixedId(prefix, 102),
-      fixedId(prefix, 103),
-      fixedId(prefix, 104),
-    ]);
+    expect(left).toEqual([fixedId(prefix, 102), fixedId(prefix, 103), fixedId(prefix, 104)]);
 
     // A second pass finds nothing more to do.
     expect((await vacuumActivities(env, NOW))._unsafeUnwrap()).toMatchObject({
