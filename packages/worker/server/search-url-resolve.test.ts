@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { z } from "zod";
 import { ApiSearchResults, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
+import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { generateAccountKeys } from "./keys";
@@ -532,5 +533,27 @@ describe("search for an account of this instance by its full handle or URL", () 
       }
       expect(selfFetches).toEqual([]);
     });
+  });
+});
+
+describe("GET /api/v1/search", () => {
+  // Mastodon 4 serves only /api/v2/search; tstodon keeps the v1 path as an
+  // alias for older clients, with the v2 results.
+  it("answers what /api/v2/search answers", async () => {
+    const author = "search-v1-author@example.com";
+    const status = await post(author, "the v1aliasword in a post");
+    const query = "?q=v1aliasword&type=statuses&resolve=false";
+    const v1 = await SELF.fetch(`https://example.com/api/v1/search${query}`, {
+      headers: await authHeaders(author),
+    });
+    expect(v1.status).toBe(200);
+    const results = expectContract(ApiSearchResults, await v1.json());
+    expect(results.statuses.map((entry) => entry.id)).toEqual([status.id]);
+    expect(results).toEqual(
+      read(
+        ApiSearchResults,
+        (await search(author, { q: "v1aliasword", type: "statuses", resolve: "false" })).body,
+      ),
+    );
   });
 });

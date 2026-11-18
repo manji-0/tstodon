@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAccount, ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
+import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -91,7 +92,12 @@ describe("conversation mutes", () => {
     const root = await getStatus(author, rootId);
     expect(read(MutedStatusSchema, root.body).muted).toBe(true);
 
-    expect((await muteStatus(author, replyId, "unmute")).status).toBe(200);
+    const unmutedReply = await muteStatus(author, replyId, "unmute");
+    expect(unmutedReply.status).toBe(200);
+    expect(expectContract(MutedStatusSchema, unmutedReply.body)).toMatchObject({
+      id: replyId,
+      muted: false,
+    });
     const unmuted = await getStatus(author, rootId);
     expect(read(MutedStatusSchema, unmuted.body).muted).toBe(false);
   });
@@ -137,6 +143,8 @@ describe("conversation mutes", () => {
 
     await muteStatus(viewerEmail, replyId, "mute");
     expect(await notificationStatusIds(viewerEmail)).not.toContain(replyId);
+    await muteStatus(viewerEmail, replyId, "unmute");
+    expect(await notificationStatusIds(viewerEmail)).toContain(replyId);
   });
 
   it("404s for an unknown status", async () => {

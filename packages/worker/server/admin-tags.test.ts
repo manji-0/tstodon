@@ -5,6 +5,7 @@ import {
   ApiAdminPreviewCardProvider,
   ApiAdminTag,
   ApiHashtag,
+  ApiPreviewCard,
   ApiSearchResults,
   ApiStatus,
   ApiTrendsLink,
@@ -221,5 +222,23 @@ describe("admin tags", () => {
     expect((await call("POST", "/api/v1/admin/trends/links/publishers/%20/approve")).status).toBe(
       404,
     );
+  });
+
+  it("rejects and approves a trending link by its URL", async () => {
+    const url = "https://linktrend.example/review-me";
+    const status = await post(`read ${url} today`);
+    await ok(ApiStatus, "POST", `/api/v1/statuses/${status.id}/favourite`);
+    const trending = async () =>
+      (await ok(z.array(ApiTrendsLink), "GET", "/api/v1/trends/links?limit=20")).map(
+        (link) => link.url,
+      );
+    expect(await trending()).toContain(url);
+    const path = (verb: string) => `/api/v1/admin/trends/links/${encodeURIComponent(url)}/${verb}`;
+
+    expect((await call("POST", path("approve"), { email: MEMBER })).status).toBe(403);
+    expect((await ok(ApiPreviewCard, "POST", path("reject"))).url).toBe(url);
+    expect(await trending()).not.toContain(url);
+    expect((await ok(ApiPreviewCard, "POST", path("approve"))).url).toBe(url);
+    expect(await trending()).toContain(url);
   });
 });
