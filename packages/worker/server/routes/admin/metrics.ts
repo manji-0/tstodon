@@ -14,7 +14,12 @@ import {
   type MetricsRange,
   parseMetricsRange,
 } from "../../admin-metrics";
-import { jsonAuthError, jsonRepositoryError, readUnknownBody, requireAdmin } from "../../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  readUnknownBodyOrEmpty,
+  requireAdmin,
+} from "../../http";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
 
@@ -38,12 +43,7 @@ const readParams = async (c: Context<{ Bindings: Env }>): Promise<Params> => {
   for (const [key, values] of Object.entries(c.req.queries())) {
     query[key] = key.endsWith("[]") || values.length > 1 ? values : values[0];
   }
-  let body: unknown = {};
-  try {
-    body = await readUnknownBody(c);
-  } catch {
-    body = {};
-  }
+  const body = await readUnknownBodyOrEmpty(c);
   return { ...query, ...(isRecord(body) ? body : {}) };
 };
 

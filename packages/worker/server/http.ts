@@ -203,6 +203,22 @@ export const readUnknownBody = async (c: Context<{ Bindings: Env }>): Promise<un
 };
 
 /**
+ * The body, or `{}` when there is none or it does not decode. An oversized
+ * body is not an absent one: its error goes on, and the body cap answers 413
+ * before the handler acts on an empty body.
+ */
+export const readUnknownBodyOrEmpty = async (c: Context<{ Bindings: Env }>): Promise<unknown> => {
+  try {
+    return await readUnknownBody(c);
+  } catch (cause) {
+    if (bodyCapExceeded(c.req.raw)) {
+      throw cause;
+    }
+    return {};
+  }
+};
+
+/**
  * Body for endpoints that are also valid without one: an absent (or
  * unparseable) body parses as an empty object instead of failing the request.
  */
@@ -210,16 +226,7 @@ export const readOptionalBody = async <T>(
   c: Context<{ Bindings: Env }>,
   schema: z.ZodType<T>,
 ): Promise<Result<T, { kind: "ValidationError" }>> => {
-  let raw: unknown = {};
-  try {
-    raw = await readUnknownBody(c);
-  } catch (cause) {
-    // An oversized body is not an absent one: the body cap answers 413.
-    if (bodyCapExceeded(c.req.raw)) {
-      throw cause;
-    }
-    raw = {};
-  }
+  const raw = await readUnknownBodyOrEmpty(c);
   return schemaResult(schema)(raw).mapErr(() => ({ kind: "ValidationError" as const }));
 };
 

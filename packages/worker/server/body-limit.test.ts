@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { readBodyBytes } from "./body-limit";
 import { fetchActivityJson, fetchWebfinger, unsignedFetch } from "./federated-fetch";
 import { parseInstanceIdentity } from "./runtime-config";
+import { ApiStatus } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 
 const MB = 1024 * 1024;
@@ -96,6 +98,26 @@ describe("request body caps", () => {
       "content-type": "application/json",
     });
     expect(response.status).toBe(413);
+  });
+
+  it("refuses an oversized optional body before acting on the request", async () => {
+    const headers = await authHeaders("body-limit-optional@example.com");
+    const created = await SELF.fetch("https://example.com/api/v1/statuses", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ status: "keep me" }),
+    });
+    const { id } = expectContract(ApiStatus, await created.json());
+    const deleted = await chunkedRequest(
+      `/api/v1/statuses/${id}`,
+      MB + 1,
+      { ...headers, "content-type": "application/json" },
+      "DELETE",
+    );
+    expect(deleted.status).toBe(413);
+    // The status was not deleted on the way to the 413.
+    const status = await SELF.fetch(`https://example.com/api/v1/statuses/${id}`, { headers });
+    expect(status.status).toBe(200);
   });
 
   it("answers 413 to a media upload over the largest upload limit", async () => {
