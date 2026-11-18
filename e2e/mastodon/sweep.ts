@@ -112,6 +112,7 @@ export const Relationships = z.array(
     followed_by: z.boolean(),
     requested: z.boolean(),
     requested_by: z.boolean().optional(),
+    blocked_by: z.boolean().optional(),
   }),
 );
 export const Conversations = z.array(
