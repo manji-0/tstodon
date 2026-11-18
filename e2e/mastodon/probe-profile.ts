@@ -1,4 +1,5 @@
-/** Sweep area INT-15: a profile's bio, fields, avatar, header, bot and locked flags, pinned posts, and a deleted account. */
+/** Sweep area INT-15: a profile's bio, fields, avatar, header, bot and locked flags, pinned posts, counts and hidden collections, and a deleted account. */
+import { z } from "zod";
 import { A, signUp, type E2eUser } from "../lib.js";
 import { png } from "./media.js";
 import {
@@ -24,6 +25,14 @@ import {
 } from "./sweep.js";
 
 type Account = ReturnType<typeof Account.parse>;
+
+const Counts = z.object({
+  statuses_count: z.number(),
+  followers_count: z.number(),
+  following_count: z.number(),
+});
+const Counted = Counts.extend({ hide_collections: z.boolean().nullish() });
+type Counted = z.infer<typeof Counted>;
 
 const update = async (user: E2eUser, set: (form: FormData) => void): Promise<Account> => {
   const form = new FormData();
@@ -204,6 +213,64 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
       (account) => account.locked,
     );
   });
+
+  // Mastodon reads a remote account's counts from the `totalItems` of its
+  // outbox, followers and following, and takes a followers or following
+  // collection without `first` as hidden.
+  await step(
+    "the statuses, followers and following counts and hidden collections reach Mastodon",
+    async () => {
+      const counted = await signUp(A, "counted");
+      // More statuses than an outbox page holds, one of them followers-only.
+      for (let n = 0; n < 21; n += 1) {
+        await post(counted, { status: `counted ${n} ${stamp}` });
+      }
+      await post(counted, { status: `counted for followers ${stamp}`, visibility: "private" });
+      await call(alice, `/api/v1/accounts/${counted.id}/follow`, Anything, {
+        method: "POST",
+        body: {},
+      });
+      await call(counted, `/api/v1/accounts/${admin.id}/follow`, Anything, {
+        method: "POST",
+        body: {},
+      });
+      // Mona's follow makes Mastodon read the account, and lets the actor
+      // `Update` of the change below reach it.
+      await follow(mona, counted);
+      const own = await call(counted, `/api/v1/accounts/${counted.id}`, Counts);
+      if (own.statuses_count !== 22 || own.followers_count !== 2 || own.following_count !== 1) {
+        throw new StepFailure(`tstodon counts ${JSON.stringify(own)}`);
+      }
+      const sameCounts = (account: Counted): boolean =>
+        account.statuses_count === own.statuses_count &&
+        account.followers_count === own.followers_count &&
+        account.following_count === own.following_count;
+      const read = async (accept: (account: Counted) => boolean, label: string) => {
+        const { id } = await resolveAccount(mona, counted);
+        let last = "";
+        try {
+          await eventually(label, async () => {
+            const now = await call(mona, `/api/v1/accounts/${id}`, Counted);
+            last = JSON.stringify(now);
+            return accept(now) ? true : undefined;
+          });
+        } catch (error) {
+          throw new StepFailure(
+            `${error instanceof Error ? error.message : String(error)}; saw ${last}, tstodon counts ${JSON.stringify(own)}`,
+          );
+        }
+      };
+      await read(
+        (account) => sameCounts(account) && account.hide_collections !== true,
+        "Mastodon shows tstodon's counts",
+      );
+      await update(counted, (form) => form.set("hide_collections", "true"));
+      await read(
+        (account) => sameCounts(account) && account.hide_collections === true,
+        "Mastodon shows the collections hidden, with the same counts",
+      );
+    },
+  );
 
   await step("a deleted account is gone from the other server: Mastodon → tstodon", async () => {
     const goneId = await follow(alice, gone);
