@@ -26,6 +26,7 @@ import { writeMetric } from "./metrics";
 import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import { checkFederatedHost } from "./federated-fetch";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
@@ -401,11 +402,22 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
     return settled(DeliveryAttemptOutcome.Local);
   }
   const body = activity.value.payload_json;
+  const allowHosts = await federationAllowHosts(env);
+  const instanceDomain = identity.value.domain;
   return async (inboxUrl) => {
-    let inbox: URL;
-    try {
-      inbox = new URL(inboxUrl);
-    } catch {
+    const inbox = URL.parse(inboxUrl);
+    if (inbox === null || (inbox.protocol !== "https:" && inbox.protocol !== "http:")) {
+      return local(DeliveryAttemptOutcome.forHttpStatus(400));
+    }
+    // The inbox URL comes from a remote actor document: the same guard as
+    // every federated fetch, checked again at each attempt because a name can
+    // come to resolve to a private address after it was stored.
+    const admitted = await checkFederatedHost(inbox.hostname, instanceDomain, { allowHosts });
+    if (admitted === "Unavailable") {
+      return local(DeliveryAttemptOutcome.Local);
+    }
+    if (admitted === "Refused") {
+      console.warn(JSON.stringify({ kind: "OutboxInboxRefused", activityId, host: inbox.host }));
       return local(DeliveryAttemptOutcome.forHttpStatus(400));
     }
     const headers = await signInboxRequest(inbox, key.privateKeyJwk, key.keyId, body);
@@ -419,6 +431,10 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
         method: "POST",
         headers: headers.value,
         body,
+        // Workers' fetch would follow a redirect past the host guard. Like
+        // any other non-2xx answer that is not unsalvageable, a 3xx is
+        // retried, as Mastodon's DeliveryWorker raises on it.
+        redirect: "manual",
         signal: timeout.signal,
       });
       return {
