@@ -5,9 +5,11 @@ import { ApiInstance, ApiStatus } from "@tstodon/api";
 import {
   ApActivityDocument,
   ApActorCollection,
+  ApActorCollectionPage,
   ApActorDocument,
   ApInstanceActorDocument,
   ApOutbox,
+  ApOutboxPage,
   ApQuoteAuthorizationDocument,
   ApStatusDocument,
   NodeInfo20,
@@ -151,9 +153,16 @@ describe("ActivityPub documents (@tstodon/api/activitypub)", () => {
     ).toBe(noteDocument.id);
 
     const outbox = expectContract(ApOutbox, await fetchJson(`/users/${account.username}/outbox`));
-    expect(outbox.orderedItems.map((item) => item.type)).toContain("Create");
-    expectContract(ApActorCollection, await fetchJson(`/users/${account.username}/followers`));
-    expectContract(ApActorCollection, await fetchJson(`/users/${account.username}/following`));
+    const outboxPage = expectContract(ApOutboxPage, await fetchJson(outbox.first));
+    expect(outboxPage.orderedItems.map((item) => item.type)).toContain("Create");
+    expectContract(ApOutboxPage, await fetchJson(outbox.last));
+    for (const name of ["followers", "following"]) {
+      const collection = expectContract(
+        ApActorCollection,
+        await fetchJson(`/users/${account.username}/${name}`),
+      );
+      expectContract(ApActorCollectionPage, await fetchJson(collection.first ?? ""));
+    }
 
     const webfinger = expectContract(
       WebFingerJrd,

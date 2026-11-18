@@ -84,9 +84,9 @@ describe("outbox and boosts", () => {
 
     const outbox = read(
       z.object({ orderedItems: z.array(z.object({ type: z.string(), object: z.unknown() })) }),
-      (await json(`/users/${author.username}/outbox?limit=2`)).body,
+      (await json(`/users/${author.username}/outbox?page=true`)).body,
     );
-    // Before filtering moved into SQL, the newest non-public rows used up the limit.
+    // The followers-only and direct rows are left out of the page, not counted against it.
     expect(outbox.orderedItems).toHaveLength(2);
     const ids = outbox.orderedItems.map((item) =>
       read(z.object({ id: z.string() }), item.object)

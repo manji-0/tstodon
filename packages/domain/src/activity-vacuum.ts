@@ -84,9 +84,9 @@ const DEFAULT_DAYS = { deliveries: 30, outbound: 30, inbox: 30 } as const;
 const MIN_INBOX_DAYS = 7;
 
 /**
- * The most items the ActivityPub outbox lists (`queryLimit`'s cap of 40):
- * each account keeps at least that many public `Create` / `Announce`
- * activities whatever their age, so its outbox still renders a full page.
+ * Two pages of the ActivityPub outbox (20 items each): each account keeps at
+ * least that many public `Create` / `Announce` activities whatever their
+ * age, so its outbox still lists its newest posts.
  */
 const KEEP_OUTBOX_ITEMS = 40;
 

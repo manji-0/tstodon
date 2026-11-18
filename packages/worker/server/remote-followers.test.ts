@@ -92,7 +92,7 @@ describe("remote followers", () => {
       expect.objectContaining({ id: RemoteAccountId.encode(actorUri) }),
     ]);
 
-    const collection = await json(`/users/${me.username}/followers`, {
+    const collection = await json(`/users/${me.username}/followers?page=1`, {
       headers: { Accept: "application/activity+json" },
     });
     expect(collection.status).toBe(200);

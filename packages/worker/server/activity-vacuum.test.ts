@@ -186,16 +186,22 @@ describe("the activity vacuum", () => {
       fixedId(prefix, 104),
     ]);
 
-    // The outbox still renders a full page, newest first.
-    const response = await SELF.fetch(
-      `https://example.com/users/${account.username}/outbox?limit=40`,
-    );
-    expect(response.status).toBe(200);
-    const outbox = z
-      .object({ orderedItems: z.array(z.object({ id: z.string() })) })
-      .parse(await response.json());
-    expect(outbox.orderedItems).toHaveLength(ActivityVacuum.keepOutboxItems);
-    expect(outbox.orderedItems[0]?.id).toBe(note(publicCount - 1, [PUBLIC]).id);
+    // The outbox's pages still list every item kept, newest first.
+    const OutboxPage = z.object({
+      next: z.string().optional(),
+      orderedItems: z.array(z.object({ id: z.string() })),
+    });
+    const listed: string[] = [];
+    let next: string | undefined = `https://example.com/users/${account.username}/outbox?page=true`;
+    while (next !== undefined) {
+      const response = await SELF.fetch(next);
+      expect(response.status).toBe(200);
+      const page = OutboxPage.parse(await response.json());
+      listed.push(...page.orderedItems.map((item) => item.id));
+      next = page.orderedItems.length > 0 ? page.next : undefined;
+    }
+    expect(listed).toHaveLength(ActivityVacuum.keepOutboxItems);
+    expect(listed[0]).toBe(note(publicCount - 1, [PUBLIC]).id);
 
     // A second pass finds nothing more to do.
     expect((await vacuumActivities(env, NOW))._unsafeUnwrap()).toMatchObject({

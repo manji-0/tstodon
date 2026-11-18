@@ -10,6 +10,7 @@ import { z } from "zod";
 import { nowIso } from "./clock";
 import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { newEntityId } from "./ids";
+import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { toRepositoryError } from "./d1";
 import {
   d1PrepareTyped,
@@ -35,7 +36,6 @@ import {
   listStuckOutboxTargets as listStuckOutboxTargetsSql,
   postponeOutboxTarget as postponeOutboxTargetSql,
   listOutboundActivities as listOutboundActivitiesSql,
-  listPublicOutboxActivities as listPublicOutboxActivitiesSql,
   updateOutboxFanout as updateOutboxFanoutSql,
   updateOutboxTarget as updateOutboxTargetSql,
 } from "./generated/prisma/sql";
@@ -303,18 +303,39 @@ export const findOutboundActivityWithSigner = async (
   return queried.map((rows) => rows[0]);
 };
 
-/** The account's Creates and Announces addressed to Public, newest first (the AP outbox). */
-export const listPublicOutboxActivities = async (
+/**
+ * A page of the ActivityPub outbox: the account's Creates and Announces that
+ * name one of `audience` in `to` or `cc` (the Create's object's), in the
+ * cursor's order. Filtering before the LIMIT keeps a page full, and the
+ * cursor bounds the index range, so a page reads its rows and the
+ * activities of other kinds between them, however deep it is.
+ */
+export const listOutboxActivities = async (
   db: D1Database,
   accountId: string,
+  audience: ReadonlyArray<string>,
+  cursor: IdCursor,
   limit: number,
 ): Promise<Result<OutboundActivityRow[], RepositoryError>> =>
   runD1(async () => {
-    return queryTyped(
-      db,
-      listPublicOutboxActivitiesSql(accountId, limit),
-      OutboundActivityRowSchema,
-    );
+    const { where, order, binds } = idCursorFragment(cursor);
+    const { results } = await db
+      .prepare(
+        `SELECT id, account_id, kind, payload_json, created_at
+         FROM outbound_activities
+         WHERE account_id = ? AND kind IN ('Create', 'Announce') ${where}
+           AND EXISTS (
+             SELECT 1 FROM json_each(payload_json, CASE kind WHEN 'Create' THEN '$.object.to' ELSE '$.to' END)
+             WHERE value IN (SELECT value FROM json_each(?))
+             UNION ALL
+             SELECT 1 FROM json_each(payload_json, CASE kind WHEN 'Create' THEN '$.object.cc' ELSE '$.cc' END)
+             WHERE value IN (SELECT value FROM json_each(?))
+           )
+         ${order} LIMIT ?`,
+      )
+      .bind(accountId, ...binds, JSON.stringify(audience), JSON.stringify(audience), limit)
+      .all();
+    return parseRows(OutboundActivityRowSchema, results);
   });
 
 export const listOutboundActivities = async (
