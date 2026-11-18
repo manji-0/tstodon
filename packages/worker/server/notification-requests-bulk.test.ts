@@ -67,8 +67,10 @@ describe("POST /api/v1/notifications/requests/accept", () => {
     );
     expect(listed.map((request) => request.id)).toEqual([kept?.id]);
     const merged = await notifications(recipient);
-    expect(merged.map((notification) => notification.account.id).sort()).toEqual(
-      [first, first, second, second].map((request) => request?.account.id).sort(),
+    const senders = (ids: ReadonlyArray<string | undefined>) =>
+      ids.toSorted((a, b) => (a ?? "").localeCompare(b ?? ""));
+    expect(senders(merged.map((notification) => notification.account.id))).toEqual(
+      senders([first, first, second, second].map((request) => request?.account.id)),
     );
     expect(await pending(recipient)).toEqual({
       pending_requests_count: 1,
