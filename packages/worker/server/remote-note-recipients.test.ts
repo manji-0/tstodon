@@ -5,7 +5,7 @@ import { ApiConversation, ApiNotification, ApiStatus } from "@tstodon/api";
 import type { LocalAccount } from "@tstodon/domain";
 import { expectContract } from "../test/api-contract";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
-import { meter, patchD1, resetMeter, settle } from "../test/meter";
+import { meter, meterWork, patchD1, resetMeter, settle } from "../test/meter";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { openStream } from "../test/stream-fixture";
 import { deleteAccount } from "./account-store";
@@ -58,18 +58,20 @@ const drain = async (bodies: ReadonlyArray<unknown>): Promise<number> => {
   let most = 0;
   for (let start = 0; start < bodies.length; start += QUEUE_BATCH) {
     resetMeter();
-    await handleQueue(
-      {
-        messages: bodies.slice(start, start + QUEUE_BATCH).map((body) => ({
-          body,
-          attempts: 1,
-          ack: () => undefined,
-          retry: () => {
-            throw new Error(`job retried: ${JSON.stringify(body)}`);
-          },
-        })),
-      },
-      env,
+    await meterWork(() =>
+      handleQueue(
+        {
+          messages: bodies.slice(start, start + QUEUE_BATCH).map((body) => ({
+            body,
+            attempts: 1,
+            ack: () => undefined,
+            retry: () => {
+              throw new Error(`job retried: ${JSON.stringify(body)}`);
+            },
+          })),
+        },
+        env,
+      ),
     );
     most = Math.max(most, meter.tally.statements);
   }
