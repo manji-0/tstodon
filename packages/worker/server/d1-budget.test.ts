@@ -19,12 +19,16 @@ const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 /** Allowed growth in rows read: well under the noise, well over a page. */
 const MAX_GROWTH = 200;
 
-const get = async (token: string, path: string): Promise<number> => {
+const get = async (token: string, path: string): Promise<number> =>
+  measure(path, () =>
+    SELF.fetch(`https://example.com${path}`, { headers: { Authorization: `Bearer ${token}` } }),
+  );
+
+/** The rows read by the request `send` makes, after the writes before it settle. */
+const measure = async (path: string, send: () => Promise<Response>): Promise<number> => {
   await settle();
   resetMeter();
-  const response = await SELF.fetch(`https://example.com${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await send();
   expect(response.status, path).toBe(200);
   await response.text();
   await settle();
@@ -220,11 +224,21 @@ describe("D1 rows read do not grow with unrelated rows", () => {
         `${base}/outbox?page=true`,
         `${base}/outbox?min_id=0&page=true`,
       ];
+      // A signed outbox page also reads the statuses that mention its
+      // signer; this one is mentioned nowhere.
+      const signer = await remoteActor("budget-outbox-signer", "budget-signer.example");
+      const signedPaths = [`${base}/outbox?page=true`, `${base}/outbox?min_id=0&page=true`];
+      const signedGet = async (path: string) =>
+        measure(path, async () => SELF.fetch(await signer.signedGet(path)));
       await env.DB.batch(follows(NOISE + 1));
       patchD1();
       const before = new Map<string, number>();
       for (const path of paths) {
         before.set(path, await get(ownerToken, path));
+      }
+      const signedBefore = new Map<string, number>();
+      for (const path of signedPaths) {
+        signedBefore.set(path, await signedGet(path));
       }
       // Older follows than every page's. Statuses an unsigned outbox page
       // must pass over, newer than its own: direct and followers-only notes
@@ -249,6 +263,13 @@ describe("D1 rows read do not grow with unrelated rows", () => {
         expect(
           rows,
           `${path} read ${rows} more rows after ${NOISE} more follows and statuses of each kind`,
+        ).toBeLessThan(MAX_GROWTH);
+      }
+      for (const path of signedPaths) {
+        const rows = (await signedGet(path)) - (signedBefore.get(path) ?? 0);
+        expect(
+          rows,
+          `signed ${path} read ${rows} more rows after ${NOISE} more statuses of each kind`,
         ).toBeLessThan(MAX_GROWTH);
       }
       const followers = await SELF.fetch(`https://example.com${base}/followers`);

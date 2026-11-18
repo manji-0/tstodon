@@ -22,8 +22,11 @@ const IdRow = z.object({ id: z.string() });
  * The ids of a page of the account's statuses and boosts `reader` may read,
  * in the cursor's order. Each visibility is its own range of
  * `idx_statuses_account_visibility_id`, merged in id order, so a page reads
- * its rows and not the statuses of other visibilities between them; the
- * mentions of one actor are few.
+ * its rows and not the statuses of other visibilities between them. The
+ * mentions of one actor are few, so their branch starts from them: `CROSS
+ * JOIN` keeps that order, as without `sqlite_stat1` (D1 has none) SQLite
+ * would walk the account's statuses in id order to skip the merge's sort, all
+ * of them for a signer mentioned nowhere.
  */
 export const listOutboxStatusIds = async (
   db: D1Database,
@@ -42,7 +45,7 @@ export const listOutboxStatusIds = async (
     if (mentioned !== undefined && mentioned.visibilities.length > 0) {
       const scoped = idCursorFragment(cursor, "s.id");
       branches.push({
-        sql: `SELECT s.id AS id FROM status_remote_mentions m JOIN statuses s ON s.id = m.status_id
+        sql: `SELECT s.id AS id FROM status_remote_mentions m CROSS JOIN statuses s ON s.id = m.status_id
               WHERE m.actor_uri = ? AND s.account_id = ?
                 AND s.visibility IN (SELECT value FROM json_each(?)) ${scoped.where}`,
         binds: [
