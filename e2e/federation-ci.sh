@@ -74,10 +74,8 @@ start() {
     >"$logs/tstodon-$instance.log" 2>&1 &
   pids+=("$!")
 }
-start a 8791
-start b 8792
-
-for port in 8791 8792; do
+wait_for() {
+  local port=$1
   step "waiting for http://127.0.0.1:$port"
   ready=
   for _ in $(seq 1 60); do
@@ -92,7 +90,17 @@ for port in 8791 8792; do
     step "http://127.0.0.1:$port did not answer"
     exit 1
   fi
-done
+}
+
+# One at a time: on a cold cache each `vp dev` fetches upstream's emoji and
+# OCR assets into the same `.cache/mastodon-web/upstream/<commit>` directory
+# (`ensureUpstreamAssets` in packages/worker/web-build.ts), and two at once
+# delete each other's staging clone. B starts once A answers, and finds the
+# cache filled.
+start a 8791
+wait_for 8791
+start b 8792
+wait_for 8792
 
 # follow-create, interactions, delete-shared-inbox and accept are left out:
 # each forges B's user's `Follow` from the host, which B never sent, so B
