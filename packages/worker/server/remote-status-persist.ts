@@ -161,26 +161,36 @@ const localAddressees = async (
 };
 
 /**
- * The `MentionedPost` of a stored remote note, from its stored mentions: the
- * local accounts it mentions, the remote actors its `Mention` tags name, and
- * the author of the stored status it replies to. The note is already stored:
- * a failed read screens without those rather than failing the delivery after
- * its writes.
+ * The stored mentions of a remote note, as its notifications screen them:
+ * the local accounts it mentions now (`mentioned`), and its `MentionedPost`
+ * (those, the remote actors its `Mention` tags name, and the author of the
+ * stored status it replies to). A failed mention read is an error: without
+ * it the mute check on the other involved accounts would be skipped. A
+ * failed parent read screens without the parent's author.
  */
-const remoteMentionedPost = async (
+const storedMentions = async (
   db: D1Database,
   identity: InstanceIdentity,
   status: RemoteStatusValue,
-): Promise<MentionedPost> => {
+): Promise<
+  Result<Readonly<{ mentioned: ReadonlySet<string>; post: MentionedPost }>, RepositoryError>
+> => {
   const [mentions, parent] = await Promise.all([
     listShownRemoteStatusMentions(db, [status.id]),
     findThreadParent(db, identity, { kind: "Remote", status }),
   ]);
-  const stored = mentions.isOk() ? mentions.value.get(status.id) : undefined;
-  return mentionedPost(
-    [...(stored?.accountIds ?? []), ...(stored?.actorUris ?? [])],
-    parent.isOk() ? parent.value : undefined,
-  );
+  if (mentions.isErr()) {
+    return err(mentions.error);
+  }
+  const stored = mentions.value.get(status.id);
+  const accountIds = stored?.accountIds ?? [];
+  return ok({
+    mentioned: new Set(accountIds),
+    post: mentionedPost(
+      [...accountIds, ...(stored?.actorUris ?? [])],
+      parent.isOk() ? parent.value : undefined,
+    ),
+  });
 };
 
 /**
@@ -374,13 +384,17 @@ const serveRecipients = async (
     recipients.flatMap(([accountId, steps]) => (steps.includes(step) ? [accountId] : []));
   const mention = taking("Mention");
   if (mention.length > 0) {
-    const post = await remoteMentionedPost(env.DB, identity, status);
-    for (const accountId of mention) {
+    const stored = await storedMentions(env.DB, identity, status);
+    if (stored.isErr()) {
+      return err(stored.error);
+    }
+    // A queued account an `Update` has since made silent is mentioned no more.
+    for (const accountId of mention.filter((id) => stored.value.mentioned.has(id))) {
       const sent = await notifyFromRemoteOnce(
         env,
         { accountId, actorUri, kind: "mention", statusId: status.id },
         undefined,
-        post,
+        stored.value.post,
       );
       if (sent.isErr()) {
         return err(sent.error);

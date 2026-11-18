@@ -79,7 +79,9 @@ export const insertNotificationOnce = async (
            SELECT 1 FROM notifications
            WHERE account_id = ?2 AND status_id = ?6 AND kind = ?5 AND from_actor_uri = ?4
              AND created_at >= ?9
-         )`,
+         )
+           -- A recipient deleted since it was picked (a queued job's) is notified of nothing.
+           AND EXISTS (SELECT 1 FROM accounts WHERE id = ?2)`,
       )
       .bind(
         id,
