@@ -1,11 +1,61 @@
-import { err, ok } from "neverthrow";
+import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "../d1";
+import type { FederatedFetchOptions } from "../federated-fetch";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
 import { persistRemoteObject } from "../remote-status-persist";
-import { findDeliveredRemoteStatus } from "../remote-status-store";
+import { findDeliveredRemoteStatus, type KnownRemoteStatus } from "../remote-status-store";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
-/** A `Create` is a vote on a local poll, or a note to cache and fan out. */
+/**
+ * Apply the object of a `Create` that `signer` sent: a vote on a local poll,
+ * or a note to cache and fan out. `known` is the caller's read of the
+ * object's URI, when it made one; else it is read here.
+ */
+export const applyRemoteCreate = async (
+  env: Env,
+  identity: InstanceIdentity,
+  signer: RemoteActor,
+  object: string | Readonly<{ id: string } & Record<string, unknown>>,
+  options: FederatedFetchOptions,
+  known?: KnownRemoteStatus,
+): Promise<Result<void, RepositoryError>> => {
+  const vote = await handleRemotePollVote(env, identity, signer, object);
+  if (vote.isErr()) {
+    return err(vote.error);
+  }
+  if (vote.value.kind !== "NotAVote") {
+    return ok(undefined);
+  }
+  const objectUri = typeof object === "string" ? object : object.id;
+  let read = known;
+  if (read === undefined) {
+    const found = await findDeliveredRemoteStatus(env.DB, objectUri);
+    if (found.isErr()) {
+      if (found.error.kind !== "StoredRowInvalid") {
+        return err(found.error);
+      }
+      const settled = await settleInvalidRemoteStatus(env, signer, found.error, {
+        activity: "Create",
+        raw: object,
+      });
+      return settled.map(() => undefined);
+    }
+    read = { objectUri, row: found.value };
+  }
+  const created = await persistRemoteObject(
+    env,
+    identity,
+    signer,
+    object,
+    { ...options, delivery: "Create" },
+    read,
+  );
+  // A storage failure: the route releases the claim and answers 5xx, so the sender redelivers.
+  return created.map(() => undefined);
+};
+
 export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async ({
   env,
   identity,
@@ -14,34 +64,9 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   allowHosts,
   blockedHosts,
   fetchSigner,
-}) => {
-  const vote = await handleRemotePollVote(env, identity, signer, received.object);
-  if (vote.isErr()) {
-    return err(vote.error);
-  }
-  if (vote.value.kind !== "NotAVote") {
-    return ok(undefined);
-  }
-  const objectUri = typeof received.object === "string" ? received.object : received.object.id;
-  const known = await findDeliveredRemoteStatus(env.DB, objectUri);
-  if (known.isErr()) {
-    if (known.error.kind !== "StoredRowInvalid") {
-      return err(known.error);
-    }
-    const settled = await settleInvalidRemoteStatus(env, signer, known.error, {
-      activity: "Create",
-      raw: received.object,
-    });
-    return settled.map(() => undefined);
-  }
-  const created = await persistRemoteObject(
-    env,
-    identity,
-    signer,
-    received.object,
-    { allowHosts, blockedHosts, fetchSigner, delivery: "Create" },
-    { objectUri, row: known.value },
-  );
-  // A storage failure: the route releases the claim and answers 5xx, so the sender redelivers.
-  return created.map(() => undefined);
-};
+}) =>
+  applyRemoteCreate(env, identity, signer, received.object, {
+    allowHosts,
+    blockedHosts,
+    fetchSigner,
+  });
