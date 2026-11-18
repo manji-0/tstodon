@@ -13,10 +13,13 @@ import {
   type LocalAccount,
   Visibility,
 } from "@tstodon/domain";
-import { findAccountByIdOrUsername, findAccountsByIds } from "../../account-store";
+import {
+  findAccountByIdOrUsername,
+  findAccountsByIds,
+  findAccountsByUsernames,
+} from "../../account-store";
 import { searchAccountsPage } from "../../account-search";
 import {
-  accountRefPresentation,
   localAccountPresentations,
   presentedAccountDocument,
   remoteAccountPresentations,
@@ -265,50 +268,87 @@ export const getV1AccountsFamiliarFollowers = async (
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const requestedIds = (params.value.id ?? []).filter((value) => value.length > 0);
-
-  const groups: ApiFamiliarFollowersJSON = [];
-  for (const requestedId of requestedIds) {
-    const account = await findAccountByIdOrUsername(c.env.DB, requestedId);
-    if (account.isErr()) {
-      return jsonRepositoryError(c, account.error.message);
-    }
-    const accounts = account.value
-      ? await familiarFollowerDocuments(c.env, identity.value, user.value.id, account.value)
-      : ok([]);
-    if (accounts.isErr()) {
-      return jsonRepositoryError(c, accounts.error.message);
-    }
-    groups.push({ id: requestedId, accounts: accounts.value });
+  const requestedIds = [
+    ...new Set((params.value.id ?? []).filter((value) => value.length > 0)),
+  ].slice(0, MULTIPLE_ACCOUNTS_LIMIT);
+  const familiar = await familiarFollowerDocuments(
+    c.env,
+    identity.value,
+    user.value.id,
+    requestedIds,
+  );
+  if (familiar.isErr()) {
+    return jsonRepositoryError(c, familiar.error.message);
   }
+  const groups: ApiFamiliarFollowersJSON = requestedIds.map((id) => ({
+    id,
+    accounts: familiar.value.get(id) ?? [],
+  }));
   return c.json(groups);
 };
 
-/** The viewer's follows that follow `account`; none when `account` is not available. */
+/**
+ * The viewer's follows that follow each requested account, keyed by the id or
+ * username it was requested by; none for an account that is unknown or not
+ * available. A fixed number of queries however many are requested.
+ */
 const familiarFollowerDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   viewerId: string,
-  account: LocalAccount,
-): Promise<Result<ApiAccountJSON[], RepositoryError>> => {
-  const presentation = await accountRefPresentation(env, localRef(identity, account));
-  if (presentation.isErr()) {
-    return err(presentation.error);
+  requestedIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, ApiAccountJSON[]>, RepositoryError>> => {
+  const byId = await findAccountsByIds(env.DB, requestedIds);
+  if (byId.isErr()) {
+    return err(byId.error);
   }
-  if (!AccountPresentation.available(presentation.value)) {
-    return ok([]);
+  const byUsername = await findAccountsByUsernames(
+    env.DB,
+    requestedIds.filter((id) => !byId.value.has(id)),
+  );
+  if (byUsername.isErr()) {
+    return err(byUsername.error);
   }
+  const usernames = new Map<string, LocalAccount>(
+    byUsername.value.map((account) => [account.username, account]),
+  );
+  const targets = new Map(
+    requestedIds.flatMap((id): [string, LocalAccount][] => {
+      const account = byId.value.get(id) ?? usernames.get(id.toLowerCase());
+      return account ? [[id, account]] : [];
+    }),
+  );
+  const targetIds = [...new Set([...targets.values()].map((account) => account.id))];
+  const presentations = await localAccountPresentations(env.DB, targetIds);
+  if (presentations.isErr()) {
+    return err(presentations.error);
+  }
+  const available = targetIds.filter((id) => {
+    const presentation = presentations.value.get(id);
+    return presentation !== undefined && AccountPresentation.available(presentation);
+  });
   const followerIds = await familiarFollowerIds(
     env.DB,
     viewerId,
-    account.id,
+    available,
     FAMILIAR_FOLLOWERS_LIMIT,
   );
   if (followerIds.isErr()) {
     return err(followerIds.error);
   }
-  return (await accountDocumentsByIds(env, identity, followerIds.value)).map((documents) =>
-    documentsInOrder(followerIds.value, documents),
+  const documents = await accountDocumentsByIds(env, identity, [
+    ...new Set([...followerIds.value.values()].flat()),
+  ]);
+  if (documents.isErr()) {
+    return err(documents.error);
+  }
+  return ok(
+    new Map(
+      [...targets].map(([id, account]) => [
+        id,
+        documentsInOrder(followerIds.value.get(account.id) ?? [], documents.value),
+      ]),
+    ),
   );
 };
 

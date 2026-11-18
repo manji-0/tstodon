@@ -90,4 +90,20 @@ describe("familiar followers", () => {
 
     expect((await json("/api/v1/accounts/familiar_followers?id[]=x")).status).toBe(401);
   });
+
+  it("answers for the first 40 distinct ids, as GET /api/v1/accounts does", async () => {
+    const ids = [
+      "fam-dup",
+      "fam-dup",
+      ...Array.from({ length: 45 }, (_, n) => `fam-unknown-${n}`),
+    ];
+    const response = await json(
+      `/api/v1/accounts/familiar_followers?${ids.map((id) => `id[]=${id}`).join("&")}`,
+      { headers: await auth("fam-many@example.com") },
+    );
+    expect(response.status).toBe(200);
+    expect(read(GroupSchema, response.body).map((group) => group.id)).toEqual(
+      [...new Set(ids)].slice(0, 40),
+    );
+  });
 });

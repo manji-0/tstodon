@@ -237,4 +237,42 @@ describe("D1 statements do not grow with how many things a request names", () =>
       ).toBe(few.statements);
     },
   );
+
+  it(
+    "reads familiar followers for every requested account in a fixed number of queries",
+    { timeout: 60_000 },
+    async () => {
+      const [viewer, friend, ...targets] = await Promise.all(
+        Array.from({ length: 22 }, (_, n) => signedInAccount(`budget-fam-${n}@example.com`)),
+      );
+      if (!viewer || !friend) throw new Error("accounts");
+      const [viewerToken, friendToken] = await Promise.all(
+        [viewer, friend].map((account) => accessTokenFor(account.id)),
+      );
+      if (!viewerToken || !friendToken) throw new Error("tokens");
+      await post(viewerToken, `/api/v1/accounts/${friend.id}/follow`);
+      for (const target of targets) {
+        await post(friendToken, `/api/v1/accounts/${target.id}/follow`);
+      }
+      const familiar = (count: number) =>
+        metered(() =>
+          SELF.fetch(
+            `https://example.com/api/v1/accounts/familiar_followers?${targets
+              .slice(0, count)
+              .map((target) => `id[]=${target.id}`)
+              .join("&")}`,
+            { headers: { Authorization: `Bearer ${viewerToken}` } },
+          ),
+        );
+      patchD1();
+      await familiar(1);
+      const one = await familiar(1);
+      const twenty = await familiar(20);
+      expect([one.status, twenty.status]).toEqual([200, 200]);
+      expect(
+        twenty.statements,
+        `familiar followers of 20 accounts made ${twenty.statements} statements, of one ${one.statements}`,
+      ).toBe(one.statements);
+    },
+  );
 });

@@ -604,7 +604,7 @@ export * from "./sql/listEndedRemotePollVoters";
 
 export * from "./sql/listExpiredUnnotifiedPolls";
 
-export * from "./sql/listFamiliarFollowerIds";
+export * from "./sql/listFamiliarFollowerIdsJson";
 
 export * from "./sql/listFeaturedTags";
 

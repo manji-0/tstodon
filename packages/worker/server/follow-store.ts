@@ -1,7 +1,7 @@
 import { LocalFollow } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import { parseRows, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
@@ -14,7 +14,7 @@ import {
   findFollowKind as findFollowKindSql,
   insertFollowOrIgnore as insertFollowOrIgnoreSql,
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
-  listFamiliarFollowerIds as listFamiliarFollowerIdsSql,
+  listFamiliarFollowerIdsJson as listFamiliarFollowerIdsJsonSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
   listNotifyingFollowerIds as listNotifyingFollowerIdsSql,
   rejectFollowRequest as rejectFollowRequestSql,
@@ -166,19 +166,30 @@ export const findFollowKind = async (
     return rows[0]?.kind;
   });
 
+const TargetIdRow = z.object({ target_id: z.string(), id: z.string() });
+
 /**
- * Accounts the viewer follows that also follow `targetId` — "familiar
- * followers" of a shared target, ordered by username, capped at `limit`.
+ * For each of `targetIds`, the accounts the viewer follows that also follow
+ * it ("familiar followers"), ordered by username, at most `limit` each; a
+ * target with none is left out.
  */
 export const familiarFollowerIds = async (
   db: D1Database,
   viewerId: string,
-  targetId: string,
+  targetIds: ReadonlyArray<string>,
   limit: number,
-): Promise<Result<string[], RepositoryError>> =>
+): Promise<Result<ReadonlyMap<string, ReadonlyArray<string>>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listFamiliarFollowerIdsSql(viewerId, targetId, limit), IdRow);
-    return rows.map((row) => row.id);
+    const rows = await queryTyped(
+      db,
+      listFamiliarFollowerIdsJsonSql(viewerId, jsonStringArray([...targetIds]), limit),
+      TargetIdRow,
+    );
+    const byTarget = new Map<string, string[]>();
+    for (const row of rows) {
+      byTarget.set(row.target_id, [...(byTarget.get(row.target_id) ?? []), row.id]);
+    }
+    return byTarget;
   });
 
 export const listAcceptedFollowerIds = async (
