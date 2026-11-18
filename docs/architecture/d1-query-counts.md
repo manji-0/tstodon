@@ -185,4 +185,4 @@ Next steps, in order of expected payoff:
 1. tstodon: flatten `renderLocalStatuses` into the two-wave shape cfwdon uses.
 2. tstodon: move notification screening and insertion for favourites, boosts and follows after the response, as Mastodon does with its workers. Tests that read notifications right after the request would then need to wait for `waitUntil`.
 3. cfwdon: fill the boost-target embed preloads in `notifications/status_preload.rs` and `streaming_home_batch.rs`, which still look up local targets one by one.
-4. cfwdon: record deferred work's D1 time in its own bucket. It is currently charged to the next request on the isolate, which feeds the load-shed heuristic (see `api-latency.md`, Caveats).
+4. cfwdon: record deferred work's D1 time in its own bucket. It is currently charged to the next request on the isolate, which feeds the load-shed heuristic (see Caveats in cfwdon's `api-latency.md`, which is not in this repository).
