@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiNotification, ApiNotificationPolicy, ApiNotificationRequest } from "@tstodon/api";
@@ -106,5 +106,42 @@ describe("POST /api/v1/notifications/requests/dismiss", () => {
       status: `@${(await signedInAccount(recipient)).username} again`,
     });
     expect((await pending(recipient)).pending_requests_count).toBe(2);
+  });
+});
+
+describe("a request whose held notifications are gone", () => {
+  it("is not accepted in bulk, as the single route answers 404 for it", async () => {
+    const recipient = "nrb-gone-recipient@example.com";
+    const account = await signedInAccount(recipient);
+    const sender = "nrb-gone-sender@example.com";
+    const senderAccount = await signedInAccount(sender);
+    await call(
+      "nrb-admin@example.com",
+      "POST",
+      `/api/v1/admin/accounts/${senderAccount.id}/silence`,
+    );
+    const held = expectContract(
+      z.object({ id: z.string() }),
+      await call(sender, "POST", "/api/v1/statuses", { status: `@${account.username} soon gone` }),
+    );
+    const [request] = expectContract(
+      z.array(ApiNotificationRequest),
+      await call(recipient, "GET", "/api/v1/notifications/requests"),
+    );
+    // As a remote sender's Delete does (`deleteRemoteNotifications`): the
+    // held notification goes, cascading its request row, and the group stays.
+    await env.DB.prepare("DELETE FROM notifications WHERE status_id = ?").bind(held.id).run();
+    const single = await SELF.fetch(
+      `https://example.com/api/v1/notifications/requests/${request?.id}/accept`,
+      { method: "POST", headers: await authHeaders(recipient) },
+    );
+    expect(single.status).toBe(404);
+    await single.body?.cancel();
+    expect(
+      await call(recipient, "POST", "/api/v1/notifications/requests/accept", { id: [request?.id] }),
+    ).toEqual({});
+
+    await call(sender, "POST", "/api/v1/statuses", { status: `@${account.username} held again` });
+    expect((await pending(recipient)).pending_requests_count).toBe(1);
   });
 });
