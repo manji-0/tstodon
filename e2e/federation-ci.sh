@@ -26,7 +26,8 @@ finish() {
   status=$?
   trap - EXIT
   set +e
-  for pid in "${pids[@]}"; do
+  # bash 3.2 (macOS) calls an empty "${pids[@]}" unbound under `set -u`.
+  for pid in ${pids[@]+"${pids[@]}"}; do
     kill -TERM -- "-$pid" 2>/dev/null
     wait "$pid" 2>/dev/null
   done
@@ -56,12 +57,20 @@ done
 export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}"
 export no_proxy="$NO_PROXY"
 
+# Run "$@" as the leader of a new process group, so that `finish` stops pnpm,
+# vp and workerd together. macOS has no setsid; perl starts the group there.
+detach() {
+  if command -v setsid >/dev/null 2>&1; then
+    exec setsid "$@"
+  fi
+  exec perl -e 'setpgrp(0, 0); exec @ARGV or die "exec $ARGV[0]: $!\n"' "$@"
+}
+
 start() {
   local instance=$1 port=$2
-  # Its own session, so that `finish` stops pnpm, vp and workerd together.
   CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH="../../e2e/$instance.wrangler.jsonc" \
     VOID_INSPECTOR_PORT=false TSTODON_PERSIST_TO=".wrangler/e2e-$instance" \
-    setsid pnpm exec vp -C packages/worker dev --port "$port" --strictPort --host 127.0.0.1 \
+    detach pnpm exec vp -C packages/worker dev --port "$port" --strictPort --host 127.0.0.1 \
     >"$logs/tstodon-$instance.log" 2>&1 &
   pids+=("$!")
 }
