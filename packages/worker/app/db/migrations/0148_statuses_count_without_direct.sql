@@ -32,6 +32,14 @@ BEGIN
     WHERE account_id = NEW.account_id;
 END;
 
+-- An ActivityPub outbox page merges one index range per visibility its
+-- fetcher may read (public and unlisted, followers-only for a follower), in
+-- id order: a page reads its own rows, not the account's statuses of the
+-- other visibilities between them. Created before the recount, which then
+-- counts each account's statuses from this index, not from the table.
+CREATE INDEX IF NOT EXISTS idx_statuses_account_visibility_id
+    ON statuses (account_id, visibility, id);
+
 UPDATE account_stats
 SET statuses_count = (
     SELECT COUNT(*) FROM statuses
