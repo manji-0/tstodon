@@ -66,7 +66,7 @@ const gone = (viewer: E2eUser, statusId: string, label: string) =>
     return response.status === 404 ? true : undefined;
   });
 
-export const editScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
+export const editScenarios = async ({ stamp, mona, erin }: Cast): Promise<void> => {
   const alice = await signUp(A, "edda");
   const bob = await signUp(A, "edgar");
 
@@ -200,6 +200,18 @@ export const editScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
     await edit(from, sent.id, { status: `${to.acct} mention later ${stamp}` });
     await notified(to, "mention", from, sent.uri);
   });
+
+  // No tstodon user follows erin, so tstodon never got the post's `Create`.
+  // The edit's `Update` reaches the account it now mentions, and Mastodon
+  // handles an `Update` of a status it never stored as its `Create`.
+  await step(
+    "an edit that mentions a tstodon user delivers a post tstodon never received: Mastodon → tstodon",
+    async () => {
+      const sent = await post(erin, { status: `never delivered ${stamp}` });
+      await edit(erin, sent.id, { status: `${alice.acct} never delivered ${stamp}` });
+      await notified(alice, "mention", erin, sent.uri);
+    },
+  );
 
   await bothWays(
     "an edit notifies the account that boosted the post",
