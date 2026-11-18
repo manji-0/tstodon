@@ -135,7 +135,7 @@ const audienceOf = (path: string): RefusalAudience => {
 };
 
 /** Mastodon's answer to an oversized body: 413, in the form the route's clients read. */
-const bodyTooLarge = (c: Context, limitBytes: number): Response => {
+const bodyTooLarge = (c: Context<{ Bindings: Env }>, limitBytes: number): Response => {
   switch (audienceOf(c.req.path)) {
     case "Api":
       return c.json(
