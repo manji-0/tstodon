@@ -209,7 +209,7 @@ const fetchGuarded = async (
   for (let hops = 0; hops <= MAX_REDIRECTS; hops += 1) {
     const admitted = await checkFederatedHost(url.hostname, identity.domain, options);
     if (admitted !== "Admitted") {
-      return { kind: admitted };
+      return { kind: admitted === "Refused" ? "Refused" : "Unavailable" };
     }
     const response = await fetch(url, {
       method: "GET",

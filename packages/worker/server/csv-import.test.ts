@@ -825,7 +825,7 @@ describe("import state", () => {
     const page = await (await owner.fetcher("/settings/import")).text();
     expect(page).toContain("Stopped before it finished");
     expect(page).not.toContain("Running");
-    expect(page).not.toContain("setTimeout");
+    expect(page).not.toContain("/page-refresh.js");
     // It no longer blocks a new upload.
     const next = await upload(owner, "DomainBlocks", "Merge", "after.example\n");
     expect(next.headers.get("location")).toMatch(/^\/settings\/imports\/\d+$/);
@@ -841,7 +841,7 @@ describe("import state", () => {
     for (const path of ["/settings/import", `/settings/imports/${id}`]) {
       const page = await (await owner.fetcher(path)).text();
       expect(page).toContain("Stopped before it finished");
-      expect(page).not.toContain("setTimeout");
+      expect(page).not.toContain("/page-refresh.js");
     }
   });
 
@@ -851,7 +851,7 @@ describe("import state", () => {
     expect(first.status).toBe(303);
     // The import is running, so the page refreshes itself ...
     const listing = await (await owner.fetcher("/settings/import")).text();
-    expect(listing).toContain("setTimeout");
+    expect(listing).toContain("/page-refresh.js");
     // ... but a second upload is answered with a 303, whose body has no script.
     const second = await upload(owner, "DomainBlocks", "Merge", "two.example\n");
     expect(second.status).toBe(303);

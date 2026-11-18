@@ -11,6 +11,9 @@
   },
   "observability": {
     "enabled": true,
+    // Streaming clients may send their bearer token as `?access_token=`
+    // (Mastodon's API allows it), which logs and traces would otherwise keep.
+    "redact_query_string": true,
     "logs": {
       "enabled": true,
       "head_sampling_rate": 1,

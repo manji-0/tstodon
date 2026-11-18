@@ -115,6 +115,14 @@ const STATUS_LINK_STYLE = `align-items: center; color: #1C1A25; display: flex; f
 const ACCOUNT_STYLE = "color: #787588; margin-top: 16px;";
 const VIEW_STYLE = "font-weight: 500;";
 
+/** The `style` attributes of the embed code, which the web UI's preview renders under its policy. */
+export const EMBED_CODE_STYLES = [
+  BLOCKQUOTE_STYLE,
+  STATUS_LINK_STYLE,
+  ACCOUNT_STYLE,
+  VIEW_STYLE,
+] as const;
+
 /** tstodon's mark, as `symbolPath` in `src/mastodon/tstodon/brand.ts`. */
 const SYMBOL_PATH =
   "M18 4H46A14 14 0 0 1 60 18V40A14 14 0 0 1 46 54H25L12.5 62.5L13 53.08A14 14 0 0 1 4 40V18A14 14 0 0 1 18 4Z" +

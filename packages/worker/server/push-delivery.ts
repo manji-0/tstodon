@@ -199,7 +199,7 @@ export const processPushJob = async (
     URL.canParse(subscription.endpoint) ? new URL(subscription.endpoint).hostname : "",
     identity.value.domain,
   );
-  if (reachable === "Unavailable") {
+  if (reachable === "Unavailable" || reachable === "Unresolvable") {
     return "retry";
   }
   if (reachable === "Refused") {

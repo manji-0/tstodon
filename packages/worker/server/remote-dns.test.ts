@@ -54,6 +54,12 @@ describe("judgeHostDns", () => {
     expect(await judgeHostDns("down.example", resolvingTo("8.8.8.8"))).toBe("Admitted");
   });
 
+  it("calls a name DNS answers with an error unresolvable, and does not cache it", async () => {
+    const nxdomain: HostResolver = async () => ({ kind: "DnsError", status: 3 });
+    expect(await judgeHostDns("gone.example", nxdomain)).toBe("Unresolvable");
+    expect(await judgeHostDns("gone.example", resolvingTo("8.8.8.8"))).toBe("Admitted");
+  });
+
   it("caches verdicts per isolate until the TTL ends", async () => {
     const resolver = vi.fn(resolvingTo("8.8.8.8"));
     let now = 1_000;
@@ -96,9 +102,14 @@ describe("dohHostResolver", () => {
     ]);
   });
 
-  it("fails on a DNS error status, an HTTP error, or a network error", async () => {
+  it("reports the DNS error status (NXDOMAIN, SERVFAIL) the resolver answered", async () => {
+    vi.stubGlobal("fetch", async () => answer(3));
+    expect(await dohHostResolver("a.example")).toEqual({ kind: "DnsError", status: 3 });
     vi.stubGlobal("fetch", async () => answer(2));
-    expect(await dohHostResolver("a.example")).toEqual({ kind: "Failed" });
+    expect(await dohHostResolver("a.example")).toEqual({ kind: "DnsError", status: 2 });
+  });
+
+  it("fails when the resolver cannot be asked: an HTTP error or a network error", async () => {
     vi.stubGlobal("fetch", async () => new Response("no", { status: 503 }));
     expect(await dohHostResolver("a.example")).toEqual({ kind: "Failed" });
     vi.stubGlobal("fetch", async () => {

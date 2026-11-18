@@ -5,6 +5,7 @@ import { findAccountById } from "../../account-store";
 import { type AccountLabel, adminNotFoundPage } from "../../admin-pages";
 import { errorPage } from "../../auth-pages";
 import type { RepositoryError } from "../../d1";
+import { bodyCapExceeded } from "../../body-limit";
 import { readOptionalBody } from "../../http";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findRemoteActorByUri } from "../../remote-actor-store";
@@ -97,7 +98,11 @@ export const readParts = async (
 ): Promise<Readonly<Record<string, FormPart | ReadonlyArray<FormPart>>>> => {
   try {
     return await c.req.parseBody({ all: true });
-  } catch {
+  } catch (cause) {
+    // An oversized body is not an absent one: the body cap answers 413.
+    if (bodyCapExceeded(c.req.raw)) {
+      throw cause;
+    }
     return {};
   }
 };

@@ -51,9 +51,14 @@ export const dropAccessLogin = async (page: Page): Promise<void> => {
   await page.context().clearCookies({ name: ACCESS_COOKIE });
 };
 
-/** Problems the UI reports: uncaught errors and failed API calls. */
+/** Problems the UI reports: uncaught errors, failed API calls and content security policy refusals. */
 const watchForErrors = (page: Page, problems: string[]): void => {
   page.on("pageerror", (error) => problems.push(`page error: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("Content Security Policy")) {
+      problems.push(`CSP: ${message.text()}`);
+    }
+  });
   page.on("response", (response) => {
     const url = new URL(response.url());
     if (url.pathname.startsWith("/api/") && response.status() >= 500) {

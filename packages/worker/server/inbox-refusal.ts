@@ -7,6 +7,8 @@ import { writeMetric } from "./metrics";
  * event catalogue.
  */
 export type InboxRefusalReason =
+  /** 413: the body passes Mastodon's `MAX_JSON_SIZE` (1 MB). */
+  | "PayloadTooLarge"
   /** 400: the body is not JSON, or not an activity. */
   | "UnparseableBody"
   /** 400: the activity's `id` is not a usable activity id. */
@@ -19,7 +21,7 @@ export type InboxRefusalReason =
   | "DateNotSigned"
   /** 401: the signature does not cover `digest` (SIG-1). */
   | "DigestNotSigned"
-  /** 401: the signed `Date` is unparseable, over 12 hours old or over 1 hour ahead (SIG-1). */
+  /** 401: the signed `Date` is unparseable, over 65 minutes old or over 1 hour ahead (SIG-1). */
   | "SignatureExpired"
   /** 401: `Digest` is missing or does not match the body. */
   | "DigestMismatch"
@@ -48,7 +50,7 @@ export type InboxRefusalReason =
 
 export type InboxRefusal = Readonly<{
   reason: InboxRefusalReason;
-  status: 400 | 401 | 403 | 429 | 503;
+  status: 400 | 401 | 403 | 413 | 429 | 503;
   path: string;
   /** The `Signature` header's `keyId`, when there is one. Only its host is logged. */
   keyId?: string | undefined;

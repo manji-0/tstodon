@@ -88,6 +88,7 @@ import { findStatusById } from "../status-store";
 import { listPinnedStatuses } from "../status-pin-store";
 import { listFeaturedTags } from "../tag-store";
 import { RemoteAccountId } from "../remote-account-id";
+import { MAX_JSON_BYTES, readBodyText } from "../body-limit";
 import {
   instanceActorDocument,
   instanceActorFetchSigner,
@@ -673,7 +674,12 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     signatureHeader === undefined ? undefined : parseSignatureHeader(signatureHeader)?.keyId;
   const refuse = (refusal: Omit<InboxRefusal, "path">): void =>
     recordInboxRefusal(c.env, { path, keyId: keyIdOf(c.req.header("Signature")), ...refusal });
-  const bodyText = await c.req.text();
+  const read = await readBodyText(c.req.raw, MAX_JSON_BYTES);
+  if (read.isErr()) {
+    refuse({ reason: "PayloadTooLarge", status: 413 });
+    return c.body(null, 413);
+  }
+  const bodyText = read.value;
   const json = parseJsonText(bodyText);
   if (json.isErr()) {
     refuse({ reason: "UnparseableBody", status: 400 });

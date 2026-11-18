@@ -180,6 +180,12 @@ An existing account links only when the Access email equals `access_email` exact
 openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTER_AUTH_SECRET
 ```
 
+### Streaming tokens
+
+<!-- constrained-by ../operations/runbook.md#logs -->
+
+The streaming API (`/api/v1/streaming`) takes the access token as Mastodon's does: in `Authorization: Bearer`, as the WebSocket subprotocol (`Sec-WebSocket-Protocol`, echoed back in the handshake), or as the `access_token` query parameter, which a browser's `EventSource` and many third-party clients use. The web UI sends it as the subprotocol, as upstream does. The query parameter stays supported, so `wrangler.jsonc` sets `observability.redact_query_string` to keep it out of Workers Logs and traces (see the runbook's Logs section for what that does not cover).
+
 ## Local development authentication
 
 <!-- derived-from #authentication -->
@@ -221,7 +227,7 @@ The test runner injects its own fixture key through `miniflare.bindings` in the 
 
 ## Limited federation
 
-`FEDERATION_ALLOW_HOSTS` is a comma-separated list of the only hosts allowed to federate. A non-empty list (or a runtime `domain_allows` row, managed at `/api/v1/admin/domain_allows`) turns on limited federation: outbound fetches and delivery, inbound inbox activities, and link unfurling refuse any other host, `GET /api/v1/instance/peers` and `/api/v1/instance/activity` require a user token, and `/api/v2/instance` reports `limited_federation: true`. Listed hosts also keep the private-IP exemption used by local e2e setups (`127.0.0.1`). For a listed loopback host (`localhost`, `127.0.0.1`, `::1`), WebFinger is also queried over plain `http://`, so `@user@127.0.0.1:8794` resolves against a local test server; every other host is looked up over `https://`. A `*.localhost` name is refused until the list names it; the portless pair that uses those names is [Federation e2e over portless](../getting-started/e2e-federation-portless.md).
+`FEDERATION_ALLOW_HOSTS` is a comma-separated list of the only hosts allowed to federate. A non-empty list (or a runtime `domain_allows` row, managed at `/api/v1/admin/domain_allows`) turns on limited federation: outbound fetches and delivery, inbound inbox activities, and link unfurling refuse any other host, `GET /api/v1/instance/peers` and `/api/v1/instance/activity` require a user token, and `/api/v2/instance` reports `limited_federation: true`. Hosts named in `FEDERATION_ALLOW_HOSTS` also skip the private-address and DNS checks, which local e2e setups need (`127.0.0.1`); a domain allowed at runtime does not, so its name must still resolve to public addresses. For a listed loopback host (`localhost`, `127.0.0.1`, `::1`), WebFinger is also queried over plain `http://`, so `@user@127.0.0.1:8794` resolves against a local test server; every other host is looked up over `https://`. A `*.localhost` name is refused until the list names it; the portless pair that uses those names is [Federation e2e over portless](../getting-started/e2e-federation-portless.md).
 
 `POLL_UPDATE_DELAY_SECONDS` is how long a vote on a local poll waits before the `Update(Question)` that carries the new counts to remote servers; votes cast in that window share one `Update`. It defaults to Mastodon's 180 seconds. The local e2e instances set it to `5`, which Miniflare honours as a queue `delaySeconds`.
 
@@ -248,7 +254,7 @@ Always public: the instance actor `/actor` (secure-mode servers, this one includ
 
 Every response of the guarded paths in secure mode carries `Cache-Control: private` and `Vary: Signature`, signed or not, so no shared cache keeps a signed answer for unsigned requests (the quote stamp's `max-age=30, public` is dropped in secure mode). Cloudflare's cache does not vary on `Signature`, and by default it does not cache these JSON responses at all; do not add a Cache Rule that caches `/users/*` ("Cache Everything", or an Edge TTL that overrides the origin), because it would serve one requester's answer to the next. A rule that respects origin `Cache-Control` is safe. The Access bypass of `/users/*` and `/actor` is unchanged.
 
-Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERATION_ALLOW_HOSTS` does not, set `AUTHORIZED_FETCH` as well if you want both. As on the inbox, a signature must cover `date` (and `digest` on a request with a body), and its `Date` must be at most 12 hours old and at most 1 hour ahead of this server's clock (Mastodon's `EXPIRATION_WINDOW_LIMIT` and `CLOCK_SKEW_MARGIN`), so a captured signed GET cannot be replayed later; a stale signature is `401` (an actor GET gets the restricted document).
+Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERATION_ALLOW_HOSTS` does not, set `AUTHORIZED_FETCH` as well if you want both. As on the inbox, a signature must cover `date` (and `digest` on a request with a body), and its `Date` must be at most 65 minutes old and at most 1 hour ahead of this server's clock (Mastodon's `SignedRequest#matches_time_window?`: 5 minutes of validity plus the 1 hour `CLOCK_SKEW_MARGIN`), so a captured signed GET cannot be replayed later; a stale signature is `401` (an actor GET gets the restricted document).
 
 ## IP blocks
 
@@ -302,3 +308,35 @@ Both are optional plain vars (`wrangler.jsonc` `vars`, or the dashboard); neithe
 **Storage.** Each subject (an address, an account, an app token, a sending server) is one instance of the `RateLimitCounter` Durable Object (`RATE_LIMIT_COUNTER`, migration tag `v2`), holding that subject's counters in memory and in its SQLite storage. Each isolate counts first: on the high-volume buckets (`api_ip`, `api_token`, `api_account`, `federation_fetch`, `inbox_ip`, `inbox_domain`) it counts a subject alone while its count stays within a quarter of the headroom the Durable Object last reported (hits 1 to 75 of `api_ip`'s 300 before any answer), and then calls the Durable Object with the hits it counted alone (the 76th call sends 76). A request that counts against any other bucket of the same subject calls it once with all of the subject's counters. A client that keeps going is asked about again at about 44% and 58% of its limit and on every request at the end, so one isolate holds it to its limit exactly; a client spread over n isolates can get up to (n - 1) quarters of the limit more before the shared count refuses it everywhere. The other buckets (the action families, `sign_in`, `oauth_token`, `app_registration`) call the Durable Object on every request: they are rare, long-windowed or small, and abuse-sensitive. Below the threshold the `X-RateLimit-*` headers report this isolate's count. Each isolate also remembers a counter the Durable Object reported over until that window ends and refuses without asking again. The policy is `RateLimit.mayCountLocally` in `packages/domain/src/rate-limit.ts`. Windows that ended are dropped on the subject's next call; one alarm an hour after a subject's last window ends deletes its storage if no window is live, or re-arms; it is not moved on each hit or window. No D1 write. If the Durable Object cannot be reached the request goes through (fail open), as with IP blocks. A Worker configured without the binding (the local e2e instances) counts nothing.
 
 The Workers Rate Limiting binding (`ratelimits` in `wrangler.jsonc`) was not used, not even for `inbox_ip`, `inbox_domain` and `federation_fetch`: it offers only 10- and 60-second periods, fixes each limit in `wrangler.jsonc` at deploy time (so `RATE_LIMITS` could not override it), counts per Cloudflare location, and reports no remaining count for `X-RateLimit-Remaining`; with isolate-first counting those buckets cost no Durable Object call at ordinary federation volume anyway. Workers KV is eventually consistent and takes one write per key per second; D1 would be a write per request. For volumetric floods, put a Cloudflare WAF rate-limiting rule in front of the Worker as an outer layer (see [Cloudflare Deploy Checklist](../operations/cloudflare-deploy.md#rate-limiting-at-the-edge)); it drops traffic before it reaches the Worker at all.
+
+## Request body limits
+
+<!-- derived-from #rate-limits -->
+
+Every request with a body passes `app/middleware/03.body-limit.ts` (`server/body-limit.ts`) after the rate limits and before any route reads it. A body is held to 1 MB (Mastodon's `MAX_JSON_SIZE`), except on the upload routes:
+
+| Route                                                                   | Cap                                                                                                 |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/media`, `POST /api/v2/media`                              | the video size limit (99 MB) and a 16 MB `thumbnail` image, plus 64 KB of form overhead             |
+| `PUT /api/v1/media/:id`                                                 | a 16 MB `thumbnail` image, plus 64 KB                                                               |
+| `PATCH /api/v1/accounts/update_credentials`, `PATCH /api/v1/profile`    | two 5 MB images (avatar and header), plus 64 KB                                                     |
+| `POST`/`PATCH /api/v1/admin/custom_emojis`, `POST /admin/custom_emojis` | 256 KB (Mastodon's `CustomEmoji::LOCAL_LIMIT`), plus 64 KB; the image itself is refused over 256 KB |
+| `POST /settings/import`, `POST /settings/imports`                       | 1 MB, plus 64 KB (the route also requires `Content-Length`)                                         |
+
+A `Content-Length` over the cap is answered `413` before the route runs. A body without one (chunked) is read through a counter that fails once it passes the cap, and the request is answered `413`; the rest of the body is not read. Endpoints whose body is optional (deleting a status, a boost, a mute) stop before they act. Each upload is still held to its own type's limit by the route. The `413` takes the form its clients read: the API's JSON (`{"kind":"PayloadTooLarge"}`), an HTML error page for the pages the Worker renders (settings, admin, sign-in), and for the inbox an empty `413` logged as `InboxRefused` reason `PayloadTooLarge`.
+
+Documents this server fetches (ActivityPub objects and actors, WebFinger answers) are read up to 1 MB, Mastodon's `body_with_limit` default; a larger one is refused as unusable. There is nothing to configure.
+
+## Security headers
+
+<!-- derived-from #web-ui -->
+
+`app/middleware/00.security-headers.ts` (`server/security-headers.ts`) adds these headers, modelled on Mastodon's (`config/initializers/content_security_policy.rb` in v4.7.5). Every answer gets `Referrer-Policy` and `X-Content-Type-Options`; the policy and `X-Frame-Options` go on HTML pages only. A script must not carry a page's policy: a worker runs under its script's policy, and the web app's service worker (`/sw.js`) fetches remote avatars and media, which this `connect-src` would refuse. Mastodon serves its static files without a policy too.
+
+- `Content-Security-Policy`: `default-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `form-action 'self'`, `script-src 'self' 'wasm-unsafe-eval'` (the alt-text OCR runs WebAssembly), `style-src 'self'` plus, on the web app shell, a per-response nonce (rendered as `<meta name="style-nonce">`, which the web app gives to the styles it inserts) and the hashes of the four `style` attributes of the embed code, with `'unsafe-hashes'`, because the "Get embed code" preview writes that code into a frame that inherits the shell's policy, `worker-src` and `child-src 'self' blob:`, `connect-src 'self' data: blob:` with the media origin and the streaming socket's `wss://` origin, `img-src` and `media-src 'self' data: blob: https:` with the media origin, `frame-src 'self' https:`, `font-src` and `manifest-src 'self'`. Remote images, media and emoji come from any `https:` host because this server links them where their server put them (Mastodon caches them on its own media host). A server answering on plain `http:` (local development, the e2e suites) also allows `http:` images and media. Under `pnpm dev`, Vite's HMR client and React Refresh need `'unsafe-inline'` and `'unsafe-eval'` for scripts and `'unsafe-inline'` for styles, as Mastodon allows in development.
+- `X-Frame-Options: DENY` with the `frame-ancestors 'none'` policy.
+- `Referrer-Policy: same-origin` and `X-Content-Type-Options: nosniff`.
+
+Two pages differ: a status's embed page (`/@user/:id/embed`) may be framed by any site, so it has no `frame-ancestors` and no `X-Frame-Options`; the OAuth consent page (`/oauth/authorize`) has no `form-action`, since its answer redirects to the client's `redirect_uri`, which Chrome would block. The WebSocket handshake is left as it is. The pages the Worker renders run no inline script.
+
+HSTS is not set by the Worker. Turn it on at Cloudflare's edge (zone → SSL/TLS → Edge Certificates → HTTP Strict Transport Security), which adds `Strict-Transport-Security` to every response of the zone, together with Always Use HTTPS.

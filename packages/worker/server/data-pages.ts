@@ -73,7 +73,8 @@ const stateText = (imported: CsvImport): string => {
   }
 };
 
-const REFRESH_SCRIPT = `      setTimeout(() => location.reload(), 5000);`;
+/** Reloads the page every 5 seconds while an import is queued. */
+const REFRESH_SCRIPT = "/page-refresh.js";
 
 export const importPage = (
   instanceName: string,
@@ -118,7 +119,7 @@ ${messageLine(message)}
         .join("")}
       </ul>`
       }`,
-    imports.some((imported) => imported.state === "Queued") ? REFRESH_SCRIPT : "",
+    imports.some((imported) => imported.state === "Queued") ? REFRESH_SCRIPT : undefined,
   );
 
 export const importDetailPage = (
@@ -155,5 +156,5 @@ export const importDetailPage = (
           : ""
       }`
       }`,
-    imported.state === "Queued" ? REFRESH_SCRIPT : "",
+    imported.state === "Queued" ? REFRESH_SCRIPT : undefined,
   );

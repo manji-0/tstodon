@@ -2,7 +2,9 @@ import { err, ok, type Result } from "neverthrow";
 import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
+import { MAX_FETCHED_BYTES, readBodyJson } from "./body-limit";
 import { signFetchRequest } from "./http-signature";
+import { hostsExemptFromAddressChecks } from "./federation-allow-hosts";
 import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
 
 export type FederatedFetchError =
@@ -126,7 +128,7 @@ export const isFederatedHostRefused = (
     return true;
   }
   return (
-    isBlockedFederatedHost(hostname, instanceDomain, allowHosts) ||
+    isBlockedFederatedHost(hostname, instanceDomain, hostsExemptFromAddressChecks(allowHosts)) ||
     (options.blockedHosts?.has(Hostname.ofAuthority(hostname)) ?? false)
   );
 };
@@ -150,7 +152,7 @@ export const checkFederatedHost = async (
     host === undefined ||
     host.startsWith("[") ||
     /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
-    namedIn(options.allowHosts ?? new Set(), host)
+    namedIn(hostsExemptFromAddressChecks(options.allowHosts), host)
   ) {
     return "Admitted";
   }
@@ -278,9 +280,11 @@ export const fetchActivityJson = async (
         return err({ kind: "VerificationUnavailable" });
       }
       if (!response.ok) {
+        await response.body?.cancel();
         return err({ kind: "InvalidSignature" });
       }
-      return ok(await response.json());
+      const document = await readBodyJson(response, MAX_FETCHED_BYTES);
+      return document.isOk() ? ok(document.value) : err({ kind: "InvalidSignature" });
     }
   } catch {
     return err({ kind: "VerificationUnavailable" });
@@ -312,7 +316,8 @@ const followWebfingerRedirects = async (
   for (let redirects = 0; ; redirects += 1) {
     if (
       fetched.has(url.href) ||
-      url.protocol !== `${webfingerScheme(url.hostname, options.allowHosts)}:`
+      url.protocol !==
+        `${webfingerScheme(url.hostname, hostsExemptFromAddressChecks(options.allowHosts))}:`
     ) {
       return err({ kind: "InvalidSignature" });
     }
@@ -368,7 +373,7 @@ export const fetchWebfinger = async (
   const resource = `acct:${user}@${domain}`;
   const host = domain.replace(/:\d+$/, "");
   const url = parseFederatedUrl(
-    `${webfingerScheme(host, options.allowHosts)}://${domain}/.well-known/webfinger?resource=${encodeURIComponent(resource)}`,
+    `${webfingerScheme(host, hostsExemptFromAddressChecks(options.allowHosts))}://${domain}/.well-known/webfinger?resource=${encodeURIComponent(resource)}`,
   );
   if (url.isErr()) {
     return err(url.error);
@@ -388,7 +393,11 @@ export const fetchWebfinger = async (
     if (!response.ok) {
       return err({ kind: "InvalidSignature" });
     }
-    const parsed = parseWebfinger(await response.json());
+    const document = await readBodyJson(response, MAX_FETCHED_BYTES);
+    if (document.isErr()) {
+      return err({ kind: "InvalidSignature" });
+    }
+    const parsed = parseWebfinger(document.value);
     if (parsed.isErr()) {
       return err({ kind: "InvalidSignature" });
     }

@@ -32,6 +32,12 @@ import { subscriptionDocument } from "./routes/push";
 import { WEB_APP_ID, webAccessTokenId } from "./web-token";
 import { findEmbeddableStatusOf, oembedDiscoveryUrl } from "./status-embed";
 import { type WebEntry, type WebManifest, webManifest } from "./web-manifest";
+import {
+  contentSecurityPolicy,
+  embedCodeStyleSources,
+  newStyleNonce,
+  policyOptions,
+} from "./security-headers";
 
 export type { WebManifest } from "./web-manifest";
 
@@ -320,6 +326,8 @@ export const webAppPage = (
     appearance: Appearance;
     /** A status page's oEmbed endpoint (`<link rel="alternate" type="application/json+oembed">`). */
     oembedUrl?: string | undefined;
+    /** The response's style nonce, which the web app reads for the `<style>` it inserts. */
+    styleNonce: string;
   }>,
 ): string => `<!doctype html>
 <html lang="${attribute(options.locale)}" data-contrast="${options.appearance.contrast}" data-color-scheme="${options.appearance.colorScheme}"${options.appearance.colorScheme === "auto" ? ' data-system-theme="true"' : ""}>
@@ -330,6 +338,7 @@ export const webAppPage = (
     <script${manifest.dev ? ' type="module"' : ""} src="${attribute(manifest.themeSelection)}"></script>
     ${themeColorMetas(options.appearance.colorScheme)}
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="style-nonce" content="${attribute(options.styleNonce)}">
     <title>${attribute(options.title)}</title>
     ${options.oembedUrl ? `<link rel="alternate" type="application/json+oembed" href="${attribute(options.oembedUrl)}">` : ""}
     <link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">
@@ -396,6 +405,10 @@ export const statusEmbedPage = async (
   // Mastodon's `StatusesController#embed`: cacheable, and framed by any site.
   c.header("Cache-Control", "public, max-age=180");
   c.header("Vary", "Accept-Language");
+  c.header(
+    "Content-Security-Policy",
+    contentSecurityPolicy({ ...policyOptions(c), denyFraming: false }),
+  );
   return c.html(
     embedPage(webManifest, {
       locale,
@@ -460,6 +473,15 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   ]);
   c.header("Cache-Control", "private, no-store");
   c.header("Vary", "Cookie, Accept-Language, Cf-Access-Jwt-Assertion");
+  const styleNonce = newStyleNonce();
+  c.header(
+    "Content-Security-Policy",
+    contentSecurityPolicy({
+      ...policyOptions(c),
+      styleNonce,
+      styleAttributeHashes: await embedCodeStyleSources(),
+    }),
+  );
   return c.html(
     webAppPage(manifest, {
       locale,
@@ -470,6 +492,7 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
       state,
       appearance,
       oembedUrl,
+      styleNonce,
     }),
   );
 };

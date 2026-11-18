@@ -4,7 +4,7 @@ import {
   checkSignatureStrength,
   parseSignatureHeader,
   SIGNATURE_CLOCK_SKEW_MS,
-  SIGNATURE_MAX_AGE_MS,
+  SIGNATURE_VALIDITY_MS,
   sha256DigestHeader,
   verifyInboxRequest,
   verifySignedFetch,
@@ -138,7 +138,8 @@ describe("signature verification", () => {
   });
 });
 
-const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 
 /** A delivery signed at `date` over `headers`, as a remote server sends it. */
 const delivery = async (
@@ -188,13 +189,13 @@ const signedGet = async (
 };
 
 describe("signature freshness and strength (SIG-1)", () => {
-  it("uses Mastodon's 12 hour window and 1 hour clock skew", () => {
-    expect(SIGNATURE_MAX_AGE_MS).toBe(12 * HOUR_MS);
+  it("uses Mastodon's 5 minute validity and 1 hour clock skew", () => {
+    expect(SIGNATURE_VALIDITY_MS).toBe(5 * MINUTE_MS);
     expect(SIGNATURE_CLOCK_SKEW_MS).toBe(HOUR_MS);
   });
 
   it("accepts a fresh signature, and one a little old or a little ahead", async () => {
-    for (const offset of [0, -11 * HOUR_MS, 30 * 60 * 1000]) {
+    for (const offset of [0, -64 * MINUTE_MS, 59 * MINUTE_MS]) {
       const fresh = await delivery(new Date(Date.now() + offset));
       expect(checkSignatureStrength(fresh.request, fresh.parsed)).toBeUndefined();
       expect(await verifyInboxRequest(fresh.request, fresh.publicKeyPem, fresh.body)).toBe(true);
@@ -203,25 +204,25 @@ describe("signature freshness and strength (SIG-1)", () => {
     }
   });
 
-  it("refuses a delivery and a signed GET signed 13 hours ago", async () => {
-    const stale = await delivery(new Date(Date.now() - 13 * HOUR_MS));
+  it("refuses a delivery and a signed GET signed 66 minutes ago", async () => {
+    const stale = await delivery(new Date(Date.now() - 66 * MINUTE_MS));
     expect(checkSignatureStrength(stale.request, stale.parsed)).toEqual({
       kind: "SignatureExpired",
       detail: "past",
     });
     expect(await verifyInboxRequest(stale.request, stale.publicKeyPem, stale.body)).toBe(false);
-    const get = await signedGet(new Date(Date.now() - 13 * HOUR_MS));
+    const get = await signedGet(new Date(Date.now() - 66 * MINUTE_MS));
     expect(await verifySignedFetch(get.request, get.parsed, get.publicKeyPem)).toBe(false);
   });
 
   it("refuses a Date more than an hour ahead", async () => {
-    const ahead = await delivery(new Date(Date.now() + 2 * HOUR_MS));
+    const ahead = await delivery(new Date(Date.now() + 61 * MINUTE_MS));
     expect(checkSignatureStrength(ahead.request, ahead.parsed)).toEqual({
       kind: "SignatureExpired",
       detail: "future",
     });
     expect(await verifyInboxRequest(ahead.request, ahead.publicKeyPem, ahead.body)).toBe(false);
-    const get = await signedGet(new Date(Date.now() + 2 * HOUR_MS));
+    const get = await signedGet(new Date(Date.now() + 61 * MINUTE_MS));
     expect(await verifySignedFetch(get.request, get.parsed, get.publicKeyPem)).toBe(false);
   });
 

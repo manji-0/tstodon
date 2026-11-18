@@ -3,7 +3,7 @@ import { schemaResult } from "@tstodon/core";
 import { type Result, err } from "neverthrow";
 import { z } from "zod";
 import { isTruthy } from "./form-values";
-import { nestFormKeys, readUnknownBody } from "./http";
+import { nestFormKeys, readUnknownBody, readUnknownBodyOrEmpty } from "./http";
 
 /**
  * Request params read with the shared schemas in `@tstodon/api` (`params/`).
@@ -186,20 +186,11 @@ export const readParams = async <T>(
   schema: z.ZodType<T>,
 ): Promise<Result<T, ParamsError>> => parseBodyParams(schema, await readUnknownBody(c));
 
-/** The body, or `{}` when there is none (or it does not decode). */
-const optionalBody = async (c: Context<{ Bindings: Env }>): Promise<unknown> => {
-  try {
-    return await readUnknownBody(c);
-  } catch {
-    return {};
-  }
-};
-
 /** {@link readParams} for endpoints that are also valid without a body. */
 export const readOptionalParams = async <T>(
   c: Context<{ Bindings: Env }>,
   schema: z.ZodType<T>,
-): Promise<Result<T, ParamsError>> => parseBodyParams(schema, await optionalBody(c));
+): Promise<Result<T, ParamsError>> => parseBodyParams(schema, await readUnknownBodyOrEmpty(c));
 
 /**
  * Query and body together, as Rails' `params` merges them: a field in the
@@ -210,7 +201,7 @@ export const readMergedParams = async <T>(
   c: Context<{ Bindings: Env }>,
   schema: z.ZodType<T>,
 ): Promise<Result<T, ParamsError>> => {
-  const body = await optionalBody(c);
+  const body = await readUnknownBodyOrEmpty(c);
   if (!isPlainRecord(body)) {
     return err(validationError());
   }
