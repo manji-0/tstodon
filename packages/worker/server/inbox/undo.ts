@@ -6,7 +6,7 @@ import { NestedActivityObjectSchema } from "../activitypub-wire";
 import { unfollowAccount } from "../follow-store";
 import { startHomeFanOut } from "../home-fan-out";
 import { deleteRemoteNotifications } from "../notification-store";
-import { deleteRemoteFollow } from "../remote-actor-store";
+import { deleteRemoteFollow, undoRemoteFollow } from "../remote-actor-store";
 import { deleteRemoteBlock } from "../remote-block-store";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
 import { deleteRemoteAnnounce, deleteRemoteFavourite } from "../remote-interaction-store";
@@ -22,6 +22,8 @@ const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
 type RemoteUndoTargets = Readonly<{
   /** Names the local account whose follow by the signer ends. */
   followedUri: string;
+  /** The id of the `Follow` an embedded `Follow` names. */
+  followActivityId: string | undefined;
   favouritedStatusId: string | undefined;
   boostedStatusId: string | undefined;
   /** Keys the signer's boost row, whether the Undo embeds the Announce or names it. */
@@ -43,6 +45,7 @@ const remoteUndoTargets = (
       : undefined;
   return {
     followedUri: undone?.type === "Follow" ? undone.objectUri : undo.object,
+    followActivityId: undone?.type === "Follow" ? objectUriOf(object) : undefined,
     favouritedStatusId: undone?.type === "Like" ? statusId : undefined,
     boostedStatusId: undone?.type === "Announce" ? statusId : undefined,
     announceUri: objectUriOf(object),
@@ -70,7 +73,11 @@ export const receiveRemoteUndo: InboxHandler<RemoteDelivery<"Undo">> = async ({
   }
   const followed = await localAccountAt(env, identity, targets.followedUri);
   if (followed) {
-    await deleteRemoteFollow(env.DB, actorUri, followed.id);
+    // Mastodon delivers a Follow and its Undo at once, and this Undo can be
+    // handled first; remembering it drops that Follow (`undoRemoteFollow`).
+    await (targets.followActivityId
+      ? undoRemoteFollow(env.DB, actorUri, followed.id, targets.followActivityId)
+      : deleteRemoteFollow(env.DB, actorUri, followed.id));
   }
   if (targets.favouritedStatusId) {
     const statusId = targets.favouritedStatusId;

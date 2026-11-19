@@ -9,5 +9,13 @@ export type InboxFollow = Readonly<{
   followActivityId: string | null;
 }>;
 
+/**
+ * Whether a `Follow` was recorded. `UndoneFirst`: its `Undo` was handled
+ * first, so it is dropped, as Mastodon drops it (`delete_arrived_first?`).
+ */
+export type InboxFollowRecord = "Recorded" | "UndoneFirst";
+
 /** Record the follow: queued for a locked account, fulfilled otherwise. */
-export type RecordInboxFollow = (follow: InboxFollow) => Promise<Result<void, RepositoryError>>;
+export type RecordInboxFollow = (
+  follow: InboxFollow,
+) => Promise<Result<InboxFollowRecord, RepositoryError>>;

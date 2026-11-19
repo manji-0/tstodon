@@ -3,9 +3,11 @@ import {
   FollowRequest,
   type Hostname,
   type InboxFollow,
+  type InboxFollowRecord,
   IsoInstant,
   RemoteActor,
   type RemovedBoost,
+  UndoneBeforeArrival,
 } from "@tstodon/domain";
 import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
@@ -56,6 +58,7 @@ import {
   purgeRemoteActorRequestAcceptances as purgeRemoteActorRequestAcceptancesSql,
   purgeRemoteActorRequestGroups as purgeRemoteActorRequestGroupsSql,
   rejectRemoteFollowRequest as rejectRemoteFollowRequestSql,
+  rememberUndoneFollow as rememberUndoneFollowSql,
   searchRemoteActors as searchRemoteActorsSql,
   setRemoteActorMovedTo as setRemoteActorMovedToSql,
   upsertRemoteActor as upsertRemoteActorSql,
@@ -452,13 +455,14 @@ export const releaseRemoteOutboxBackfill = async (
 export const upsertRemoteFollow = async (
   db: D1Database,
   follow: InboxFollow,
-): Promise<Result<void, RepositoryError>> => {
+  nowMs: number = Date.now(),
+): Promise<Result<InboxFollowRecord, RepositoryError>> => {
   const state = FollowRequest.initial("RemoteFollower", follow.targetLocked);
   if (state.kind !== "RemoteFollower") {
     return err(toRepositoryError("expected remote follower"));
   }
-  return runD1(async () => {
-    await runTyped(
+  return runD1(async (): Promise<InboxFollowRecord> => {
+    const recorded = await queryTyped(
       db,
       upsertRemoteFollowSql(
         newEntityId(),
@@ -467,9 +471,12 @@ export const upsertRemoteFollow = async (
         state.remoteRequest.kind,
         state.follow.kind,
         follow.followActivityId,
-        nowIso(),
+        new Date(nowMs).toISOString(),
+        UndoneBeforeArrival.forgottenBefore(nowMs),
       ),
+      IdRow,
     );
+    return recorded.length > 0 ? "Recorded" : "UndoneFirst";
   });
 };
 
@@ -575,6 +582,26 @@ export const deleteRemoteFollow = async (
   runD1(async () => {
     await runTyped(db, deleteRemoteFollowSql(remoteActorUri, targetAccountId));
   });
+
+/**
+ * End `remoteActorUri`'s follow of `targetAccountId` for its `Undo` of the
+ * `Follow` `followActivityId`. When there is no follow to end, the `Undo` is
+ * remembered, so that `Follow` is dropped if it comes after
+ * (`upsertRemoteFollow`). One batch, so a `Follow` recorded at the same time
+ * is either ended or dropped.
+ */
+export const undoRemoteFollow = async (
+  db: D1Database,
+  remoteActorUri: string,
+  targetAccountId: string,
+  followActivityId: string,
+): Promise<Result<void, RepositoryError>> =>
+  (
+    await runTypedBatch(db, [
+      rememberUndoneFollowSql(remoteActorUri, followActivityId, targetAccountId, nowIso()),
+      deleteRemoteFollowSql(remoteActorUri, targetAccountId),
+    ])
+  ).map(() => undefined);
 
 export const listAcceptedRemoteFollowerInboxes = async (
   db: D1Database,

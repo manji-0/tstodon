@@ -225,6 +225,42 @@ describe("an inbox activity that failed after its row was stored", () => {
     expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
   });
 
+  it("finishes a Create of a note edited before it arrived once when the same Create is redelivered", async () => {
+    const mentioned = await localAccount("retry-create-edited@example.com");
+    const elsewhere = "https://elsewhere.example/users/retry-create-edited";
+    const author = await remoteActor("retry-create-edited");
+    const object = note(author, "retry-create-edited", {
+      content: "<p>hi @you @them</p>",
+      updated: "2026-10-21T00:00:00.000Z",
+      tag: [
+        { type: "Mention", href: mentioned.actorUrl },
+        { type: "Mention", href: elsewhere },
+      ],
+      cc: [mentioned.actorUrl],
+    });
+    const activity = { id: `${object.id}/create`, type: "Create", object };
+
+    const allow = await refuseInsert(
+      "inbox_retry_create_edited",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    let id = "";
+    try {
+      expect(await author.send(activity)).toBe(500);
+      id = (await storedId(object.id)) ?? "";
+      expect(await owedKinds(id)).toEqual(["Created"]);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect((await status(id)).edited_at).toBe("2026-10-21T00:00:00.000Z");
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
   it("notifies a mentioned account when the Create that failed before its mention row was written is redelivered", async () => {
     const mentioned = await localAccount("inbox-retry-create-early@example.com");
     const author = await remoteActor("retry-create-early");
@@ -463,6 +499,176 @@ describe("an inbox activity that failed after its row was stored", () => {
     expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
     expect(await owedKinds(id)).toEqual([]);
     viewer.close();
+  });
+
+  /** A note this server never stored, published an hour ago: its `Update` is handled as a `Create`. */
+  const unknownNote = (author: Remote, slug: string, extra: Record<string, unknown>) =>
+    note(author, slug, {
+      published: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      ...extra,
+    });
+
+  it("finishes the mention and stream of an Update of an unknown note once when the Update that failed before its mention rows were written is redelivered", async () => {
+    const mentioned = await localAccount("retry-unknown@example.com");
+    const elsewhere = "https://elsewhere.example/users/retry-update-unknown";
+    const author = await remoteActor("retry-update-unknown");
+    const object = unknownNote(author, "retry-update-unknown", {
+      content: "<p>hi @you @them</p>",
+      tag: [
+        { type: "Mention", href: mentioned.actorUrl },
+        { type: "Mention", href: elsewhere },
+      ],
+      cc: [mentioned.actorUrl],
+    });
+    const activity = { id: `${object.id}/update`, type: "Update", object };
+    const viewer = await openStream({
+      email: "retry-unknown-viewer@example.com",
+      query: "?stream=public",
+    });
+
+    const allow = await refuseInsert(
+      "inbox_retry_update_unknown",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    let id = "";
+    try {
+      expect(await author.send(activity)).toBe(500);
+      id = (await storedId(object.id)) ?? "";
+      expect(await owedKinds(id)).toEqual(["Created"]);
+      expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
+      expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await remoteMentions(id)).toEqual([elsewhere]);
+    expect(heardStatus(await viewer.next())).toEqual({ event: "update", id });
+    expect(await viewer.heardNothing(PUBLIC_STREAM)).toBe(true);
+    expect(await owedKinds(id)).toEqual([]);
+    viewer.close();
+  });
+
+  it("notifies a mention once when an Update of an unknown note that failed after every late step is redelivered", async () => {
+    const mentioned = await localAccount("retry-unknown-clear@example.com");
+    const author = await remoteActor("retry-update-unknown-clear");
+    const object = unknownNote(author, "retry-update-unknown-clear", {
+      content: "<p>hi @you</p>",
+      tag: [{ type: "Mention", href: mentioned.actorUrl }],
+      cc: [mentioned.actorUrl],
+    });
+    const activity = { id: `${object.id}/update`, type: "Update", object };
+
+    await env.DB.prepare(
+      `CREATE TRIGGER inbox_retry_update_unknown_clear BEFORE DELETE ON remote_status_owed
+       WHEN OLD.status_id IN (SELECT id FROM remote_statuses WHERE object_uri = '${object.id}')
+       BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+    ).run();
+    let id = "";
+    try {
+      expect(await author.send(activity)).toBe(500);
+      id = (await storedId(object.id)) ?? "";
+      expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+      expect(await owedKinds(id)).toEqual(["Created"]);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER inbox_retry_update_unknown_clear").run();
+    }
+
+    expect(await author.send(activity)).toBe(202);
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
+  it("does not run the original's late steps when its Create arrives after an Update stored a newer version that still owes them", async () => {
+    const dropped = await localAccount("retry-unknown-dropped@example.com");
+    const elsewhere = "https://elsewhere.example/users/retry-update-unknown-v1";
+    const author = await remoteActor("retry-update-unknown-v1");
+    const published = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const v1 = note(author, "retry-update-unknown-v1", {
+      published,
+      content: "<p>hi @you</p>",
+      tag: [{ type: "Mention", href: dropped.actorUrl }],
+      cc: [dropped.actorUrl],
+    });
+    const v2 = note(author, "retry-update-unknown-v1", {
+      published,
+      updated: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      content: "<p>hi @them</p>",
+      tag: [{ type: "Mention", href: elsewhere }],
+    });
+    const update = { id: `${v2.id}/update`, type: "Update", object: v2 };
+
+    const allow = await refuseInsert(
+      "inbox_retry_update_unknown_v1",
+      "remote_status_remote_mentions",
+      "actor_uri",
+      elsewhere,
+    );
+    let id = "";
+    try {
+      expect(await author.send(update)).toBe(500);
+      id = (await storedId(v2.id)) ?? "";
+      expect(await owedKinds(id)).toEqual(["Created"]);
+    } finally {
+      await allow();
+    }
+
+    expect(await author.send({ id: `${v1.id}/create`, type: "Create", object: v1 })).toBe(202);
+    expect(await notifiedOf(dropped.headers, "mention", id)).toBe(0);
+    expect((await status(id)).content).toBe("<p>hi @them</p>");
+    expect(await owedKinds(id)).toEqual(["Created"]);
+
+    expect(await author.send(update)).toBe(202);
+    expect(await remoteMentions(id)).toEqual([elsewhere]);
+    expect(await notifiedOf(dropped.headers, "mention", id)).toBe(0);
+    expect(await owedKinds(id)).toEqual([]);
+  });
+
+  it("stores the vote counts of a Question's count-only Update that finishes the late steps its first Update owed", async () => {
+    const author = await remoteActor("retry-update-unknown-poll");
+    const options = (cats: number, dogs: number) =>
+      [
+        ["cats", cats],
+        ["dogs", dogs],
+      ].map(([name, count]) => ({
+        type: "Note",
+        name,
+        replies: { type: "Collection", totalItems: count },
+      }));
+    const question = {
+      ...unknownNote(author, "retry-update-unknown-poll", { content: "<p>Which one?</p>" }),
+      type: "Question",
+      endTime: "2099-01-01T00:00:00Z",
+      oneOf: options(3, 1),
+      votersCount: 4,
+    };
+    const first = { id: `${question.id}/update`, type: "Update", object: question };
+
+    await env.DB.prepare(
+      `CREATE TRIGGER inbox_retry_update_unknown_poll BEFORE DELETE ON remote_status_owed
+       WHEN OLD.status_id IN (SELECT id FROM remote_statuses WHERE object_uri = '${question.id}')
+       BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+    ).run();
+    let id = "";
+    try {
+      expect(await author.send(first)).toBe(500);
+      id = (await storedId(question.id)) ?? "";
+      expect(await owedKinds(id)).toEqual(["Created"]);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER inbox_retry_update_unknown_poll").run();
+    }
+
+    const counted = { ...question, oneOf: options(5, 2), votersCount: 7 };
+    expect(
+      await author.send({ id: `${question.id}/update-counts`, type: "Update", object: counted }),
+    ).toBe(202);
+    const shown = await status(id);
+    expect(shown.poll?.votes_count).toBe(7);
+    expect(shown.poll?.options.map((option) => option.votes_count)).toEqual([5, 2]);
+    expect(await owedKinds(id)).toEqual([]);
   });
 });
 

@@ -1,4 +1,5 @@
 import {
+  Hostname,
   IsoInstant,
   type InstanceIdentity,
   type RemoteActor,
@@ -21,7 +22,12 @@ import {
   noteHashtags,
   parseNoteDocument,
 } from "./remote-note-document";
-import { finishRemoteNote, newlyMentionedAccountIds } from "./remote-status-persist";
+import { applyRemoteCreate } from "./inbox/create";
+import {
+  finishRemoteNote,
+  newlyMentionedAccountIds,
+  persistRemoteObject,
+} from "./remote-status-persist";
 import { claimOwed, listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
 
@@ -30,6 +36,29 @@ const UpdateObjectSchema = z
   .passthrough();
 
 const parseUpdateObject = schemaResult(UpdateObjectSchema);
+
+type UpdateObject = z.infer<typeof UpdateObjectSchema>;
+
+/**
+ * How long ago a note this server never stored may have been published for
+ * its `Update` to be applied, as Mastodon's `Update::OBJECT_AGE_THRESHOLD`.
+ */
+const UNKNOWN_NOTE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the note `raw` was published longer ago than
+ * {@link UNKNOWN_NOTE_MAX_AGE_MS}, as Mastodon's `object_too_old?`: it reads
+ * `published` only, not `updated`, and a document whose `published` does not
+ * read as an instant is not too old.
+ */
+const publishedTooLongAgo = (raw: unknown, now: number): boolean => {
+  const note = parseNoteDocument(raw);
+  if (note.isErr()) {
+    return false;
+  }
+  const published = IsoInstant.parseRemote(note.value.published);
+  return published.isOk() && Date.parse(published.value) < now - UNKNOWN_NOTE_MAX_AGE_MS;
+};
 
 const ACTOR_TYPES: ReadonlySet<string> = new Set([
   "Person",
@@ -41,7 +70,7 @@ const ACTOR_TYPES: ReadonlySet<string> = new Set([
 
 /** What an inbox `Update` carries, as far as this server acts on it. */
 export type UpdateTarget =
-  | Readonly<{ kind: "NoteUpdate"; objectUri: string; raw: unknown }>
+  | Readonly<{ kind: "NoteUpdate"; objectUri: string; raw: UpdateObject }>
   | Readonly<{ kind: "ActorUpdate"; raw: unknown }>
   | Readonly<{ kind: "Unsupported" }>;
 
@@ -51,7 +80,7 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
     return { kind: "Unsupported" };
   }
   if (object.value.type === "Note" || object.value.type === "Question") {
-    return { kind: "NoteUpdate", objectUri: object.value.id, raw };
+    return { kind: "NoteUpdate", objectUri: object.value.id, raw: object.value };
   }
   if (ACTOR_TYPES.has(object.value.type)) {
     return { kind: "ActorUpdate", raw };
@@ -60,9 +89,12 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
 };
 
 /**
- * Apply an edit to a note that is already cached. Like Mastodon, an Update
- * for a status this server never stored is ignored, and so is one for a note
- * the signer did not write.
+ * Apply an `Update` of a note, as Mastodon's `Update#update_status`. A note
+ * on another host than the signer's is ignored, and so is one cached under
+ * another author. A note this server never stored is handled as its `Create`
+ * (the two can arrive out of order), unless it was published more than a day
+ * ago. Mastodon also ignores one from a suspended author; here the inbox
+ * refuses every activity of a suspended actor before it gets this far.
  */
 const applyNoteUpdate = async (
   env: Env,
@@ -71,6 +103,9 @@ const applyNoteUpdate = async (
   target: Extract<UpdateTarget, { kind: "NoteUpdate" }>,
   options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
+  if (Hostname.ofUri(target.objectUri) !== Hostname.ofUri(signer.actorUri)) {
+    return ok(undefined);
+  }
   const cached = await findDeliveredRemoteStatus(env.DB, target.objectUri);
   if (cached.isErr()) {
     if (cached.error.kind !== "StoredRowInvalid") {
@@ -82,7 +117,15 @@ const applyNoteUpdate = async (
     });
     return settled.map(() => undefined);
   }
-  if (!cached.value || cached.value.actorUri !== signer.actorUri) {
+  if (!cached.value) {
+    return publishedTooLongAgo(target.raw, Date.now())
+      ? ok(undefined)
+      : applyRemoteCreate(env, identity, signer, target.raw, options, {
+          objectUri: target.objectUri,
+          row: undefined,
+        });
+  }
+  if (cached.value.actorUri !== signer.actorUri) {
     return ok(undefined);
   }
   const parsed = noteFromUnknown(target.raw, signer);
@@ -150,6 +193,22 @@ const applyNoteUpdate = async (
   }
   if (stored.value === undefined) {
     return ok(undefined);
+  }
+  // A note stored from a `Create`, or from an `Update` handled as one, whose
+  // late steps failed left its marker. A delivery that edits nothing, with no
+  // edit pending, finishes them as a redelivered `Create` does, once the
+  // counts it carries are stored; `resumeCreated` runs them only from the
+  // version the row holds.
+  if (!edited && pending === undefined && owed.value.some((entry) => entry.kind === "Created")) {
+    const finished = await persistRemoteObject(
+      env,
+      identity,
+      signer,
+      target.raw,
+      { ...options, delivery: "Create" },
+      { objectUri: target.objectUri, row: stored.value },
+    );
+    return finished.map(() => undefined);
   }
   // A pending edit is finished by one delivery at a time. When another holds
   // it, this `Update` runs the steps of its own document only and is done:

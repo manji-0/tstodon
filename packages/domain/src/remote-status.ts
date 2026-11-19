@@ -51,7 +51,10 @@ const RemoteNoteSchema = z.object({
     z.object({ kind: z.literal("Present"), value: z.string().min(1) }),
   ]),
   publishedAt: IsoInstant.schema,
-  /** When the author last edited the note, from the `Update` that carried the edit. */
+  /**
+   * When the author last edited the note: from the `Update` that carried the
+   * edit, or the `updated` of the document it was first stored from.
+   */
   editedAt: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("Never") }),
     z.object({ kind: z.literal("Edited"), at: IsoInstant.schema }),

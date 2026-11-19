@@ -12,9 +12,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param followKind
  * @param followActivityId
  * @param createdAt
+ * @param undoneAfter
  */
 export const upsertRemoteFollow = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_follows (\nid, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, follow_activity_id, created_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7)\nON CONFLICT(remote_actor_uri, target_account_id) DO UPDATE SET\nremote_request_kind = excluded.remote_request_kind,\nfollow_kind = excluded.follow_kind,\nfollow_activity_id = excluded.follow_activity_id",
+  "INSERT INTO remote_follows (\nid, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, follow_activity_id, created_at\n)\nSELECT $1, $2, $3, $4, $5, $6, $7\nWHERE NOT EXISTS (\nSELECT 1 FROM undone_before_arrival\nWHERE actor_uri = $2 AND activity_uri = $6 AND created_at > $8\n)\nON CONFLICT(remote_actor_uri, target_account_id) DO UPDATE SET\nremote_request_kind = excluded.remote_request_kind,\nfollow_kind = excluded.follow_kind,\nfollow_activity_id = excluded.follow_activity_id\nRETURNING id",
 ) as (
   id: string,
   remoteActorUri: string,
@@ -23,6 +24,7 @@ export const upsertRemoteFollow = $runtime.makeTypedQueryFactory(
   followKind: string,
   followActivityId: string | null,
   createdAt: string,
+  undoneAfter: string,
 ) => $runtime.TypedSql<upsertRemoteFollow.Parameters, upsertRemoteFollow.Result>;
 
 export namespace upsertRemoteFollow {
@@ -34,6 +36,9 @@ export namespace upsertRemoteFollow {
     followKind: string,
     followActivityId: string | null,
     createdAt: string,
+    undoneAfter: string,
   ];
-  export type Result = {};
+  export type Result = {
+    id: string | null;
+  };
 }

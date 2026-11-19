@@ -1,4 +1,4 @@
-import type { InboxFollow, RepositoryError } from "@tstodon/domain";
+import type { InboxFollow, InboxFollowRecord, RepositoryError } from "@tstodon/domain";
 import { err, ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
 import { testLocalAccount } from "../test/domain-fixture";
@@ -10,7 +10,7 @@ const failure = { kind: "RepositoryError", message: "down" } as const satisfies 
 const unlocked = testLocalAccount("100", "alice");
 const locked = { ...unlocked, locked: true };
 
-const recording = (already: boolean) => {
+const recording = (already: boolean, record: InboxFollowRecord = "Recorded") => {
   const recorded: InboxFollow[] = [];
   return {
     recorded,
@@ -18,7 +18,7 @@ const recording = (already: boolean) => {
       hasRemoteFollow: async () => ok(already),
       recordInboxFollow: async (follow: InboxFollow) => {
         recorded.push(follow);
-        return ok(undefined);
+        return ok(record);
       },
     },
   };
@@ -45,6 +45,12 @@ describe("recordInboxFollow", () => {
     const store = recording(true);
     const outcome = await recordInboxFollow(store.contracts, unlocked, actorUri, followId);
     expect(outcome).toEqual({ notify: undefined, sendAccept: true });
+  });
+
+  it("neither notifies nor accepts a Follow whose Undo was handled first", async () => {
+    const store = recording(false, "UndoneFirst");
+    const outcome = await recordInboxFollow(store.contracts, unlocked, actorUri, followId);
+    expect(outcome).toEqual({ notify: undefined, sendAccept: false });
   });
 
   it("does not notify when the follow could not be recorded", async () => {

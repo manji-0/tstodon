@@ -179,6 +179,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 - When Mastodon stores a note it fetches up to five replies of the same host from the note's embedded `replies` page (`FetchRepliesService`). It fetches the whole reply tree only for a note older than five minutes (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`), when a signed-in user reads its context (`FetchAllRepliesWorker`), and then not again for fifteen minutes. That fetch follows the `replies` of every reply it finds, on any host.
 - The id of an `Undo(Follow)` is `<actor>#follows/<n>/undo`. `n` is the follow request's id while the follow is pending, and the follow's id once it is accepted. Those are two sequences, so two different `Undo`s of one actor can carry one id.
 - Mastodon answers an inbox POST with 202 and handles the activity later, in Sidekiq, several activities at once. An `Undo(Follow)` handled before the `Follow` is remembered by the `Follow`'s id for six hours, and that `Follow` is then dropped (`delete_arrived_first?`). An `Undo` handled while the `Follow` is being handled is remembered too, but the `Follow` is already past that check: Mastodon keeps the follow and sends an `Accept`. Mastodon ignores an `Accept` of a follow it does not hold. tstodon answers one with the `Undo` again.
+- Mastodon sends an account's `Follow` and its `Undo` as two `DeliveryWorker` jobs, which run at once. tstodon can handle the `Undo` first, or both at the same time. It remembers an `Undo(Follow)` that ended no follow by the `Follow`'s id for six hours and drops that `Follow` (`undone_before_arrival`). The `Undo` and the `Follow` each check and write in one D1 statement or batch, so tstodon has no window where both are applied.
 - Mastodon does not look up its own `/ap/users/<id>` actor URIs in search.
 - Mastodon allows a user 1500 API requests per five minutes. A second sweep right after the first reaches that as mona. `sweep.ts` waits for the window and goes on.
 - Mastodon dates an edit to the second (`updated`). It applies an `Update` as an edit only when that date is after the one it holds (`ProcessStatusUpdateService`). With an equal date it takes the poll tallies and the quote policy and leaves the text. Two edits within one second are one edit to the other server, on Mastodon and on tstodon.
@@ -224,9 +225,10 @@ The areas added for INT-5 and INT-7 to INT-15 found five more, also fixed and co
 
 The quote and move areas found nothing: every step of both passes.
 
-A CI run of the `follows` area found one more, also fixed and covered:
+CI runs of the `follows` area found two more, also fixed and covered:
 
 14. A follow that was undone at once could stay on Mastodon for good. tstodon sends the `Follow` and the `Undo` as two deliveries, Mastodon handled both at once and kept the follow, and tstodon ignored the `Accept` that came next (`server/outbound-follow.test.ts`).
+15. A follow that was undone at once could stay on tstodon for good, in the other direction. Mastodon sends the `Follow` and the `Undo` as two deliveries that Sidekiq runs at once. tstodon handled the two requests at the same time, the `Undo` ended no follow, and the `Follow` recorded one after it: in the failed run the proxy saw the `Follow` 15 ms before the `Undo` and answered it 31 ms after. tstodon now remembers such an `Undo` for six hours and drops its `Follow`, as Mastodon does (`server/undo-before-follow.test.ts`).
 
 Six known gaps were closed since, each with a Worker test, and their steps are plain steps now:
 

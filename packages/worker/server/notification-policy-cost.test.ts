@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { testIdentity } from "../test/domain-fixture";
-import { meter, patchD1, resetMeter, settle } from "../test/meter";
+import { meter, meterWork, patchD1, resetMeter, settle } from "../test/meter";
 import { notificationDisposition } from "./notification-policy";
 
 // Mastodon reads whether a direct mention answers the recipient only when
@@ -29,12 +29,14 @@ const statements = async (
 ): Promise<number> => {
   await settle();
   resetMeter();
-  const disposition = await notificationDisposition(env.DB, testIdentity(), {
-    recipientId,
-    senderId,
-    kind,
-    statusId,
-  });
+  const disposition = await meterWork(() =>
+    notificationDisposition(env.DB, testIdentity(), {
+      recipientId,
+      senderId,
+      kind,
+      statusId,
+    }),
+  );
   expect(disposition.isOk()).toBe(true);
   return meter.tally.statements;
 };

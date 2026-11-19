@@ -57,7 +57,8 @@ export type InboxFollowOutcome = Readonly<{
 /**
  * Record a remote actor's `Follow` of `target`. A redelivered Follow keeps
  * its row and must not notify again; nothing is notified when the follow
- * could not be recorded.
+ * could not be recorded. A Follow whose `Undo` was handled first is dropped:
+ * no notification and no `Accept`.
  */
 export const recordInboxFollow = async (
   contracts: Readonly<{ hasRemoteFollow: HasRemoteFollow; recordInboxFollow: RecordInboxFollow }>,
@@ -72,10 +73,11 @@ export const recordInboxFollow = async (
     targetLocked: target.locked,
     followActivityId,
   });
-  const firstFollow = followed.isOk() && existing.isOk() && !existing.value;
+  const undoneFirst = followed.isOk() && followed.value === "UndoneFirst";
+  const firstFollow = followed.isOk() && !undoneFirst && existing.isOk() && !existing.value;
   return {
     notify: firstFollow ? (target.locked ? "follow_request" : "follow") : undefined,
-    sendAccept: !target.locked,
+    sendAccept: !target.locked && !undoneFirst,
   };
 };
 

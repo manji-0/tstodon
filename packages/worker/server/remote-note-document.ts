@@ -106,6 +106,10 @@ export const noteFromUnknown = (
   if (publishedAt.isErr()) {
     return err({ kind: "InvalidObject" });
   }
+  // As Mastodon's `Create#process_status_params`: a note whose `updated`
+  // differs from its `published` is stored as edited then.
+  const updatedAt = IsoInstant.parseRemote(document.value.updated ?? "").unwrapOr(undefined);
+  const editedAt = updatedAt === publishedAt.value ? undefined : updatedAt;
   const id = StatusId.parse(
     idClock === "Published" ? entityIdAt(Date.parse(publishedAt.value)) : newEntityId(),
   );
@@ -141,6 +145,7 @@ export const noteFromUnknown = (
     sensitive: isTruthy(document.value.sensitive),
     language: noteLanguage(document.value.contentMap),
     publishedAt: publishedAt.value,
+    editedAt,
     poll,
     emojis: noteEmojis(raw, [
       document.value.content,

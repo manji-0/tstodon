@@ -999,12 +999,23 @@ const storedMeanwhile = async (
 };
 
 /**
+ * Whether the note `delivered` is the version `stored` holds: both unedited,
+ * or both edited at the same instant. A `Create` of the original, or of a
+ * version an `Update` has since replaced, is not.
+ */
+const sameVersion = (delivered: RemoteStatusValue, stored: RemoteStatusValue): boolean =>
+  delivered.editedAt.kind === "Edited"
+    ? stored.editedAt.kind === "Edited" && stored.editedAt.at === delivered.editedAt.at
+    : stored.editedAt.kind !== "Edited";
+
+/**
  * Finish what the delivery that stored `status` left owed, when `actor`
  * wrote the note and delivers it again in an inbox activity. The stored row
  * is kept as it is; only the late steps run, from the document delivered
- * now. A note edited since is left alone: the `Update` wrote its mentions
- * and quote from a newer document than a `Create` carries, so the marker
- * stays until the sweep deletes it.
+ * now, and only when it is the version stored ({@link sameVersion}). A note
+ * edited since is left alone: the `Update` wrote its mentions and quote from
+ * a newer document than the one delivered, so the marker stays until the
+ * sweep deletes it.
  *
  * Only the delivery that gets the marker's lease runs the steps
  * ({@link claimOwed}). One that does not has nothing of its own left to do
@@ -1037,7 +1048,7 @@ const resumeCreated = async (
     return err(owed.error);
   }
   const marker = owed.value.find((entry) => entry.kind === "Created");
-  if (marker === undefined || status.editedAt.kind === "Edited") {
+  if (marker === undefined) {
     return ok(undefined);
   }
   let raw: unknown = object;
@@ -1048,7 +1059,8 @@ const resumeCreated = async (
     }
     raw = fetched.value;
   }
-  if (noteFromUnknown(raw, actor).isErr()) {
+  const delivered = noteFromUnknown(raw, actor);
+  if (delivered.isErr() || !sameVersion(delivered.value, status)) {
     return ok(undefined);
   }
   const held = await claimOwed(env.DB, status.id, marker);

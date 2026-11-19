@@ -814,6 +814,8 @@ export * from "./sql/pruneStatusIdempotency";
 
 export * from "./sql/pruneTerminalDeliveries";
 
+export * from "./sql/pruneUndoneBeforeArrival";
+
 export * from "./sql/pruneUnreferencedRemoteActors";
 
 export * from "./sql/purgeRemoteActorBlocks";
@@ -877,6 +879,8 @@ export * from "./sql/releaseRemoteStatusThreadBackfill";
 export * from "./sql/releaseStaleInboxClaims";
 
 export * from "./sql/releaseStatusIdempotency";
+
+export * from "./sql/rememberUndoneFollow";
 
 export * from "./sql/renameAuthPasskey";
 

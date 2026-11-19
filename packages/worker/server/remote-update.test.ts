@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -65,6 +65,184 @@ const status = async (id: string) => read(StatusSchema, await json(`/api/v1/stat
 
 const update = (author: Remote, slug: string, object: Record<string, unknown>) =>
   author.send({ id: `https://remote.example/activities/update-${slug}`, type: "Update", object });
+
+const hoursAgo = (hours: number): string =>
+  new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+const storedCount = async (objectUri: string): Promise<number> =>
+  read(
+    z.object({ n: z.number() }),
+    await env.DB.prepare("SELECT COUNT(*) AS n FROM remote_statuses WHERE object_uri = ?")
+      .bind(objectUri)
+      .first(),
+  ).n;
+
+const storedStatusId = async (objectUri: string): Promise<string> =>
+  read(
+    z.object({ id: z.string() }),
+    await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(objectUri)
+      .first(),
+  ).id;
+
+/** `email` follows `remote`, which accepts. Gives the follower's request headers. */
+const acceptedFollow = async (email: string, remote: Remote, slug: string) => {
+  const headers = await authHeaders(email);
+  const followed = await SELF.fetch(
+    `https://example.com/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}/follow`,
+    { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: "{}" },
+  );
+  expect(followed.status).toBe(200);
+  const viewer = await signedInAccount(email);
+  const row = read(
+    z.object({ follow_activity_id: z.string() }),
+    await env.DB.prepare(
+      "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",
+    )
+      .bind(viewer.id, remote.actorUri)
+      .first(),
+  );
+  expect(
+    await remote.send({
+      id: `${remote.actorUri}/accepts/${slug}`,
+      type: "Accept",
+      object: row.follow_activity_id,
+    }),
+  ).toBe(202);
+  return headers;
+};
+
+const homeIds = async (headers: Record<string, string>): Promise<string[]> =>
+  read(
+    z.array(z.object({ id: z.string() })),
+    await json("/api/v1/timelines/home", { headers }),
+  ).map((entry) => entry.id);
+
+// Mastodon's `ActivityPub::Activity::Update#update_status`: an `Update` for a
+// status it never stored is handled as a `Create`, unless the note was
+// published more than a day ago (`OBJECT_AGE_THRESHOLD`).
+describe("remote Update of a note this server never stored", () => {
+  it("stores a note published within a day as a Create would, and shows it in a follower's home", async () => {
+    const author = await remoteActor("update-unknown-fresh");
+    const headers = await acceptedFollow(
+      "update-unknown-fresh@example.com",
+      author,
+      "update-unknown-fresh",
+    );
+    const object = note(author, "unknown-fresh", "<p>late create</p>", {
+      published: hoursAgo(23),
+      updated: hoursAgo(1),
+    });
+    expect(await update(author, "unknown-fresh", object)).toBe(202);
+
+    const id = await storedStatusId(object.id);
+    expect((await status(id)).content).toBe("<p>late create</p>");
+    expect(await homeIds(headers)).toContain(id);
+  });
+
+  it("drops a note published more than a day ago, however recently it was updated", async () => {
+    const author = await remoteActor("update-unknown-old");
+    await acceptedFollow("update-unknown-old@example.com", author, "update-unknown-old");
+    const object = note(author, "unknown-old", "<p>old news</p>", {
+      published: hoursAgo(25),
+      updated: hoursAgo(1),
+    });
+    expect(await update(author, "unknown-old", object)).toBe(202);
+    expect(await storedCount(object.id)).toBe(0);
+  });
+
+  // Mastodon drops only the unknown note of a suspended author; the inbox
+  // here refuses the whole activity before `Update` runs.
+  it("refuses the Update of a suspended author with 403 and stores nothing", async () => {
+    const author = await remoteActor("update-unknown-suspended");
+    await env.DB.prepare(
+      "INSERT INTO remote_actor_moderation (actor_uri, moderation) VALUES (?, 'Suspended')",
+    )
+      .bind(author.actorUri)
+      .run();
+    const object = note(author, "unknown-suspended", "<p>suspended</p>", {
+      published: hoursAgo(1),
+    });
+    expect(await update(author, "unknown-suspended", object)).toBe(403);
+    expect(await storedCount(object.id)).toBe(0);
+  });
+
+  it("drops a note the signer did not write", async () => {
+    const author = await remoteActor("update-unknown-checks");
+    const other = await remoteActor("update-unknown-other", "elsewhere.example");
+    const forged = note(other, "unknown-forged", "<p>not the signer's</p>", {
+      published: hoursAgo(1),
+    });
+    expect(await update(author, "unknown-forged", forged)).toBe(202);
+    expect(await storedCount(forged.id)).toBe(0);
+  });
+
+  // Mastodon's `non_matching_uri_hosts?`, which `Update` checks first.
+  it("drops a note whose id is on another host than the signer's", async () => {
+    const author = await remoteActor("update-unknown-off-host");
+    const offHost = {
+      ...note(author, "unknown-off-host", "<p>another host</p>", { published: hoursAgo(1) }),
+      id: "https://elsewhere.example/notes/unknown-off-host",
+    };
+    expect(await update(author, "unknown-off-host", offHost)).toBe(202);
+    expect(await storedCount(offHost.id)).toBe(0);
+  });
+
+  it("stores the note as edited when its updated differs from its published", async () => {
+    const author = await remoteActor("update-unknown-edited");
+    const updated = hoursAgo(1);
+    const object = note(author, "unknown-edited", "<p>edited before we heard</p>", {
+      published: hoursAgo(2),
+      updated,
+    });
+    expect(await update(author, "unknown-edited", object)).toBe(202);
+    expect((await status(await storedStatusId(object.id))).edited_at).toBe(updated);
+  });
+
+  it("keeps the newer version when an older Update arrives after the one stored as a Create", async () => {
+    const author = await remoteActor("update-unknown-order");
+    const published = hoursAgo(3);
+    const v3 = note(author, "unknown-order", "<p>v3 newer</p>", {
+      published,
+      updated: hoursAgo(1),
+    });
+    const v2 = note(author, "unknown-order", "<p>v2 older</p>", {
+      published,
+      updated: hoursAgo(2),
+    });
+    expect(await update(author, "unknown-order-v3", v3)).toBe(202);
+    expect(await update(author, "unknown-order-v2", v2)).toBe(202);
+    expect((await status(await storedStatusId(v3.id))).content).toBe("<p>v3 newer</p>");
+  });
+
+  it("notifies an account the note mentions once, and a replayed Update notifies nobody again", async () => {
+    const email = "update-unknown-mention@example.com";
+    const headers = await authHeaders(email);
+    const account = read(
+      z.object({ username: z.string() }),
+      await json("/api/v1/accounts/verify_credentials", { headers }),
+    );
+    const actorUrl = `https://example.com/users/${account.username}`;
+    const author = await remoteActor("update-unknown-mentioner");
+    const object = note(author, "unknown-mention", "<p>hi @you</p>", {
+      published: hoursAgo(1),
+      tag: [{ type: "Mention", href: actorUrl }],
+      cc: [actorUrl],
+    });
+    const mentionCount = async (id: string) =>
+      read(
+        z.array(z.object({ status: z.object({ id: z.string() }) })),
+        await json("/api/v1/notifications?types[]=mention", { headers }),
+      ).filter((entry) => entry.status.id === id).length;
+
+    expect(await update(author, "unknown-mention-1", object)).toBe(202);
+    const id = await storedStatusId(object.id);
+    expect(await mentionCount(id)).toBe(1);
+
+    expect(await update(author, "unknown-mention-2", object)).toBe(202);
+    expect(await mentionCount(id)).toBe(1);
+  });
+});
 
 describe("remote Update of a note", () => {
   it("refreshes the cached note and records when it was edited", async () => {
@@ -177,16 +355,35 @@ describe("remote Update of a note", () => {
     expect(unchanged.edited_at).toBeNull();
   });
 
-  it("does not store a note it never cached", async () => {
-    const author = await remoteActor("update-unknown");
-    const object = note(author, "never-seen", "<p>surprise</p>");
-    expect(await update(author, "never-seen", object)).toBe(202);
-    const row = await env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM remote_statuses WHERE object_uri = ?",
-    )
-      .bind(object.id)
-      .first<{ n: number }>();
-    expect(row?.n).toBe(0);
+  // The `Create` path does not check the object's host (a gap of its own), so
+  // a signer can have a cached note whose id is on another host. Mastodon's
+  // `Update#update_status` ignores the `Update` of such a note
+  // (`non_matching_uri_hosts?`).
+  it("ignores an Update of a cached note whose id is on another host than the signer's", async () => {
+    const author = await remoteActor("update-cached-off-host");
+    const original = {
+      ...note(author, "cached-off-host", "<p>before</p>"),
+      id: "https://elsewhere.example/notes/cached-off-host",
+    };
+    expect(
+      await author.send({
+        id: "https://remote.example/activities/create-cached-off-host",
+        type: "Create",
+        object: original,
+      }),
+    ).toBe(202);
+    const id = await storedStatusId(original.id);
+
+    expect(
+      await update(author, "cached-off-host", {
+        ...original,
+        content: "<p>after</p>",
+        updated: "2026-10-21T00:00:00.000Z",
+      }),
+    ).toBe(202);
+    const unchanged = await status(id);
+    expect(unchanged.content).toBe("<p>before</p>");
+    expect(unchanged.edited_at).toBeNull();
   });
 
   it("notifies only accounts that the edit newly mentions", async () => {
