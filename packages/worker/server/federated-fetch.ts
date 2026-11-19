@@ -2,7 +2,8 @@ import { err, ok, type Result } from "neverthrow";
 import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
-import { MAX_FETCHED_BYTES, readBodyJson } from "./body-limit";
+import { linkHeaderAlternate, htmlAlternate } from "./activity-alternate";
+import { MAX_FETCHED_BYTES, readBodyJson, readBodyText } from "./body-limit";
 import { signFetchRequest } from "./http-signature";
 import { hostsExemptFromAddressChecks } from "./federation-allow-hosts";
 import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
@@ -191,6 +192,12 @@ export const parseFederatedUrl = (value: string): Result<URL, FederatedFetchErro
 export const ACTIVITY_JSON_ACCEPT =
   'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"';
 
+/**
+ * What a URL lookup asks for, as Mastodon's `FetchResourceService`: an
+ * ActivityPub document, or else a page that may link to one.
+ */
+const RESOURCE_ACCEPT = `${ACTIVITY_JSON_ACCEPT}, text/html;q=0.1`;
+
 /** Redirects an ActivityPub GET follows, as Mastodon's `Request` (`max_hops: 3`); same origin only. */
 const ACTIVITY_MAX_REDIRECTS = 3;
 
@@ -205,15 +212,16 @@ const activityGetHeaders = async (
   identity: InstanceIdentity,
   url: URL,
   key: FetchSigningKey | undefined,
+  accept: string = ACTIVITY_JSON_ACCEPT,
 ): Promise<Record<string, string>> => {
   const headers: Record<string, string> = {
-    Accept: ACTIVITY_JSON_ACCEPT,
+    Accept: accept,
     "User-Agent": `tstodon (${identity.publicOrigin})`,
   };
   if (key === undefined) {
     return headers;
   }
-  const signed = await signFetchRequest(url, key.privateKeyJwk, key.keyId, ACTIVITY_JSON_ACCEPT);
+  const signed = await signFetchRequest(url, key.privateKeyJwk, key.keyId, accept);
   if (signed.isErr()) {
     console.error(JSON.stringify({ kind: "FetchNotSigned", message: signed.error.message }));
     return headers;
@@ -255,18 +263,20 @@ export const answersGone = async (
 };
 
 /**
- * GET an ActivityPub document, signed by `options.fetchSigner`. Up to three
- * redirects are followed when they stay on the same origin (scheme, host and
- * port), each hop signed again for its own request target and checked
- * against the host guard and DNS first; a redirect to
- * another origin is refused, as the document's authority would change. One
- * 5 s deadline covers the chain, and a URL already fetched is not fetched again.
+ * GET an ActivityPub URL, signed by `options.fetchSigner`, and answer its
+ * successful response with the body unread. Up to three redirects are
+ * followed when they stay on the same origin (scheme, host and port), each
+ * hop signed again for its own request target and checked against the host
+ * guard and DNS first; a redirect to another origin is refused, as the
+ * document's authority would change. One 5 s deadline covers the chain and
+ * the body's read, and a URL already fetched is not fetched again.
  */
-export const fetchActivityJson = async (
+const getActivity = async (
   identity: InstanceIdentity,
   href: string,
   options: FederatedFetchOptions,
-): Promise<Result<unknown, FederatedFetchError>> => {
+  accept: string,
+): Promise<Result<Response, FederatedFetchError>> => {
   const first = parseFederatedUrl(href);
   if (first.isErr()) {
     return err(first.error);
@@ -286,7 +296,7 @@ export const fetchActivityJson = async (
       fetched.add(url.href);
       const response = await fetch(url, {
         method: "GET",
-        headers: await activityGetHeaders(identity, url, key),
+        headers: await activityGetHeaders(identity, url, key, accept),
         // Workers' fetch would follow redirects unsigned and past the host
         // guard, and rejects `redirect: "error"` outright, so each hop is
         // followed here.
@@ -316,12 +326,89 @@ export const fetchActivityJson = async (
         await response.body?.cancel();
         return err({ kind: "InvalidSignature" });
       }
-      const document = await readBodyJson(response, MAX_FETCHED_BYTES);
-      return document.isOk() ? ok(document.value) : err({ kind: "InvalidSignature" });
+      return ok(response);
     }
   } catch {
     return err({ kind: "VerificationUnavailable" });
   }
+};
+
+const readDocument = async (response: Response): Promise<Result<unknown, FederatedFetchError>> => {
+  try {
+    const document = await readBodyJson(response, MAX_FETCHED_BYTES);
+    return document.isOk() ? ok(document.value) : err({ kind: "InvalidSignature" });
+  } catch {
+    return err({ kind: "VerificationUnavailable" });
+  }
+};
+
+/** GET an ActivityPub document (see {@link getActivity}) and read it as JSON. */
+export const fetchActivityJson = async (
+  identity: InstanceIdentity,
+  href: string,
+  options: FederatedFetchOptions,
+): Promise<Result<unknown, FederatedFetchError>> => {
+  const response = await getActivity(identity, href, options, ACTIVITY_JSON_ACCEPT);
+  return response.isOk() ? readDocument(response.value) : err(response.error);
+};
+
+/**
+ * What a URL serves for a lookup: its ActivityPub document, or the URL of
+ * the document a page names (`Alternate`), or neither.
+ */
+export type FetchedResource =
+  | Readonly<{ kind: "Document"; document: unknown }>
+  | Readonly<{ kind: "Alternate"; href: string }>
+  | Readonly<{ kind: "None" }>;
+
+const ACTIVITY_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  "application/activity+json",
+  "application/ld+json",
+]);
+
+/**
+ * GET a URL a lookup names, as Mastodon's `FetchResourceService` does
+ * (`RESOURCE_ACCEPT`): an ActivityPub media type is the document; otherwise
+ * the `Link` header's `alternate`, else an HTML page's `<link
+ * rel="alternate">`, names the document, which the caller fetches in turn.
+ * The page is read up to `MAX_FETCHED_BYTES`. Any other body is read as
+ * JSON, as {@link fetchActivityJson} reads it.
+ */
+export const fetchActivityResource = async (
+  identity: InstanceIdentity,
+  href: string,
+  options: FederatedFetchOptions,
+): Promise<Result<FetchedResource, FederatedFetchError>> => {
+  const response = await getActivity(identity, href, options, RESOURCE_ACCEPT);
+  if (response.isErr()) {
+    return err(response.error);
+  }
+  const mediaType = (response.value.headers.get("content-type") ?? "")
+    .split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (mediaType === undefined || !ACTIVITY_MEDIA_TYPES.has(mediaType)) {
+    const linked = linkHeaderAlternate(response.value.headers.get("link"));
+    if (linked !== undefined) {
+      await response.value.body?.cancel();
+      return ok({ kind: "Alternate", href: linked });
+    }
+    if (mediaType === "text/html") {
+      try {
+        const page = await readBodyText(response.value, MAX_FETCHED_BYTES);
+        const alternate = page.isOk() ? await htmlAlternate(page.value) : undefined;
+        return ok(
+          alternate === undefined ? { kind: "None" } : { kind: "Alternate", href: alternate },
+        );
+      } catch {
+        return err({ kind: "VerificationUnavailable" });
+      }
+    }
+  }
+  return (await readDocument(response.value)).map((document): FetchedResource => ({
+    kind: "Document",
+    document,
+  }));
 };
 
 /** A WebFinger answer: the account it names and its ActivityPub actor URI. */
