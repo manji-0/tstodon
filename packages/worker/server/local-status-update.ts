@@ -27,6 +27,10 @@ import { publishToAccount } from "./stream-publish";
  * attachments and quote with the `Update`'s, so one without them deletes
  * them remotely. A note that still owes an activity (its `Create` not sent
  * yet) sends that one with this version instead, `federate` or not (FED-14).
+ *
+ * An `Unedited` change, such as a new quote policy, sends the note with the
+ * `updated` it had, as Mastodon's `StatusUpdateDistributionWorker` does when
+ * `edited_at` stays: a receiver applies it without recording an edit.
  */
 export const announceNoteUpdate = async (
   env: Env,
@@ -35,9 +39,13 @@ export const announceNoteUpdate = async (
   note: LocalNote,
   updatedAt: string,
   federate: boolean,
+  revision: "Edited" | "Unedited" = "Edited",
 ): Promise<Result<ApiStatusJSON | undefined, EnqueueLocalActivityError>> => {
-  // Stamped with this change, so a receiver takes it as newer than its copy.
-  const stamped = { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) };
+  // An edit is stamped with this change, so a receiver takes it as newer than its copy.
+  const stamped =
+    revision === "Edited"
+      ? { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) }
+      : note;
   // Whether or not this change federates, an activity the note still owes
   // goes out with this version.
   const owed = await deferToOwedActivity(env, note.id, updatedAt);

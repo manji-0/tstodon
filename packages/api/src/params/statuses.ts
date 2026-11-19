@@ -68,6 +68,18 @@ export const ApiUpdateStatusParamsSchema = ApiCreateStatusParamsSchema;
 export type ApiUpdateStatusParams = z.input<typeof ApiUpdateStatusParamsSchema>;
 
 /**
+ * `PUT /api/v1/statuses/:id/interaction_policy`: the published status's new
+ * quote policy (`public`, `followers` or `nobody`); blank or left out, the
+ * author's default. The server answers anything else 422.
+ */
+export const ApiUpdateStatusInteractionPolicyParamsSchema = z.object({
+  quote_approval_policy: z.string().nullish(),
+});
+export type ApiUpdateStatusInteractionPolicyParams = z.input<
+  typeof ApiUpdateStatusInteractionPolicyParamsSchema
+>;
+
+/**
  * `DELETE /api/v1/statuses/:id` (query or body): with `delete_media` the
  * attachments go with the status; without it they stay, unattached, for a
  * "Delete & redraft".

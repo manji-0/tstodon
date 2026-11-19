@@ -158,6 +158,7 @@ Labels:
 | POST   | `/api/v1/statuses/:id/unbookmark`                   |
 | POST   | `/api/v1/statuses/:id/pin`                          |
 | POST   | `/api/v1/statuses/:id/unpin`                        |
+| PUT    | `/api/v1/statuses/:id/interaction_policy`           |
 | POST   | `/api/v1/statuses/:id/mute`                         |
 | POST   | `/api/v1/statuses/:id/unmute`                       |
 | POST   | `/api/v1/statuses/:id/translate`                    |

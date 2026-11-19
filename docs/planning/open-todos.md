@@ -88,7 +88,6 @@ Endpoints Mastodon 4.7 serves that tstodon does not, or serves as a stub.
 | ID     | Item                                            | Notes                                                                                                                             |
 | ------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | REST-1 | Collections (4.7)                               | The collections API is not served                                                                                                 |
-| REST-2 | `PUT /api/v1/statuses/:id/interaction_policy`   | Changing a published status's quote policy is not served                                                                          |
 | REST-3 | `annual_reports`                                | Not served                                                                                                                        |
 | REST-4 | Translation                                     | `POST /api/v1/statuses/:id/translate` and `GET /api/v1/instance/translation_languages` are stubs: there is no translation backend |
 | REST-6 | `GET /api/v1/peers/search`                      | Not served                                                                                                                        |
