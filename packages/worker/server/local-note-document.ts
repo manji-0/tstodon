@@ -36,9 +36,12 @@ export const loadLocalNoteDocument = async (
   if (media.isErr()) {
     return err(media.error);
   }
+  if (quote.isErr()) {
+    return err(quote.error);
+  }
   return ok(
     noteDocument(identity, author, note, {
-      quote,
+      quote: quote.value,
       mentions,
       reply,
       replies: extras.replies,

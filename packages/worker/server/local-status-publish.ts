@@ -300,18 +300,19 @@ export const publishLocalNote = async (
     remoteMentions.length === 0 &&
     quotedAuthor?.kind !== "Remote"
   );
-  // The note and its media are already stored, so a media read failure keeps
-  // the post local rather than federate it without its media or fail it half done.
+  // The note, its media and its quote are already stored, so a failure to
+  // read them back keeps the post local rather than federate it without them
+  // or fail it half done.
   const media = federates ? await loadNoteMedia(env.DB, identity, note) : undefined;
-  if (media?.isErr()) {
+  const quote = federates && input.quote ? await noteQuote(env, identity, note.id) : ok(undefined);
+  if (media?.isErr() || quote.isErr()) {
     console.error(JSON.stringify({ kind: "StatusNotFederated", statusId: note.id }));
   }
-  const quote = input.quote ? await noteQuote(env, identity, note.id) : undefined;
   const object =
-    media === undefined || media.isErr()
+    media === undefined || media.isErr() || quote.isErr()
       ? undefined
       : noteDocument(identity, user, note, {
-          quote,
+          quote: quote.value,
           mentions: await loadNoteMentions(env.DB, identity, note.id),
           reply: await loadNoteReply(env.DB, identity, note),
           poll: await loadNotePoll(env.DB, note.id),
@@ -344,12 +345,13 @@ export const publishLocalNote = async (
   // A targeted outbox delivery: its workflow retries a failed attempt with
   // backoff, as Mastodon's `QuoteRequestWorker` delivers through
   // `DeliveryWorker`. As Mastodon, nothing asks again when no answer comes.
-  if (object !== undefined && quote !== undefined && quotedAuthor?.kind === "Remote") {
+  const quoted = quote.unwrapOr(undefined);
+  if (object !== undefined && quoted !== undefined && quotedAuthor?.kind === "Remote") {
     const requested = await enqueueTargetedActivity(
       env,
       user.id,
       "QuoteRequest",
-      quoteRequestActivity(`${actor}/quote_requests/${quoteId}`, actor, quote.uri, object),
+      quoteRequestActivity(`${actor}/quote_requests/${quoteId}`, actor, quoted.uri, object),
       quotedAuthor.actor.inboxUri,
     );
     if (requested.isErr()) {

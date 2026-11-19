@@ -86,7 +86,8 @@ const distributePollUpdate = async (
     return;
   }
   const media = await loadNoteMedia(env.DB, identity, note);
-  if (media.isErr()) {
+  const quote = await noteQuote(env, identity, note.id);
+  if (media.isErr() || quote.isErr()) {
     console.error(JSON.stringify({ kind: "PollUpdateNotFederated", statusId: note.id }));
     return;
   }
@@ -98,7 +99,7 @@ const distributePollUpdate = async (
     actor,
     published: nowIso(),
     object: noteDocument(identity, author.value, note, {
-      quote: await noteQuote(env, identity, note.id),
+      quote: quote.value,
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
       poll,
