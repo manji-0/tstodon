@@ -1,8 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { ApiAccount } from "@tstodon/api";
+import { ApiAccount, ApiRelationship } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
+import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -77,6 +78,42 @@ describe("endorsements", () => {
     expect(read(RelationshipSchema, unendorsed.body).endorsed).toBe(false);
     const after = await json("/api/v1/endorsements", { headers: await auth(viewer) });
     expect(read(z.array(ApiAccount), after.body)).toEqual([]);
+  });
+
+  it("routes the pre-4.4 pin / unpin names to endorse / unendorse", async () => {
+    const viewer = "pin-alias-viewer@example.com";
+    const targetId = await accountIdFor("pin-alias-target@example.com");
+
+    const pinned = await json(`/api/v1/accounts/${targetId}/pin`, {
+      method: "POST",
+      headers: await auth(viewer),
+    });
+    expect(pinned.status).toBe(200);
+    const relationship = expectContract(ApiRelationship, pinned.body);
+    expect(relationship).toMatchObject({ id: targetId, endorsed: true });
+    const mine = await json("/api/v1/endorsements", { headers: await auth(viewer) });
+    expect(read(z.array(ApiAccount), mine.body).map((a) => a.id)).toEqual([targetId]);
+
+    const unpinned = await json(`/api/v1/accounts/${targetId}/unpin`, {
+      method: "POST",
+      headers: await auth(viewer),
+    });
+    expect(unpinned.status).toBe(200);
+    expect(expectContract(ApiRelationship, unpinned.body).endorsed).toBe(false);
+  });
+
+  it("takes write:accounts for pin, as endorse", async () => {
+    const targetId = await accountIdFor("pin-scope-target@example.com");
+    const scoped = await json(`/api/v1/accounts/${targetId}/pin`, {
+      method: "POST",
+      headers: await authHeaders("pin-scope-viewer@example.com", { scopes: ["write:accounts"] }),
+    });
+    expect(scoped.status).toBe(200);
+    const unscoped = await json(`/api/v1/accounts/${targetId}/unpin`, {
+      method: "POST",
+      headers: await authHeaders("pin-scope-viewer@example.com", { scopes: ["write:follows"] }),
+    });
+    expect(unscoped.status).toBe(403);
   });
 
   it("requires authentication and 404s for unknown targets", async () => {

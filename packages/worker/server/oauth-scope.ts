@@ -87,7 +87,7 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/accounts/:id/(?:follow|unfollow|remove_from_followers)", NONE, "write:follows"),
   rule("/api/v1/accounts/:id/(?:block|unblock)", NONE, "write:blocks"),
   rule("/api/v1/accounts/:id/(?:mute|unmute)", NONE, "write:mutes"),
-  rule("/api/v1/accounts/:id/(?:endorse|unendorse|note)", NONE, "write:accounts"),
+  rule("/api/v1/accounts/:id/(?:endorse|unendorse|pin|unpin|note)", NONE, "write:accounts"),
   rule("/api/v1/accounts/:id/statuses", "read:statuses", NONE),
   rule("/api/v1/accounts/:id/lists", "read:lists", NONE),
   rule("/api/v1/accounts(?:/.*)?", "read:accounts", NONE),
