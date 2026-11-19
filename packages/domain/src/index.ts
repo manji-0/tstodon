@@ -342,6 +342,11 @@ export {
 } from "./quote";
 export { QuoteRetry } from "./quote-retry";
 export {
+  type OwedStatusActivity,
+  type PendingFederationRetry,
+  PendingStatusFederation,
+} from "./pending-status-federation";
+export {
   StatusQuoteTarget,
   type StatusQuoteTarget as StatusQuoteTargetValue,
 } from "./status-quote-target";

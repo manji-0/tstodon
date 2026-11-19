@@ -374,6 +374,14 @@ const RefreshQuoteSchema = z.object({
   quoteId: z.string().min(1),
 });
 
+/**
+ * Send the activities local statuses still owe remote servers, those whose
+ * retry is due (`PendingStatusFederation`), a page at a time.
+ */
+const FederatePendingStatusesSchema = z.object({
+  kind: z.literal("FederatePendingStatuses"),
+});
+
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   ExpandForwardSchema,
@@ -410,6 +418,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ResumeSuspendedActorSeverancesSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
+  FederatePendingStatusesSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

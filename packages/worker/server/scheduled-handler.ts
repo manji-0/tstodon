@@ -5,6 +5,7 @@ import { writeMetric } from "./metrics";
 import { hasExpiredPollWork } from "./poll-expiry";
 import { hasDueScheduledStatuses } from "./scheduled-status-publish";
 import { processOutboxJob } from "./outbox-job";
+import { hasDueStatusFederations } from "./pending-status-federation";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 import { deleteAbandonedOwed } from "./remote-status-owed";
 import { runRemoteStatusRetention } from "./remote-status-retention";
@@ -89,6 +90,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   { kind: "Queued", job: { kind: "ProcessExpiredPolls" }, due: hasExpiredPollWork },
   // Publish the scheduled posts whose time has come, up to 20 posts a page.
   { kind: "Queued", job: { kind: "PublishScheduledStatuses" }, due: hasDueScheduledStatuses },
+  // Send the activities local statuses owe whose retry is due, up to 20 a
+  // page: those whose own queued retry was lost, too.
+  { kind: "Queued", job: { kind: "FederatePendingStatuses" }, due: hasDueStatusFederations },
 ];
 
 /** The six-hourly cron's jobs, which have their invocation to themselves. */

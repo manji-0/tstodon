@@ -12,26 +12,22 @@ import type {
 import { InstanceIdentity, LocalStatus, StatusId, StatusTarget } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
-import { loadCustomEmojis } from "./custom-emoji-store";
 import type { RepositoryError } from "./d1";
-import { enqueueLocalActivity, enqueueTargetedActivity } from "./delivery";
+import { enqueueLocalActivity } from "./delivery";
 import { formatPostText } from "./html";
 import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
-import { loadNoteMentions, mentionLinks, resolveMentions } from "./mention-resolve";
-import { loadNoteMedia } from "./note-attachments";
-import { loadNoteReply } from "./reply-target";
-import { noteDocument, quoteRequestActivity } from "./activitypub";
+import { mentionLinks, resolveMentions } from "./mention-resolve";
 import { noteCreateActivity } from "./local-note-document";
+import { readNoteObject, requestQuoteApproval } from "./local-note-object";
+import { deferStatusActivity } from "./pending-status-federation";
 import { mentionedPost, notifyAccount } from "./notify";
-import { insertPoll, loadNotePoll } from "./poll-store";
+import { insertPoll } from "./poll-store";
 import { startLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowerIds } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
-import { loadNoteQuotePolicy } from "./quote-policy-name";
-import { noteQuote } from "./quote-uri";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
 import { startHomeFanOut } from "./home-fan-out";
@@ -301,39 +297,27 @@ export const publishLocalNote = async (
     quotedAuthor?.kind !== "Remote"
   );
   // The note, its media and its quote are already stored, so a failure to
-  // read them back keeps the post local rather than federate it without them
-  // or fail it half done.
-  const media = federates ? await loadNoteMedia(env.DB, identity, note) : undefined;
-  const quote = federates && input.quote ? await noteQuote(env, identity, note.id) : ok(undefined);
-  if (media?.isErr() || quote.isErr()) {
+  // read them back neither federates it without them nor fails it half
+  // done: its `Create` is retried later (FED-14).
+  const federated = federates ? await readNoteObject(env, identity, user, note) : undefined;
+  if (federated?.isErr()) {
     console.error(
       JSON.stringify({
         kind: "StatusNotFederated",
         statusId: note.id,
-        cause: media?.isErr() ? "media" : "quote",
+        cause: federated.error.cause,
       }),
     );
+    await deferStatusActivity(env, note.id, "Create");
   }
-  const object =
-    media === undefined || media.isErr() || quote.isErr()
-      ? undefined
-      : noteDocument(identity, user, note, {
-          quote: quote.value,
-          mentions: await loadNoteMentions(env.DB, identity, note.id),
-          reply: await loadNoteReply(env.DB, identity, note),
-          poll: await loadNotePoll(env.DB, note.id),
-          media: media.value,
-          quotePolicy: await loadNoteQuotePolicy(env.DB, user, note),
-          emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
-        });
   const enqueued =
-    object === undefined
+    federated === undefined || federated.isErr()
       ? ok(undefined)
       : await enqueueLocalActivity(
           env,
           user.id,
           "Create",
-          noteCreateActivity(identity, user, object),
+          noteCreateActivity(identity, user, federated.value.object),
         );
   if (enqueued.isErr()) {
     return err(
@@ -348,21 +332,8 @@ export const publishLocalNote = async (
           },
     );
   }
-  // A targeted outbox delivery: its workflow retries a failed attempt with
-  // backoff, as Mastodon's `QuoteRequestWorker` delivers through
-  // `DeliveryWorker`. As Mastodon, nothing asks again when no answer comes.
-  const quoted = quote.unwrapOr(undefined);
-  if (object !== undefined && quoted !== undefined && quotedAuthor?.kind === "Remote") {
-    const requested = await enqueueTargetedActivity(
-      env,
-      user.id,
-      "QuoteRequest",
-      quoteRequestActivity(`${actor}/quote_requests/${quoteId}`, actor, quoted.uri, object),
-      quotedAuthor.actor.inboxUri,
-    );
-    if (requested.isErr()) {
-      console.error(JSON.stringify({ kind: "QuoteRequestNotSent", statusId: note.id }));
-    }
+  if (federated?.isOk()) {
+    await requestQuoteApproval(env, identity, user, note, federated.value);
   }
   // The author's own view of the note: the response and the author's stream
   // event both send it. A render that fails sends no event.

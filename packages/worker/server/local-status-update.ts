@@ -1,19 +1,17 @@
 import type { ApiStatusJSON } from "@tstodon/api";
-import { InstanceIdentity, IsoInstant, type LocalAccount, type LocalNote } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  IsoInstant,
+  type LocalAccount,
+  type LocalNote,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { noteDocument } from "./activitypub";
-import { loadCustomEmojis } from "./custom-emoji-store";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
 import { startHomeFanOut } from "./home-fan-out";
-import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
-import { loadNoteMentions } from "./mention-resolve";
-import { loadNoteMedia } from "./note-attachments";
-import { loadNotePoll } from "./poll-store";
+import { noteUpdateActivity, readNoteObject } from "./local-note-object";
+import { deferStatusActivity, deferToOwedActivity } from "./pending-status-federation";
 import { startPublicFanOut } from "./public-fan-out";
-import { loadNoteQuotePolicy } from "./quote-policy-name";
-import { noteQuote } from "./quote-uri";
-import { loadNoteReply } from "./reply-target";
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
 
@@ -22,9 +20,11 @@ import { publishToAccount } from "./stream-publish";
  * as a moderator marking it sensitive does: the `Update` that reaches remote
  * servers (when `federate`), the account's own streams, and the home and
  * public timelines. Returns the note's Mastodon document as it now reads.
- * When the note's media or quote cannot be read, no `Update` is sent:
- * receivers replace a note's attachments and quote with the `Update`'s, so
- * one without them deletes them remotely.
+ * When the note's media or quote cannot be read, the `Update` is retried
+ * later rather than sent without them: receivers replace a note's
+ * attachments and quote with the `Update`'s, so one without them deletes
+ * them remotely. A note that still owes an activity (its `Create` not sent
+ * yet) sends that one with this version instead (FED-14).
  */
 export const announceNoteUpdate = async (
   env: Env,
@@ -34,41 +34,28 @@ export const announceNoteUpdate = async (
   updatedAt: string,
   federate: boolean,
 ): Promise<Result<ApiStatusJSON | undefined, EnqueueLocalActivityError>> => {
-  const media = federate ? await loadNoteMedia(env.DB, identity, note) : undefined;
-  const quote = federate ? await noteQuote(env, identity, note.id) : undefined;
-  if (media?.isErr() || quote?.isErr()) {
+  // Stamped with this change, so a receiver takes it as newer than its copy.
+  const stamped = { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) };
+  const owed = federate && (await deferToOwedActivity(env, note.id));
+  const federated =
+    federate && !owed ? await readNoteObject(env, identity, account, stamped) : undefined;
+  if (federated?.isErr()) {
     console.error(
       JSON.stringify({
         kind: "StatusUpdateNotFederated",
         statusId: note.id,
-        cause: media?.isErr() ? "media" : "quote",
+        cause: federated.error.cause,
       }),
     );
+    await deferStatusActivity(env, note.id, "Update");
   }
-  if (media?.isOk() && quote?.isOk()) {
-    const actor = InstanceIdentity.actorUrl(identity, account.username);
-    const enqueued = await enqueueLocalActivity(env, account.id, "Update", {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${actor}/statuses/${note.id}/updates/${newEntityId()}`,
-      type: "Update",
-      actor,
-      published: updatedAt,
-      // Stamped with this change, so a receiver takes it as newer than its copy.
-      object: noteDocument(
-        identity,
-        account,
-        { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) },
-        {
-          quote: quote.value,
-          mentions: await loadNoteMentions(env.DB, identity, note.id),
-          reply: await loadNoteReply(env.DB, identity, note),
-          poll: await loadNotePoll(env.DB, note.id),
-          media: media.value,
-          quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
-          emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
-        },
-      ),
-    });
+  if (federated?.isOk()) {
+    const enqueued = await enqueueLocalActivity(
+      env,
+      account.id,
+      "Update",
+      noteUpdateActivity(identity, account, note, federated.value.object, updatedAt),
+    );
     if (enqueued.isErr()) {
       return enqueued.map(() => undefined);
     }
