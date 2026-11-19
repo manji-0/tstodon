@@ -191,6 +191,34 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
     expect((await secure(await bob.signedGet(objectPaths()[4] ?? ""))).status).toBe(404);
   });
 
+  it("refuses a signed GET of a suspended account's documents with 403, kept private", async () => {
+    const email = "securesuspended@example.com";
+    const created = await SELF.fetch(`${ORIGIN}/api/v1/statuses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "before the suspension", visibility: "public" }),
+    });
+    expect(created.status).toBe(200);
+    const note = new URL(read(z.object({ uri: z.string() }), await created.json()).uri).pathname;
+    await env.DB.prepare(
+      `INSERT INTO account_moderation (account_id, moderation)
+       SELECT id, 'Suspended' FROM accounts WHERE username = 'securesuspended'`,
+    ).run();
+    const bob = await remoteActor("secure-suspended-reader", "secure-allowed.example");
+    for (const path of [
+      note,
+      "/users/securesuspended/outbox",
+      "/users/securesuspended/followers",
+      "/users/securesuspended/following",
+      "/users/securesuspended/quote_authorizations/none",
+    ]) {
+      const response = await secure(await bob.signedGet(path));
+      expect(response.status, path).toBe(403);
+      expect(response.headers.get("cache-control"), path).toBe("max-age=180, private");
+      expect(response.headers.get("vary"), path).toBe("Signature");
+    }
+  });
+
   it("refuses a signer on a suspended domain with 403, cached or not, without fetching its key", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const cached = await remoteActor("secure-cached", SUSPENDED);

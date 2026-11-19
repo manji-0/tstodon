@@ -54,7 +54,11 @@ import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
-import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fetch";
+import {
+  authorizeObjectFetch,
+  type FetchAccess,
+  restrictedActorDocument,
+} from "../authorized-fetch";
 import {
   claimInboxActivity,
   completeInboxActivity,
@@ -163,13 +167,16 @@ type DocumentOwner =
  * The local account whose document a route serves, as Mastodon's
  * `AccountOwnedConcern`: 404 for a name nobody has, and, cached for 3
  * minutes, 410 for a deleted account (`permanently_unavailable?`) and 403
- * for a suspended one (`check_account_suspension`).
+ * for a suspended one (`check_account_suspension`). In secure mode the
+ * refusal stays `private`, as every answer there does.
  */
 const documentOwner = async (
   c: Context<{ Bindings: Env }>,
+  access: FetchAccess,
   username: string,
 ): Promise<DocumentOwner> => {
   const refuse = (response: Response): DocumentOwner => ({ kind: "Refused", response });
+  const cacheControl = `max-age=180, ${access.kind === "Public" ? "public" : "private"}`;
   const account = await findAccountByUsername(c.env.DB, username);
   if (account.isErr()) {
     return refuse(jsonRepositoryError(c, account.error.message));
@@ -182,7 +189,7 @@ const documentOwner = async (
     if (!deleted.value) {
       return refuse(c.json({ kind: "NotFound" }, 404));
     }
-    c.header("Cache-Control", "max-age=180, public");
+    c.header("Cache-Control", cacheControl);
     return refuse(c.json({ kind: "Gone" }, 410));
   }
   const standing = await findAccountStanding(c.env.DB, account.value.id);
@@ -190,7 +197,7 @@ const documentOwner = async (
     return refuse(jsonRepositoryError(c, standing.error.message));
   }
   if (standing.value.kind === "Suspended") {
-    c.header("Cache-Control", "max-age=180, public");
+    c.header("Cache-Control", cacheControl);
     return refuse(c.json(NOT_ALLOWED, 403));
   }
   return { kind: "Served", account: account.value };
@@ -239,7 +246,7 @@ export const getUsersByUsernameStatusesById = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
@@ -303,7 +310,7 @@ export const getUsersByUsernameStatusesByIdReplies = async (
   if (query.isErr()) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
@@ -362,7 +369,7 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
@@ -492,7 +499,7 @@ const followCollection = async (
   if (query.isErr()) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
@@ -659,7 +666,7 @@ export const getUsersByUsernameOutbox = async (
   if (query.isErr()) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
@@ -763,7 +770,7 @@ export const getUsersByUsernameCollectionsFeatured = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
@@ -809,7 +816,7 @@ export const getUsersByUsernameCollectionsTags = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const owner = await documentOwner(c, c.req.param("username"));
+  const owner = await documentOwner(c, access, c.req.param("username"));
   if (owner.kind === "Refused") {
     return owner.response;
   }
