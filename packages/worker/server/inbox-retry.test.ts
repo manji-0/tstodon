@@ -1,9 +1,10 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApiStatus, ApiStatusEdit } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
+import { drainHeld, type HeldQueue, holdQueue } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { type Heard, openStream } from "../test/stream-fixture";
 import { parseRows } from "./d1";
@@ -303,7 +304,18 @@ describe("an inbox activity that failed after its row was stored", () => {
     return { id, booster };
   };
 
+  // The boosters of an edit are notified by queued jobs, run here as the queue would.
+  const updatesHeard = async (booster: Parameters<typeof notifiedOf>[0], id: string) => {
+    await drainHeld(queued, ["NotifyRemoteNoteBoosters"]);
+    return notifiedOf(booster, "update", id);
+  };
+  let queued: HeldQueue = { bodies: [] };
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("notifies a booster of an edit once when the Update that failed after its row was stored is redelivered", async () => {
+    queued = holdQueue();
     const elsewhere = "https://elsewhere.example/users/retry-update-late";
     const author = await remoteActor("retry-update-late");
     const { id, booster } = await boostedNote(
@@ -333,13 +345,13 @@ describe("an inbox activity that failed after its row was stored", () => {
     }
 
     expect(await author.send(activity)).toBe(202);
-    expect(await notifiedOf(booster, "update", id)).toBe(1);
+    expect(await updatesHeard(booster, id)).toBe(1);
     expect(await remoteMentions(id)).toEqual([elsewhere]);
     expect(await owedKinds(id)).toEqual([]);
 
     // The edit is finished: the same content delivered again is not one.
     expect(await author.send({ ...activity, id: `${edited.id}/update-again` })).toBe(202);
-    expect(await notifiedOf(booster, "update", id)).toBe(1);
+    expect(await updatesHeard(booster, id)).toBe(1);
 
     const second = note(author, "retry-update-late", {
       content: "<p>after again</p>",
@@ -348,11 +360,12 @@ describe("an inbox activity that failed after its row was stored", () => {
     expect(await author.send({ id: `${second.id}/update-2`, type: "Update", object: second })).toBe(
       202,
     );
-    expect(await notifiedOf(booster, "update", id)).toBe(2);
+    expect(await updatesHeard(booster, id)).toBe(2);
     expect(await owedKinds(id)).toEqual([]);
   });
 
   it("notifies a booster once when the Update that failed after every late step is redelivered", async () => {
+    queued = holdQueue();
     const author = await remoteActor("retry-update-clear");
     const { id, booster } = await boostedNote(
       author,
@@ -371,14 +384,14 @@ describe("an inbox activity that failed after its row was stored", () => {
     ).run();
     try {
       expect(await author.send(activity)).toBe(500);
-      expect(await notifiedOf(booster, "update", id)).toBe(1);
+      expect(await updatesHeard(booster, id)).toBe(1);
       expect(await owedKinds(id)).toEqual(["Edited"]);
     } finally {
       await env.DB.prepare("DROP TRIGGER inbox_retry_update_clear").run();
     }
 
     expect(await author.send(activity)).toBe(202);
-    expect(await notifiedOf(booster, "update", id)).toBe(1);
+    expect(await updatesHeard(booster, id)).toBe(1);
     expect(await owedKinds(id)).toEqual([]);
   });
 
