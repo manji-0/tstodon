@@ -1,6 +1,7 @@
 import { Hostname, type InstanceIdentity, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
+import type { ReceivedActivity } from "../activity-forward";
 import type { FederatedFetchOptions } from "../federated-fetch";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
@@ -18,7 +19,7 @@ export const applyRemoteCreate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   object: string | Readonly<{ id: string } & Record<string, unknown>>,
-  options: FederatedFetchOptions,
+  options: FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>,
   known?: KnownRemoteStatus,
 ): Promise<Result<void, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;
@@ -65,6 +66,7 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   identity,
   signer,
   received,
+  body,
   allowHosts,
   blockedHosts,
   fetchSigner,
@@ -73,4 +75,5 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
     allowHosts,
     blockedHosts,
     fetchSigner,
+    forward: { kind: "Create", body },
   });

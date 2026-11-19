@@ -13,7 +13,7 @@ import { warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, okValues, type RepositoryError, runD1 } from "./d1";
+import { jsonStringArray, okValues, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
 import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
@@ -615,6 +615,36 @@ export const listAcceptedRemoteFollowerInboxes = async (
       InboxUriSharedInboxUriRow,
     );
     return [...new Set(results.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
+  });
+
+/**
+ * {@link listAcceptedRemoteFollowerInboxes} of several accounts in one
+ * query (a JSON array of ids, so no bound-parameter limit), each inbox once.
+ */
+export const listAcceptedRemoteFollowerInboxesOf = async (
+  db: D1Database,
+  targetAccountIds: ReadonlyArray<string>,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare(
+        `SELECT DISTINCT a.inbox_uri, a.shared_inbox_uri
+         FROM remote_follows f
+         JOIN remote_actors a ON a.actor_uri = f.remote_actor_uri
+         WHERE f.target_account_id IN (SELECT value FROM json_each(?))
+           AND f.follow_kind = 'Accepted'
+           AND f.remote_actor_uri NOT IN
+             (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')`,
+      )
+      .bind(jsonStringArray(targetAccountIds))
+      .all();
+    return [
+      ...new Set(
+        parseRows(InboxUriSharedInboxUriRow, rows.results).map(
+          (row) => row.shared_inbox_uri ?? row.inbox_uri,
+        ),
+      ),
+    ];
   });
 
 /** How far back Mastodon's `AccountReachFinder` looks for mentions and follows. */

@@ -5,6 +5,8 @@ import { parseLocalStatusId } from "../activitypub";
 import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { removeRemoteStatus } from "../remote-status-delete";
+import { findRemoteStatusByObjectUri } from "../remote-status-store";
+import { forwardRemoteActivity } from "../activity-forward";
 import type { ActivityOf, InboxHandler, RemoteDelivery } from "./handler";
 import { revokeQuoteStamp } from "./quote-answer";
 
@@ -53,6 +55,15 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
       }
       if (revoked.value) {
         return ok(undefined);
+      }
+      // As Mastodon's `Delete#delete_status`, forwarded before the status,
+      // and the boosts and quotes that decide who hears it, are gone.
+      const status = await findRemoteStatusByObjectUri(env.DB, effect.objectUri);
+      if (status.isErr()) {
+        return err(status.error);
+      }
+      if (status.value?.actorUri === signer.actorUri) {
+        await forwardRemoteActivity(env, identity, status.value, signer, { kind: "Delete", body });
       }
       await removeRemoteStatus(env, signer.actorUri, {
         kind: "ObjectUri",

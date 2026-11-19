@@ -1,21 +1,14 @@
 import { assertNever } from "@tstodon/core";
 import {
-  Hostname,
   StoredMediaMetadata,
   StoredMediaSizes,
   type OutboxJob as OutboxJobValue,
 } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import {
-  ensureOutboxTarget,
-  ensureOutboxTargets,
-  findOutboundActivity,
-  markOutboundExpanded,
-} from "./outbox-store";
+import { ensureOutboxTarget, findOutboundActivity } from "./outbox-store";
 import { processExpiredPolls } from "./poll-expiry";
-import { elapsedMs, measureJobPage, writeMetric } from "./metrics";
-import { suspendedDomains } from "./admin-domain-block-store";
+import { measureJobPage } from "./metrics";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import { processFinishRemoteNoteRecipientJob } from "./remote-status-persist";
 import { processDistributePollUpdateJob } from "./poll-update";
@@ -47,17 +40,9 @@ import {
   listAcceptedRemoteFollowerInboxes,
   listAccountReachInboxes,
 } from "./remote-actor-store";
-import {
-  allowListAdmits,
-  federationAllowHosts,
-  legacyMediaPolicy,
-  parseInstanceIdentity,
-} from "./runtime-config";
-import {
-  partitionByDomainAvailability,
-  recordSkippedTargets,
-  startOutboxDeliveryWorkflow,
-} from "./delivery";
+import { legacyMediaPolicy, parseInstanceIdentity } from "./runtime-config";
+import { deliverExpandedActivity, startOutboxDeliveryWorkflow } from "./delivery";
+import { processExpandForwardJob } from "./activity-forward";
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
@@ -431,59 +416,11 @@ export const processOutboxJob = async (
           (actor) => actor.sharedInboxUri ?? actor.inboxUri,
         ),
       ];
-      const suspended = await suspendedDomains(env.DB);
-      const allowHosts = await federationAllowHosts(env);
-      const remoteInboxes = [
-        ...new Set(
-          candidateInboxes.filter((inbox) => {
-            try {
-              const host = new URL(inbox).host.toLowerCase();
-              return (
-                host !== sameHost &&
-                !suspended.has(Hostname.ofAuthority(host)) &&
-                allowListAdmits(allowHosts, host)
-              );
-            } catch {
-              return false;
-            }
-          }),
-        ),
-      ];
-      await markOutboundExpanded(env.DB, job.activityId, remoteInboxes.length);
-      // An inbox on a domain marked unavailable gets a `Skipped` target, not a Workflow.
-      const { deliver, skipped } = await partitionByDomainAvailability(env.DB, remoteInboxes);
-      const skippedTargets = await recordSkippedTargets(env, job.activityId, skipped, "expand");
-      const ensured = skippedTargets.isErr()
-        ? skippedTargets
-        : await ensureOutboxTargets(env.DB, job.activityId, deliver);
-      if (ensured.isErr()) {
-        console.error(
-          JSON.stringify({
-            kind: "OutboxExpandTargetsFailed",
-            activityId: job.activityId,
-            message: ensured.error.message,
-          }),
-        );
-        writeMetric(
-          env,
-          "outbox.expand",
-          [remoteInboxes.length, elapsedMs(startedAt), 0],
-          ["targets_failed"],
-        );
-        return "ok";
-      }
-      if (deliver.length > 0) {
-        await startOutboxDeliveryWorkflow(env, job.activityId);
-      }
-      // doubles: [remoteTargetCount, expandMs, okFlag, skippedCount]
-      writeMetric(
-        env,
-        "outbox.expand",
-        [remoteInboxes.length, elapsedMs(startedAt), 1, skipped.length],
-        ["ok"],
-      );
+      await deliverExpandedActivity(env, job.activityId, candidateInboxes, startedAt);
       return "ok";
     }
+    case "ExpandForward":
+      return processExpandForwardJob(env, job);
     case "DeliverTarget": {
       const target = await ensureOutboxTarget(env.DB, job.activityId, job.inboxUrl);
       if (target.isErr()) {

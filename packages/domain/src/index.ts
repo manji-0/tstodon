@@ -194,6 +194,7 @@ export type {
 } from "./notification-store";
 export type { FindMutedThreadStatusIds } from "./status-mute-resolver";
 export {
+  FORWARD_MAX_ACCOUNTS,
   OutboxJob,
   type DeadOutboxJobSelection,
   type MovePhase,
@@ -323,6 +324,7 @@ export type {
   FindRemoteActorInbox,
   ListLocalBoosterAccountIds,
   ListLocalBoosterFollowerInboxes,
+  ListLocalSharerAccountIds,
   ListRemoteFollowerInboxes,
   ListStatusInteractorInboxes,
 } from "./status-reach-resolver";

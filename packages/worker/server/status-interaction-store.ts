@@ -368,6 +368,26 @@ export const listLocalBoosterFollowerInboxes = async (
     return [...new Set(rows.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
   });
 
+/**
+ * Every local account with a status that quotes the target, whatever the
+ * quote's state, as Mastodon's `status.quotes` joined to local accounts.
+ */
+export const listLocalQuoterAccountIds = async (
+  db: D1Database,
+  target: StatusTargetValue,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare(
+        `SELECT DISTINCT s.account_id FROM status_quotes q
+         JOIN statuses s ON s.id = q.status_id
+         WHERE q.quoted_status_id = ? OR q.quoted_remote_status_id = ?`,
+      )
+      .bind(...statusTargetColumns(target))
+      .all();
+    return parseRows(AccountIdRow, rows.results).map((row) => row.account_id);
+  });
+
 /** Every local account that currently boosts the target, for notifying them when it changes. */
 export const listLocalBoosterAccountIds = async (
   db: D1Database,

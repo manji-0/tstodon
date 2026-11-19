@@ -12,6 +12,7 @@ import { isStatusObjectType } from "./activitypub-wire";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
+import type { ReceivedActivity } from "./activity-forward";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
 import { findMoveTarget } from "./remote-move";
@@ -31,6 +32,9 @@ import {
 } from "./remote-status-persist";
 import { claimOwed, listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
 import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
+
+/** Fetch options, and the activity as received, which a note it stores or edits forwards. */
+type ForwardingFetchOptions = FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>;
 
 const UpdateObjectSchema = z
   .object({ id: z.string().min(1), type: z.string().min(1) })
@@ -102,7 +106,7 @@ const applyNoteUpdate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   target: Extract<UpdateTarget, { kind: "NoteUpdate" }>,
-  options: FederatedFetchOptions,
+  options: ForwardingFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   if (Hostname.ofUri(target.objectUri) !== Hostname.ofUri(signer.actorUri)) {
     return ok(undefined);
@@ -284,7 +288,7 @@ export const applyRemoteUpdate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   object: string | Readonly<Record<string, unknown>>,
-  options: FederatedFetchOptions,
+  options: ForwardingFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   let raw: unknown = object;
   if (typeof object === "string") {

@@ -30,6 +30,7 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
         allowHosts: receipt.allowHosts,
         blockedHosts: receipt.blockedHosts,
         fetchSigner: receipt.fetchSigner,
+        forward: { kind: "Update", body: receipt.body },
       });
     case "Delete":
       return receiveRemoteDelete({ ...delivery, activity });
