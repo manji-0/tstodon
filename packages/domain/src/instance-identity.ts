@@ -41,6 +41,13 @@ export const InstanceIdentity = {
   sharedInboxUrl: (identity: InstanceIdentity): string => `${origin(identity)}/inbox`,
   /** Mastodon's instance actor: the Application that speaks for the server itself. */
   instanceActorUrl: (identity: InstanceIdentity): string => `${origin(identity)}/actor`,
+  /**
+   * The instance actor's username: the domain, or `mastodon.internal` when
+   * the domain has a port, as Mastodon's `Account.representative` renames it,
+   * since a username with `:` is not one a remote `Account` takes.
+   */
+  instanceActorUsername: (identity: InstanceIdentity): string =>
+    identity.domain.includes(":") ? "mastodon.internal" : identity.domain,
   webfingerUrl: (identity: InstanceIdentity, username: string): string =>
     `${origin(identity)}/.well-known/webfinger?resource=${encodeURIComponent(
       InstanceIdentity.webfingerSubject(identity, username),

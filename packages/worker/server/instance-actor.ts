@@ -176,7 +176,7 @@ export const instanceActorDocument = (
     ],
     id,
     type: "Application",
-    preferredUsername: identity.domain,
+    preferredUsername: InstanceIdentity.instanceActorUsername(identity),
     inbox: `${id}/inbox`,
     endpoints: { sharedInbox: InstanceIdentity.sharedInboxUrl(identity) },
     url: `${identity.publicOrigin.replace(/\/$/, "")}/about`,
