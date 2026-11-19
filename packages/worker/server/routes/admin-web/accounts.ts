@@ -115,7 +115,7 @@ const ACCOUNT_COMMANDS: Readonly<Record<AccountCommandName, AccountCommand>> = {
   approve: {
     label: "Approve",
     offered: (state) => state.moderation.approval.kind === "Pending",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "approve"),
+    run: (env, id) => moderateLocalAccount(env, id, "approve"),
     deletes: false,
   },
   reject: {
@@ -128,13 +128,13 @@ const ACCOUNT_COMMANDS: Readonly<Record<AccountCommandName, AccountCommand>> = {
   silence: {
     label: "Limit",
     offered: (state) => state.moderation.standing.kind === "InGoodStanding",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "silence"),
+    run: (env, id) => moderateLocalAccount(env, id, "silence"),
     deletes: false,
   },
   unsilence: {
     label: "Lift limit",
     offered: (state) => state.moderation.standing.kind === "Silenced",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "unsilence"),
+    run: (env, id) => moderateLocalAccount(env, id, "unsilence"),
     deletes: false,
   },
   suspend: {
@@ -142,37 +142,37 @@ const ACCOUNT_COMMANDS: Readonly<Record<AccountCommandName, AccountCommand>> = {
     offered: (state) => state.moderation.standing.kind !== "Suspended",
     confirm:
       "Suspending hides the account and its posts and blocks its login. You can lift it later.",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "suspend"),
+    run: (env, id) => moderateLocalAccount(env, id, "suspend"),
     deletes: false,
   },
   unsuspend: {
     label: "Unsuspend",
     offered: (state) => state.moderation.standing.kind === "Suspended",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "unsuspend"),
+    run: (env, id) => moderateLocalAccount(env, id, "unsuspend"),
     deletes: false,
   },
   sensitize: {
     label: "Mark media as sensitive",
     offered: (state) => !state.moderation.sensitized,
-    run: (env, id) => moderateLocalAccount(env.DB, id, "sensitize"),
+    run: (env, id) => moderateLocalAccount(env, id, "sensitize"),
     deletes: false,
   },
   unsensitize: {
     label: "Stop marking media as sensitive",
     offered: (state) => state.moderation.sensitized,
-    run: (env, id) => moderateLocalAccount(env.DB, id, "unsensitize"),
+    run: (env, id) => moderateLocalAccount(env, id, "unsensitize"),
     deletes: false,
   },
   disable: {
     label: "Disable login",
     offered: (state) => state.moderation.login.kind === "Enabled",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "disable"),
+    run: (env, id) => moderateLocalAccount(env, id, "disable"),
     deletes: false,
   },
   enable: {
     label: "Enable login",
     offered: (state) => state.moderation.login.kind === "Disabled",
-    run: (env, id) => moderateLocalAccount(env.DB, id, "enable"),
+    run: (env, id) => moderateLocalAccount(env, id, "enable"),
     deletes: false,
   },
   delete: {

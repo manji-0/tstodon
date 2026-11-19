@@ -42,7 +42,11 @@ import { backfillLocalNoteTags } from "./local-tag-backfill";
 import { foldTagNames } from "./tag-name-fold";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
-import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
+import {
+  findRemoteActorsByUris,
+  listAcceptedRemoteFollowerInboxes,
+  listAccountReachInboxes,
+} from "./remote-actor-store";
 import {
   allowListAdmits,
   federationAllowHosts,
@@ -57,6 +61,11 @@ import {
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
+import { processAuthorizeFollowRequestsJob } from "./follow-request-approval";
+import {
+  processResumeSuspendedActorSeverancesJob,
+  processSeverSuspendedActorFollowsJob,
+} from "./suspended-actor-severance";
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
@@ -90,13 +99,30 @@ const updatedQuestionOf = (payload: unknown, object: unknown): string | undefine
   return typeof id === "string" ? id : undefined;
 };
 
+/** Whether the activity is an `Update` whose object is its own actor. */
+const isActorUpdate = (payload: unknown, object: unknown): boolean => {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Reflect.get(payload, "type") !== "Update"
+  ) {
+    return false;
+  }
+  const actor: unknown = Reflect.get(payload, "actor");
+  const id: unknown =
+    typeof object === "object" && object !== null ? Reflect.get(object, "id") : undefined;
+  return typeof actor === "string" && actor === id;
+};
+
 /**
  * Who an outbound activity goes to, read from its addressing (the object's
  * `to`/`cc` and the activity's own): followers when it addresses the public
  * or this instance's followers collection, and each remote actor it names.
  * An activity without addressing (a boost) goes to followers.
  * `updatedQuestion` is the poll an `Update(Question)` carries, whose voters
- * and boosters hear it too.
+ * and boosters hear it too. `actorUpdate` says the activity is an `Update`
+ * of its own actor, which Mastodon's `UpdateDistributionWorker` sends beyond
+ * the followers too (`AccountReachFinder`).
  */
 export const outboundAudience = (
   payloadJson: string,
@@ -105,18 +131,20 @@ export const outboundAudience = (
   followers: boolean;
   actorUris: ReadonlyArray<string>;
   updatedQuestion: string | undefined;
+  actorUpdate: boolean;
 }> => {
   const parsed = parseJsonText(payloadJson);
   if (parsed.isErr()) {
-    return { followers: true, actorUris: [], updatedQuestion: undefined };
+    return { followers: true, actorUris: [], updatedQuestion: undefined, actorUpdate: false };
   }
   const payload = parsed.value;
   const object: unknown =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
   const updatedQuestion = updatedQuestionOf(payload, object);
+  const actorUpdate = isActorUpdate(payload, object);
   const audience = [...audienceOf(payload), ...audienceOf(object)];
   if (audience.length === 0) {
-    return { followers: true, actorUris: [], updatedQuestion };
+    return { followers: true, actorUris: [], updatedQuestion, actorUpdate };
   }
   // `localHost` may carry a port, as the follower filter below compares hosts.
   const isLocal = (uri: string): boolean => {
@@ -136,13 +164,13 @@ export const outboundAudience = (
       ),
     ),
   ];
-  return { followers, actorUris, updatedQuestion };
+  return { followers, actorUris, updatedQuestion, actorUpdate };
 };
 
 /** A failed recipient lookup leaves those recipients out; say so in the logs. */
 const logExpandLookupFailure = (
   activityId: string,
-  lookup: "followers" | "pollInteractors",
+  lookup: "followers" | "pollInteractors" | "accountReach",
   found: Result<unknown, RepositoryError>,
 ): void => {
   if (found.isErr()) {
@@ -345,6 +373,12 @@ export const processOutboxJob = async (
       return processCsvImportJob(env, job);
     case "SeverBlockedDomainFollows":
       return processSeverBlockedDomainFollowsJob(env, job);
+    case "AuthorizeFollowRequests":
+      return processAuthorizeFollowRequestsJob(env, job);
+    case "SeverSuspendedActorFollows":
+      return processSeverSuspendedActorFollowsJob(env, job);
+    case "ResumeSuspendedActorSeverances":
+      return processResumeSuspendedActorSeverancesJob(env);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
     case "FanOutRemovedStatuses":
@@ -381,12 +415,18 @@ export const processOutboxJob = async (
           : undefined;
       const interactors =
         pollStatusId === undefined ? ok([]) : await listPollInteractorInboxes(env.DB, pollStatusId);
+      const reach =
+        audience.actorUpdate && activity.value.account_id !== null
+          ? await listAccountReachInboxes(env.DB, activity.value.account_id)
+          : ok([]);
       logExpandLookupFailure(job.activityId, "followers", remoteFollowers);
       logExpandLookupFailure(job.activityId, "pollInteractors", interactors);
+      logExpandLookupFailure(job.activityId, "accountReach", reach);
       const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
       const candidateInboxes = [
         ...(remoteFollowers.isOk() ? remoteFollowers.value : []),
         ...(interactors.isOk() ? interactors.value : []),
+        ...(reach.isOk() ? reach.value : []),
         ...(addressed.isOk() ? [...addressed.value.values()] : []).map(
           (actor) => actor.sharedInboxUri ?? actor.inboxUri,
         ),

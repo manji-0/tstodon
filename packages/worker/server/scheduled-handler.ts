@@ -82,6 +82,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   { kind: "Inline", job: { kind: "RekeyLegacyMedia", afterId: "" } },
   // Queue one cleanup run per account with automated post deletion on.
   { kind: "Inline", job: { kind: "CleanUpStatuses" } },
+  // Restart the severance of up to 5 suspended actors whose pages stalled;
+  // one query over the suspended actors when none did.
+  { kind: "Inline", job: { kind: "ResumeSuspendedActorSeverances" } },
   // A page tells up to 50 voters and announces up to 50 polls.
   { kind: "Queued", job: { kind: "ProcessExpiredPolls" }, due: hasExpiredPollWork },
   // Publish the scheduled posts whose time has come, up to 20 posts a page.

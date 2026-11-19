@@ -17,7 +17,8 @@ import {
 } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { type Context } from "hono";
-import { findAccountById, setAccountLocked, updateAccountProfile } from "../../account-store";
+import { findAccountById, updateAccountProfile } from "../../account-store";
+import { changeAccountLocked } from "../../follow-request-approval";
 import { findComposeDefaults, updateAccountDefaults } from "../../account-defaults-store";
 import {
   EMPTY_ACCOUNT_PROFILE,
@@ -35,7 +36,7 @@ import {
 import { accountSource, mastodonAccountDocument } from "../../account-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { newEntityId } from "../../ids";
-import { sendActorUpdate } from "../../local-actor";
+import { federateActorChange } from "../../local-actor";
 import { avatarObjectKey, headerObjectKey } from "../../media-keys";
 import { PROFILE_IMAGE_MAX_BYTES } from "../../body-limit";
 import { ApiRefusal } from "../api-refusal";
@@ -360,10 +361,12 @@ const saveProfile = async (
 
 /**
  * Apply `update_credentials`: posting defaults, display name, profile, and
- * the locked flag, in that order, then read the account back.
+ * the locked flag (unlocking accepts the pending requests), in that order,
+ * then read the account back.
  */
 const updateCredentials = async (
   env: Env,
+  identity: InstanceIdentity,
   account: LocalAccount,
   rawBody: unknown,
   body: UpdateCredentialsBody,
@@ -395,7 +398,7 @@ const updateCredentials = async (
     return err(profile.error);
   }
   if (body.locked !== undefined) {
-    const locked = await setAccountLocked(env.DB, account.id, body.locked);
+    const locked = await changeAccountLocked(env, identity, account, body.locked);
     if (locked.isErr()) {
       return err(ApiRefusal.repository(locked.error.message));
     }
@@ -449,11 +452,11 @@ const applyCredentialsRequest = async (
   if (body.isErr()) {
     return err(jsonValidationError(c));
   }
-  const updated = await updateCredentials(c.env, user.value, rawBody, body.value);
+  const updated = await updateCredentials(c.env, identity.value, user.value, rawBody, body.value);
   if (updated.isErr()) {
     return err(ApiRefusal.respond(c, updated.error));
   }
-  await federateProfileChange(c.env, identity.value, updated.value);
+  await federateActorChange(c.env, identity.value, updated.value, "Profile");
   return ok({ identity: identity.value, account: updated.value });
 };
 
@@ -466,29 +469,6 @@ export const patchV1AccountsUpdateCredentials = async (
   }
   const { identity, account } = updated.value;
   return c.json(await ownAccountDocument(c.env, identity, account));
-};
-
-/**
- * Tell remote followers the profile changed with an actor `Update`, as
- * Mastodon's credentials and profile-image controllers queue
- * `ActivityPub::UpdateDistributionWorker`. Best effort: the change is stored
- * either way.
- */
-const federateProfileChange = async (
-  env: Env,
-  identity: InstanceIdentity,
-  account: LocalAccount,
-): Promise<void> => {
-  const sent = await sendActorUpdate(env, identity, account);
-  if (sent.isErr()) {
-    console.error(
-      JSON.stringify({
-        kind: "ProfileUpdateNotFederated",
-        accountId: account.id,
-        error: sent.error.kind,
-      }),
-    );
-  }
 };
 
 /** `DELETE /api/v1/profile/avatar|header`: drop the image and answer the credential account. */
@@ -522,7 +502,7 @@ const deleteProfileImage = async (
       return jsonRepositoryError(c, saved.error.message);
     }
     await c.env.MEDIA.delete(objectKey);
-    await federateProfileChange(c.env, identity.value, user.value);
+    await federateActorChange(c.env, identity.value, user.value, "Profile");
   }
   return c.json(await ownAccountDocument(c.env, identity.value, user.value));
 };

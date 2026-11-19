@@ -221,6 +221,35 @@ const SeverBlockedDomainFollowsSchema = z.object({
 });
 
 /**
+ * Sever the follows between a remote actor an admin suspended and the next
+ * page of local accounts (by id after `afterAccountId`, empty for the first),
+ * recorded under the `account_suspension` severance event `eventId`, and send
+ * the actor a `Reject(Follow)` or `Undo(Follow)` for each.
+ */
+const SeverSuspendedActorFollowsSchema = z.object({
+  kind: z.literal("SeverSuspendedActorFollows"),
+  actorUri: z.url(),
+  eventId: z.string().min(1),
+  afterAccountId: z.string(),
+});
+
+/**
+ * Queue a fresh `SeverSuspendedActorFollows` for each actor suspended over an
+ * hour ago that still has follows with local accounts (hourly cron).
+ */
+const ResumeSuspendedActorSeverancesSchema = unitKind("ResumeSuspendedActorSeverances");
+
+/**
+ * Accept the next page of a local account's pending follow requests after it
+ * was unlocked (Mastodon's `AuthorizeFollowWorker`s): those still pending are
+ * the next page, so the job carries no cursor.
+ */
+const AuthorizeFollowRequestsSchema = z.object({
+  kind: z.literal("AuthorizeFollowRequests"),
+  accountId: AccountId.schema,
+});
+
+/**
  * Store the recent public notes and boosts in a remote actor's outbox, and its
  * pinned notes. `from` says which page: the collection's first (`Start`, which
  * also reads the pins), or a later one an earlier job found by following
@@ -362,6 +391,9 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteThreadSchema,
   ProcessCsvImportSchema,
   SeverBlockedDomainFollowsSchema,
+  AuthorizeFollowRequestsSchema,
+  SeverSuspendedActorFollowsSchema,
+  ResumeSuspendedActorSeverancesSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
 ]);
