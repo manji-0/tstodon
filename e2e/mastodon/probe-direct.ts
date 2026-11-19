@@ -134,8 +134,8 @@ const groupChain = async (
  * A private mention from an account the receiver does not follow waits in a
  * notification request (`for_private_mentions: filter`, Mastodon's default
  * and tstodon's): no notification until the receiver accepts, and from then
- * on the sender's messages notify. On Mastodon the message has no
- * conversation either until then; tstodon lists it at once (INT-2).
+ * on the sender's messages notify. The message has no conversation either
+ * until then, on either server (`AccountConversation.add_status` on accept).
  */
 const strangerMessage = async (
   stamp: string,
@@ -162,13 +162,9 @@ const strangerMessage = async (
   if ((await mentionNotification(receiver, stranger, sent.uri)) !== undefined) {
     throw new StepFailure("the filtered mention is among the notifications");
   }
-  if (receiver.origin !== A) {
-    const conversations = await call(receiver, "/api/v1/conversations?limit=40", Conversations);
-    if (conversations.some((entry) => entry.last_status?.uri === sent.uri)) {
-      throw new StepFailure(
-        "the filtered message has a conversation before the request is accepted",
-      );
-    }
+  const conversations = await call(receiver, "/api/v1/conversations?limit=40", Conversations);
+  if (conversations.some((entry) => entry.last_status?.uri === sent.uri)) {
+    throw new StepFailure("the filtered message has a conversation before the request is accepted");
   }
   await call(receiver, `/api/v1/notifications/requests/${request.id}/accept`, Anything, {
     method: "POST",
@@ -192,9 +188,11 @@ export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
   const bob = await signUp(A, "dirk");
 
   // A private mention from an account its receiver does not follow waits in
-  // a request, and on Mastodon has no conversation until then, so the
-  // Mastodon recipients follow every sender.
-  await step("the Mastodon recipients follow the senders", async () => {
+  // a request, and has no conversation until then, on either server. The
+  // Mastodon recipients follow every sender; the tstodon recipients, made for
+  // this run, take private mentions from anyone instead, since no tstodon
+  // user may keep a follow of carol.
+  await step("the recipients take the senders' private mentions", async () => {
     for (const [follower, followed] of [
       [mona, alice],
       [mona, bob],
@@ -204,6 +202,12 @@ export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
       [carol, mona],
     ] as const) {
       await follow(follower, followed);
+    }
+    for (const recipient of [alice, bob]) {
+      await call(recipient, "/api/v2/notifications/policy", Anything, {
+        method: "PATCH",
+        body: { for_private_mentions: "accept" },
+      });
     }
   });
 
