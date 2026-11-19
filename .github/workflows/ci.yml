@@ -37,6 +37,11 @@ jobs:
       - name: Install dependencies
         run: vp install --frozen-lockfile
 
+      # `pnpm audit --prod --audit-level=high`. The overrides that clear
+      # advisories and the reviewed ignore list are in pnpm-workspace.yaml.
+      - name: Audit production dependencies
+        run: vp pm audit --production --level high
+
       - name: Generate Worker types
         run: vp run types:worker
 
