@@ -298,6 +298,17 @@ describe("an edit that changes nothing", () => {
     expect(expectContract(z.array(ApiStatusEdit), history.body)).toHaveLength(1);
   });
 
+  it("counts text that differs only in surrounding whitespace as a change", async () => {
+    const email = "edit-whitespace@example.com";
+    const status = await create(email, { status: "padded" });
+
+    // Mastodon compares the request's text before `prepare_contents` strips it.
+    const edited = await edit(email, status.id, { status: "padded " });
+
+    expect(expectContract(ApiStatus, edited.body).edited_at).not.toBeNull();
+    expect(await storedRevisions(status.id)).toBe(1);
+  });
+
   it("ignores media sent again with the same description and focus", async () => {
     const email = "edit-noop-media@example.com";
     const first = await seedMedia(email);

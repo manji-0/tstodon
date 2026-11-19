@@ -399,8 +399,14 @@ const editNote = async (
   }
   // Mastodon's `significant_changes?`: an edit that changes nothing raises
   // `NoChangesSubmittedError`, which stores nothing and answers the status.
+  // It compares the text and warning as sent, before `prepare_contents`
+  // strips them, so a change of surrounding whitespace is an edit.
   const changed =
-    StatusRevision.changesNote(existing, revised) ||
+    StatusRevision.changesNote(existing, {
+      ...revised,
+      text: content.text,
+      spoilerText: content.spoilerText,
+    }) ||
     pollRevision.value.kind !== "Unchanged" ||
     mediaChanges.value.length > 0 ||
     (policy !== undefined && policy !== storedPolicy.value);
