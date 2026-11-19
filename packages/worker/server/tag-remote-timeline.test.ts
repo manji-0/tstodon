@@ -8,7 +8,6 @@ import { authHeaders } from "../test/auth-fixture";
 import { answerLinkPreviews } from "../test/link-card-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
@@ -55,7 +54,6 @@ const idsAt = async (path: string): Promise<string[]> => {
 };
 
 const remoteAuthor = async (username: string, domain: string): Promise<RemoteActor> => {
-  const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(nowIso());
   if (fetchedAt.isErr()) {
     throw new Error("clock");
@@ -66,15 +64,13 @@ const remoteAuthor = async (username: string, domain: string): Promise<RemoteAct
     username,
     domain,
     inboxUri: `${actorUri}/inbox`,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: keys.publicKeyPem,
     displayName: username,
     fetchedAt: fetchedAt.value,
   });
   if (actor.isErr()) {
     throw new Error("actor fixture rejected");
   }
-  const stored = await upsertRemoteActor(env.DB, actor.value);
+  const stored = await upsertRemoteActor(env.DB, actor.value, []);
   expect(stored.isOk()).toBe(true);
   return actor.value;
 };

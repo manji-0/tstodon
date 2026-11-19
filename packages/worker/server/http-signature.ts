@@ -285,12 +285,23 @@ export const importRsaPublicKey = async (publicKeyPem: string): Promise<CryptoKe
 const bytesFromB64 = (value: string): Uint8Array =>
   Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
+/**
+ * A public key a signature names: a local account's, or a remote actor's
+ * (`RemoteActorKey`). Mastodon checks a draft-cavage signature
+ * (`rsa-sha256`, `hs2019`) with an RSA key only: with an Ed25519 key its
+ * `SignedRequest` fails, and so does this.
+ */
+export type VerificationKey = Readonly<{ kind: "Rsa" | "Ed25519"; publicKeyPem: string }>;
+
 const verifySignature = async (
   request: Request,
   parsed: ParsedSignature,
-  publicKeyPem: string,
+  key: VerificationKey,
   digest: string,
 ): Promise<boolean> => {
+  if (key.kind !== "Rsa") {
+    return false;
+  }
   const url = new URL(request.url);
   // Every header the signer listed counts (Mastodon also signs `content-type`
   // on deliveries and `accept` on fetches), read from the request as sent.
@@ -307,12 +318,13 @@ const verifySignature = async (
     parsed.headers,
     headerValues,
   );
-  const key = await crypto.subtle.importKey("spki", pemToSpki(publicKeyPem), RSA_SHA256, false, [
-    "verify",
-  ]);
+  const publicKey = await importRsaPublicKey(key.publicKeyPem);
+  if (publicKey === undefined) {
+    return false;
+  }
   return crypto.subtle.verify(
     "RSASSA-PKCS1-v1_5",
-    key,
+    publicKey,
     bytesFromB64(parsed.signature),
     encoder.encode(signingString),
   );
@@ -320,7 +332,7 @@ const verifySignature = async (
 
 export const verifyInboxRequest = async (
   request: Request,
-  publicKeyPem: string,
+  key: VerificationKey,
   body: string,
 ): Promise<boolean> => {
   const header = request.headers.get("Signature");
@@ -336,7 +348,7 @@ export const verifyInboxRequest = async (
   if (digest !== expectedDigest) {
     return false;
   }
-  return verifySignature(request, parsed, publicKeyPem, digest);
+  return verifySignature(request, parsed, key, digest);
 };
 
 /**
@@ -347,11 +359,11 @@ export const verifyInboxRequest = async (
 export const verifySignedFetch = async (
   request: Request,
   parsed: ParsedSignature,
-  publicKeyPem: string,
+  key: VerificationKey,
 ): Promise<boolean> =>
   parsed.headers.includes("(request-target)") &&
   checkSignatureStrength(request, parsed) === undefined &&
-  verifySignature(request, parsed, publicKeyPem, request.headers.get("Digest") ?? "");
+  verifySignature(request, parsed, key, request.headers.get("Digest") ?? "");
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([RsaPrivateJwkSchema]);

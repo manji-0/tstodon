@@ -102,11 +102,11 @@ describe("signature verification", () => {
       }),
       ["(request-target)", "host", "date", "digest", "content-type"],
     );
-    expect(await verifyInboxRequest(request, publicKeyPem, body)).toBe(true);
+    expect(await verifyInboxRequest(request, { kind: "Rsa", publicKeyPem }, body)).toBe(true);
 
     const tampered = new Request(request, { body });
     tampered.headers.set("content-type", "text/plain");
-    expect(await verifyInboxRequest(tampered, publicKeyPem, body)).toBe(false);
+    expect(await verifyInboxRequest(tampered, { kind: "Rsa", publicKeyPem }, body)).toBe(false);
   });
 
   it("verifies a signed fetch only when it covers the request target", async () => {
@@ -123,9 +123,12 @@ describe("signature verification", () => {
     if (!parsedCovered) {
       return;
     }
-    expect(await verifySignedFetch(covered.request, parsedCovered, covered.publicKeyPem)).toBe(
-      true,
-    );
+    expect(
+      await verifySignedFetch(covered.request, parsedCovered, {
+        kind: "Rsa",
+        publicKeyPem: covered.publicKeyPem,
+      }),
+    ).toBe(true);
 
     const uncovered = await signAs(fetch, ["host", "date"]);
     const parsedUncovered = parseSignatureHeader(uncovered.request.headers.get("Signature") ?? "");
@@ -133,7 +136,10 @@ describe("signature verification", () => {
       throw new Error("signature header rejected");
     }
     expect(
-      await verifySignedFetch(uncovered.request, parsedUncovered, uncovered.publicKeyPem),
+      await verifySignedFetch(uncovered.request, parsedUncovered, {
+        kind: "Rsa",
+        publicKeyPem: uncovered.publicKeyPem,
+      }),
     ).toBe(false);
   });
 });
@@ -198,9 +204,20 @@ describe("signature freshness and strength (SIG-1)", () => {
     for (const offset of [0, -64 * MINUTE_MS, 59 * MINUTE_MS]) {
       const fresh = await delivery(new Date(Date.now() + offset));
       expect(checkSignatureStrength(fresh.request, fresh.parsed)).toBeUndefined();
-      expect(await verifyInboxRequest(fresh.request, fresh.publicKeyPem, fresh.body)).toBe(true);
+      expect(
+        await verifyInboxRequest(
+          fresh.request,
+          { kind: "Rsa", publicKeyPem: fresh.publicKeyPem },
+          fresh.body,
+        ),
+      ).toBe(true);
       const get = await signedGet(new Date(Date.now() + offset));
-      expect(await verifySignedFetch(get.request, get.parsed, get.publicKeyPem)).toBe(true);
+      expect(
+        await verifySignedFetch(get.request, get.parsed, {
+          kind: "Rsa",
+          publicKeyPem: get.publicKeyPem,
+        }),
+      ).toBe(true);
     }
   });
 
@@ -210,9 +227,20 @@ describe("signature freshness and strength (SIG-1)", () => {
       kind: "SignatureExpired",
       detail: "past",
     });
-    expect(await verifyInboxRequest(stale.request, stale.publicKeyPem, stale.body)).toBe(false);
+    expect(
+      await verifyInboxRequest(
+        stale.request,
+        { kind: "Rsa", publicKeyPem: stale.publicKeyPem },
+        stale.body,
+      ),
+    ).toBe(false);
     const get = await signedGet(new Date(Date.now() - 66 * MINUTE_MS));
-    expect(await verifySignedFetch(get.request, get.parsed, get.publicKeyPem)).toBe(false);
+    expect(
+      await verifySignedFetch(get.request, get.parsed, {
+        kind: "Rsa",
+        publicKeyPem: get.publicKeyPem,
+      }),
+    ).toBe(false);
   });
 
   it("refuses a Date more than an hour ahead", async () => {
@@ -221,9 +249,20 @@ describe("signature freshness and strength (SIG-1)", () => {
       kind: "SignatureExpired",
       detail: "future",
     });
-    expect(await verifyInboxRequest(ahead.request, ahead.publicKeyPem, ahead.body)).toBe(false);
+    expect(
+      await verifyInboxRequest(
+        ahead.request,
+        { kind: "Rsa", publicKeyPem: ahead.publicKeyPem },
+        ahead.body,
+      ),
+    ).toBe(false);
     const get = await signedGet(new Date(Date.now() + 61 * MINUTE_MS));
-    expect(await verifySignedFetch(get.request, get.parsed, get.publicKeyPem)).toBe(false);
+    expect(
+      await verifySignedFetch(get.request, get.parsed, {
+        kind: "Rsa",
+        publicKeyPem: get.publicKeyPem,
+      }),
+    ).toBe(false);
   });
 
   it("refuses a signature that does not cover date, even when it verifies", async () => {
@@ -231,12 +270,21 @@ describe("signature freshness and strength (SIG-1)", () => {
     expect(checkSignatureStrength(undated.request, undated.parsed)).toEqual({
       kind: "DateNotSigned",
     });
-    expect(await verifyInboxRequest(undated.request, undated.publicKeyPem, undated.body)).toBe(
-      false,
-    );
+    expect(
+      await verifyInboxRequest(
+        undated.request,
+        { kind: "Rsa", publicKeyPem: undated.publicKeyPem },
+        undated.body,
+      ),
+    ).toBe(false);
     const get = await signedGet(new Date(), ["(request-target)", "host", "accept"]);
     expect(checkSignatureStrength(get.request, get.parsed)).toEqual({ kind: "DateNotSigned" });
-    expect(await verifySignedFetch(get.request, get.parsed, get.publicKeyPem)).toBe(false);
+    expect(
+      await verifySignedFetch(get.request, get.parsed, {
+        kind: "Rsa",
+        publicKeyPem: get.publicKeyPem,
+      }),
+    ).toBe(false);
   });
 
   it("refuses a POST whose signature does not cover digest, even when it verifies", async () => {
@@ -245,7 +293,11 @@ describe("signature freshness and strength (SIG-1)", () => {
       kind: "DigestNotSigned",
     });
     expect(
-      await verifyInboxRequest(undigested.request, undigested.publicKeyPem, undigested.body),
+      await verifyInboxRequest(
+        undigested.request,
+        { kind: "Rsa", publicKeyPem: undigested.publicKeyPem },
+        undigested.body,
+      ),
     ).toBe(false);
   });
 

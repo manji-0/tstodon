@@ -14,7 +14,7 @@ import {
 import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
 import { instanceActorFetchSigner, instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { firstCollectionPage } from "./remote-collection";
-import { resolveRemoteActor, resolveRemoteActorByHandle } from "./remote-actor-fetch";
+import { resolveKeyOwner, resolveRemoteActorByHandle } from "./remote-actor-fetch";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { fetchStamp } from "./remote-quote-verify";
 import { persistRemoteObject } from "./remote-status-persist";
@@ -58,7 +58,10 @@ const signedByInstanceActor = async (request: Request): Promise<boolean> => {
     parsed.algorithm === "rsa-sha256" &&
     ["(request-target)", "host", "date", "accept"].every((name) => parsed.headers.includes(name)) &&
     Math.abs(Date.now() - date) < 60_000 &&
-    (await verifySignedFetch(request, parsed, await instancePublicKey()))
+    (await verifySignedFetch(request, parsed, {
+      kind: "Rsa",
+      publicKeyPem: await instancePublicKey(),
+    }))
   );
 };
 
@@ -188,15 +191,14 @@ describe("signed ActivityPub GETs", () => {
       { subject: `acct:secure-key@${HOST}`, self: remote.actorUri },
     );
 
-    const actor = await resolveRemoteActor(
+    const owner = await resolveKeyOwner(
       env.DB,
       identity(),
       `${remote.actorUri}#main-key`,
-      remote.actorUri,
       signed(),
     );
 
-    expect(actor.isOk() && actor.value.publicKeyPem).toBe(remote.publicKeyPem);
+    expect(owner.isOk() && owner.value.key.publicKeyPem).toBe(remote.publicKeyPem);
   });
 
   it("fetches a status, a collection and a quote stamp from a secure-mode server", async () => {

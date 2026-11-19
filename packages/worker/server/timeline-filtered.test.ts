@@ -6,7 +6,6 @@ import { authHeaders } from "../test/auth-fixture";
 import { answerLinkPreviews } from "../test/link-card-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
@@ -80,7 +79,6 @@ const createFilter = async (email: string, context: string, keyword: string): Pr
 describe("filtered on timelines", () => {
   it("marks remote statuses from their stored HTML", async () => {
     const viewerEmail = "tl-filtered-remote-viewer@example.com";
-    const keys = await generateAccountKeys();
     const fetchedAt = IsoInstant.parse(nowIso());
     if (fetchedAt.isErr()) {
       throw new Error("clock");
@@ -91,15 +89,13 @@ describe("filtered on timelines", () => {
       username: "frank",
       domain: "filtered-remote.example",
       inboxUri: `${actorUri}/inbox`,
-      publicKeyId: `${actorUri}#main-key`,
-      publicKeyPem: keys.publicKeyPem,
       displayName: "frank",
       fetchedAt: fetchedAt.value,
     });
     if (actor.isErr()) {
       throw new Error("actor fixture rejected");
     }
-    await upsertRemoteActor(env.DB, actor.value);
+    await upsertRemoteActor(env.DB, actor.value, []);
     const identity = parseInstanceIdentity(env);
     if (identity.isErr()) {
       throw new Error("identity");

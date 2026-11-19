@@ -15,8 +15,6 @@ describe("RemoteActor", () => {
       domain: "remote.example",
       inboxUri: "https://remote.example/users/bob/inbox",
       sharedInboxUri: "https://remote.example/inbox",
-      publicKeyId: "https://remote.example/users/bob#main-key",
-      publicKeyPem: "-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----",
       displayName: "Bob",
       fetchedAt: fetchedAt.value,
     });
@@ -38,8 +36,6 @@ describe("RemoteActor", () => {
       username: "bob",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/bob/inbox",
-      publicKeyId: "https://remote.example/users/bob#main-key",
-      publicKeyPem: "-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----",
       displayName: "Bob",
       fetchedAt: fetchedAt.value,
     });

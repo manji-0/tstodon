@@ -35,14 +35,21 @@ const fromUrl = (hosts: ReadonlySet<string>, resource: string): WebFingerResourc
   return username === undefined ? { kind: "NotFound" } : { kind: "Account", username };
 };
 
-/** `acct:user@domain` or `user@domain`; `<domain>@<domain>` is the instance actor. */
-const fromAcct = (hosts: ReadonlySet<string>, resource: string): WebFingerResource => {
+/**
+ * `acct:user@domain` or `user@domain`; `<domain>@<domain>` and the instance
+ * actor's own username name the instance actor.
+ */
+const fromAcct = (
+  hosts: ReadonlySet<string>,
+  instanceActorUsername: string,
+  resource: string,
+): WebFingerResource => {
   const parts = resource.replace(/^acct:/, "").split("@");
   const username = parts[0] ?? "";
   if (!hosts.has((parts.at(-1) ?? "").toLowerCase())) {
     return { kind: "NotFound" };
   }
-  return hosts.has(username.toLowerCase())
+  return hosts.has(username.toLowerCase()) || username === instanceActorUsername
     ? { kind: "InstanceActor" }
     : { kind: "Account", username };
 };
@@ -59,7 +66,9 @@ export const webFingerResource = (
   if (/^https?/i.test(resource)) {
     return fromUrl(hosts, resource);
   }
-  return resource.includes("@") ? fromAcct(hosts, resource) : { kind: "Invalid" };
+  return resource.includes("@")
+    ? fromAcct(hosts, InstanceIdentity.instanceActorUsername(identity), resource)
+    : { kind: "Invalid" };
 };
 
 const origin = (identity: InstanceIdentity): string => identity.publicOrigin.replace(/\/$/, "");
@@ -104,7 +113,10 @@ export const accountJrd = (
 export const instanceActorJrd = (identity: InstanceIdentity): WebFingerJrdJSON => {
   const actor = InstanceIdentity.instanceActorUrl(identity);
   return {
-    subject: InstanceIdentity.webfingerSubject(identity, identity.domain),
+    subject: InstanceIdentity.webfingerSubject(
+      identity,
+      InstanceIdentity.instanceActorUsername(identity),
+    ),
     aliases: [actor],
     links: [
       {

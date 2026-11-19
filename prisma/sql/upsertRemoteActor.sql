@@ -3,31 +3,31 @@
 -- @param {String} $3:domain
 -- @param {String} $4:inboxUri
 -- @param {String} $5:sharedInboxUri?
--- @param {String} $6:publicKeyId
--- @param {String} $7:publicKeyPem
--- @param {String} $8:displayName
--- @param {String} $9:fetchedAt
--- @param {String} $10:createdAt
--- @param {String} $11:updatedAt
--- @param {String} $12:profileJson
--- @param {String} $13:outboxUri?
--- @param {String} $14:featuredUri?
--- @param {String} $15:webfingeredAt?
--- @param {String} $16:followersUri?
--- @param {String} $17:followingUri?
--- @param {String} $18:featuredTagsUri?
+-- @param {String} $6:displayName
+-- @param {String} $7:fetchedAt
+-- @param {String} $8:createdAt
+-- @param {String} $9:updatedAt
+-- @param {String} $10:profileJson
+-- @param {String} $11:outboxUri?
+-- @param {String} $12:featuredUri?
+-- @param {String} $13:webfingeredAt?
+-- @param {String} $14:followersUri?
+-- @param {String} $15:followingUri?
+-- @param {String} $16:featuredTagsUri?
+-- @param {String} $17:legacyPublicKeyPem
+-- The actor's keys are in `remote_actor_keys`; `public_key_id` and
+-- `public_key_pem` are unread (migration 0152) and written as the actor URI
+-- and a placeholder key, which a build from before 0152 can still read.
 INSERT INTO remote_actors (
   actor_uri, username, domain, inbox_uri, shared_inbox_uri,
   public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,
   outbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+) VALUES ($1, $2, $3, $4, $5, $1, $17, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT(actor_uri) DO UPDATE SET
   username = excluded.username,
   domain = excluded.domain,
   inbox_uri = excluded.inbox_uri,
   shared_inbox_uri = excluded.shared_inbox_uri,
-  public_key_id = excluded.public_key_id,
-  public_key_pem = excluded.public_key_pem,
   display_name = excluded.display_name,
   profile_json = excluded.profile_json,
   outbox_uri = excluded.outbox_uri,

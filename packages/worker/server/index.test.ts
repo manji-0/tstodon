@@ -464,8 +464,6 @@ describe("worker http", () => {
       username: "bob",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/bob/inbox",
-      publicKeyId: "https://remote.example/users/bob#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Bob",
       fetchedAt: fetchedAt.value,
     });
@@ -473,7 +471,9 @@ describe("worker http", () => {
     if (remote.isErr()) {
       throw new Error("remote actor fixture rejected");
     }
-    const stored = await upsertRemoteActor(env.DB, remote.value);
+    const stored = await upsertRemoteActor(env.DB, remote.value, [
+      { kind: "Rsa", keyId: `${remote.value.actorUri}#main-key`, publicKeyPem: keys.publicKeyPem },
+    ]);
     expect(stored.isOk()).toBe(true);
     const body = JSON.stringify({
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -521,8 +521,6 @@ describe("worker http", () => {
       username: "dana",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/dana/inbox",
-      publicKeyId: "https://remote.example/users/dana#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Dana",
       fetchedAt: fetchedAt.value,
     });
@@ -530,7 +528,9 @@ describe("worker http", () => {
     if (remote.isErr()) {
       throw new Error("remote actor fixture rejected");
     }
-    const stored = await upsertRemoteActor(env.DB, remote.value);
+    const stored = await upsertRemoteActor(env.DB, remote.value, [
+      { kind: "Rsa", keyId: `${remote.value.actorUri}#main-key`, publicKeyPem: keys.publicKeyPem },
+    ]);
     expect(stored.isOk()).toBe(true);
     const objectUri = "https://remote.example/users/dana/statuses/1";
     const body = JSON.stringify({
@@ -605,8 +605,6 @@ describe("worker http", () => {
       username: "erin",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/erin/inbox",
-      publicKeyId: "https://remote.example/users/erin#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Erin",
       fetchedAt: fetchedAt.value,
     });
@@ -614,7 +612,17 @@ describe("worker http", () => {
     if (remote.isErr()) {
       throw new Error("remote actor fixture rejected");
     }
-    expect((await upsertRemoteActor(env.DB, remote.value)).isOk()).toBe(true);
+    expect(
+      (
+        await upsertRemoteActor(env.DB, remote.value, [
+          {
+            kind: "Rsa",
+            keyId: `${remote.value.actorUri}#main-key`,
+            publicKeyPem: keys.publicKeyPem,
+          },
+        ])
+      ).isOk(),
+    ).toBe(true);
     const object = `https://example.com/users/alice/statuses/${status.id}`;
     const likeBody = JSON.stringify({
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -730,8 +738,6 @@ describe("worker http", () => {
       username: "queue-bob",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/queue-bob/inbox",
-      publicKeyId: "https://remote.example/users/queue-bob#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Queue Bob",
       fetchedAt: fetchedAt.value,
     });
@@ -739,7 +745,17 @@ describe("worker http", () => {
     if (remote.isErr()) {
       throw new Error("remote actor fixture rejected");
     }
-    expect((await upsertRemoteActor(env.DB, remote.value)).isOk()).toBe(true);
+    expect(
+      (
+        await upsertRemoteActor(env.DB, remote.value, [
+          {
+            kind: "Rsa",
+            keyId: `${remote.value.actorUri}#main-key`,
+            publicKeyPem: keys.publicKeyPem,
+          },
+        ])
+      ).isOk(),
+    ).toBe(true);
     const followBody = JSON.stringify({
       "@context": "https://www.w3.org/ns/activitystreams",
       id: "https://remote.example/activities/follow-queue-bob",
@@ -1157,14 +1173,11 @@ describe("worker http", () => {
     if (fetchedAt.isErr()) {
       throw new Error("instant");
     }
-    const keys = await generateAccountKeys();
     const actor = RemoteActor.fromFetched({
       actorUri: "https://peer.example/users/bob",
       username: "bob",
       domain: "peer.example",
       inboxUri: "https://peer.example/users/bob/inbox",
-      publicKeyId: "https://peer.example/users/bob#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Bob",
       fetchedAt: fetchedAt.value,
     });
@@ -1172,7 +1185,7 @@ describe("worker http", () => {
     if (actor.isErr()) {
       throw new Error("actor");
     }
-    await upsertRemoteActor(env.DB, actor.value);
+    await upsertRemoteActor(env.DB, actor.value, []);
 
     const directory = await json("/api/v1/directory?order=new&limit=5");
     expect(directory.status).toBe(200);
@@ -1267,6 +1280,8 @@ describe("http signatures", () => {
       throw new Error(headers.error.message);
     }
     const request = new Request(url, { method: "POST", headers: headers.value, body });
-    await expect(verifyInboxRequest(request, keys.publicKeyPem, body)).resolves.toBe(true);
+    await expect(
+      verifyInboxRequest(request, { kind: "Rsa", publicKeyPem: keys.publicKeyPem }, body),
+    ).resolves.toBe(true);
   });
 });

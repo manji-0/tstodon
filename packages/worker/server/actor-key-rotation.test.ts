@@ -20,7 +20,7 @@ import {
 import { instanceActorFetchSigner, instanceActorKeys } from "./instance-actor";
 import { generateAccountKeys } from "./keys";
 import { processOutboxJob } from "./outbox-job";
-import { findRemoteActorByUri } from "./remote-actor-store";
+import { findRemoteActorKey } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import { signedFetchActor } from "./signed-fetch";
 
@@ -163,8 +163,20 @@ describe("local account key rotation", () => {
     );
     expect(body.object.publicKey.publicKeyPem).toBe(after.publicKeyPem);
     const updateBody = await update.clone().text();
-    expect(await verifyInboxRequest(update.clone(), after.publicKeyPem, updateBody)).toBe(true);
-    expect(await verifyInboxRequest(update.clone(), before.publicKeyPem, updateBody)).toBe(false);
+    expect(
+      await verifyInboxRequest(
+        update.clone(),
+        { kind: "Rsa", publicKeyPem: after.publicKeyPem },
+        updateBody,
+      ),
+    ).toBe(true);
+    expect(
+      await verifyInboxRequest(
+        update.clone(),
+        { kind: "Rsa", publicKeyPem: before.publicKeyPem },
+        updateBody,
+      ),
+    ).toBe(false);
 
     // An activity queued before the rotation is signed when it is sent: with the new key.
     const { results } = await env.DB.prepare(
@@ -175,8 +187,20 @@ describe("local account key rotation", () => {
     const followId = read(IdRow, results?.[0]).id;
     const queued = await deliverTarget(followId, inbox);
     const queuedBody = await queued.clone().text();
-    expect(await verifyInboxRequest(queued.clone(), after.publicKeyPem, queuedBody)).toBe(true);
-    expect(await verifyInboxRequest(queued.clone(), before.publicKeyPem, queuedBody)).toBe(false);
+    expect(
+      await verifyInboxRequest(
+        queued.clone(),
+        { kind: "Rsa", publicKeyPem: after.publicKeyPem },
+        queuedBody,
+      ),
+    ).toBe(true);
+    expect(
+      await verifyInboxRequest(
+        queued.clone(),
+        { kind: "Rsa", publicKeyPem: before.publicKeyPem },
+        queuedBody,
+      ),
+    ).toBe(false);
   });
 
   it("rotates from the account's admin page, the admin's own included, after a confirmation", async () => {
@@ -233,8 +257,12 @@ describe("instance actor key rotation", () => {
     if (parsed === undefined) {
       throw new Error("signature header did not parse");
     }
-    expect(await verifySignedFetch(fetch, parsed, after.publicKeyPem)).toBe(true);
-    expect(await verifySignedFetch(fetch, parsed, before.publicKeyPem)).toBe(false);
+    expect(
+      await verifySignedFetch(fetch, parsed, { kind: "Rsa", publicKeyPem: after.publicKeyPem }),
+    ).toBe(true);
+    expect(
+      await verifySignedFetch(fetch, parsed, { kind: "Rsa", publicKeyPem: before.publicKeyPem }),
+    ).toBe(false);
 
     // A delivery.
     const inbox = "https://remote.example/users/rotate-flag/inbox";
@@ -263,8 +291,20 @@ describe("instance actor key rotation", () => {
       .first();
     const delivery = await deliverTarget(read(IdRow, row).id, inbox);
     const body = await delivery.clone().text();
-    expect(await verifyInboxRequest(delivery.clone(), after.publicKeyPem, body)).toBe(true);
-    expect(await verifyInboxRequest(delivery.clone(), before.publicKeyPem, body)).toBe(false);
+    expect(
+      await verifyInboxRequest(
+        delivery.clone(),
+        { kind: "Rsa", publicKeyPem: after.publicKeyPem },
+        body,
+      ),
+    ).toBe(true);
+    expect(
+      await verifyInboxRequest(
+        delivery.clone(),
+        { kind: "Rsa", publicKeyPem: before.publicKeyPem },
+        body,
+      ),
+    ).toBe(false);
   });
 
   it("rotates from the signing keys page after a confirmation", async () => {
@@ -477,8 +517,10 @@ describe("a remote actor that rotated its key", () => {
     expect(accepted.status).toBeLessThan(300);
     expect(fetched).toEqual([remote.actorUri]);
     expect(logged(log.mock.calls, "RemoteKeyRefetched")).toBe(1);
-    const cached = (await findRemoteActorByUri(env.DB, remote.actorUri))._unsafeUnwrap();
-    expect(cached?.publicKeyPem).toBe(rotated.publicKeyPem);
+    const cached = (
+      await findRemoteActorKey(env.DB, `${remote.actorUri}#main-key`)
+    )._unsafeUnwrap();
+    expect(cached?.key.publicKeyPem).toBe(rotated.publicKeyPem);
 
     // The next request with that key verifies against the cache: no fetch.
     expect(
@@ -518,8 +560,10 @@ describe("a remote actor that rotated its key", () => {
       (await SELF.fetch(await deliveryWith(remote.actorUri, forger.privateKeyJwk))).status,
     ).toBe(401);
     expect(fetched).toHaveLength(1);
-    const cached = (await findRemoteActorByUri(env.DB, remote.actorUri))._unsafeUnwrap();
-    expect(cached?.publicKeyPem).toBe(remote.publicKeyPem);
+    const cached = (
+      await findRemoteActorKey(env.DB, `${remote.actorUri}#main-key`)
+    )._unsafeUnwrap();
+    expect(cached?.key.publicKeyPem).toBe(remote.publicKeyPem);
   });
 
   it("verifies a signed GET after refetching the rotated key", async () => {

@@ -76,8 +76,6 @@ export const testRemoteActor = (username: string, domain = "remote.example"): Re
       username,
       domain,
       inboxUri: `${actorUri}/inbox`,
-      publicKeyId: `${actorUri}#main-key`,
-      publicKeyPem: "test-public-key",
       displayName: username,
       profile: RemoteActor.emptyProfile,
       fetchedAt: "2026-10-01T00:00:00.000Z",

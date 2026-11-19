@@ -6,7 +6,6 @@ import { schemaResult } from "@tstodon/core";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
 import { nowIso } from "./clock";
-import { generateAccountKeys } from "./keys";
 import { setRemoteActorMovedTo, upsertRemoteActor } from "./remote-actor-store";
 
 const json = async (
@@ -39,7 +38,6 @@ const cacheActor = async (
   profile: Partial<RemoteActor["profile"]> = {},
 ): Promise<RemoteActor> => {
   const actorUri = `https://${domain}/users/${username}`;
-  const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(nowIso());
   if (fetchedAt.isErr()) {
     throw new Error("clock");
@@ -49,8 +47,6 @@ const cacheActor = async (
     username,
     domain,
     inboxUri: `${actorUri}/inbox`,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: keys.publicKeyPem,
     displayName: username,
     profile: { ...RemoteActor.emptyProfile, ...profile },
     fetchedAt: fetchedAt.value,
@@ -58,7 +54,7 @@ const cacheActor = async (
   if (actor.isErr()) {
     throw new Error("actor fixture rejected");
   }
-  expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+  expect((await upsertRemoteActor(env.DB, actor.value, [])).isOk()).toBe(true);
   return actor.value;
 };
 

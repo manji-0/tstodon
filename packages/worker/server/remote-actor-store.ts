@@ -6,6 +6,7 @@ import {
   type InboxFollowRecord,
   IsoInstant,
   RemoteActor,
+  RemoteActorKey,
   type RemovedBoost,
   UndoneBeforeArrival,
 } from "@tstodon/domain";
@@ -31,7 +32,9 @@ import {
   claimRemoteActorKeyRefetch as claimRemoteActorKeyRefetchSql,
   claimRemoteActorRefresh as claimRemoteActorRefreshSql,
   findRemoteActorByHandle as findRemoteActorByHandleSql,
-  findRemoteActorByPublicKeyId as findRemoteActorByPublicKeyIdSql,
+  findRemoteActorKey as findRemoteActorKeySql,
+  deleteRemoteActorKeysExcept as deleteRemoteActorKeysExceptSql,
+  upsertRemoteActorKeys as upsertRemoteActorKeysSql,
   findRemoteActorByUri as findRemoteActorByUriSql,
   listStaleRemoteActorUris as listStaleRemoteActorUrisSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
@@ -101,8 +104,6 @@ export const RemoteActorRowSchema = z.object({
   domain: z.string().min(1),
   inbox_uri: z.string().min(1),
   shared_inbox_uri: z.string().nullable(),
-  public_key_id: z.string().min(1),
-  public_key_pem: z.string().min(1),
   display_name: z.string(),
   profile_json: z.string().default("{}"),
   moved_to: z.string().nullable().default(null),
@@ -133,8 +134,6 @@ const remoteActorFromRow = (row: RemoteActorRow): Result<RemoteActor, Repository
     username: row.username,
     domain: row.domain,
     inboxUri: row.inbox_uri,
-    publicKeyId: row.public_key_id,
-    publicKeyPem: row.public_key_pem,
     displayName: row.display_name,
     profile: profileFromJson(row.profile_json),
     fetchedAt: fetchedAt.value,
@@ -280,20 +279,90 @@ export const findRemoteActorsByUris = async (
   );
 };
 
-export const findRemoteActorByPublicKeyId = async (
+/**
+ * What `remote_actors.public_key_pem` holds since migration 0152, which moved
+ * keys to `remote_actor_keys`: an RSA key whose private half was thrown away.
+ * A build from before 0152 (during a deploy, or after a rollback) still parses
+ * it, fails to verify any signature with it, and fetches the actor again.
+ * The migration writes the same key.
+ */
+export const LEGACY_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlDmOZr4ifqj8GjQ//kop
+6SpR+VT6yWUsAJ/rmi4ePhoOsjCQ1aCpeNm7wr2fq1ZeU6rLnfbACKrGL8WTGNmX
+7KuVNnIwJqgrvmfRm7MMAVkLt0QLMoqKwWQZGGNitKhRftoeGpRwPhVHOG0xca8E
+rh8ASUo1oZTCLa7wSdrwEH4RbRZzQo6FLpJIM+g0VuBsQtYlEZQAKBN5w5UP0WMB
+r9AUBKcxPM4rlch+u2nUB8Nxr3VXQeXvkCIB/lwcw6lh0pbueE1WT/6EHXhRIXSp
+ymhLcTzfEN/4GR3viA2r6SAt1PkhhnHH/K04XiZvmHwLt6aFzvZqyEUrc/riWwmd
+6QIDAQAB
+-----END PUBLIC KEY-----
+`;
+
+/** A key and the cached actor that publishes it. */
+export type RemoteKeyOwner = Readonly<{ actor: RemoteActor; key: RemoteActorKey }>;
+
+/** Mastodon's `keypairs.type` for each kind of key. */
+const KEY_TYPES = { Rsa: "rsa", Ed25519: "ed25519" } as const satisfies Record<
+  RemoteActorKey["kind"],
+  string
+>;
+
+const KeyOwnerRowSchema = RemoteActorRowSchema.extend({
+  key_id: z.string().min(1),
+  type: z.literal(["rsa", "ed25519"]),
+  public_key_pem: z.string().min(1),
+});
+
+const keyFromRow = (
+  row: z.infer<typeof KeyOwnerRowSchema>,
+): Result<RemoteActorKey, RepositoryError> =>
+  RemoteActorKey.parse({
+    kind: row.type === "rsa" ? "Rsa" : "Ed25519",
+    keyId: row.key_id,
+    publicKeyPem: row.public_key_pem,
+  }).mapErr(() => toRepositoryError("invalid remote actor key row"));
+
+/** The cached key `keyId` names, with the actor that publishes it (Mastodon's `Keypair.from_keyid`). */
+export const findRemoteActorKey = async (
   db: D1Database,
-  publicKeyId: string,
-): Promise<Result<RemoteActor | undefined, RepositoryError>> =>
-  readRemoteActor(
-    await runD1(async () => {
-      const rows = await queryTyped(
-        db,
-        findRemoteActorByPublicKeyIdSql(publicKeyId),
-        RemoteActorRowSchema,
-      );
-      return rows[0];
-    }),
+  keyId: string,
+): Promise<Result<RemoteKeyOwner | undefined, RepositoryError>> => {
+  const queried = await runD1(async () => {
+    const rows = await queryTyped(db, findRemoteActorKeySql(keyId), KeyOwnerRowSchema);
+    return rows[0];
+  });
+  if (queried.isErr()) {
+    return err(queried.error);
+  }
+  const row = queried.value;
+  if (row === undefined) {
+    return ok(undefined);
+  }
+  const actor = remoteActorFromRow(row);
+  if (actor.isErr()) {
+    return err(actor.error);
+  }
+  return keyFromRow(row).map((key) => ({ actor: actor.value, key }));
+};
+
+/**
+ * The statements that make `keys` the keys `actorUri` publishes, as
+ * Mastodon's `set_fetchable_key!`: each is stored, unless another actor
+ * holds its id, and the actor's others are dropped. They run after the
+ * actor's own row is written, in the same batch.
+ */
+const replaceRemoteActorKeysStatements = (
+  actorUri: string,
+  keys: ReadonlyArray<RemoteActorKey>,
+) => {
+  const json = JSON.stringify(
+    keys.map((key) => ({
+      keyId: key.keyId,
+      type: KEY_TYPES[key.kind],
+      publicKeyPem: key.publicKeyPem,
+    })),
   );
+  return [deleteRemoteActorKeysExceptSql(actorUri, json), upsertRemoteActorKeysSql(actorUri, json)];
+};
 
 const upsertRemoteActorStatement = (actor: RemoteActor) => {
   const now = nowIso();
@@ -303,8 +372,6 @@ const upsertRemoteActorStatement = (actor: RemoteActor) => {
     actor.domain,
     actor.inboxUri,
     actor.sharedInboxUri ?? null,
-    actor.publicKeyId,
-    actor.publicKeyPem,
     actor.displayName,
     actor.fetchedAt,
     now,
@@ -316,17 +383,21 @@ const upsertRemoteActorStatement = (actor: RemoteActor) => {
     actor.followersUri ?? null,
     actor.followingUri ?? null,
     actor.featuredTagsUri ?? null,
+    LEGACY_PUBLIC_KEY_PEM,
   );
 };
 
+/** Cache `actor` under the handle it carries, with `keys` as the keys it publishes. */
 export const upsertRemoteActor = async (
   db: D1Database,
   actor: RemoteActor,
+  keys: ReadonlyArray<RemoteActorKey>,
 ): Promise<Result<RemoteActor, RepositoryError>> =>
   (
-    await runD1(async () => {
-      await runTyped(db, upsertRemoteActorStatement(actor));
-    })
+    await runTypedBatch(db, [
+      upsertRemoteActorStatement(actor),
+      ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
+    ])
   ).map(() => actor);
 
 /**
@@ -338,37 +409,34 @@ export const upsertRemoteActor = async (
 export const upsertRemoteActorKeepingHandle = async (
   db: D1Database,
   actor: RemoteActor,
+  keys: ReadonlyArray<RemoteActorKey>,
 ): Promise<Result<RemoteActor, RepositoryError>> => {
   const now = nowIso();
-  const written = await runD1(async () =>
-    queryTyped(
-      db,
-      upsertRemoteActorKeepingHandleSql(
-        actor.actorUri,
-        actor.username,
-        actor.domain,
-        actor.inboxUri,
-        actor.sharedInboxUri ?? null,
-        actor.publicKeyId,
-        actor.publicKeyPem,
-        actor.displayName,
-        actor.fetchedAt,
-        now,
-        now,
-        JSON.stringify(actor.profile),
-        actor.outboxUri ?? null,
-        actor.featuredUri ?? null,
-        actor.followersUri ?? null,
-        actor.followingUri ?? null,
-        actor.featuredTagsUri ?? null,
-      ),
-      HandleRow,
+  const written = await runTypedBatch(db, [
+    upsertRemoteActorKeepingHandleSql(
+      actor.actorUri,
+      actor.username,
+      actor.domain,
+      actor.inboxUri,
+      actor.sharedInboxUri ?? null,
+      actor.displayName,
+      actor.fetchedAt,
+      now,
+      now,
+      JSON.stringify(actor.profile),
+      actor.outboxUri ?? null,
+      actor.featuredUri ?? null,
+      actor.followersUri ?? null,
+      actor.followingUri ?? null,
+      actor.featuredTagsUri ?? null,
+      LEGACY_PUBLIC_KEY_PEM,
     ),
-  );
+    ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
+  ]);
   if (written.isErr()) {
     return err(written.error);
   }
-  const row = written.value[0];
+  const row = parseRows(HandleRow, written.value[0]?.results ?? [])[0];
   const webfingeredAt = row?.last_webfingered_at
     ? IsoInstant.parse(row.last_webfingered_at)
     : undefined;
@@ -391,11 +459,13 @@ export const upsertRemoteActorKeepingHandle = async (
 export const upsertConfirmedRemoteActor = async (
   db: D1Database,
   actor: RemoteActor,
+  keys: ReadonlyArray<RemoteActorKey>,
 ): Promise<Result<RemoteActor, RepositoryError>> =>
   (
     await runTypedBatch(db, [
       demoteRemoteActorHandleSql(actor.username, actor.domain, actor.actorUri),
       upsertRemoteActorStatement(actor),
+      ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
     ])
   ).map(() => actor);
 
@@ -871,4 +941,4 @@ export const listRemoteActorFollowerAccountIds = async (
   });
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
-warmSchemas([RemoteActorRowSchema]);
+warmSchemas([RemoteActorRowSchema, KeyOwnerRowSchema]);
