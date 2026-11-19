@@ -147,18 +147,24 @@ const applyNoteUpdate = async (
   if (editedAt.isErr()) {
     return ok(undefined);
   }
+  const previous = cached.value.editedAt;
+  // As Mastodon's `ProcessStatusUpdateService#handle_explicit_update!`, an
+  // Update dated later than the stored edit takes the note's language, even
+  // when the text stays the same.
+  const explicit =
+    note.value.updated != null &&
+    (previous.kind !== "Edited" || isNewer(editedAt.value, previous.at));
   const refreshed = await applyMediaPolicy(env, signer, {
     ...parsed.value,
     id: cached.value.id,
     publishedAt: cached.value.publishedAt,
     visibility: cached.value.visibility,
-    language: cached.value.language,
+    language: explicit ? parsed.value.language : cached.value.language,
     editedAt: cached.value.editedAt,
   });
   const edited = contentChanged(cached.value, refreshed);
   // A late or replayed edit must not roll back a newer one. A count-only
   // refresh is not an edit and is always applied.
-  const previous = cached.value.editedAt;
   if (edited && previous.kind === "Edited" && !isNewer(editedAt.value, previous.at)) {
     return ok(undefined);
   }
