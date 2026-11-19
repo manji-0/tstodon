@@ -131,7 +131,7 @@
     "@types/redux-immutable": "4.0.6",
     "@types/requestidlecallback": "0.3.7",
     "fake-indexeddb": "6.2.5",
-    "jsdom": "30.0.1",
+    "jsdom": "31.0.1",
     "redux": "5.0.1",
     "type-fest": "5.7.0",
     "vite": "catalog:",
