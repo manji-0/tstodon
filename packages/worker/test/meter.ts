@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "cloudflare:test";
 
 /**
@@ -7,6 +8,14 @@ import { env } from "cloudflare:test";
  * reads and writes, and Workflow instances. `patchD1` / `patchBindings`
  * patch the bindings' prototypes once; read `meter.tally`, clear it with
  * `resetMeter`. Used by the query-count report and the D1 budget test.
+ *
+ * A call counts toward the tally that was current when the `SELF` request
+ * making it started (`patchD1` wraps the Worker's `fetch`), or when
+ * `meterWork` started the work that makes it. The isolate also runs work no
+ * test is measuring: a Workflow retrying a delivery an earlier test queued, a
+ * queue batch, a request whose after-response work outlived its window. That
+ * work is not counted, and a request's own after-response work never lands
+ * in a later request's tally.
  */
 
 export type Tally = {
@@ -45,7 +54,19 @@ const emptyTally = (): Tally => ({
 
 /** What the patched bindings counted since the last `resetMeter`. */
 export const meter: { tally: Tally } = { tally: emptyTally() };
-let inFlight = 0;
+const counting = new AsyncLocalStorage<Tally>();
+const inFlight = new WeakMap<Tally, number>();
+
+/** Run `work`, made in the test itself rather than through `SELF`, counted toward `meter.tally`. */
+export const meterWork = <T>(work: () => Promise<T>): Promise<T> => counting.run(meter.tally, work);
+
+/**
+ * The Worker `SELF` requests: the module `@cloudflare/vitest-plugin` imports
+ * as `main` (the root Vitest config's `dist/ssr/wrangler.json`), whose
+ * `fetch` it looks up on every request.
+ */
+const mainModule = "../dist/ssr/index.js";
+const worker: unknown = Reflect.get(await import(/* @vite-ignore */ mainModule), "default");
 
 const sqlOf = (statement: unknown): string => {
   const text =
@@ -55,7 +76,7 @@ const sqlOf = (statement: unknown): string => {
   return typeof text === "string" ? text.replace(/\s+/g, " ").slice(0, 140) : "?";
 };
 
-const countMeta = (result: unknown, sql = "?"): void => {
+const countMeta = (tally: Tally, result: unknown, sql = "?"): void => {
   const meta =
     typeof result === "object" && result !== null ? Reflect.get(result, "meta") : undefined;
   if (typeof meta !== "object" || meta === null) {
@@ -63,26 +84,42 @@ const countMeta = (result: unknown, sql = "?"): void => {
   }
   const read = Reflect.get(meta, "rows_read");
   const written = Reflect.get(meta, "rows_written");
-  meter.tally.rowsRead += typeof read === "number" ? read : 0;
-  meter.tally.rowsWritten += typeof written === "number" ? written : 0;
-  meter.tally.rowsBySql.push(`${String(read)} ${String(written)} ${sql}`);
+  tally.rowsRead += typeof read === "number" ? read : 0;
+  tally.rowsWritten += typeof written === "number" ? written : 0;
+  tally.rowsBySql.push(`${String(read)} ${String(written)} ${sql}`);
 };
 
 const track = async <T>(
   statements: number,
-  work: () => Promise<T>,
+  work: (tally: Tally | undefined) => Promise<T>,
   sql: ReadonlyArray<string> = [],
 ): Promise<T> => {
-  meter.tally.sql.push(...sql.map((text) => `${inFlight === 0 ? "+" : " "} ${text}`));
-  if (inFlight === 0) {
-    meter.tally.rounds += 1;
+  const tally = counting.getStore();
+  if (tally === undefined) {
+    return work(undefined);
   }
-  inFlight += 1;
-  meter.tally.statements += statements;
+  const running = inFlight.get(tally) ?? 0;
+  tally.sql.push(...sql.map((text) => `${running === 0 ? "+" : " "} ${text}`));
+  if (running === 0) {
+    tally.rounds += 1;
+  }
+  inFlight.set(tally, running + 1);
+  tally.statements += statements;
   try {
-    return await work();
+    return await work(tally);
   } finally {
-    inFlight -= 1;
+    inFlight.set(tally, (inFlight.get(tally) ?? 0) - 1);
+  }
+};
+
+/** Bump a binding counter of the tally the calling work counts toward, if any. */
+const bump = (
+  key: "doRequests" | "queueMessages" | "kvReads" | "kvWrites" | "workflowCreates",
+  by = 1,
+) => {
+  const tally = counting.getStore();
+  if (tally !== undefined) {
+    tally[key] += by;
   }
 };
 
@@ -105,6 +142,21 @@ export const patchD1 = (): void => {
     return;
   }
   Reflect.set(dbProto, marker, true);
+  if (
+    typeof worker !== "object" ||
+    worker === null ||
+    typeof Reflect.get(worker, "fetch") !== "function"
+  ) {
+    throw new Error(`${mainModule} exports no default fetch handler to meter`);
+  }
+  patchMethod(
+    worker,
+    "fetch",
+    (original) =>
+      function (this: unknown, ...args: unknown[]) {
+        return counting.run(meter.tally, () => Reflect.apply(original, this, args));
+      },
+  );
   const all = Reflect.get(stmtProto, "all");
   for (const method of ["run", "all"]) {
     patchMethod(
@@ -114,9 +166,9 @@ export const patchD1 = (): void => {
         function (this: unknown, ...args: unknown[]) {
           return track(
             1,
-            async () => {
+            async (tally) => {
               const result: unknown = await Reflect.apply(original, this, args);
-              countMeta(result);
+              if (tally) countMeta(tally, result);
               return result;
             },
             [sqlOf(this)],
@@ -132,9 +184,9 @@ export const patchD1 = (): void => {
       function (this: unknown, column?: unknown) {
         return track(
           1,
-          async () => {
+          async (tally) => {
             const result: unknown = await Reflect.apply(all, this, []);
-            countMeta(result);
+            if (tally) countMeta(tally, result);
             const rows =
               typeof result === "object" && result !== null ? Reflect.get(result, "results") : [];
             const row: unknown = Array.isArray(rows) ? rows[0] : undefined;
@@ -155,14 +207,14 @@ export const patchD1 = (): void => {
     (original) =>
       function (this: unknown, ...args: unknown[]) {
         const statements = Array.isArray(args[0]) ? args[0] : [];
-        meter.tally.batches += 1;
         return track(
           statements.length,
-          async () => {
+          async (tally) => {
+            if (tally) tally.batches += 1;
             const results: unknown = await Reflect.apply(original, this, [statements]);
-            if (Array.isArray(results)) {
+            if (tally && Array.isArray(results)) {
               results.forEach((result: unknown, index) => {
-                countMeta(result, `[batch] ${sqlOf(statements[index])}`);
+                countMeta(tally, result, `[batch] ${sqlOf(statements[index])}`);
               });
             }
             return results;
@@ -197,7 +249,7 @@ export const patchBindings = (): void => {
                   return value;
                 }
                 return (...callArgs: unknown[]) => {
-                  meter.tally.doRequests += 1;
+                  bump("doRequests");
                   return Reflect.apply(value, target, callArgs);
                 };
               },
@@ -216,7 +268,7 @@ export const patchBindings = (): void => {
         "send",
         (original) =>
           function (this: unknown, ...args: unknown[]) {
-            meter.tally.queueMessages += 1;
+            bump("queueMessages");
             return Reflect.apply(original, this, args);
           },
       );
@@ -225,7 +277,7 @@ export const patchBindings = (): void => {
         "sendBatch",
         (original) =>
           function (this: unknown, messages: unknown, ...rest: unknown[]) {
-            meter.tally.queueMessages += Array.isArray(messages) ? messages.length : 1;
+            bump("queueMessages", Array.isArray(messages) ? messages.length : 1);
             return Reflect.apply(original, this, [messages, ...rest]);
           },
       );
@@ -241,7 +293,7 @@ export const patchBindings = (): void => {
         "create",
         (original) =>
           function (this: unknown, ...args: unknown[]) {
-            meter.tally.workflowCreates += 1;
+            bump("workflowCreates");
             return Reflect.apply(original, this, args);
           },
       );
@@ -250,7 +302,7 @@ export const patchBindings = (): void => {
         "createBatch",
         (original) =>
           function (this: unknown, batch: unknown, ...rest: unknown[]) {
-            meter.tally.workflowCreates += Array.isArray(batch) ? batch.length : 1;
+            bump("workflowCreates", Array.isArray(batch) ? batch.length : 1);
             return Reflect.apply(original, this, [batch, ...rest]);
           },
       );
@@ -268,7 +320,7 @@ export const patchBindings = (): void => {
         method,
         (original) =>
           function (this: unknown, ...args: unknown[]) {
-            meter.tally.kvReads += 1;
+            bump("kvReads");
             return Reflect.apply(original, this, args);
           },
       );
@@ -279,7 +331,7 @@ export const patchBindings = (): void => {
         method,
         (original) =>
           function (this: unknown, ...args: unknown[]) {
-            meter.tally.kvWrites += 1;
+            bump("kvWrites");
             return Reflect.apply(original, this, args);
           },
       );

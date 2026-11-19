@@ -299,6 +299,42 @@ describe("D1 statements do not grow with how many things a request names", () =>
   };
 
   it(
+    "counts only the request it measures, not a Workflow running beside it",
+    { timeout: 60_000 },
+    async () => {
+      const account = await signedInAccount("budget-meter@example.com");
+      const token = await accessTokenFor(account.id);
+      if (!token) throw new Error("token");
+      const request = () =>
+        SELF.fetch("https://example.com/api/v1/accounts/verify_credentials", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      patchD1();
+      await metered(request);
+      const alone = await metered(request);
+      // A delivery Workflow reads D1 in its own invocation, as one retrying
+      // an earlier test's delivery does whenever its backoff ends.
+      const beside = await metered(async () => {
+        const instance = await env.OUTBOX_DELIVERY_WORKFLOW.create({
+          params: { kind: "DeliverActivity", activityId: "budget-meter-no-such-activity" },
+        });
+        const deadline = Date.now() + 30_000;
+        while ((await instance.status()).status !== "complete") {
+          if (Date.now() > deadline) throw new Error("the Workflow did not complete");
+          await settle();
+        }
+        return request();
+      });
+      expect([alone.status, beside.status]).toEqual([200, 200]);
+      expect(alone.statements).toBeGreaterThan(0);
+      expect(
+        beside.statements,
+        `the request alone made ${alone.statements} statements, beside a Workflow ${beside.statements}`,
+      ).toBe(alone.statements);
+    },
+  );
+
+  it(
     "reads the local actors an inbound note names in one query, however many it names",
     { timeout: 60_000 },
     async () => {
