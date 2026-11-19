@@ -1,8 +1,13 @@
-import type { ApiNotificationRequestJSON, NotificationPolicyJSON } from "@tstodon/api";
+import type {
+  ApiNotificationRequestJSON,
+  NotificationPolicyJSON,
+  NotificationPolicyV1JSON,
+} from "@tstodon/api";
 import {
   ApiGetNotificationRequestsParamsSchema,
   ApiNotificationRequestIdsParamsSchema,
   ApiUpdateNotificationPolicyParamsSchema,
+  ApiUpdateNotificationPolicyV1ParamsSchema,
 } from "@tstodon/api";
 import { type Context } from "hono";
 import { warmSchemas } from "@tstodon/core";
@@ -196,6 +201,77 @@ export const patchV2NotificationsPolicy = async (
   return c.json(await policyDocument(c.env, user.value.id, policy));
 };
 
+/** Mastodon's `REST::V1::NotificationPolicySerializer`: anything but `accept` filters. */
+const policyV1Document = (policy: NotificationPolicyJSON): NotificationPolicyV1JSON => ({
+  filter_not_following: policy.for_not_following !== "accept",
+  filter_not_followers: policy.for_not_followers !== "accept",
+  filter_new_accounts: policy.for_new_accounts !== "accept",
+  filter_private_mentions: policy.for_private_mentions !== "accept",
+  filter_bots: policy.for_bots !== "accept",
+  summary: policy.summary,
+});
+
+export const getV1NotificationsPolicy = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/policy">,
+) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const policy = await findNotificationPolicy(c.env.DB, user.value.id);
+  if (policy.isErr()) {
+    return jsonRepositoryError(c, policy.error.message);
+  }
+  return c.json(policyV1Document(await policyDocument(c.env, user.value.id, policy.value)));
+};
+
+/**
+ * `PUT` or `PATCH /api/v1/notifications/policy`, as Mastodon's
+ * `NotificationPolicy#filter_*=`: true filters, false or null accepts, and a
+ * field the request leaves out keeps its action (a `drop` included).
+ */
+export const putV1NotificationsPolicy = async (
+  c: Context<{ Bindings: Env }, "/api/v1/notifications/policy">,
+) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const existing = await findNotificationPolicy(c.env.DB, user.value.id);
+  if (existing.isErr()) {
+    return jsonRepositoryError(c, existing.error.message);
+  }
+  const body = await readParams(c, ApiUpdateNotificationPolicyV1ParamsSchema);
+  if (body.isErr()) {
+    return jsonValidationError(c);
+  }
+  const action = (
+    filter: boolean | null | undefined,
+    current: NotificationPolicyAction,
+  ): NotificationPolicyAction => {
+    if (filter === undefined) {
+      return current;
+    }
+    return filter === true ? "filter" : "accept";
+  };
+  const policy: NotificationPolicy = {
+    ...existing.value,
+    forNotFollowing: action(body.value.filter_not_following, existing.value.forNotFollowing),
+    forNotFollowers: action(body.value.filter_not_followers, existing.value.forNotFollowers),
+    forNewAccounts: action(body.value.filter_new_accounts, existing.value.forNewAccounts),
+    forPrivateMentions: action(
+      body.value.filter_private_mentions,
+      existing.value.forPrivateMentions,
+    ),
+    forBots: action(body.value.filter_bots, existing.value.forBots),
+  };
+  const saved = await saveNotificationPolicy(c.env.DB, user.value.id, policy);
+  if (saved.isErr()) {
+    return jsonRepositoryError(c, saved.error.message);
+  }
+  return c.json(policyV1Document(await policyDocument(c.env, user.value.id, policy)));
+};
+
 export const getV1NotificationsRequests = async (
   c: Context<{ Bindings: Env }, "/api/v1/notifications/requests">,
 ) => {
@@ -356,6 +432,7 @@ export const postV1NotificationsRequestsDismiss = (
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([
   ApiUpdateNotificationPolicyParamsSchema,
+  ApiUpdateNotificationPolicyV1ParamsSchema,
   ApiGetNotificationRequestsParamsSchema,
   ApiNotificationRequestIdsParamsSchema,
 ]);

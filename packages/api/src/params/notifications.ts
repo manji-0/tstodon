@@ -55,3 +55,18 @@ export const ApiUpdateNotificationPolicyParamsSchema = z.object({
 export type ApiUpdateNotificationPolicyParams = z.input<
   typeof ApiUpdateNotificationPolicyParamsSchema
 >;
+
+/**
+ * `PUT /api/v1/notifications/policy`: each `filter_*` sets its `for_*` to
+ * `filter` when true and `accept` when false or null; one left out stays.
+ */
+export const ApiUpdateNotificationPolicyV1ParamsSchema = z.object({
+  filter_not_following: z.boolean().nullable().optional(),
+  filter_not_followers: z.boolean().nullable().optional(),
+  filter_new_accounts: z.boolean().nullable().optional(),
+  filter_private_mentions: z.boolean().nullable().optional(),
+  filter_bots: z.boolean().nullable().optional(),
+});
+export type ApiUpdateNotificationPolicyV1Params = z.input<
+  typeof ApiUpdateNotificationPolicyV1ParamsSchema
+>;
