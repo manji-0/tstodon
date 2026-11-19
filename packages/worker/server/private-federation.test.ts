@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { listOutboundActivities } from "./outbox-store";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const json = async (
   path: string,
@@ -74,14 +75,14 @@ describe("non-public notes on the federation surface", () => {
 
     // The note objects open only for public and unlisted visibility.
     const objectPath = (uri: string) => new URL(uri).pathname;
-    expect((await json(objectPath(publicNote.uri))).status).toBe(200);
-    expect((await json(objectPath(privateNote.uri))).status).toBe(404);
-    expect((await json(objectPath(direct.uri))).status).toBe(404);
+    expect((await json(objectPath(publicNote.uri), ACTIVITY_JSON)).status).toBe(200);
+    expect((await json(objectPath(privateNote.uri), ACTIVITY_JSON)).status).toBe(404);
+    expect((await json(objectPath(direct.uri), ACTIVITY_JSON)).status).toBe(404);
 
     // The outbox lists the public note's Create only.
     const outbox = read(
       z.object({ orderedItems: z.array(z.object({ type: z.string(), object: z.unknown() })) }),
-      (await json(`/users/${account.username}/outbox?page=true`)).body,
+      (await json(`/users/${account.username}/outbox?page=true`, ACTIVITY_JSON)).body,
     );
     expect(
       outbox.orderedItems.map((item) =>

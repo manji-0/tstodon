@@ -81,6 +81,8 @@ export type ApRepliesPageDocumentJSON = z.infer<typeof ApRepliesPageDocument>;
 const noteFields = {
   id: ApUri,
   attributedTo: ApUri,
+  /** The status's page in the web app (Mastodon's `url_for`). */
+  url: ApUri,
   content: z.string(),
   published: z.iso.datetime({ offset: true }),
   /** When it was last edited; Mastodon applies an `Update` only with a newer one. */

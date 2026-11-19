@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { getCookie } from "hono/cookie";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@tstodon/api";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import { type Appearance, DEFAULT_APPEARANCE, findAppearance, themeColorMetas } from "./appearance";
+import { accessAssertion, accessConfigured } from "./access-jwt";
 import { browserFacingOrigin, browserSession } from "./browser-session";
 import { runD1 } from "./d1";
 import {
@@ -75,8 +77,34 @@ const HASHED_PACK = /^\/packs\/(?:[^/]+\/)*[^/]+-[\w-]{8}\.\w+$/;
 export const packCacheControl = (pathname: string): string | undefined =>
   HASHED_PACK.test(pathname) ? "private, max-age=31536000, immutable" : undefined;
 
-const wantsActivityJson = (accept: string | undefined): boolean =>
-  /application\/(?:activity\+json|ld\+json)/.test(accept ?? "");
+const JSON_TYPES = new Set([
+  "application/json",
+  "application/activity+json",
+  "application/ld+json",
+  "application/jrd+json",
+]);
+const HTML_TYPES = new Set(["text/html", "application/xhtml+xml", "*/*"]);
+
+/**
+ * Whether `Accept` asks for JSON rather than a page, as Rails reads it for
+ * Mastodon's routes: a browser's header (one with `*\/*` among other types)
+ * or none at all is a page, else the most preferred type it knows decides.
+ */
+const prefersJson = (accept: string | undefined): boolean => {
+  if (!accept || /,\s*\*\/\*|\*\/\*\s*,/.test(accept)) {
+    return false;
+  }
+  const ranked = accept
+    .split(",")
+    .map((entry, index) => {
+      const [type = "", ...params] = entry.split(";").map((part) => part.trim().toLowerCase());
+      const q = params.find((param) => param.startsWith("q="));
+      return { type, index, q: q === undefined ? 1 : Number(q.slice(2)) || 0 };
+    })
+    .toSorted((a, b) => b.q - a.q || a.index - b.index);
+  const decisive = ranked.find(({ type }) => JSON_TYPES.has(type) || HTML_TYPES.has(type));
+  return decisive !== undefined && JSON_TYPES.has(decisive.type);
+};
 
 /** `/@alice` and `/@alice/123` for an ActivityPub client: the actor and note URLs. */
 const activityPubTarget = (path: string): string | undefined => {
@@ -85,6 +113,41 @@ const activityPubTarget = (path: string): string | undefined => {
     return undefined;
   }
   return match[2] ? `/users/${match[1]}/statuses/${match[2]}` : `/users/${match[1]}`;
+};
+
+/**
+ * The actor, its follows and its notes for a browser: their pages in the web
+ * app, as Mastodon's `redirect_with_vary` routes.
+ */
+const webPageTarget = (path: string): string | undefined => {
+  const match = /^\/users\/([^/]+)(?:\/(followers|following)|\/statuses\/([^/]+))?\/?$/.exec(path);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const page = `/@${match[1]}`;
+  return match[3] ? `${page}/${match[3]}` : match[2] ? `${page}/${match[2]}` : page;
+};
+
+/**
+ * The request with Access's `CF_Authorization` cookie as its assertion when
+ * Access sent none. Access bypasses `/@*`, so that another server can fetch a
+ * post's `url`, and sends no assertion there; the browser still sends the
+ * cookie Access logged it in with, the same JWT, verified as the header is.
+ */
+const withAccessCookie = (c: Context<{ Bindings: Env }>): Request => {
+  const cookie = getCookie(c, "CF_Authorization");
+  if (accessAssertion(c.req.raw) !== undefined || !cookie) {
+    return c.req.raw;
+  }
+  const headers = new Headers(c.req.raw.headers);
+  headers.set("Cf-Access-Jwt-Assertion", cookie);
+  return new Request(c.req.raw, { headers });
+};
+
+/** A 301 that a cache keeps apart per `Accept`, as Mastodon's `RedirectWithVary`. */
+const redirectWithVary = (c: Context<{ Bindings: Env }>, location: string): Response => {
+  c.header("Vary", "Origin, Accept");
+  return c.redirect(location, 301);
 };
 
 /** The first `Accept-Language` the build has a locale for, else English. */
@@ -504,8 +567,9 @@ const statusPageOEmbedUrl = async (env: Env, path: string): Promise<string | und
 
 /**
  * Request-wide middleware: the web app's paths get the shell, `/web/*` redirects as in Mastodon, `/@user` asked for as
- * ActivityPub goes to the actor or note URL, and the `/favicon.ico` every
- * browser asks for goes to the build's hashed favicon.
+ * ActivityPub goes to the actor or note URL and the actor or note URL asked
+ * for as a page to `/@user`, and the `/favicon.ico` every browser asks for
+ * goes to the build's hashed favicon.
  */
 export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next) => {
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
@@ -518,6 +582,11 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   if (path === "/favicon.ico") {
     return c.redirect(webManifest.favicon, 302);
   }
+  const accept = c.req.header("Accept");
+  const page = path.startsWith("/users/") ? webPageTarget(path) : undefined;
+  if (page && !prefersJson(accept)) {
+    return redirectWithVary(c, page);
+  }
   if (!isWebAppPath(path) || (webManifest.dev && VITE_DEV_PATH.test(path))) {
     return next();
   }
@@ -525,13 +594,17 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   if (embed?.[1] && embed[2]) {
     return statusEmbedPage(c, embed[1], embed[2]);
   }
-  if (path.startsWith("/@") && wantsActivityJson(c.req.header("Accept"))) {
+  if (path.startsWith("/@") && prefersJson(accept)) {
     const target = activityPubTarget(path);
-    return target ? c.redirect(target, 301) : next();
+    return target ? redirectWithVary(c, target) : next();
   }
   const manifest = webManifest;
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
-  const viewer = await currentViewer(c.req.raw, c.env);
+  const bypassed = path.startsWith("/@");
+  const viewer = await currentViewer(bypassed ? withAccessCookie(c) : c.req.raw, c.env);
+  if (bypassed && viewer === undefined && accessConfigured(c.env)) {
+    return signInRedirect(c);
+  }
   const identity = parseInstanceIdentity(c.env);
   const [state, appearance, oembedUrl] = await Promise.all([
     initialState(c.env, c.req.raw, locale, viewer),

@@ -62,7 +62,11 @@ const baseScenarios = async ({ stamp, mona, carol }: Cast): Promise<void> => {
 
   await bothWays("public post reaches the follower's home", alice, mona, async (from, to) => {
     const sent = await post(from, { status: `plain ${stamp} from ${from.username}` });
-    await onHome(to, sent.uri, (status) => status.content.includes(`plain ${stamp}`));
+    const copy = await onHome(to, sent.uri, (status) => status.content.includes(`plain ${stamp}`));
+    // The `url` a client opens is the post's page on its author's server, `/@name/id`.
+    if (!sent.url?.endsWith(`/@${from.username}/${sent.id}`) || copy.url !== sent.url) {
+      throw new StepFailure(`the post's url is ${sent.url}, the receiver's copy's ${copy.url}`);
+    }
   });
 
   await bothWays(

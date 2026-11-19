@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiInitialState, type ApiInitialStateJSON } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
+import { signAccessJwt } from "../test/access-jwt-fixture";
 import { accessTokenFor, authHeaders, signedInAccount } from "../test/auth-fixture";
 import { StreamEvent } from "@tstodon/domain";
 import { publishToAccount } from "./stream-publish";
@@ -134,9 +135,35 @@ describe("Mastodon web app", () => {
     expect(note.headers.get("location")).toBe("/users/alice/statuses/123");
   });
 
+  // Access bypasses `/@*` (infra/cloudflare/access.tf), so that a remote server
+  // can resolve a post's `url`: a browser's request there carries no
+  // assertion, only the `CF_Authorization` cookie Access logged it in with.
+  it("signs a /@ page in by the Access cookie, and sends a browser without one to sign in", async () => {
+    const browser = { Accept: "text/html,application/xhtml+xml,*/*;q=0.8" };
+    const { email } = await signUp("web_bypassed");
+    const path = "/@web_bypassed/1";
+    // Only a local hostname takes the test Access keys, as `signUp` signs in on.
+    const LOCAL = "http://127.0.0.1";
+    const cookie = `CF_Authorization=${await signAccessJwt({ email })}`;
+
+    const page = await SELF.fetch(`${LOCAL}${path}`, { headers: { ...browser, cookie } });
+    expect(page.status).toBe(200);
+    const state = initialState(await page.text());
+    expect(state.accounts[state.meta.me ?? ""]?.username).toBe("web_bypassed");
+
+    const foreign = `CF_Authorization=${await signAccessJwt({ email, audience: "another-app" })}`;
+    for (const headers of [browser, { ...browser, cookie: foreign }]) {
+      const response = await SELF.fetch(`${LOCAL}${path}`, { headers, redirect: "manual" });
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        `/auth/sign_in?return_to=${encodeURIComponent(path)}`,
+      );
+    }
+  });
+
   it("serves the shell on the web app's paths, and a 404 on a path nothing answers", async () => {
     const browser = { Accept: "text/html,application/xhtml+xml,*/*;q=0.8" };
-    for (const path of ["/home", "/deck/home", "/@a/1", "/statuses/new"]) {
+    for (const path of ["/home", "/deck/home", "/statuses/new"]) {
       const response = await SELF.fetch(`${ORIGIN}${path}`, { headers: browser });
       expect(response.status, path).toBe(200);
       expect(response.headers.get("content-type"), path).toContain("text/html");

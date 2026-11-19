@@ -14,6 +14,7 @@ import { envWith } from "../test/env-fixture";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 import { getUsersByUsernameCollectionsFeatured } from "./routes/activitypub";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 /**
  * INT-15, pins over federation: the `featured` collection a local actor
@@ -77,7 +78,7 @@ describe("a local account's featured collection", () => {
 
     const actor = expectContract(
       ApActorDocument,
-      await (await SELF.fetch(`${ORIGIN}/users/${account.username}`)).json(),
+      await (await SELF.fetch(`${ORIGIN}/users/${account.username}`, ACTIVITY_JSON)).json(),
     );
     expect(actor.featured).toBe(`${actorUri}/collections/featured`);
     expect(await featured(account.username)).toMatchObject({

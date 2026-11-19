@@ -52,6 +52,8 @@ export const remoteActor = async (
     featuredUri?: string;
     published?: string;
     path?: string;
+    /** The actor's `url`: its profile page. */
+    profileUrl?: string;
   }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}${options.path ?? `/users/${username}`}`;
@@ -74,7 +76,11 @@ export const remoteActor = async (
     publicKeyId: `${actorUri}#main-key`,
     publicKeyPem: keys.publicKeyPem,
     displayName: `Remote ${username}`,
-    profile: { ...RemoteActor.emptyProfile, publishedAt: published?.unwrapOr(null) ?? null },
+    profile: {
+      ...RemoteActor.emptyProfile,
+      publishedAt: published?.unwrapOr(null) ?? null,
+      profileUrl: options.profileUrl ?? null,
+    },
     fetchedAt: fetchedAt.value,
     webfingeredAt:
       options.accountDomain === undefined || options.accountDomain === host

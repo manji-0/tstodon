@@ -30,6 +30,12 @@ export const InstanceIdentity = {
   parse: schemaResult(InstanceIdentitySchema),
   actorUrl: (identity: InstanceIdentity, username: string): string =>
     `${origin(identity)}/users/${username}`,
+  /** A local account's page in the web app, its `url` (Mastodon's `short_account_url`). */
+  profileUrl: (identity: InstanceIdentity, username: string): string =>
+    `${origin(identity)}/@${username}`,
+  /** A local status's page in the web app, its `url` (Mastodon's `short_account_status_url`). */
+  statusUrl: (identity: InstanceIdentity, username: string, statusId: string): string =>
+    `${origin(identity)}/@${username}/${statusId}`,
   webfingerSubject: (identity: InstanceIdentity, username: string): string =>
     `acct:${username}@${identity.domain}`,
   sharedInboxUrl: (identity: InstanceIdentity): string => `${origin(identity)}/inbox`,

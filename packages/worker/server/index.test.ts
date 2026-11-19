@@ -32,6 +32,7 @@ import { publishToAccount } from "./stream-publish";
 import { signInboxRequest, verifyInboxRequest } from "./http-signature";
 import { authHeaders } from "../test/auth-fixture";
 import { answerLinkPreviews } from "../test/link-card-fixture";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const auth = (
   email: string,
@@ -176,14 +177,14 @@ describe("worker http", () => {
       subject: "acct:alice@example.com",
     });
 
-    const actor = await json("/users/alice");
+    const actor = await json("/users/alice", ACTIVITY_JSON);
     expect(actor.status).toBe(200);
     expect(read(ApActorDocument, actor.body)).toMatchObject({
       type: "Person",
       preferredUsername: "alice",
     });
 
-    const note = await json(`/users/alice/statuses/${status.id}`);
+    const note = await json(`/users/alice/statuses/${status.id}`, ACTIVITY_JSON);
     expect(note.status).toBe(200);
     expect(read(ApStatusDocument, note.body)).toMatchObject({ type: "Note" });
   });

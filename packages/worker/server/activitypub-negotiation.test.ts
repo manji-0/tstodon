@@ -96,13 +96,67 @@ describe("ActivityPub content negotiation with Mastodon's Accept header", () => 
   });
 });
 
-describe("what a browser gets for a note's ActivityPub URL", () => {
-  it("is a 404 for a note that does not exist or that it may not read", async () => {
+describe("what a browser gets for an ActivityPub URL", () => {
+  // Mastodon's `redirect_with_vary` in `config/routes.rb`: a request whose
+  // format is HTML (or not given) goes to the web app's page, varying by Accept.
+  it("is a redirect to the page, for the actor, its follows and its notes", async () => {
     const author = await signedInAccount(AUTHOR);
+    const note = await post("a public note a browser opens", "public");
     const direct = await post("a direct note a browser asks for", "direct");
-    for (const path of [direct, `/users/${author.username}/statuses/999`]) {
-      const response = await get(path, BROWSER_ACCEPT);
-      expect(response.status, path).toBe(404);
+    const id = (path: string) => path.split("/").at(-1);
+    const user = `/users/${author.username}`;
+    const pages: ReadonlyArray<readonly [string, string]> = [
+      [user, `/@${author.username}`],
+      [`${user}/followers`, `/@${author.username}/followers`],
+      [`${user}/following`, `/@${author.username}/following`],
+      [note, `/@${author.username}/${id(note)}`],
+      [direct, `/@${author.username}/${id(direct)}`],
+      [`${user}/statuses/999`, `/@${author.username}/999`],
+      ["/users/apneg-nobody", "/@apneg-nobody"],
+    ];
+    // Rails reads an Accept with `*/*` beside other types as a browser's, whatever it names first.
+    const apAndAll = "application/activity+json, */*";
+    for (const accept of [BROWSER_ACCEPT, "text/html", "*/*", apAndAll, undefined]) {
+      for (const [path, page] of pages) {
+        const response = await SELF.fetch(`https://example.com${path}`, {
+          headers: accept === undefined ? {} : { Accept: accept },
+          redirect: "manual",
+        });
+        expect(response.status, `${path} ${accept}`).toBe(301);
+        expect(response.headers.get("location"), path).toBe(page);
+        expect(response.headers.get("vary"), path).toBe("Origin, Accept");
+      }
     }
+  });
+
+  it("keeps the ActivityPub document for a JSON request", async () => {
+    const author = await signedInAccount(AUTHOR);
+    for (const accept of [
+      "application/json",
+      "application/activity+json",
+      'application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+      MASTODON_ACCEPT,
+    ]) {
+      const response = await get(`/users/${author.username}`, accept);
+      expect(response.status, accept).toBe(200);
+      expect(contentType(response), accept).toContain("application/activity+json");
+    }
+  });
+
+  it("is not a redirect for the outbox or the featured collections", async () => {
+    const author = await signedInAccount(AUTHOR);
+    for (const path of ["/outbox", "/collections/featured", "/collections/tags"]) {
+      const response = await get(`/users/${author.username}${path}`, BROWSER_ACCEPT);
+      expect(response.status, path).toBe(200);
+    }
+  });
+});
+
+describe("what an ActivityPub client gets for a page URL", () => {
+  it("is a redirect that varies by Accept", async () => {
+    const author = await signedInAccount(AUTHOR);
+    const profile = await get(`/@${author.username}`, MASTODON_ACCEPT);
+    expect(profile.status).toBe(301);
+    expect(profile.headers.get("vary")).toBe("Origin, Accept");
   });
 });

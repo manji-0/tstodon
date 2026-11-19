@@ -67,16 +67,19 @@ const approvalUri = (
  * properties. A pending, accepted, rejected, or revoked quote names it, as
  * Mastodon's `NoteSerializer` keeps `quote` after a refusal; only an accepted
  * quote carries `quoteAuthorization`. An absent, deleted, or dangling one
- * does not.
+ * does not. An error when the quote or its status could not be read.
  */
 export const noteQuote = async (
   env: Env,
   identity: InstanceIdentity,
   statusId: StatusIdValue,
-): Promise<NoteQuote | undefined> => {
+): Promise<Result<NoteQuote | undefined, RepositoryError>> => {
   const quote = await findQuoteByQuoting(env.DB, StatusTarget.local(statusId));
-  if (quote.isErr() || !quote.value) {
-    return undefined;
+  if (quote.isErr()) {
+    return err(quote.error);
+  }
+  if (!quote.value) {
+    return ok(undefined);
   }
   const { id, state, quoted } = quote.value;
   if (
@@ -85,19 +88,21 @@ export const noteQuote = async (
     state.kind !== "Rejected" &&
     state.kind !== "Revoked"
   ) {
-    return undefined;
+    return ok(undefined);
   }
   // A local note's quoted status is always resolved; only remote notes name unresolved ones.
   if (quoted.kind === "Unresolved") {
-    return undefined;
+    return ok(undefined);
   }
   const found = await statusTargetRef(env, identity, quoted);
-  const ref = found.isOk() ? found.value : undefined;
-  return ref === undefined
-    ? undefined
-    : {
-        uri: ref.uri,
-        authorization: state.kind === "Accepted" ? approvalUri(state, quoted, ref, id) : undefined,
-        addressAuthor: quoted.kind === "RemoteStatus" ? ref.authorUri : undefined,
-      };
+  return found.map((ref) =>
+    ref === undefined
+      ? undefined
+      : {
+          uri: ref.uri,
+          authorization:
+            state.kind === "Accepted" ? approvalUri(state, quoted, ref, id) : undefined,
+          addressAuthor: quoted.kind === "RemoteStatus" ? ref.authorUri : undefined,
+        },
+  );
 };

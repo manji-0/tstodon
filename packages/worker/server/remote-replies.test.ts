@@ -6,6 +6,7 @@ import { authHeaders } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const json = async (
   path: string,
@@ -172,12 +173,12 @@ describe("replies to remote statuses", () => {
     );
     const object = read(
       z.object({ inReplyTo: z.string().nullable() }),
-      (await json(new URL(local.uri).pathname)).body,
+      (await json(new URL(local.uri).pathname, ACTIVITY_JSON)).body,
     );
     expect(object.inReplyTo).toBe(answered.uri);
     const remoteObject = read(
       z.object({ inReplyTo: z.string().nullable() }),
-      (await json(new URL(answered.uri).pathname)).body,
+      (await json(new URL(answered.uri).pathname, ACTIVITY_JSON)).body,
     );
     expect(remoteObject.inReplyTo).toBe(incoming.objectUri);
   });

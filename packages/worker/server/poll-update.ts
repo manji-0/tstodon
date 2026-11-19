@@ -87,7 +87,9 @@ const distributePollUpdate = async (
   }
   const media = await loadNoteMedia(env.DB, identity, note);
   if (media.isErr()) {
-    console.error(JSON.stringify({ kind: "PollUpdateNotFederated", statusId: note.id }));
+    console.error(
+      JSON.stringify({ kind: "PollUpdateNotFederated", statusId: note.id, cause: "media" }),
+    );
     return;
   }
   const actor = InstanceIdentity.actorUrl(identity, author.value.username);
@@ -98,7 +100,10 @@ const distributePollUpdate = async (
     actor,
     published: nowIso(),
     object: noteDocument(identity, author.value, note, {
-      quote: await noteQuote(env, identity, note.id),
+      // Best effort: the `Update` of a poll's counts carries no newer
+      // `updated`, so Mastodon handles it as an implicit update, which keeps
+      // the quote it has (`update_quote_approval!` returns without one).
+      quote: (await noteQuote(env, identity, note.id)).unwrapOr(undefined),
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
       poll,

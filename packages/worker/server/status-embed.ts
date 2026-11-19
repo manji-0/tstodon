@@ -1,10 +1,5 @@
 import type { ApiOEmbedJSON } from "@tstodon/api";
-import {
-  type InstanceIdentity,
-  type LocalAccount,
-  type LocalNote,
-  Visibility,
-} from "@tstodon/domain";
+import { InstanceIdentity, type LocalAccount, type LocalNote, Visibility } from "@tstodon/domain";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "./account-store";
@@ -63,9 +58,8 @@ export const findEmbeddableStatusOf = async (
 
 const origin = (identity: InstanceIdentity): string => identity.publicOrigin.replace(/\/$/, "");
 
-/** Mastodon's `short_account_status_url`: the status page in the web app. */
 const statusPageUrl = (identity: InstanceIdentity, embeddable: EmbeddableStatus): string =>
-  `${origin(identity)}/@${embeddable.account.username}/${embeddable.status.id}`;
+  InstanceIdentity.statusUrl(identity, embeddable.account.username, embeddable.status.id);
 
 /** The `href` of the status page's `<link rel="alternate" type="application/json+oembed">`. */
 export const oembedDiscoveryUrl = (
@@ -158,7 +152,7 @@ const oembedDocument = (
   type: "rich",
   version: "1.0",
   author_name: embeddable.account.displayName.trim() || embeddable.account.username,
-  author_url: `${origin(identity)}/@${embeddable.account.username}`,
+  author_url: InstanceIdentity.profileUrl(identity, embeddable.account.username),
   provider_name: identity.domain,
   provider_url: `${origin(identity)}/`,
   cache_age: 86_400,
