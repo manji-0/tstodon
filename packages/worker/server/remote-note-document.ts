@@ -59,10 +59,11 @@ const parseUrlLink = schemaResult(
 
 /**
  * A note's `url` as Mastodon's `url_to_href(url, 'text/html')`: a string, the
- * first of a list of strings, or the `href` of the first `Link` whose
- * `mimeType` is `text/html` or absent. PeerTube's links name a `mediaType`
- * instead, so its first link, the watch page, is taken. Only an `http(s)` URL
- * is kept, as `StatusParser#url`.
+ * first of a list of strings, or else the first entry that is a string or a
+ * `Link` whose `mimeType` is `text/html` or absent (a string has no
+ * `mimeType`, so it counts as `text/html`). PeerTube's links name a
+ * `mediaType` instead, so its first link, the watch page, is taken. Only an
+ * `http(s)` URL is kept, as `StatusParser#url`.
  */
 const noteUrl = (url: unknown): string | undefined => {
   const links: ReadonlyArray<unknown> = Array.isArray(url) ? url : [url];
@@ -72,6 +73,9 @@ const noteUrl = (url: unknown): string | undefined => {
       ? first
       : links
           .flatMap((entry) => {
+            if (typeof entry === "string") {
+              return [{ href: entry, mimeType: undefined }];
+            }
             const link = parseUrlLink(entry);
             return link.isOk() ? [link.value] : [];
           })

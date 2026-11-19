@@ -591,3 +591,61 @@ describe("a converted object", () => {
     await previews.settled();
   });
 });
+
+// Mastodon's `StatusParser#url`: `url_to_href(url, 'text/html')`, kept only
+// when its scheme is http or https.
+describe("a Note's url", () => {
+  const storedUrl = async (url: unknown, slug: string): Promise<string | null | undefined> => {
+    const author = await remoteActor("note-url", "note-url.example");
+    const objectUri = `https://note-url.example/notes/${slug}`;
+    expect(
+      await author.send({
+        id: `${objectUri}#create`,
+        type: "Create",
+        object: {
+          id: objectUri,
+          type: "Note",
+          attributedTo: author.actorUri,
+          content: `<p>${slug}</p>`,
+          published: hoursAgo(1),
+          to: [PUBLIC],
+          url,
+        },
+      }),
+    ).toBe(202);
+    return parseRows(
+      z.object({ url: z.string().nullable() }),
+      (
+        await env.DB.prepare("SELECT url FROM remote_statuses WHERE object_uri = ?")
+          .bind(objectUri)
+          .all()
+      ).results,
+    )[0]?.url;
+  };
+
+  it("is dropped when relative, and the note stored", async () => {
+    expect(await storedUrl("/relative", "relative")).toBeNull();
+  });
+
+  it("is dropped when it is no http(s) URL, and the note stored", async () => {
+    expect(await storedUrl("javascript:alert(1)", "javascript")).toBeNull();
+  });
+
+  it("is the href of a Link", async () => {
+    expect(await storedUrl([{ type: "Link", href: "https://note-url.example/@a/1" }], "link")).toBe(
+      "https://note-url.example/@a/1",
+    );
+  });
+
+  it("is a string listed after a Link of another mimeType", async () => {
+    expect(
+      await storedUrl(
+        [
+          { type: "Link", href: "https://note-url.example/a.mp4", mimeType: "video/mp4" },
+          "https://note-url.example/watch",
+        ],
+        "string-after-link",
+      ),
+    ).toBe("https://note-url.example/watch");
+  });
+});
