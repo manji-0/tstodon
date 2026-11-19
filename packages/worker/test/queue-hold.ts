@@ -22,8 +22,13 @@ const BuiltQueues = z.object({
 const consumers = BuiltQueues.parse(await import(/* @vite-ignore */ builtConfig)).queues.consumers;
 
 /** Messages one outbox queue invocation takes (`maxBatchSize`), as built. */
-export const QUEUE_BATCH =
-  consumers.find((consumer) => consumer.queue === "tstodon-outbox-process")?.max_batch_size ?? 0;
+const builtBatch = consumers.find(
+  (consumer) => consumer.queue === "tstodon-outbox-process",
+)?.max_batch_size;
+if (builtBatch === undefined || builtBatch < 1) {
+  throw new Error(`tstodon-outbox-process consumer missing from ${builtConfig}; run pnpm build`);
+}
+export const QUEUE_BATCH = builtBatch;
 
 export type HeldQueue = Readonly<{ bodies: unknown[] }>;
 
