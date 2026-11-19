@@ -10,6 +10,7 @@ import {
 import {
   DOCUMENTS,
   MASTODON_CANONICAL,
+  MASTODON_FORWARDED,
   MASTODON_KEY_ID,
   MASTODON_PUBLIC_KEY_PEM,
   MASTODON_SIGNED,
@@ -107,12 +108,37 @@ const expectAmbiguous = async (
 };
 
 describe("Mastodon's signatures", () => {
-  it.each(["create", "update", "delete"])("verifies %s as Mastodon signed it", async (name) => {
-    const document = mastodonSigned(name);
-    expect(readLdSignature(document, signedAt(document))._unsafeUnwrap().keyId).toBe(
-      MASTODON_KEY_ID,
-    );
-    expect(await verifies(document, MASTODON_PUBLIC_KEY_PEM, signedAt(document))).toBe(true);
+  it.each(["create", "update", "delete", "question"])(
+    "verifies %s as Mastodon signed it",
+    async (name) => {
+      const document = mastodonSigned(name);
+      expect(readLdSignature(document, signedAt(document))._unsafeUnwrap().keyId).toBe(
+        MASTODON_KEY_ID,
+      );
+      expect(await verifies(document, MASTODON_PUBLIC_KEY_PEM, signedAt(document))).toBe(true);
+    },
+  );
+
+  it.each(["create", "update", "delete", "question"])(
+    "verifies %s as Mastodon forwards it, compacted and patched",
+    async (name) => {
+      const forwarded = MASTODON_FORWARDED[name];
+      if (forwarded === undefined || forwarded === null) {
+        throw new Error(`Mastodon does not forward ${name}`);
+      }
+      expect(await verifies(forwarded, MASTODON_PUBLIC_KEY_PEM, signedAt(forwarded))).toBe(true);
+      // Mastodon's compaction did change the body: lists of one, `as:Public`.
+      expect(forwarded).not.toEqual(mastodonSigned(name));
+    },
+  );
+
+  it("refuses Mastodon's forwarded copy of a document with terms no context defines", async () => {
+    const forwarded = MASTODON_FORWARDED["undefinedTerms"];
+    if (forwarded === undefined || forwarded === null) {
+      throw new Error("Mastodon does not forward undefinedTerms");
+    }
+    const read = readLdSignature(forwarded, signedAt(forwarded))._unsafeUnwrap();
+    expect((await ldSignedBytes(read))._unsafeUnwrapErr()).toEqual({ kind: "AmbiguousJsonLd" });
   });
 
   it("refuses a document with terms its signature does not cover, which Mastodon verifies", async () => {

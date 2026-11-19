@@ -9,7 +9,10 @@
 #   a signed activity to before it reads it;
 # - `canonical`: per document, `JsonLdHelper#canonicalize` (URDNA2015 N-Quads);
 # - `signed`: per document, `ActivityPub::LinkedDataSignature#sign!` with a key
-#   made for this run, whose public half is `publicKeyPem`.
+#   made for this run, whose public half is `publicKeyPem`;
+# - `forwarded`: per signed document, the copy Mastodon forwards: compacted
+#   to `full_context` and patched (`patch_for_forwarding!`), or `null` when
+#   `safe_for_forwarding?` says Mastodon would not forward it.
 #
 # Mastodon's code is loaded from the image, without Rails or a database, and
 # no context is ever fetched: a document that names another one fails, as it
@@ -55,11 +58,19 @@ output = {
   'publicKeyPem' => key.public_key.to_pem,
   'canonical' => {},
   'signed' => {},
+  'forwarded' => {},
 }
 
 input.fetch('documents').each do |name, document|
   output['canonical'][name] = helper.canonicalize(document)
-  output['signed'][name] = ActivityPub::LinkedDataSignature.new(document).sign!(nil, sign_with: signer)
+  signed = ActivityPub::LinkedDataSignature.new(document).sign!(nil, sign_with: signer)
+  output['signed'][name] = signed
+  # What Mastodon forwards of it (`ProcessActivityService`): compacted to
+  # its full context, patched, and only when that is safe; else nil.
+  original = JSON.parse(JSON.generate(signed))
+  compacted = helper.compact(original)
+  helper.patch_for_forwarding!(original, compacted)
+  output['forwarded'][name] = helper.safe_for_forwarding?(original, compacted) ? compacted : nil
 end
 
 puts JSON.generate(output)

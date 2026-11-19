@@ -123,6 +123,31 @@ const documents = {
     to: [PUBLIC],
     object: { id: note, type: "Tombstone", atomUri: note },
   },
+  // A poll, its options as `oneOf`.
+  question: {
+    "@context": mastodonContext,
+    id: `${alice}/statuses/111/activity`,
+    type: "Create",
+    actor: alice,
+    published: "2026-11-19T00:00:00Z",
+    to: [PUBLIC],
+    cc: [`${alice}/followers`],
+    object: {
+      id: `${alice}/statuses/111`,
+      type: "Question",
+      attributedTo: alice,
+      content: "<p>which?</p>",
+      published: "2026-11-19T00:00:00Z",
+      to: [PUBLIC],
+      cc: [`${alice}/followers`],
+      endTime: "2026-11-20T00:00:00Z",
+      votersCount: 2,
+      oneOf: [
+        { type: "Note", name: "this", replies: { type: "Collection", totalItems: 1 } },
+        { type: "Note", name: "that", replies: { type: "Collection", totalItems: 1 } },
+      ],
+    },
+  },
   // Terms no context defines, a relative IRI and control characters: Mastodon
   // drops the first two, and the signature must agree on what is left.
   undefinedTerms: {
@@ -198,6 +223,9 @@ export const DOCUMENTS: Readonly<Record<string, Readonly<Record<string, unknown>
 
 /** \`JsonLdHelper#canonicalize\` of each document. */
 export const MASTODON_CANONICAL: Readonly<Record<string, string>> = ${JSON.stringify(reference.canonical)};
+
+/** What Mastodon forwards of each signed document: compacted and patched, or \`null\`. */
+export const MASTODON_FORWARDED: Readonly<Record<string, Readonly<Record<string, unknown>> | null>> = ${JSON.stringify(reference.forwarded)};
 
 /** \`ActivityPub::LinkedDataSignature#sign!\` of each document. */
 export const MASTODON_SIGNED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = ${JSON.stringify(reference.signed)};
