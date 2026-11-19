@@ -1465,8 +1465,11 @@ describe("a note document that parses but does not read as a status", () => {
       202,
     );
     const id = (await storedId(stored.id)) ?? "";
-    // `url` is any string in the document, and a URL in a status.
-    const broken = { url: "not a url", updated: "2026-10-21T00:00:00.000Z" };
+    // An attachment's `url` is any string in the document, and a URL in a status.
+    const broken = {
+      attachment: [{ type: "Document", url: "not a url" }],
+      updated: "2026-10-21T00:00:00.000Z",
+    };
     const fresh = note(author, "unreadable-document-new", { content: "<p>new</p>", ...broken });
     const edit = { ...stored, content: "<p>edited</p>", ...broken };
 

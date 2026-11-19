@@ -14,6 +14,15 @@ describe("sanitizeRemoteHtml", () => {
     );
   });
 
+  it("makes a heading a paragraph of strong text, as Mastodon's MASTODON_STRICT", () => {
+    expect(sanitizeRemoteHtml("<h2>Title</h2>\n\n<h6 id=x>small</h6><p>body</p>")).toBe(
+      "<p><strong>Title</strong></p>\n\n<p><strong>small</strong></p><p>body</p>",
+    );
+    expect(sanitizeRemoteHtml("<h1>open <em>to the end")).toBe(
+      "<p><strong>open <em>to the end</em></strong></p>",
+    );
+  });
+
   it("keeps text and entities as written", () => {
     expect(sanitizeRemoteHtml("<p>1 &lt; 2 &amp;&amp; it&#8217;s fine & 3 > 2</p>")).toBe(
       "<p>1 &lt; 2 &amp;&amp; it&#8217;s fine &amp; 3 &gt; 2</p>",

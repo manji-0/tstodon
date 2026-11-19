@@ -8,6 +8,7 @@ import {
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import { isStatusObjectType } from "./activitypub-wire";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
@@ -79,7 +80,7 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
   if (object.isErr()) {
     return { kind: "Unsupported" };
   }
-  if (object.value.type === "Note" || object.value.type === "Question") {
+  if (isStatusObjectType(object.value.type)) {
     return { kind: "NoteUpdate", objectUri: object.value.id, raw: object.value };
   }
   if (ACTOR_TYPES.has(object.value.type)) {
