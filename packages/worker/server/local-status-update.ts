@@ -6,10 +6,12 @@ import {
   type LocalNote,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { noteUpdateActivity } from "./activitypub";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
 import { startHomeFanOut } from "./home-fan-out";
+import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
-import { noteUpdateActivity, readNoteObject } from "./local-note-object";
+import { readNoteObject } from "./local-note-object";
 import { deferStatusActivity, deferToOwedActivity } from "./pending-status-federation";
 import { startPublicFanOut } from "./public-fan-out";
 import { findStatusById } from "./status-store";
@@ -52,9 +54,9 @@ export const announceNoteUpdate = async (
   if (federated?.isOk()) {
     const enqueued = await enqueueLocalActivity(
       env,
-      account.id,
+      account,
       "Update",
-      noteUpdateActivity(identity, account, note, federated.value.object, updatedAt),
+      noteUpdateActivity(federated.value.object, newEntityId(), updatedAt),
     );
     if (enqueued.isErr()) {
       return enqueued.map(() => undefined);

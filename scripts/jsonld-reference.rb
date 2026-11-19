@@ -12,7 +12,13 @@
 #   made for this run, whose public half is `publicKeyPem`;
 # - `forwarded`: per signed document, the copy Mastodon forwards: compacted
 #   to `full_context` and patched (`patch_for_forwarding!`), or `null` when
-#   `safe_for_forwarding?` says Mastodon would not forward it.
+#   `safe_for_forwarding?` says Mastodon would not forward it;
+# - `own`: for each of tstodon's signed activities in `own.signed`, what
+#   Mastodon makes of it. `read` is the body compacted to `full_context`, the
+#   form `ProcessActivityService` works with (without `@context` and
+#   `signature`); `forwarded` is as above; `verified` says whether
+#   `LinkedDataSignature#verify_actor!` accepts the signature, with
+#   `own.publicKeyPem` as the key `own.keyId` names.
 #
 # Mastodon's code is loaded from the image, without Rails or a database, and
 # no context is ever fetched: a document that names another one fails, as it
@@ -47,6 +53,21 @@ CONTEXTS = %w(
 
 KeyHolder = Struct.new(:full_uri, :keypair)
 
+# `Keypair.from_keyid` without a database: only the key `own.keyId` names.
+class Keypair
+  Found = Struct.new(:keypair, :actor) do
+    def public_key = keypair.public_key
+    def usable? = true
+    def type = 'rsa'
+  end
+
+  class << self
+    attr_accessor :known
+
+    def from_keyid(uri) = known&.fetch(uri, nil)
+  end
+end
+
 input = JSON.parse($stdin.read)
 helper = Object.new.extend(JsonLdHelper)
 key = OpenSSL::PKey::RSA.new(2048)
@@ -59,6 +80,7 @@ output = {
   'canonical' => {},
   'signed' => {},
   'forwarded' => {},
+  'own' => {},
 }
 
 input.fetch('documents').each do |name, document|
@@ -71,6 +93,23 @@ input.fetch('documents').each do |name, document|
   compacted = helper.compact(original)
   helper.patch_for_forwarding!(original, compacted)
   output['forwarded'][name] = helper.safe_for_forwarding?(original, compacted) ? compacted : nil
+end
+
+own = input.fetch('own')
+Keypair.known = {
+  own.fetch('keyId') => Keypair::Found.new(OpenSSL::PKey::RSA.new(own.fetch('publicKeyPem')), :verified),
+}
+own.fetch('signed').each do |name, signed|
+  original = JSON.parse(JSON.generate(signed))
+  compacted = helper.compact(original)
+  verified = ActivityPub::LinkedDataSignature.new(compacted).verify_actor! == :verified
+  read = compacted.without('@context', 'signature')
+  helper.patch_for_forwarding!(original, compacted)
+  output['own'][name] = {
+    'read' => read,
+    'forwarded' => helper.safe_for_forwarding?(original, compacted) ? compacted : nil,
+    'verified' => verified,
+  }
 end
 
 puts JSON.generate(output)

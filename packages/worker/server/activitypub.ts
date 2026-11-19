@@ -210,13 +210,35 @@ export const activityPayloadFromJson = (
 };
 
 /**
+ * The `Update` of a local actor, as Mastodon's `UpdateSerializer`: the
+ * actor's `@context` on the activity, addressed to the public. Remote servers
+ * refresh their copy of the actor from it. `updateKey` makes its id one per update.
+ */
+export const actorUpdateActivity = (
+  document: ApActorDocumentJSON,
+  updateKey: string,
+  published: string,
+): ApActivityDocumentOf<"Update"> => {
+  const { "@context": context, ...object } = document;
+  return {
+    "@context": context,
+    id: `${object.id}#updates/${updateKey}`,
+    type: "Update",
+    actor: object.id,
+    published,
+    to: [PUBLIC_COLLECTION],
+    object,
+  };
+};
+
+/**
  * The `Delete` for a local note, as Mastodon sends it: a `Tombstone` object,
  * addressed like the note so it reaches the same followers and mentions.
  */
 export const noteDeleteActivity = (
   note: Pick<ApStatusDocumentJSON, "id" | "attributedTo" | "to" | "cc">,
 ): ApActivityDocumentOf<"Delete"> => ({
-  "@context": ACTIVITY_STREAMS,
+  "@context": [ACTIVITY_STREAMS, { ostatus: "http://ostatus.org#", atomUri: "ostatus:atomUri" }],
   id: `${note.id}#delete`,
   type: "Delete",
   actor: note.attributedTo,
@@ -504,13 +526,18 @@ export const noteDocument = (
       : quotePolicy === "followers"
         ? [followers]
         : [actor];
+  // Each term as Mastodon's `ContextHelper` defines it: a signed activity is
+  // read compacted to Mastodon's context, where a term defined otherwise
+  // comes back renamed or dropped (`own-activity-signature.test.ts`).
   const terms = {
-    // FEP-044f names the `quote` property for a quote post.
+    sensitive: "as:sensitive",
+    // FEP-044f names the `quote` property for a quote post; Misskey and
+    // Fedibird have their own.
     ...(quotes
       ? {
           quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
-          quote_uri: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
-          _misskey_quote: { "@id": "https://w3id.org/fep/044f#quote", "@type": "@id" },
+          quoteUri: "http://fedibird.com/ns#quoteUri",
+          _misskey_quote: "https://misskey-hub.net/ns#_misskey_quote",
           quoteAuthorization: {
             "@id": "https://w3id.org/fep/044f#quoteAuthorization",
             "@type": "@id",
@@ -536,7 +563,7 @@ export const noteDocument = (
   };
   const fields = {
     "@context": [ACTIVITY_STREAMS, terms] satisfies ApStatusDocumentJSON["@context"],
-    ...(quotes ? { quote: quoteUri, quote_uri: quoteUri, _misskey_quote: quoteUri } : {}),
+    ...(quotes ? { quote: quoteUri, quoteUri, _misskey_quote: quoteUri } : {}),
     ...(quotes && quote?.authorization ? { quoteAuthorization: quote.authorization } : {}),
     id,
     attributedTo: actor,
@@ -627,3 +654,46 @@ export const quoteRequestAnswerActivity = (
   ...(answer.kind === "Accept" ? { result: answer.stamp } : {}),
   object: { type: "QuoteRequest", ...request },
 });
+
+/*
+ * A note's activity carries the note's `@context`, and the note none, as
+ * Mastodon sends it. A nested `@context` reads the same as JSON-LD but not
+ * as compacted JSON, so a receiver that checks a forward refuses it
+ * (Mastodon's `safe_for_forwarding?`, tstodon's `readsAsSigned`).
+ */
+
+/**
+ * The `Update` of a local note, as it is delivered when the note is edited
+ * or its poll's counts change. `updateKey` makes its id one per update.
+ */
+export const noteUpdateActivity = (
+  document: ApStatusDocumentJSON,
+  updateKey: string,
+  published: string,
+): ApActivityDocumentOf<"Update"> => {
+  const { "@context": context, ...object } = document;
+  return {
+    "@context": context,
+    id: `${object.id}/updates/${updateKey}`,
+    type: "Update",
+    actor: object.attributedTo,
+    published,
+    object,
+  };
+};
+
+/** The `Create` of a local note by `author`, as it is delivered when the note is posted. */
+export const noteCreateActivity = (
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  document: ApStatusDocumentJSON,
+): ApActivityDocumentOf<"Create"> => {
+  const { "@context": context, ...object } = document;
+  return {
+    "@context": context,
+    id: `${object.id}/activity`,
+    type: "Create",
+    actor: InstanceIdentity.actorUrl(identity, author.username),
+    object,
+  };
+};

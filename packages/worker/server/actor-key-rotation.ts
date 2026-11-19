@@ -24,7 +24,11 @@ import { queryTyped } from "./typed-sql";
  *   actor document publishes, so keeping the old one would serve nobody.
  * - Every delivery attempt (`attemptInboxDeliveryWithEvidence`, in the
  *   delivery Workflow) and every signed fetch reads the key when it signs, so
- *   deliveries queued before the rotation go out signed with the new key.
+ *   deliveries queued before the rotation go out with an HTTP signature made
+ *   with the new key. Their bodies do not change: an activity stored before
+ *   the rotation keeps the Linked Data signature made with the old key
+ *   (`deliveredActivity`, at enqueue), so the receiver takes it, but a forward
+ *   of it no longer verifies once the receivers hold the new key (FED-13).
  * - A remote server that cached the old key fails to verify the next
  *   signature and fetches the actor again (Mastodon does this once per failed
  *   verification), which picks up the new key. For a local account the

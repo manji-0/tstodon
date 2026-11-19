@@ -17,13 +17,10 @@ import {
   partitionByDomainAvailability,
   startOutboxDeliveryWorkflow,
 } from "./delivery";
-import { noteCreateActivity } from "./local-note-document";
-import {
-  type NoteObject,
-  noteQuoteRequest,
-  noteUpdateActivity,
-  readNoteObject,
-} from "./local-note-object";
+import { noteCreateActivity, noteUpdateActivity } from "./activitypub";
+import { newEntityId } from "./ids";
+import { type NoteObject, noteQuoteRequest, readNoteObject } from "./local-note-object";
+import { deliveredActivity } from "./own-activity-signature";
 import { measureJobPage, writeMetric } from "./metrics";
 import {
   deferStatusFederation,
@@ -37,7 +34,7 @@ import {
 } from "./pending-status-federation-store";
 import { findQuoteByQuoting } from "./quote-store";
 import { findRemoteActorByUri } from "./remote-actor-store";
-import { parseInstanceIdentity } from "./runtime-config";
+import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
 
 /** Owed activities one job run tries. */
@@ -222,13 +219,20 @@ const owedQuoteRequest = async (
   if (!author.value) {
     return undefined;
   }
-  const admitted = await admittedInboxes(env, [author.value.inboxUri]);
+  const allowHosts = await federationAllowHosts(env);
+  const admitted = await admittedInboxes(env, [author.value.inboxUri], allowHosts);
   if (admitted.length === 0) {
     return undefined;
   }
   const { deliver, skipped } = await partitionByDomainAvailability(env.DB, admitted);
   return {
-    payload: noteQuoteRequest(identity, account, { ...federated, quote }, requestUri),
+    // Signed as the post path signs it (`enqueueTargetedActivity`).
+    payload: await deliveredActivity(
+      env,
+      account,
+      noteQuoteRequest(identity, account, { ...federated, quote }, requestUri),
+      allowHosts,
+    ),
     deliver,
     skipped,
   };
@@ -285,10 +289,14 @@ const federate = async (
   if (quoteRequest === "Unreadable") {
     return failed(env, pending, "quote");
   }
-  const payload =
+  // Built and signed as the post and edit paths do (`enqueueLocalActivity`).
+  const payload = await deliveredActivity(
+    env,
+    account.value,
     pending.activity === "Create"
       ? noteCreateActivity(identity, account.value, read.value.object)
-      : noteUpdateActivity(identity, account.value, note, read.value.object, editedAt);
+      : noteUpdateActivity(read.value.object, newEntityId(), editedAt),
+  );
   const stored = await storeOwedActivity(env.DB, pending, account.value.id, payload, quoteRequest);
   if (stored.isErr()) {
     return failed(env, pending, "store");

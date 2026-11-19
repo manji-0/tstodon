@@ -122,7 +122,7 @@ describe("local account key rotation", () => {
       (
         await enqueueTargetedActivity(
           env,
-          account.id,
+          account,
           "Follow",
           {
             "@context": "https://www.w3.org/ns/activitystreams",

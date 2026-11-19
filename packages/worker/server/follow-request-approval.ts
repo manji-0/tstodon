@@ -40,7 +40,7 @@ export const acceptRemoteFollowRequest = async (
   const acceptActor = InstanceIdentity.actorUrl(identity, account.username);
   await enqueueTargetedActivity(
     env,
-    account.id,
+    account,
     "Accept",
     {
       "@context": "https://www.w3.org/ns/activitystreams",

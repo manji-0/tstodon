@@ -4,7 +4,6 @@ import { err, ok, type Result } from "neverthrow";
 import { type NoteQuote, noteDocument, quoteRequestActivity } from "./activitypub";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { enqueueTargetedActivity } from "./delivery";
-import { newEntityId } from "./ids";
 import { loadNoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
@@ -57,29 +56,6 @@ export const readNoteObject = async (
   });
 };
 
-/**
- * The `Update` of a note's object, made at `updatedAt`. The object is read
- * with the note stamped edited then, so a receiver takes it as newer than
- * its copy.
- */
-export const noteUpdateActivity = (
-  identity: InstanceIdentity,
-  account: LocalAccount,
-  note: LocalNote,
-  object: ApStatusDocumentJSON,
-  updatedAt: string,
-): ApActivityDocumentOf<"Update"> => {
-  const actor = InstanceIdentity.actorUrl(identity, account.username);
-  return {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${actor}/statuses/${note.id}/updates/${newEntityId()}`,
-    type: "Update",
-    actor,
-    published: updatedAt,
-    object,
-  };
-};
-
 /** Where a quote's `QuoteRequest` goes: the id the quote keeps to match the answer, and the quoted author's inbox. */
 export type QuoteRequestTarget = Readonly<{ uri: string; inboxUri: string }>;
 
@@ -118,7 +94,7 @@ export const requestQuoteApproval = async (
   }
   const requested = await enqueueTargetedActivity(
     env,
-    account.id,
+    account,
     "QuoteRequest",
     noteQuoteRequest(identity, account, { ...federated, quote }, target.uri),
     target.inboxUri,

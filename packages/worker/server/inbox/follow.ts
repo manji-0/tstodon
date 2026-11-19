@@ -125,7 +125,7 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
   if (outcome.sendAccept) {
     await enqueueTargetedActivity(
       env,
-      target.id,
+      target,
       "Accept",
       followAcceptActivity(identity, target, signer, activity),
       RemoteActor.deliveryInbox(signer),

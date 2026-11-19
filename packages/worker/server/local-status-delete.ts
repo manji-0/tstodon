@@ -8,6 +8,7 @@ import { err, ok, type Result } from "neverthrow";
 import { noteDeleteActivity, noteDocument } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { enqueueActivityToInboxes, enqueueLocalActivity } from "./delivery";
+import { deliveredActivity } from "./own-activity-signature";
 import { findRemoteActorsByUris, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { statusDeleteReach } from "./status-reach";
 import { statusReachOperations } from "./status-reach-operations";
@@ -75,37 +76,42 @@ export const deleteLocalStatus = async (
   if (status.kind === "LocalNote" && status.visibility.kind === "Public") {
     await startPublicFanOut(env, { event: "delete", entryId: status.id });
   }
-  if (tombstone && reachesRemoteInboxes(tombstone, identity.domain)) {
+  if (!tombstone) {
+    return ok(true);
+  }
+  // The second `Delete` goes to the reach the first, to the followers and
+  // the addressed actors, does not cover. A lookup that fails only sends it
+  // to them twice.
+  const followers = await listAcceptedRemoteFollowerInboxes(env.DB, account.id);
+  const addressed = await findRemoteActorsByUris(
+    env.DB,
+    outboundAudience(JSON.stringify(tombstone), identity.domain).actorUris,
+  );
+  const sent = new Set([
+    ...followers.unwrapOr([]),
+    ...[...(addressed.isOk() ? addressed.value.values() : [])].map(RemoteActor.deliveryInbox),
+  ]);
+  const toFollowers = reachesRemoteInboxes(tombstone, identity.domain);
+  const beyond = reach.map((inboxes) => inboxes.filter((inbox) => !sent.has(inbox)));
+  if (!toFollowers && beyond.isOk() && beyond.value.length === 0) {
+    return ok(true);
+  }
+  // Signed once for both, as Mastodon signs the payload it delivers to all.
+  const signed = await deliveredActivity(env, account, tombstone);
+  if (toFollowers) {
     // The status is gone either way; a failed enqueue only leaves remote copies.
-    const enqueued = await enqueueLocalActivity(env, account.id, "Delete", tombstone);
+    const enqueued = await enqueueLocalActivity(env, account, "Delete", signed);
     if (enqueued.isErr()) {
       console.error(JSON.stringify({ kind: "StatusDeleteNotFederated", statusId: status.id }));
     }
   }
-  if (tombstone) {
-    // The `Delete` above reached the followers and the addressed actors.
-    // A lookup that fails only sends it to them twice.
-    const followers = await listAcceptedRemoteFollowerInboxes(env.DB, account.id);
-    const addressed = await findRemoteActorsByUris(
-      env.DB,
-      outboundAudience(JSON.stringify(tombstone), identity.domain).actorUris,
-    );
-    const sent = new Set([
-      ...followers.unwrapOr([]),
-      ...[...(addressed.isOk() ? addressed.value.values() : [])].map(RemoteActor.deliveryInbox),
-    ]);
-    const enqueued = reach.isErr()
-      ? reach
-      : await enqueueActivityToInboxes(
-          env,
-          account.id,
-          "Delete",
-          tombstone,
-          reach.value.filter((inbox) => !sent.has(inbox)),
-        );
-    if (enqueued.isErr()) {
-      console.error(JSON.stringify({ kind: "StatusDeleteReachNotFederated", statusId: status.id }));
-    }
+  const enqueued = beyond.isErr()
+    ? beyond
+    : beyond.value.length === 0
+      ? ok(undefined)
+      : await enqueueActivityToInboxes(env, account, "Delete", signed, beyond.value);
+  if (enqueued.isErr()) {
+    console.error(JSON.stringify({ kind: "StatusDeleteReachNotFederated", statusId: status.id }));
   }
   return ok(true);
 };

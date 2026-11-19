@@ -39,9 +39,11 @@ const post = (email: string, body: unknown) => send(email, "POST", "/api/v1/stat
 const ActivitySchema = z.object({
   id: z.string(),
   type: z.string(),
+  signature: z.object({ creator: z.string() }).optional(),
   object: z.union([
     z.string(),
     z.object({
+      "@context": z.unknown().optional(),
       id: z.string(),
       content: z.string().optional(),
       quote: z.string().optional(),
@@ -152,6 +154,9 @@ describe("a post whose Create could not be built when it was stored", () => {
     const creates = await queued(account.id, "Create", posted.uri);
     expect(creates).toHaveLength(1);
     expect(creates[0]?.object).toMatchObject({ id: posted.uri, quote: quoted.uri });
+    // Built and Linked-Data-signed as the post path does it (FED-13).
+    expect(creates[0]?.object).not.toHaveProperty("@context");
+    expect(creates[0]?.signature?.creator).toBe(`${ORIGIN}/users/${account.username}#main-key`);
   });
 
   it("asks the remote quoted author with its QuoteRequest when it is sent", async () => {
@@ -172,6 +177,7 @@ describe("a post whose Create could not be built when it was stored", () => {
     const requests = await queued(account.id, "QuoteRequest", posted.uri);
     expect(requests).toHaveLength(1);
     expect(requests[0]?.id).toContain(`/users/${account.username}/quote_requests/`);
+    expect(requests[0]?.signature?.creator).toBe(`${ORIGIN}/users/${account.username}#main-key`);
     const shown = await request(email, "GET", `/api/v1/statuses/${posted.id}`);
     expect(expectContract(ApiStatus, await shown.json()).quote?.state).toBe("pending");
   });
@@ -237,6 +243,8 @@ describe("an edit whose Update could not be built", () => {
       quote: quoted.uri,
       content: expect.stringContaining("edited: first"),
     });
+    expect(updates[0]?.object).not.toHaveProperty("@context");
+    expect(updates[0]?.signature?.creator).toBe(`${ORIGIN}/users/${account.username}#main-key`);
     expect(await queued(account.id, "Create", posted.uri)).toHaveLength(1);
   });
 });

@@ -2,7 +2,7 @@ import { isHashtagName, normalizeHashtag } from "@tstodon/core";
 import type { ApiFeaturedTagJSON, ApiHashtagJSON } from "@tstodon/api";
 import { ApiCreateFeaturedTagParamsSchema } from "@tstodon/api";
 import type { Context } from "hono";
-import { AccountPresentation, InstanceIdentity } from "@tstodon/domain";
+import { AccountPresentation, InstanceIdentity, type LocalAccount } from "@tstodon/domain";
 import { accountRefPresentation } from "../account-presentation";
 import { featuredTagActivity, hashtagObject } from "../activitypub";
 import { enqueueLocalActivity } from "../delivery";
@@ -180,7 +180,7 @@ export const postV1TagsByIdUnfollow = (
 const federateFeaturedTag = async (
   env: Env,
   identity: InstanceIdentity,
-  account: Readonly<{ id: string; username: string }>,
+  account: LocalAccount,
   name: string,
   type: "Add" | "Remove",
 ): Promise<void> => {
@@ -190,7 +190,7 @@ const federateFeaturedTag = async (
     hashtagObject(identity, name),
     newEntityId(),
   );
-  const enqueued = await enqueueLocalActivity(env, account.id, type, activity);
+  const enqueued = await enqueueLocalActivity(env, account, type, activity);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "FeaturedTagNotFederated", activity: type, tag: name }));
   }

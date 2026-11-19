@@ -19,7 +19,7 @@ import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-store";
 import { mentionLinks, resolveMentions } from "./mention-resolve";
-import { noteCreateActivity } from "./local-note-document";
+import { noteCreateActivity } from "./activitypub";
 import { readNoteObject, requestQuoteApproval } from "./local-note-object";
 import { deferStatusActivity } from "./pending-status-federation";
 import { mentionedPost, notifyAccount } from "./notify";
@@ -315,7 +315,7 @@ export const publishLocalNote = async (
       ? ok(undefined)
       : await enqueueLocalActivity(
           env,
-          user.id,
+          user,
           "Create",
           noteCreateActivity(identity, user, federated.value.object),
         );

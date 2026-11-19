@@ -132,7 +132,7 @@ export const moveAccount = async (
       until: winner.isOk() && winner.value ? nextMoveAt(winner.value.move) : now,
     });
   }
-  const sent = await enqueueLocalActivity(env, account.id, "Move", {
+  const sent = await enqueueLocalActivity(env, account, "Move", {
     "@context": "https://www.w3.org/ns/activitystreams",
     id: `${self.actorUri}#moves/${newEntityId()}`,
     type: "Move",

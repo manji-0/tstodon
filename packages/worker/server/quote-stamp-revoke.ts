@@ -53,7 +53,7 @@ export const federateStampDeletion = async (
   );
   const enqueued = reach.isErr()
     ? reach
-    : await enqueueActivityToInboxes(env, quotedAuthor.id, "Delete", activity, reach.value);
+    : await enqueueActivityToInboxes(env, quotedAuthor, "Delete", activity, reach.value);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteStampDeleteNotFederated", quoteId }));
   }
