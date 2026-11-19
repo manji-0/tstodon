@@ -1,170 +1,89 @@
 #!/usr/bin/env node
 /**
- * E2E: shared-inbox fan-out selection + remote Delete of a cached Note.
+ * E2E: shared-inbox fan-out and a remote Delete. Bob@B follows Alice@A
+ * through B's client API. A delivers Alice's post to B's shared inbox, which
+ * B's actor document publishes, and Bob's home shows it. Alice deletes the
+ * post; B drops it.
  */
+import { schemaResult } from "@tstodon/core";
+import { z } from "zod";
 import {
   A,
   B,
-  A_DOMAIN,
-  B_DOMAIN,
-  accountPrivateKeyJwk,
-  asString,
-  authHeaders,
-  d1Rows,
-  expectParsed,
+  api,
   fail,
   fetchApPerson,
-  fetchMastodonAccount,
-  getJsonParsed,
-  postSignedInbox,
-  seedRemoteActor,
+  followRemote,
+  getJson,
+  signUp,
+  waitFor,
   waitOk,
   waitRows,
 } from "./lib.js";
-import {
-  ApWireActivity,
-  MastodonStatus,
-  OutboundActivityRow,
-  OutboxDeliveryRow,
-  RemoteFollowRow,
-  RemoteStatusRow,
-} from "./schemas.js";
+import { ApiStatus, OutboxDeliveryRow } from "./schemas.js";
 
 const main = async (): Promise<void> => {
   await waitOk(`${A}/.well-known/nodeinfo`, "instance A");
   await waitOk(`${B}/.well-known/nodeinfo`, "instance B");
 
-  const aliceHeaders = await authHeaders(A, "alice-ds@e2e.example");
-  const bobHeaders = await authHeaders(B, "bob-ds@e2e.example");
-  const alice = await fetchMastodonAccount(A, aliceHeaders, "provision");
-  const bob = await fetchMastodonAccount(B, bobHeaders, "provision");
-  const aliceUser = alice.username;
-  const bobUser = bob.username;
-  const aliceActor = `${A}/users/${aliceUser}`;
-  const bobActor = `${B}/users/${bobUser}`;
-  const bobKeyId = `${bobActor}#main-key`;
-  const aliceKeyId = `${aliceActor}#main-key`;
-  const aliceInbox = `${A}/inbox`;
-  const bobSharedInbox = `${B}/inbox`;
-  console.log(`ok users @${aliceUser}@${A_DOMAIN}, @${bobUser}@${B_DOMAIN}`);
+  const alice = await signUp(A, "alice-ds");
+  const bob = await signUp(B, "bob-ds");
+  console.log(`ok users ${alice.acct}, ${bob.acct}`);
 
-  const bobDoc = await fetchApPerson(bobActor, "bob actor document");
-  const aliceDoc = await fetchApPerson(aliceActor, "alice actor document");
-  seedRemoteActor("a", {
-    ...bobDoc,
-    endpoints: { sharedInbox: bobSharedInbox },
-  });
-  seedRemoteActor("b", aliceDoc);
-  console.log("ok seeded remote_actors with sharedInbox on bob");
-
-  const bobKey = accountPrivateKeyJwk("b", bobUser);
-  const followActivity = expectParsed("Follow activity", ApWireActivity.follow.parse, {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${B}/activities/follow-ds-${Date.now()}`,
-    type: "Follow",
-    actor: bobActor,
-    object: aliceActor,
-  });
-  const follow = await postSignedInbox(aliceInbox, bobKey, bobKeyId, followActivity);
-  if (follow.status !== 202) {
-    return fail("Follow", follow);
+  const bobDoc = await fetchApPerson(bob.uri, "bob actor document");
+  const bobSharedInbox = bobDoc.endpoints?.sharedInbox;
+  if (!bobSharedInbox || bobSharedInbox === bobDoc.inbox) {
+    return fail("bob's actor document publishes no shared inbox apart from his own", bobDoc);
   }
-  await waitRows(
-    "a",
-    `SELECT follow_kind FROM remote_follows WHERE remote_actor_uri = '${bobActor}'`,
-    RemoteFollowRow.parseMany,
-    (rows) => rows.some((r) => r.follow_kind === "Accepted"),
-    "follow not Accepted",
-    40,
-  );
 
-  const statusText = `shared-inbox delete e2e ${Date.now()}`;
-  const created = await getJsonParsed(`${A}/api/v1/statuses`, MastodonStatus.parse, "create", {
+  await followRemote(bob, alice);
+  console.log("ok bob follows alice");
+
+  const posted = await api(A, alice.headers, "/api/v1/statuses", ApiStatus.parse, "alice posts", {
     method: "POST",
-    headers: { ...aliceHeaders, "Content-Type": "application/json" },
-    body: JSON.stringify({ status: statusText, visibility: "public" }),
+    body: { status: `shared-inbox delete e2e ${Date.now()}`, visibility: "public" },
   });
-  if (created.status !== 200) {
-    return fail("create", created);
-  }
-  const statusId = created.body.id;
-  const statusUri = `${aliceActor}/statuses/${statusId}`;
-  console.log(`ok created ${statusId}`);
+  console.log(`ok created ${posted.id}`);
 
-  const targets = await waitRows(
-    "a",
-    `SELECT inbox_url FROM outbox_deliveries WHERE inbox_url LIKE '%${B_DOMAIN.replaceAll("'", "''")}%' ORDER BY created_at DESC LIMIT 10`,
-    OutboxDeliveryRow.parseMany,
-    (rows) => rows.some((r) => r.inbox_url === bobSharedInbox),
-    "ExpandFollowers did not select shared inbox",
-    40,
-  );
-  console.log(
-    "ok shared-inbox fan-out target",
-    targets.find((r) => r.inbox_url === bobSharedInbox)?.inbox_url,
-  );
-
-  const deliveries = d1Rows(
-    "a",
-    `SELECT activity_id, inbox_url FROM outbox_deliveries WHERE inbox_url = '${bobSharedInbox}' ORDER BY created_at DESC LIMIT 1`,
-    OutboxDeliveryRow.parseMany,
-    "shared-inbox delivery row",
-  );
-  const delivery = deliveries[0];
-  if (!delivery?.activity_id) {
-    return fail("missing shared-inbox delivery row", deliveries);
-  }
-  const payloadRows = d1Rows(
-    "a",
-    `SELECT id, payload_json FROM outbound_activities WHERE id = '${asString(delivery.activity_id).replaceAll("'", "''")}' LIMIT 1`,
-    OutboundActivityRow.parseMany,
-    "Create payload row",
-  );
-  const payloadRow = payloadRows[0];
-  if (!payloadRow) {
-    return fail("missing Create payload", payloadRows);
-  }
-  const createActivity = expectParsed(
-    "Create wire",
-    ApWireActivity.create.parse,
-    JSON.parse(payloadRow.payload_json),
-  );
-  const hostCreate = { ...createActivity, id: `${createActivity.id}-host-${Date.now()}` };
-  const aliceKey = accountPrivateKeyJwk("a", aliceUser);
-  const delivered = await postSignedInbox(bobSharedInbox, aliceKey, aliceKeyId, hostCreate);
-  if (delivered.status !== 202 && delivered.status !== 200) {
-    return fail("Create to shared inbox", delivered);
-  }
+  const quoted = posted.uri.replaceAll("'", "''");
   await waitRows(
-    "b",
-    `SELECT object_uri, content_html FROM remote_statuses WHERE object_uri = '${statusUri}'`,
-    RemoteStatusRow.parseMany,
-    (rows) => rows.length === 1,
-    "Create not on B",
+    "a",
+    `SELECT d.inbox_url FROM outbox_deliveries d
+       JOIN outbound_activities o ON o.id = d.activity_id
+      WHERE o.kind = 'Create' AND json_extract(o.payload_json, '$.object.id') = '${quoted}'
+        AND d.inbox_url IS NOT NULL`,
+    OutboxDeliveryRow.parseMany,
+    (rows) => rows.some((row) => row.inbox_url === bobSharedInbox),
+    "A did not deliver alice's Create to B's shared inbox",
     40,
   );
-  console.log("ok Create on B via shared inbox");
+  console.log("ok shared-inbox fan-out target", bobSharedInbox);
 
-  const deleteActivity = expectParsed("Delete activity", ApWireActivity.delete.parse, {
-    "@context": "https://www.w3.org/ns/activitystreams",
-    id: `${A}/activities/delete-${statusId}-${Date.now()}`,
-    type: "Delete",
-    actor: aliceActor,
-    object: statusUri,
+  const onB = await waitFor("alice's post on bob's home", async () => {
+    const home = await api(B, bob.headers, "/api/v1/timelines/home", ApiStatus.parseMany, "home");
+    return home.find((status) => status.uri === posted.uri);
   });
-  const deleted = await postSignedInbox(bobSharedInbox, aliceKey, aliceKeyId, deleteActivity);
-  if (deleted.status !== 202 && deleted.status !== 200) {
-    return fail("Delete to B", deleted);
-  }
-  await waitRows(
-    "b",
-    `SELECT object_uri FROM remote_statuses WHERE object_uri = '${statusUri}'`,
-    RemoteStatusRow.parseMany,
-    (rows) => rows.length === 0,
-    "Delete did not remove remote_statuses",
-    40,
+  console.log("ok Create on B via shared inbox", onB.id);
+
+  await api(
+    A,
+    alice.headers,
+    `/api/v1/statuses/${posted.id}`,
+    schemaResult(z.unknown()),
+    "delete",
+    {
+      method: "DELETE",
+    },
   );
-  console.log("ok Delete cleared remote_statuses on B");
+  await waitFor("B drops alice's deleted post", async () => {
+    const read = await getJson(`${B}/api/v1/statuses/${onB.id}`, { headers: bob.headers });
+    return read.status === 404 ? true : undefined;
+  });
+  const home = await api(B, bob.headers, "/api/v1/timelines/home", ApiStatus.parseMany, "home");
+  if (home.some((status) => status.uri === posted.uri)) {
+    return fail("alice's deleted post is still on bob's home", home);
+  }
+  console.log("ok Delete removed alice's post on B");
   console.log("PASS federation delete + shared-inbox");
 };
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One whole run of the tstodon-to-tstodon federation e2e, from nothing to
 # nothing: fresh databases for instances A and B, both Workers up in `vp dev`,
-# the `pnpm e2e:federation:*` scenarios that pass, the logs kept, both Workers down.
+# every `pnpm e2e:federation:*` scenario, the logs kept, both Workers down.
 # CI runs this (.github/workflows/e2e-federation.yml), and so can you. It does
 # what `process-compose up` does (process-compose.yaml) without process-compose,
 # and runs the scenarios one after another.
@@ -102,12 +102,9 @@ wait_for 8791
 start b 8792
 wait_for 8792
 
-# follow-create, interactions, delete-shared-inbox and accept are left out:
-# each forges B's user's `Follow` from the host, which B never sent, so B
-# answers A's `Accept` of it with an `Undo` (`AcceptedUnheld` in
-# server/outbound-follow.ts) and the follow they then check is gone.
 failed=()
-for scenario in smoke remote-follow remote-updates remote-engagement migration reports; do
+for scenario in smoke follow-create interactions delete-shared-inbox accept remote-follow \
+  remote-updates remote-engagement migration reports; do
   script=federation-$scenario
   step "e2e/$script.ts"
   if ! pnpm exec tsx "e2e/$script.ts" >"$logs/$scenario.log" 2>&1; then
