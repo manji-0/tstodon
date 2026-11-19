@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { ALL_SCOPES, authHeaders, signedInAccount } from "../test/auth-fixture";
+import { processOutboxJob } from "./outbox-job";
 
 // Mastodon v4.7.5's `Api::V1::Statuses::InteractionPoliciesController`.
 
@@ -60,7 +61,70 @@ const updates = async (accountId: string) => {
   );
 };
 
+/** Every D1 batch that stores an outbound `Update` fails while `run` runs. */
+const failingUpdateInserts = async <T>(run: () => Promise<T>): Promise<T> => {
+  const prototype: object = Object.getPrototypeOf(env.DB);
+  const original: unknown = Reflect.get(prototype, "batch");
+  if (typeof original !== "function") {
+    throw new Error("D1 has no batch");
+  }
+  Reflect.set(prototype, "batch", function (this: object, statements: unknown[]) {
+    const storesUpdate = statements.some((statement) => {
+      const sql: unknown =
+        statement === null ? undefined : Reflect.get(Object(statement), "statement");
+      const params: unknown =
+        statement === null ? undefined : Reflect.get(Object(statement), "params");
+      return (
+        typeof sql === "string" &&
+        sql.includes("INSERT INTO outbound_activities") &&
+        Array.isArray(params) &&
+        params.includes("Update")
+      );
+    });
+    return storesUpdate
+      ? Promise.reject(new Error("D1_ERROR: injected"))
+      : Reflect.apply(original, this, [statements]);
+  });
+  try {
+    return await run();
+  } finally {
+    Reflect.set(prototype, "batch", original);
+  }
+};
+
+/** Run the owed-activity retry for the status now, as the queue would once it is due. */
+const retryOwed = async (statusId: string): Promise<void> => {
+  await env.DB.prepare(
+    "UPDATE pending_status_federations SET next_attempt_at = '1970-01-01T00:00:00.000Z' WHERE status_id = ?",
+  )
+    .bind(statusId)
+    .run();
+  expect(await processOutboxJob(env, { kind: "FederatePendingStatuses" })).toBe("ok");
+};
+
 describe("PUT /api/v1/statuses/:id/interaction_policy", () => {
+  it("answers 200 when the Update cannot be stored, and sends it later without an edit", async () => {
+    const author = "policy-put-deferred@example.com";
+    const account = await signedInAccount(author);
+    const status = await post(author, { status: "the queue is down" });
+    const before = (await updates(account.id)).length;
+
+    const changed = await failingUpdateInserts(() =>
+      setPolicy(author, status.id, { quote_approval_policy: "nobody" }),
+    );
+    expect(changed.status).toBe(200);
+    expect(expectContract(ApiStatus, changed.body).quote_approval.automatic).toEqual([]);
+    expect(await updates(account.id)).toHaveLength(before);
+
+    await retryOwed(status.id);
+    const sent = await updates(account.id);
+    expect(sent).toHaveLength(before + 1);
+    expect(sent.at(-1)?.object.interactionPolicy.canQuote.automaticApproval).toEqual([
+      `https://example.com/users/${account.username}`,
+    ]);
+    expect(sent.at(-1)?.object.updated).toBeUndefined();
+  });
+
   it("changes a published status's quote policy and federates an Update without an edit", async () => {
     const author = "policy-put-author@example.com";
     const other = "policy-put-other@example.com";
