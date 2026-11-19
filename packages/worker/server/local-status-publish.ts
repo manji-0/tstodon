@@ -69,52 +69,59 @@ export type PublishNoteInput = Readonly<{
   quotePolicy: QuotePolicy | null;
 }>;
 
+export type MediaMetadataUpdate = Parameters<typeof updateMediaMetadata>[1];
+
 /**
- * Apply `media_attributes` to media already attached to this status. The
- * caller has checked each description against the limit (`mediaDescriptionsFit`).
+ * What `media_attributes` change of the status's media (`mediaIds`): a
+ * description or a focus that differs from the stored one, as Mastodon's
+ * `MediaAttachment#significantly_changed?`. An attribute for other media,
+ * or one that repeats what is stored, changes nothing. The caller has
+ * checked each description against the limit (`mediaDescriptionsFit`).
  */
-export const applyMediaAttributes = async (
-  env: Env,
+export const mediaAttributeChanges = async (
+  db: D1Database,
   accountId: string,
-  statusId: string,
+  mediaIds: ReadonlyArray<string>,
   attributes: PublishMediaAttributes,
-): Promise<string | undefined> => {
+): Promise<Result<ReadonlyArray<MediaMetadataUpdate>, RepositoryError>> => {
+  const changes: MediaMetadataUpdate[] = [];
   for (const attribute of attributes) {
-    const found = await findMediaById(env.DB, attribute.id);
+    const found = await findMediaById(db, attribute.id);
     if (found.isErr()) {
-      return found.error.message;
+      return err(found.error);
     }
     const media = found.value;
-    if (!media || media.account_id !== accountId || media.status_id !== statusId) {
+    if (!media || media.account_id !== accountId || !mediaIds.includes(media.id)) {
       continue;
     }
-    let focusX = media.focus_x;
-    let focusY = media.focus_y;
-    if (attribute.focus !== undefined) {
-      const focus = parseMediaFocus(attribute.focus);
-      if (focus) {
-        focusX = focus.x;
-        focusY = focus.y;
-      }
-    }
+    const focus = attribute.focus === undefined ? undefined : parseMediaFocus(attribute.focus);
+    const focusX = focus?.x ?? media.focus_x;
+    const focusY = focus?.y ?? media.focus_y;
     const description =
       attribute.description === undefined
         ? media.description
         : attribute.description.trim().length > 0
           ? attribute.description
           : null;
-    const updated = await updateMediaMetadata(env.DB, {
-      id: media.id,
-      accountId,
-      description,
-      focusX,
-      focusY,
-    });
-    if (updated.isErr()) {
-      return updated.error.message;
+    if (description !== media.description || focusX !== media.focus_x || focusY !== media.focus_y) {
+      changes.push({ id: media.id, accountId, description, focusX, focusY });
     }
   }
-  return undefined;
+  return ok(changes);
+};
+
+/** Store the media metadata `mediaAttributeChanges` found. */
+export const writeMediaAttributes = async (
+  db: D1Database,
+  changes: ReadonlyArray<MediaMetadataUpdate>,
+): Promise<Result<void, RepositoryError>> => {
+  for (const change of changes) {
+    const updated = await updateMediaMetadata(db, change);
+    if (updated.isErr()) {
+      return err(updated.error);
+    }
+  }
+  return ok(undefined);
 };
 
 /**
@@ -234,9 +241,17 @@ export const publishLocalNote = async (
     }
   }
   startLinkCard(env, "Status", note.id, note.text);
-  const attributeError = await applyMediaAttributes(env, user.id, note.id, input.mediaAttributes);
-  if (attributeError !== undefined) {
-    return err({ kind: "RepositoryError", message: attributeError });
+  const attributes = await mediaAttributeChanges(
+    env.DB,
+    user.id,
+    note.mediaIds,
+    input.mediaAttributes,
+  );
+  const attributesWritten = attributes.isOk()
+    ? await writeMediaAttributes(env.DB, attributes.value)
+    : err(attributes.error);
+  if (attributesWritten.isErr()) {
+    return err(attributesWritten.error);
   }
   // Persist mention rows before side-effect notifies (D1 write strategy / Create saga).
   const mentionsSaved = await replaceStatusMentions(

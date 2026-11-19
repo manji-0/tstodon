@@ -5,6 +5,9 @@ import { ApiStatus, ApiStatusEdit, ApiStatusSource } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { schemaResult } from "@tstodon/core";
+import { newEntityId } from "./ids";
+import { newAttachmentObjectKey } from "./media-keys";
+import { insertMedia } from "./media-store";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -208,5 +211,173 @@ describe("status editing", () => {
       body: JSON.stringify({ poll: { options: ["only"] } }),
     });
     expect(edited.status).toBe(422);
+  });
+});
+
+/** As Mastodon's `UpdateStatusService`, an edit that changes nothing is no edit (`NoChangesSubmittedError`). */
+describe("an edit that changes nothing", () => {
+  const CountRow = z.object({ count: z.number() });
+
+  const storedRevisions = async (statusId: string): Promise<number> =>
+    read(
+      CountRow,
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM status_edits WHERE status_id = ?")
+        .bind(statusId)
+        .first(),
+    ).count;
+
+  const sentUpdates = async (statusId: string): Promise<number> =>
+    read(
+      CountRow,
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM outbound_activities WHERE kind = 'Update' AND payload_json LIKE ?",
+      )
+        .bind(`%/statuses/${statusId}%`)
+        .first(),
+    ).count;
+
+  const accountIdOf = async (email: string): Promise<string> =>
+    read(
+      z.object({ id: z.string().min(1) }),
+      (await json("/api/v1/accounts/verify_credentials", { headers: await auth(email) })).body,
+    ).id;
+
+  const seedMedia = async (email: string): Promise<string> => {
+    const accountId = await accountIdOf(email);
+    const id = newEntityId();
+    const objectKey = newAttachmentObjectKey(accountId);
+    await env.MEDIA.put(objectKey, new Uint8Array([1, 2, 3]));
+    const inserted = await insertMedia(env.DB, {
+      id,
+      accountId,
+      objectKey,
+      fileSize: 3,
+      contentType: "image/png",
+      description: null,
+      focus: null,
+      image: { original: { width: 40, height: 30 }, preview: undefined, blurhash: null },
+    });
+    expect(inserted.isOk()).toBe(true);
+    return id;
+  };
+
+  const create = async (email: string, payload: unknown) =>
+    expectContract(
+      ApiStatus,
+      (await json("/api/v1/statuses", await jsonBody(payload, email)())).body,
+    );
+
+  const edit = async (email: string, id: string, payload: unknown) =>
+    json(`/api/v1/statuses/${id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify(payload),
+    });
+
+  it("answers the status as it is, with no revision and no Update", async () => {
+    const email = "edit-noop@example.com";
+    const status = await create(email, { status: "same words", spoiler_text: "cw" });
+
+    const edited = await edit(email, status.id, {
+      status: "same words",
+      spoiler_text: "cw",
+      sensitive: true,
+    });
+
+    expect(edited.status).toBe(200);
+    expect(expectContract(ApiStatus, edited.body)).toMatchObject({
+      id: status.id,
+      content: status.content,
+      spoiler_text: "cw",
+      sensitive: true,
+      edited_at: null,
+    });
+    expect(await storedRevisions(status.id)).toBe(0);
+    expect(await sentUpdates(status.id)).toBe(0);
+    const history = await json(`/api/v1/statuses/${status.id}/history`);
+    expect(expectContract(z.array(ApiStatusEdit), history.body)).toHaveLength(1);
+  });
+
+  it("ignores media sent again with the same description and focus", async () => {
+    const email = "edit-noop-media@example.com";
+    const first = await seedMedia(email);
+    const second = await seedMedia(email);
+    const attributes = [
+      { id: first, description: "a cat", focus: "0.5,-0.25" },
+      { id: second, description: "a dog" },
+    ];
+    const status = await create(email, {
+      status: "pets",
+      media_ids: [first, second],
+      media_attributes: attributes,
+    });
+
+    const same = await edit(email, status.id, {
+      status: "pets",
+      media_ids: [first, second],
+      media_attributes: attributes,
+    });
+    expect(expectContract(ApiStatus, same.body).edited_at).toBeNull();
+    expect(await storedRevisions(status.id)).toBe(0);
+    expect(await sentUpdates(status.id)).toBe(0);
+
+    const described = await edit(email, status.id, {
+      status: "pets",
+      media_ids: [first, second],
+      media_attributes: [{ id: second, description: "a wolf" }],
+    });
+    expect(expectContract(ApiStatus, described.body).edited_at).not.toBeNull();
+    expect(await storedRevisions(status.id)).toBe(1);
+
+    const reordered = await edit(email, status.id, { status: "pets", media_ids: [second, first] });
+    expect(
+      expectContract(ApiStatus, reordered.body).media_attachments.map((media) => media.id),
+    ).toEqual([second, first]);
+    expect(await storedRevisions(status.id)).toBe(2);
+  });
+
+  it("counts a new focus as a change", async () => {
+    const email = "edit-focus@example.com";
+    const media = await seedMedia(email);
+    const status = await create(email, {
+      status: "focus",
+      media_ids: [media],
+      media_attributes: [{ id: media, focus: "0.1,0.1" }],
+    });
+
+    const moved = await edit(email, status.id, {
+      status: "focus",
+      media_ids: [media],
+      media_attributes: [{ id: media, focus: "0.2,0.1" }],
+    });
+
+    expect(expectContract(ApiStatus, moved.body).edited_at).not.toBeNull();
+    expect(await storedRevisions(status.id)).toBe(1);
+  });
+
+  it("counts a new quote policy as a change, and the same one as none", async () => {
+    const email = "edit-noop-policy@example.com";
+    const status = await create(email, { status: "quotable", quote_approval_policy: "public" });
+
+    await edit(email, status.id, { status: "quotable", quote_approval_policy: "public" });
+    expect(await storedRevisions(status.id)).toBe(0);
+
+    const tightened = await edit(email, status.id, {
+      status: "quotable",
+      quote_approval_policy: "followers",
+    });
+    expect(expectContract(ApiStatus, tightened.body).edited_at).not.toBeNull();
+    expect(await storedRevisions(status.id)).toBe(1);
+  });
+
+  it("counts a poll sent again as a change, since its end moves", async () => {
+    const email = "edit-noop-poll@example.com";
+    const poll = { options: ["yes", "no"], expires_in: 3600 };
+    const status = await create(email, { status: "vote", poll });
+
+    const resent = await edit(email, status.id, { status: "vote", poll });
+
+    expect(expectContract(ApiStatus, resent.body).edited_at).not.toBeNull();
+    expect(await sentUpdates(status.id)).toBe(1);
   });
 });
