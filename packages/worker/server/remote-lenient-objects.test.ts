@@ -208,7 +208,17 @@ describe("an Announce whose object is a Create", () => {
         z.object({ reblog: z.object({ uri: z.string() }).nullable() }),
         await (await SELF.fetch("https://example.com/api/v1/timelines/home", { headers })).json(),
       ).map((entry) => entry.reblog?.uri);
-    return { community, page, createActivity, home };
+    const announce = (n: number, object: unknown) =>
+      serving({ [createActivity.id]: createActivity, [page.id]: page }, () =>
+        community.send({
+          id: `${community.actorUri}/activities/announce/${n}`,
+          type: "Announce",
+          to: [PUBLIC],
+          cc: [`${community.actorUri}/followers`],
+          object,
+        }),
+      );
+    return { community, user, page, createActivity, home, announce };
   };
 
   it("stores the Create's object, fetched by the Create's id, and boosts it", async () => {
@@ -244,6 +254,43 @@ describe("an Announce whose object is a Create", () => {
         }),
       ),
     ).toBe(202);
+    expect(await home()).toContain(page.id);
+    await previews.settled();
+  });
+
+  it("does not bring back a post its author deleted, shared by its Create or by its URI", async () => {
+    const { user, page, createActivity, home, announce } = await lemmy("deleted-create");
+    expect(
+      await user.send({
+        id: `${page.id}/delete`,
+        type: "Delete",
+        object: { id: page.id, type: "Tombstone" },
+      }),
+    ).toBe(202);
+    expect(await announce(4, createActivity.id)).toBe(202);
+    expect(await announce(5, page.id)).toBe(202);
+    expect(await storedId(page.id)).toBeUndefined();
+    expect(await home()).not.toContain(page.id);
+  });
+
+  it("keeps the stored version of a post edited since its Create", async () => {
+    const { user, page, createActivity, home, announce } = await lemmy("edited-create");
+    const previews = answerLinkPreviews([page.id]);
+    expect(await user.send(createActivity)).toBe(202);
+    const updated = new Date(Date.now() + 60_000).toISOString();
+    expect(
+      await user.send({
+        id: `${page.id}/update`,
+        type: "Update",
+        object: { ...page, name: "An edited title", updated },
+      }),
+    ).toBe(202);
+    const before = await status(page.id);
+    expect(before.content).toContain("An edited title");
+    expect(await announce(6, createActivity.id)).toBe(202);
+    const after = await status(page.id);
+    expect(after.content).toBe(before.content);
+    expect(after.edited_at).toBe(before.edited_at);
     expect(await home()).toContain(page.id);
     await previews.settled();
   });

@@ -868,6 +868,8 @@ export * from "./sql/recordMediaFileSizes";
 
 export * from "./sql/recountPollOptionIfActive";
 
+export * from "./sql/refuseBuriedRemoteStatus";
+
 export * from "./sql/refuseReplacedRemoteStatus";
 
 export * from "./sql/rejectFollowRequest";

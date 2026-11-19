@@ -49,6 +49,7 @@ import {
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
   insertRemoteStatus as insertRemoteStatusSql,
+  refuseBuriedRemoteStatus as refuseBuriedRemoteStatusSql,
   refuseReplacedRemoteStatus as refuseReplacedRemoteStatusSql,
   upsertRemoteStatus as upsertRemoteStatusSql,
 } from "./generated/prisma/sql";
@@ -328,21 +329,6 @@ export const recordRemoteTombstone = (
       )
       .bind(objectUri, actorUri, nowIso())
       .run();
-  });
-
-const TombstoneRow = z.object({ object_uri: z.string() });
-
-/** Whether the status `objectUri` was deleted by its author (Mastodon's `tombstone_exists?`). */
-export const hasRemoteTombstone = (
-  db: D1Database,
-  objectUri: string,
-): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await db
-      .prepare("SELECT object_uri FROM remote_status_tombstones WHERE object_uri = ?")
-      .bind(objectUri)
-      .all();
-    return parseRows(TombstoneRow, rows.results).length > 0;
   });
 
 export const findRemoteStatusByObjectUri = async (
@@ -639,6 +625,11 @@ const ID_COLLISION_RETRIES = 4;
 const isIdCollision = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed: remote_statuses\.id/.test(error.message);
 
+/** The batch was refused by `refuseBuriedRemoteStatus.sql`: the author deleted the status. */
+const isBuried = (error: unknown): boolean =>
+  error instanceof Error &&
+  /NOT NULL constraint failed: remote_status_tombstones\.actor_uri/.test(error.message);
+
 const isObjectUriTaken = (error: unknown): boolean =>
   error instanceof Error &&
   /UNIQUE constraint failed: remote_statuses\.object_uri/.test(error.message);
@@ -711,6 +702,7 @@ export const upsertRemoteStatus = async (
         // delivery that failed here is processed again as if it never ran.
         // The row comes first (the tag index holds a foreign key to it).
         await db.batch([
+          d1PrepareTyped(db, refuseBuriedRemoteStatusSql(persisted.objectUri)),
           ...unreplaced,
           ...alongside,
           remoteStatusRowStatement(
@@ -725,6 +717,10 @@ export const upsertRemoteStatus = async (
         ]);
         return persisted;
       } catch (error) {
+        // A status its author deleted is not stored again (`tombstone_exists?`).
+        if (isBuried(error)) {
+          return undefined;
+        }
         if (existing.value) {
           throw error;
         }

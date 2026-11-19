@@ -754,7 +754,7 @@ export const persistAnnouncedObject = async (
  * is resolved first, as Mastodon's `FetchRemoteStatusService`. A `Create`
  * served there stores its object (`expected_activity_type?`): the `Create`
  * must sit on its actor's host (`trustworthy_attribution?`), and so must its
- * object, which is fetched when only named. `undefined` when the document is
+ * object, which is fetched when only named, unless it is stored already. `undefined` when the document is
  * no note or the proof does not hold.
  */
 export const storeNoteDocument = async (
@@ -779,6 +779,15 @@ export const storeNoteDocument = async (
     actorHost !== urlHost(noteUri)
   ) {
     return ok(undefined);
+  }
+  // As `Create#find_existing_status`, a status already stored is the one
+  // shared: an old `Create` does not roll back a later edit.
+  const cached = await cachedRemoteStatus(env, identity, noteUri, undefined);
+  if (cached.isErr()) {
+    return err(cached.error);
+  }
+  if (cached.value) {
+    return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
   }
   if (typeof created.value.object !== "string") {
     return storeNote(env, identity, noteUri, created.value.object, options, asker);

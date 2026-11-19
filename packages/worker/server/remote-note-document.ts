@@ -110,13 +110,15 @@ const isLinkAttachment = (entry: AttachmentDocument): boolean => present(entry.h
 
 /**
  * The URL of the preview card of a note: the `href` of its first `Link`
- * attachment, as Mastodon's `@links.first`, or `undefined` when it has none
- * and the first link of its text is unfurled instead.
+ * attachment, normalized as Mastodon's `PreviewCardParser#url`, as Mastodon's
+ * `@links.first`; or `undefined` when it has none and the first link of its
+ * text is unfurled instead.
  */
 export const noteCardUrl = (raw: unknown): string | undefined => {
   const document = parseNoteDocument(raw);
   const href = document.isOk() ? document.value.attachment.find(isLinkAttachment)?.href : undefined;
-  return typeof href === "string" ? httpUrl(href) : undefined;
+  const url = typeof href === "string" ? httpUrl(href) : undefined;
+  return url === undefined ? undefined : new URL(url).toString();
 };
 
 /**
