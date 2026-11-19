@@ -59,9 +59,12 @@ const catalog = (name) => {
   if (!entry?.[1]) throw new Error(`pnpm-workspace.yaml has no catalog entry ${name}`);
   return entry[1].trim();
 };
+const rootPackage = readJson(path.join(root, "package.json"));
 const frontendPackage = {
   name: "mastodon-web-lock",
   private: true,
+  // The workspace's pnpm, which writes the workspace's lockfile format.
+  packageManager: rootPackage.packageManager,
   dependencies: frontend(worker.dependencies),
   // Vite+ core and Vitest as the workspace has them, so upstream's Vite
   // plugins resolve their peers to those and not to upstream's Vite.
@@ -86,7 +89,10 @@ copyFileSync(path.resolve(yarnLock), path.join(work, "yarn.lock"));
 const workspaceYaml = readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
 writeFileSync(
   path.join(work, "pnpm-workspace.yaml"),
-  workspaceYaml.replace(/^packages:\n(?: {2}- .*\n)+/m, "packages: []\n"),
+  workspaceYaml
+    .replace(/^packages:\n(?: {2}- .*\n)+/m, "packages: []\n")
+    // The workspace's patches are for packages the frontend does not use.
+    .replace(/^patchedDependencies:\n(?: {2}.*\n)+/m, ""),
 );
 execFileSync("pnpm", ["import"], { cwd: work, stdio: "inherit" });
 
@@ -103,7 +109,8 @@ const lockText = readFileSync(lockPath, "utf8");
 const split = lockText.lastIndexOf("\n---\n");
 const prefix = split === -1 ? "" : lockText.slice(0, split + 5);
 const workspace = parseDocument(split === -1 ? lockText : lockText.slice(split + 5));
-const imported = parseDocument(readFileSync(path.join(work, "pnpm-lock.yaml"), "utf8"));
+const importedText = readFileSync(path.join(work, "pnpm-lock.yaml"), "utf8");
+const imported = parseDocument(importedText.slice(importedText.lastIndexOf("\n---\n") + 5));
 for (const [name, document] of [
   ["pnpm-lock.yaml", workspace],
   ["the imported lock", imported],
