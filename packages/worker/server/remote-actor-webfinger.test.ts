@@ -362,6 +362,19 @@ describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
   });
 });
 
+describe("a WebFinger subject whose username Mastodon's Account would refuse", () => {
+  it("refuses the actor, as `check_webfinger!` raises on it", async () => {
+    const remote = await remoteActor("tilde", "wf-badname.example", { cache: false });
+    serveRemote(remote, "tilde", {
+      "wf-badname.example": { subject: "acct:til~de@wf-badname.example", self: remote.actorUri },
+    });
+
+    expect(await like(remote, "wf-badname", "wf-badname-viewer@example.com")).toBe(401);
+    const account = await call(`/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}`);
+    expect(account.status).toBe(404);
+  });
+});
+
 describe("a WebFinger subject with a trailing dot", () => {
   it("names the same domain without it", async () => {
     const remote = await remoteActor("dot", "wf-dot.example", { cache: false });

@@ -286,12 +286,23 @@ const domainHandle = (raw: string | undefined): AccountHandle | undefined => {
  * A WebFinger lookup: the account its `subject` names and its `self` link;
  * `Disowned` when the server answered 404 or 410; `Failed` when nothing is
  * known (a timeout, a 5xx, a redirect it does not follow, any other 4xx, an
- * unreadable answer, no `self` link).
+ * unreadable answer, no `self` link). `supportedUsername` is false when the
+ * subject's username, the part before its first `@` as Mastodon's
+ * `split_acct` reads it, is one `Account::USERNAME_ONLY_RE` does not match.
  */
 type WebfingerLookup =
-  | Readonly<{ kind: "Answered"; subject: AccountHandle | undefined; self: string }>
+  | Readonly<{
+      kind: "Answered";
+      subject: AccountHandle | undefined;
+      self: string;
+      supportedUsername: boolean;
+    }>
   | Readonly<{ kind: "Disowned" }>
   | Readonly<{ kind: "Failed"; error: FederatedFetchError }>;
+
+const subjectUsernameSupported = (subject: string | undefined): boolean =>
+  subject === undefined ||
+  RemoteActor.acceptsUsername(subject.replace(/^acct:/, "").split("@")[0] ?? "");
 
 const lookUp = async (
   identity: InstanceIdentity,
@@ -304,7 +315,12 @@ const lookUp = async (
       ? { kind: "Disowned" }
       : { kind: "Failed", error: answer.error };
   }
-  return { kind: "Answered", subject: domainHandle(answer.value.subject), self: answer.value.self };
+  return {
+    kind: "Answered",
+    subject: domainHandle(answer.value.subject),
+    self: answer.value.self,
+    supportedUsername: subjectUsernameSupported(answer.value.subject),
+  };
 };
 
 /** A WebFinger answer for `handle` that names it and links back to `actorUri`. */
@@ -378,6 +394,10 @@ const confirmHandle = async (
     const first = await lookUp(identity, claimed, options);
     if (first.kind !== "Answered") {
       return unanswered(first, claimed);
+    }
+    // The second lookup must name the same username, so only the first's is checked.
+    if (!first.supportedUsername) {
+      return { kind: "UnsupportedUsername" };
     }
     if (first.subject === undefined) {
       return { kind: "Mismatch" };
