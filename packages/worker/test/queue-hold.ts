@@ -6,6 +6,12 @@ import { meter, meterWork, resetMeter } from "./meter";
 
 /** D1's queries per Worker invocation (Workers Paid). */
 export const QUERIES_PER_INVOCATION = 1000;
+/**
+ * What one outbox queue invocation of the costliest jobs may make: half of
+ * D1's limit, so a notification or conversation render that gets dearer
+ * still fits.
+ */
+export const QUEUE_INVOCATION_BUDGET = QUERIES_PER_INVOCATION / 2;
 /** The Worker's built `wrangler.json`, where Void writes `app/queues/*.ts`'s consumer options. */
 const builtConfig = "../dist/ssr/wrangler.json";
 const BuiltQueues = z.object({

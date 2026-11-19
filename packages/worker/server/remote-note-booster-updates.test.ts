@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { LocalAccount } from "@tstodon/domain";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, settle } from "../test/meter";
-import { drainHeld, holdQueue, QUERIES_PER_INVOCATION, QUEUE_BATCH } from "../test/queue-hold";
+import { drainHeld, holdQueue, QUEUE_BATCH, QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { BOOSTER_PAGE_SIZE } from "./remote-note-booster-updates";
@@ -116,7 +116,7 @@ describe("update notifications of an edited remote note", () => {
       expect(
         mostPerInvocation,
         `one queue invocation of ${QUEUE_BATCH} jobs made ${mostPerInvocation} statements`,
-      ).toBeLessThan(QUERIES_PER_INVOCATION / 2);
+      ).toBeLessThan(QUEUE_INVOCATION_BUDGET);
 
       const notified = await updateCount(manyId);
       expect(notified.size).toBe(many.length);

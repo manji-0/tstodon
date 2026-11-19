@@ -6,7 +6,13 @@ import type { LocalAccount } from "@tstodon/domain";
 import { expectContract } from "../test/api-contract";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, settle } from "../test/meter";
-import { drainHeld, holdQueue, QUERIES_PER_INVOCATION, QUEUE_BATCH } from "../test/queue-hold";
+import {
+  drainHeld,
+  holdQueue,
+  QUERIES_PER_INVOCATION,
+  QUEUE_BATCH,
+  QUEUE_INVOCATION_BUDGET,
+} from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { openStream } from "../test/stream-fixture";
 import { deleteAccount } from "./account-store";
@@ -121,7 +127,7 @@ describe("a remote direct note to many local accounts", () => {
       expect(
         mostPerInvocation,
         `one queue invocation of ${QUEUE_BATCH} jobs made ${mostPerInvocation} statements`,
-      ).toBeLessThan(QUERIES_PER_INVOCATION);
+      ).toBeLessThan(QUEUE_INVOCATION_BUDGET);
 
       for (const account of thirty) {
         const token = await accessTokenFor(account.id);
