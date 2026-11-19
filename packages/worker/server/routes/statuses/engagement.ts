@@ -184,6 +184,8 @@ const publishQuoteRevoke = async (
       quoting.status,
       nowIso(),
       false,
+      // A revoked quote is no edit of the note quoting it.
+      "Unedited",
     );
     if (announced.isErr()) {
       console.error(

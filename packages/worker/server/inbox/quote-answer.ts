@@ -73,7 +73,8 @@ const signerQuote = async (
 /**
  * Store the quote's new state and tell the quoting author's streams and
  * timelines, as Mastodon's `DistributionWorker`; `federate` also sends the
- * note's `Update`, which then carries the stamp.
+ * note's `Update`, which then carries the stamp. The `Update` is no edit, as
+ * Mastodon's `accept_quote!` sends it with `edited_at` unchanged.
  */
 const settle = async (
   env: Env,
@@ -93,6 +94,7 @@ const settle = async (
     quoting.note,
     nowIso(),
     federate,
+    "Unedited",
   );
   if (announced.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteAnswerNotAnnounced", quoteId: quote.id }));
