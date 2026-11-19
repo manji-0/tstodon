@@ -258,6 +258,15 @@ describe("an actor cached under a username Mastodon's Account would refuse", () 
     expect(await displayNameOf(remote.actorUri)).toBe("Bob Refreshed");
   });
 
+  it("is still refreshed while its document keeps that username in another case", async () => {
+    const remote = await remoteActor("bob_.", "wf-oddname-case.example", { fetchedAt: EPOCH });
+    serveRemotes([{ remote, username: "Bob_.", name: "Bob Cased" }], {});
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await displayNameOf(remote.actorUri)).toBe("Bob Cased");
+  });
+
   it("is still refreshed by its own actor Update while that keeps the username", async () => {
     const remote = await remoteActor("bob-", "wf-oddname-update.example");
     const object = actorDocument({ remote, username: "bob-", name: "Bob Updated" });

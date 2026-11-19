@@ -38,11 +38,12 @@ describe("remoteActorFromDocument", () => {
     },
   );
 
-  it("takes a refused username only when it is exactly the stored one, as will_save_change_to_username?", () => {
+  it("takes a refused username only when it is the stored one, as will_save_change_to_username?", () => {
     const read = (username: string, stored: string) =>
       remoteActorFromDocument(document({ preferredUsername: username }), ACTOR, stored).isOk();
     expect(read("bob.", "bob.")).toBe(true);
-    expect(read("Bob.", "bob.")).toBe(false);
+    // Stored lowercased, as tstodon stores every username.
+    expect(read("Bob.", "bob.")).toBe(true);
     expect(read("bob.", "bob")).toBe(false);
   });
 
