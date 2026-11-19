@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ApiOEmbed, ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { signUp } from "../test/passkey-browser";
 
 const ORIGIN = "https://example.com";
 
@@ -174,7 +175,9 @@ describe("status embeds", () => {
   it("advertises the oEmbed endpoint on an embeddable status's page", async () => {
     const author = await signedInAccount("embed-link@example.com");
     const id = await post("embed-link@example.com", "public");
-    const html = await (await get(`/@${author.username}/${id}`)).text();
+    // A status page needs an Access login (the Worker asks for one on `/@*`, which Access bypasses).
+    const { fetcher } = await signUp("embed_link_viewer");
+    const html = await (await fetcher(`/@${author.username}/${id}`)).text();
     const href = new URLSearchParams({
       url: `${ORIGIN}/@${author.username}/${id}`,
       format: "json",
@@ -184,7 +187,7 @@ describe("status embeds", () => {
     );
 
     const hidden = await post("embed-link@example.com", "private");
-    expect(await (await get(`/@${author.username}/${hidden}`)).text()).not.toContain(
+    expect(await (await fetcher(`/@${author.username}/${hidden}`)).text()).not.toContain(
       "application/json+oembed",
     );
   });

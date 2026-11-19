@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { getCookie } from "hono/cookie";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@tstodon/api";
 import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
 import { type Appearance, DEFAULT_APPEARANCE, findAppearance, themeColorMetas } from "./appearance";
+import { accessAssertion, accessConfigured } from "./access-jwt";
 import { browserFacingOrigin, browserSession } from "./browser-session";
 import { runD1 } from "./d1";
 import {
@@ -124,6 +126,22 @@ const webPageTarget = (path: string): string | undefined => {
   }
   const page = `/@${match[1]}`;
   return match[3] ? `${page}/${match[3]}` : match[2] ? `${page}/${match[2]}` : page;
+};
+
+/**
+ * The request with Access's `CF_Authorization` cookie as its assertion when
+ * Access sent none. Access bypasses `/@*`, so that another server can fetch a
+ * post's `url`, and sends no assertion there; the browser still sends the
+ * cookie Access logged it in with, the same JWT, verified as the header is.
+ */
+const withAccessCookie = (c: Context<{ Bindings: Env }>): Request => {
+  const cookie = getCookie(c, "CF_Authorization");
+  if (accessAssertion(c.req.raw) !== undefined || !cookie) {
+    return c.req.raw;
+  }
+  const headers = new Headers(c.req.raw.headers);
+  headers.set("Cf-Access-Jwt-Assertion", cookie);
+  return new Request(c.req.raw, { headers });
 };
 
 /** A 301 that a cache keeps apart per `Accept`, as Mastodon's `RedirectWithVary`. */
@@ -582,7 +600,11 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   }
   const manifest = webManifest;
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
-  const viewer = await currentViewer(c.req.raw, c.env);
+  const bypassed = path.startsWith("/@");
+  const viewer = await currentViewer(bypassed ? withAccessCookie(c) : c.req.raw, c.env);
+  if (bypassed && viewer === undefined && accessConfigured(c.env)) {
+    return signInRedirect(c);
+  }
   const identity = parseInstanceIdentity(c.env);
   const [state, appearance, oembedUrl] = await Promise.all([
     initialState(c.env, c.req.raw, locale, viewer),
