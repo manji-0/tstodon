@@ -7,7 +7,7 @@ import {
   latestStatusIdInConversation,
   listConversationsForAccount,
 } from "../conversation-store";
-import { publishConversationRead } from "../conversation-stream";
+import { publishConversationMarked } from "../conversation-stream";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -100,7 +100,7 @@ const markConversation = async (c: Context<{ Bindings: Env }>, mark: "Read" | "U
   if (marked.isErr()) {
     return jsonRepositoryError(c, marked.error.message);
   }
-  await publishConversationRead(c.env, identity.value, user.value.id, conversationId);
+  await publishConversationMarked(c.env, identity.value, user.value.id, conversationId);
   const listed = await listConversationsForAccount(c.env.DB, identity.value, user.value.id, {
     limit: READ_CONVERSATION_WINDOW,
   });
