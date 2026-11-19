@@ -63,7 +63,7 @@
     "http-link-header": "1.1.4",
     "idb": "8.0.3",
     "immutable": "4.3.9",
-    "intl-messageformat": "11.2.13",
+    "intl-messageformat": "12.1.5",
     "jose": "^6.2.12",
     "js-yaml": "5.4.1",
     "jsonld": "9.0.0",
