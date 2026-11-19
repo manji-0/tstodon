@@ -16,7 +16,7 @@ import {
   requireUser,
   setPaginationLinks,
 } from "../http";
-import { markConversationRead } from "../marker-store";
+import { markConversationRead, markConversationUnread } from "../marker-store";
 import { readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
@@ -66,9 +66,12 @@ export const getV1Conversations = async (
 /** How far down the list a conversation just marked read is looked for (as its stream event). */
 const READ_CONVERSATION_WINDOW = 100;
 
-export const postV1ConversationsByIdRead = async (
-  c: Context<{ Bindings: Env }, "/api/v1/conversations/:id/read">,
-) => {
+/**
+ * Mark the account's conversation read or unread, tell its `direct` stream,
+ * and answer with the conversation as the list now shows it, as Mastodon's
+ * `read` and `unread` actions update the account conversation.
+ */
+const markConversation = async (c: Context<{ Bindings: Env }>, mark: "Read" | "Unread") => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -77,7 +80,7 @@ export const postV1ConversationsByIdRead = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const conversationId = c.req.param("id");
+  const conversationId = c.req.param("id") ?? "";
   const latest = await latestStatusIdInConversation(
     c.env.DB,
     identity.value,
@@ -90,12 +93,14 @@ export const postV1ConversationsByIdRead = async (
   if (!latest.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const marked = await markConversationRead(c.env.DB, user.value.id, conversationId, latest.value);
+  const marked =
+    mark === "Read"
+      ? await markConversationRead(c.env.DB, user.value.id, conversationId, latest.value)
+      : await markConversationUnread(c.env.DB, user.value.id, conversationId);
   if (marked.isErr()) {
     return jsonRepositoryError(c, marked.error.message);
   }
   await publishConversationRead(c.env, identity.value, user.value.id, conversationId);
-  // Mastodon answers with the conversation, now read, as the list shows it.
   const listed = await listConversationsForAccount(c.env.DB, identity.value, user.value.id, {
     limit: READ_CONVERSATION_WINDOW,
   });
@@ -115,6 +120,14 @@ export const postV1ConversationsByIdRead = async (
   const [document] = documents.value;
   return document ? c.json(document) : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
+
+export const postV1ConversationsByIdRead = (
+  c: Context<{ Bindings: Env }, "/api/v1/conversations/:id/read">,
+) => markConversation(c, "Read");
+
+export const postV1ConversationsByIdUnread = (
+  c: Context<{ Bindings: Env }, "/api/v1/conversations/:id/unread">,
+) => markConversation(c, "Unread");
 
 export const deleteV1ConversationsById = async (
   c: Context<{ Bindings: Env }, "/api/v1/conversations/:id">,

@@ -248,6 +248,7 @@ Labels:
 | POST   | `/api/v1/markers`                                   |
 | GET    | `/api/v1/conversations`                             |
 | POST   | `/api/v1/conversations/:id/read`                    |
+| POST   | `/api/v1/conversations/:id/unread`                  |
 | GET    | `/api/v1/timelines/direct`                          |
 | GET    | `/api/v1/lists`                                     |
 | POST   | `/api/v1/lists`                                     |

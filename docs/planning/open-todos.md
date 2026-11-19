@@ -85,18 +85,17 @@ Found by the security and interop audit of November 2026, checked against Mastod
 
 Endpoints Mastodon 4.7 serves that tstodon does not, or serves as a stub.
 
-| ID      | Item                                            | Notes                                                                                                                             |
-| ------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| REST-1  | Collections (4.7)                               | The collections API is not served                                                                                                 |
-| REST-2  | `PUT /api/v1/statuses/:id/interaction_policy`   | Changing a published status's quote policy is not served                                                                          |
-| REST-3  | `annual_reports`                                | Not served                                                                                                                        |
-| REST-4  | Translation                                     | `POST /api/v1/statuses/:id/translate` and `GET /api/v1/instance/translation_languages` are stubs: there is no translation backend |
-| REST-5  | `GET /api/v1/domain_blocks/preview`             | Not served                                                                                                                        |
-| REST-6  | `GET /api/v1/peers/search`                      | Not served                                                                                                                        |
-| REST-7  | `email_subscriptions`                           | Not served                                                                                                                        |
-| REST-8  | `POST /api/v1/accounts` and email confirmations | Sign-up is Cloudflare Access only; the API registration and `/api/v1/emails/confirmations` are not served                         |
-| REST-9  | `GET /oauth/userinfo`                           | Not served                                                                                                                        |
-| REST-13 | `POST /api/v1/conversations/:id/unread`         | Not served                                                                                                                        |
+| ID     | Item                                            | Notes                                                                                                                             |
+| ------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| REST-1 | Collections (4.7)                               | The collections API is not served                                                                                                 |
+| REST-2 | `PUT /api/v1/statuses/:id/interaction_policy`   | Changing a published status's quote policy is not served                                                                          |
+| REST-3 | `annual_reports`                                | Not served                                                                                                                        |
+| REST-4 | Translation                                     | `POST /api/v1/statuses/:id/translate` and `GET /api/v1/instance/translation_languages` are stubs: there is no translation backend |
+| REST-5 | `GET /api/v1/domain_blocks/preview`             | Not served                                                                                                                        |
+| REST-6 | `GET /api/v1/peers/search`                      | Not served                                                                                                                        |
+| REST-7 | `email_subscriptions`                           | Not served                                                                                                                        |
+| REST-8 | `POST /api/v1/accounts` and email confirmations | Sign-up is Cloudflare Access only; the API registration and `/api/v1/emails/confirmations` are not served                         |
+| REST-9 | `GET /oauth/userinfo`                           | Not served                                                                                                                        |
 
 ## Performance (open)
 
