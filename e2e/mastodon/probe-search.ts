@@ -1,4 +1,7 @@
-/** Sweep area INT-1: what search resolves from a URL or an acct, each way. */
+/**
+ * Sweep area INT-1: what search resolves from a URL or an acct, each way,
+ * and the remote interaction a WebFinger `subscribe` template opens.
+ */
 import { z } from "zod";
 import { A, signUp, type E2eUser } from "../lib.js";
 import {
@@ -7,6 +10,7 @@ import {
   call,
   type Cast,
   mastodonGetCount,
+  mastodonRails,
   post,
   Search,
   step,
@@ -162,6 +166,33 @@ export const searchScenarios = async ({ stamp, carol, dana, longName }: Cast): P
       throw new StepFailure(`answered ${JSON.stringify(found.map((account) => account.uri))}`);
     }
   });
+
+  await step(
+    "Mastodon's WebFinger of a tstodon user names /authorize_interaction, which opens a Mastodon post",
+    async () => {
+      const acct = local.acct.slice(1);
+      const template = mastodonRails(`
+        puts Webfinger.new(${JSON.stringify(`acct:${acct}`)}).perform
+          .link("http://ostatus.org/schema/1.0/subscribe", "template")
+      `).trim();
+      if (template !== `${local.origin}/authorize_interaction?uri={uri}`) {
+        throw new StepFailure(`Mastodon read the subscribe template ${JSON.stringify(template)}`);
+      }
+      const sent = await post(carol, { status: `interact with me from tstodon ${stamp}` });
+      const page = sent.url ?? sent.uri;
+      const opened = new URL(template.replace("{uri}", encodeURIComponent(page)));
+      const response = await local.browser(opened.pathname + opened.search);
+      const location = response.headers.get("location") ?? "";
+      const id = /^\/@carol@[^/]+\/(\d+)$/.exec(location)?.[1];
+      if (response.status !== 302 || id === undefined) {
+        throw new StepFailure(`${page} answered ${response.status} to ${JSON.stringify(location)}`);
+      }
+      const shown = await call(local, `/api/v1/statuses/${id}`, z.looseObject({ uri: z.string() }));
+      if (shown.uri !== sent.uri) {
+        throw new StepFailure(`${location} is ${shown.uri}, not ${sent.uri}`);
+      }
+    },
+  );
 
   await bothWays("a long acct resolves", longLocal, longName, async (target, other) => {
     const reader = other === longName ? mastodonViewer : viewer;
