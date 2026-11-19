@@ -37,7 +37,13 @@ export const announceNoteUpdate = async (
   const media = federate ? await loadNoteMedia(env.DB, identity, note) : undefined;
   const quote = federate ? await noteQuote(env, identity, note.id) : undefined;
   if (media?.isErr() || quote?.isErr()) {
-    console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id }));
+    console.error(
+      JSON.stringify({
+        kind: "StatusUpdateNotFederated",
+        statusId: note.id,
+        cause: media?.isErr() ? "media" : "quote",
+      }),
+    );
   }
   if (media?.isOk() && quote?.isOk()) {
     const actor = InstanceIdentity.actorUrl(identity, account.username);

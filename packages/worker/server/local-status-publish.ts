@@ -306,7 +306,13 @@ export const publishLocalNote = async (
   const media = federates ? await loadNoteMedia(env.DB, identity, note) : undefined;
   const quote = federates && input.quote ? await noteQuote(env, identity, note.id) : ok(undefined);
   if (media?.isErr() || quote.isErr()) {
-    console.error(JSON.stringify({ kind: "StatusNotFederated", statusId: note.id }));
+    console.error(
+      JSON.stringify({
+        kind: "StatusNotFederated",
+        statusId: note.id,
+        cause: media?.isErr() ? "media" : "quote",
+      }),
+    );
   }
   const object =
     media === undefined || media.isErr() || quote.isErr()
