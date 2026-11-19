@@ -108,12 +108,6 @@ export const UndoneActivitySchema = z.looseObject({
   object: z.unknown().optional(),
 });
 
-export const ActorPublicKeySchema = z.object({
-  id: z.string().min(1),
-  owner: z.string().min(1),
-  publicKeyPem: z.string().min(1),
-});
-
 export const ActorDocumentSchema = z
   .object({
     id: z.string().min(1),
@@ -125,7 +119,9 @@ export const ActorDocumentSchema = z
     /** Its `followers` / `following` collections: a URI, an object with an id, or a list of them. */
     followers: z.unknown().optional(),
     following: z.unknown().optional(),
-    publicKey: ActorPublicKeySchema,
+    /** Its keys: `publicKey` and FEP-521a `assertionMethod`, read by `actorKeys`. */
+    publicKey: z.unknown().optional(),
+    assertionMethod: z.unknown().optional(),
     name: z.string().optional(),
     endpoints: z
       .object({
@@ -333,7 +329,6 @@ warmSchemas([
   CollectionActivitySchema,
   HashtagObjectSchema,
   UndoneActivitySchema,
-  ActorPublicKeySchema,
   ActorDocumentSchema,
   AttachmentDocumentSchema,
   NoteDocumentSchema,

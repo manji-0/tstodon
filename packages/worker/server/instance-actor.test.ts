@@ -83,7 +83,11 @@ describe("instance actor", () => {
     );
     const actor = await instanceActor();
     expect(
-      await verifyInboxRequest(request, actor.publicKey.publicKeyPem, await request.text()),
+      await verifyInboxRequest(
+        request,
+        { kind: "Rsa", publicKeyPem: actor.publicKey.publicKeyPem },
+        await request.text(),
+      ),
     ).toBe(true);
   });
 });

@@ -374,9 +374,10 @@ describe("remote status retention", () => {
     const actors = await plan(pruneUnreferencedRemoteActors("[]", OLD));
     expect(scans(actors)).toEqual([]);
     // The candidates, 16 probes, and one seek per table its foreign keys
-    // cascade to (9, `remote_featured_tags` among them).
-    expect(actors.filter((line) => line.startsWith("SEARCH"))).toHaveLength(26);
+    // cascade to (10, `remote_featured_tags` and `remote_actor_keys` among them).
+    expect(actors.filter((line) => line.startsWith("SEARCH"))).toHaveLength(27);
     expect(actors.some((line) => line.startsWith("SEARCH remote_featured_tags USING"))).toBe(true);
+    expect(actors.some((line) => line.startsWith("SEARCH remote_actor_keys USING"))).toBe(true);
   });
 
   it("bills rows by the slice, not the table", async () => {

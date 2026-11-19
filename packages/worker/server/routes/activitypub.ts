@@ -47,6 +47,7 @@ import {
   checkSignatureStrength,
   parseSignatureHeader,
   sha256DigestHeader,
+  type VerificationKey,
   verifyInboxRequest,
 } from "../http-signature";
 import { type InboxRefusal, recordInboxRefusal } from "../inbox-refusal";
@@ -941,6 +942,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   // Who signed the request. The activity is that actor's, but for a forward:
   // another actor's request carrying it, whose actor signed it too.
   let requestSigner: InboxSigner;
+  let signingKey: VerificationKey;
   let forwarder: RemoteActor | undefined;
   if (actorUsername) {
     const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
@@ -952,6 +954,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     requestSigner = { kind: "Local", account: actorAccount.value };
+    signingKey = { kind: "Rsa", publicKeyPem: actorAccount.value.publicKeyPem };
   } else {
     // A repeated account Delete from an actor already purged: there is nothing
     // to remove and its key can no longer be fetched.
@@ -982,8 +985,8 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       allowHosts,
       blockedHosts: suspended,
       fetchSigner,
-      checkSignature: async (publicKeyPem) => {
-        signatureChecked = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
+      checkSignature: async (key) => {
+        signatureChecked = await verifyInboxRequest(c.req.raw, key, bodyText);
         return signatureChecked;
       },
     });
@@ -1011,20 +1014,18 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       });
       return c.json({ kind: "InvalidSignature" }, 401);
     }
-    const signerRefusal = await refusalOf(keyOwner.value);
+    const { actor: signer, key } = keyOwner.value;
+    const signerRefusal = await refusalOf(signer);
     if (signerRefusal !== undefined) {
       return signerRefusal;
     }
-    requestSigner = { kind: "Remote", actor: keyOwner.value };
+    requestSigner = { kind: "Remote", actor: signer };
+    signingKey = key;
     // Another actor signed the request: a forward, which counts only once
     // the activity's actor's own signature is checked, after the request's.
-    forwarder = keyOwner.value.actorUri === actorUri ? undefined : keyOwner.value;
+    forwarder = signer.actorUri === actorUri ? undefined : signer;
   }
-  const publicKeyPem =
-    requestSigner.kind === "Local"
-      ? requestSigner.account.publicKeyPem
-      : requestSigner.actor.publicKeyPem;
-  const verified = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
+  const verified = await verifyInboxRequest(c.req.raw, signingKey, bodyText);
   if (!verified) {
     refuse({ reason: "SignatureMismatch", status: 401, actor: actorUri });
     return c.json({ kind: "InvalidSignature" }, 401);
@@ -1056,6 +1057,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     }
   }
   let author: InboxSigner = requestSigner;
+  // What the handlers read: the body as received, or for a forward its
+  // actor vouches for with an integrity proof, the document the proof covers.
+  let processed = { received: activityJson.value, body: json.value };
   if (forwarder !== undefined) {
     // As Mastodon, the forwarder's request is answered 202 either way.
     const forward = await verifyForwardedActivity(c.env.DB, identity.value, json.value, actorUri, {
@@ -1084,7 +1088,15 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         if (authorRefusal !== undefined) {
           return authorRefusal;
         }
+        const received = parseActivityJson(
+          nameCollectionActivity(forward.document, c.req.header("Date"), c.req.header("Digest")),
+        );
+        if (received.isErr()) {
+          refuse({ reason: "UnparseableBody", status: 400, actor: actorUri, signer: signerUri });
+          return c.json({ kind: "ValidationError" }, 400);
+        }
         author = { kind: "Remote", actor: forward.author };
+        processed = { received: received.value, body: forward.document };
         break;
       }
       default:
@@ -1138,8 +1150,8 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       env: c.env,
       identity: identity.value,
       activity: received.activity,
-      received: activityJson.value,
-      body: json.value,
+      received: processed.received,
+      body: processed.body,
       allowHosts,
       blockedHosts: suspended,
       fetchSigner,

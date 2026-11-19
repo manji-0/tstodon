@@ -672,6 +672,8 @@ tstodon handles a **remote** actor's rotation the same way: when a signature fai
 
    The next hourly cron renames what the old build wrote; a rename of a name already folded writes nothing.
 
+6. Remote actor keys (migration 0152): the keys moved from `remote_actors.public_key_id` / `public_key_pem` to `remote_actor_keys`. The migration writes the old columns as the actor URI and a placeholder RSA key (`LEGACY_PUBLIC_KEY_PEM`) whose private half was thrown away, and newer builds keep writing them so. A build from before the migration, during the deploy or after a rollback, therefore reads every actor: no signature verifies against the placeholder, so it fetches the signer's key again (a key id that is not the actor URI is not found under it, and is fetched at once), and writes the real key into the old columns. Signatures may fail for a few minutes while actors are refetched (one refetch per actor per five minutes). Keys that build stores are not in `remote_actor_keys`; after deploying forward again, the first signature from each such actor fails against a stale key there and refetches the actor once. No manual step is needed.
+
 ### Dead-lettered jobs
 
 <!-- constrained-by ../reference/configuration.md#outbox-dead-letter-queue -->

@@ -5,7 +5,6 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { generateAccountKeys } from "./keys";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { upsertRemoteAnnounce, upsertRemoteFavourite } from "./remote-interaction-store";
 
@@ -61,7 +60,6 @@ const remoteActorFixture = async (
   username: string,
   domain: string,
 ): Promise<RemoteActor> => {
-  const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(nowIso());
   if (fetchedAt.isErr()) {
     throw new Error("clock");
@@ -71,15 +69,13 @@ const remoteActorFixture = async (
     username,
     domain,
     inboxUri: `${actorUri}/inbox`,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: keys.publicKeyPem,
     displayName: username,
     fetchedAt: fetchedAt.value,
   });
   if (actor.isErr()) {
     throw new Error("actor fixture rejected");
   }
-  const stored = await upsertRemoteActor(env.DB, actor.value);
+  const stored = await upsertRemoteActor(env.DB, actor.value, []);
   expect(stored.isOk()).toBe(true);
   return actor.value;
 };

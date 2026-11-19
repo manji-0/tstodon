@@ -249,6 +249,7 @@ export {
   type RemoteActor as RemoteActorValue,
   type RemoteActorProfile,
 } from "./remote-actor";
+export { RemoteActorKey } from "./remote-actor-key";
 export {
   type AccountHandle,
   WebfingerConfirmation,

@@ -73,8 +73,6 @@ export const remoteActor = async (
     followersUri: options.followersUri,
     followingUri: options.followingUri,
     featuredUri: options.featuredUri,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: keys.publicKeyPem,
     displayName: `Remote ${username}`,
     profile: {
       ...RemoteActor.emptyProfile,
@@ -91,7 +89,13 @@ export const remoteActor = async (
     throw new Error("remote actor fixture rejected");
   }
   if (options.cache !== false) {
-    expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+    expect(
+      (
+        await upsertRemoteActor(env.DB, actor.value, [
+          { kind: "Rsa", keyId: `${actorUri}#main-key`, publicKeyPem: keys.publicKeyPem },
+        ])
+      ).isOk(),
+    ).toBe(true);
   }
   const asDelivered = (activity: Record<string, unknown>): Record<string, unknown> => ({
     "@context": "https://www.w3.org/ns/activitystreams",

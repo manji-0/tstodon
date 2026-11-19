@@ -1,9 +1,8 @@
 import { Hostname, type InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { checkSignatureStrength, parseSignatureHeader, verifySignedFetch } from "./http-signature";
-import { resolveRemoteActor } from "./remote-actor-fetch";
+import { resolveKeyOwner } from "./remote-actor-fetch";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
-import { findRemoteActorByPublicKeyId } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
 
@@ -39,11 +38,6 @@ const verify = async (
   if (checkSignatureStrength(request, parsed) !== undefined) {
     return { kind: "Invalid" };
   }
-  // A signed GET names no actor; the key's cached owner, or the key URL
-  // without its fragment, is the actor to resolve.
-  const cached = await findRemoteActorByPublicKeyId(env.DB, parsed.keyId);
-  const actorUri =
-    (cached.isOk() ? cached.value?.actorUri : undefined) ?? parsed.keyId.split("#")[0] ?? "";
   const [allowHosts, suspended] = await Promise.all([
     federationAllowHosts(env),
     suspendedDomains(env.DB),
@@ -55,14 +49,15 @@ const verify = async (
   if (keyHost !== undefined && refusedHost(keyHost)) {
     return { kind: "Refused" };
   }
-  const actor = await resolveRemoteActor(env.DB, identity, parsed.keyId, actorUri, {
+  // A signed GET names no actor: the key's owner is the signer.
+  const signer = await resolveKeyOwner(env.DB, identity, parsed.keyId, {
     allowHosts,
     blockedHosts: suspended,
     fetchSigner: instanceActorFetchSigner(env.DB, identity),
-    checkSignature: (publicKeyPem) => verifySignedFetch(request, parsed, publicKeyPem),
+    checkSignature: (key) => verifySignedFetch(request, parsed, key),
   });
-  if (actor.isErr()) {
-    switch (actor.error.kind) {
+  if (signer.isErr()) {
+    switch (signer.error.kind) {
       case "VerificationUnavailable":
       case "RepositoryError":
         return { kind: "Unavailable" };
@@ -72,19 +67,20 @@ const verify = async (
         return { kind: "Invalid" };
     }
   }
-  if (RemoteActor.hostnames(actor.value).some(refusedHost)) {
+  const { actor, key } = signer.value;
+  if (RemoteActor.hostnames(actor).some(refusedHost)) {
     return { kind: "Refused" };
   }
-  if (!(await verifySignedFetch(request, parsed, actor.value.publicKeyPem))) {
+  if (!(await verifySignedFetch(request, parsed, key))) {
     return { kind: "Invalid" };
   }
-  const moderation = await getRemoteActorModeration(env.DB, actor.value.actorUri);
+  const moderation = await getRemoteActorModeration(env.DB, actor.actorUri);
   if (moderation.isErr()) {
     return { kind: "Unavailable" };
   }
   return moderation.value.standing.kind === "Suspended"
     ? { kind: "Refused" }
-    : { kind: "Signed", actor: actor.value };
+    : { kind: "Signed", actor };
 };
 
 /**

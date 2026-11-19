@@ -204,10 +204,15 @@ describe("forwarded activities", () => {
   });
 });
 
+/** An actor's cached row, with the key it publishes as `#main-key`. */
 const actorRow = async (actorUri: string) =>
-  env.DB.prepare("SELECT display_name, public_key_pem FROM remote_actors WHERE actor_uri = ?")
+  env.DB.prepare(
+    `SELECT a.display_name, k.public_key_pem FROM remote_actors AS a
+     LEFT JOIN remote_actor_keys AS k ON k.key_id = a.actor_uri || '#main-key'
+     WHERE a.actor_uri = ?`,
+  )
     .bind(actorUri)
-    .first<{ display_name: string; public_key_pem: string }>();
+    .first<{ display_name: string; public_key_pem: string | null }>();
 
 const record = (value: unknown): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

@@ -486,10 +486,14 @@ describe("notification policy for_bots", () => {
     }
     expect(
       (
-        await upsertRemoteActor(env.DB, {
-          ...stored.value,
-          profile: { ...stored.value.profile, bot: true },
-        })
+        await upsertRemoteActor(
+          env.DB,
+          {
+            ...stored.value,
+            profile: { ...stored.value.profile, bot: true },
+          },
+          [{ kind: "Rsa", keyId: `${bot.actorUri}#main-key`, publicKeyPem: bot.publicKeyPem }],
+        )
       ).isOk(),
     ).toBe(true);
     const human = await remoteActor("bots-remote-person");

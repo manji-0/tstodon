@@ -1,7 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
@@ -187,7 +186,6 @@ describe("link cards", () => {
   });
 
   it("unfurls a remote status and renders its card on the public timeline", async () => {
-    const keys = await generateAccountKeys();
     const fetchedAt = IsoInstant.parse(nowIso());
     if (fetchedAt.isErr()) {
       throw new Error("clock");
@@ -198,15 +196,13 @@ describe("link cards", () => {
       username: "erin",
       domain: "card-remote.example",
       inboxUri: `${actorUri}/inbox`,
-      publicKeyId: `${actorUri}#main-key`,
-      publicKeyPem: keys.publicKeyPem,
       displayName: "erin",
       fetchedAt: fetchedAt.value,
     });
     if (actor.isErr()) {
       throw new Error("actor fixture rejected");
     }
-    await upsertRemoteActor(env.DB, actor.value);
+    await upsertRemoteActor(env.DB, actor.value, []);
     const identity = parseInstanceIdentity(env);
     if (identity.isErr()) {
       throw new Error("identity");

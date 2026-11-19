@@ -31,15 +31,13 @@ const remoteActor = async (name: string): Promise<string> => {
     username: name,
     domain: "merge.example",
     inboxUri: `${actorUri}/inbox`,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: "unused",
     displayName: name,
     fetchedAt: fetchedAt.value,
   });
   if (actor.isErr()) {
     throw new Error("remote actor fixture rejected");
   }
-  expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+  expect((await upsertRemoteActor(env.DB, actor.value, [])).isOk()).toBe(true);
   return actorUri;
 };
 

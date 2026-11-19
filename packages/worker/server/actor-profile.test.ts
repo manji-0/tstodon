@@ -181,7 +181,7 @@ describe("a local actor's profile", () => {
     const raw = await actorJson(account.username);
     const parsed = remoteActorFromDocument(raw, document.id);
     expect(parsed.isOk()).toBe(true);
-    expect(parsed.isOk() && parsed.value.profile).toMatchObject({
+    expect(parsed.isOk() && parsed.value.actor.profile).toMatchObject({
       avatarUrl: rest.avatar,
       headerUrl: rest.header,
       note: "Hello <world>\nsecond line",

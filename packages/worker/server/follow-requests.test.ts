@@ -178,8 +178,6 @@ describe("follow requests", () => {
       username: "fr-frank",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/fr-frank/inbox",
-      publicKeyId: "https://remote.example/users/fr-frank#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Frank",
       fetchedAt: fetchedAt.value,
     });
@@ -187,7 +185,17 @@ describe("follow requests", () => {
     if (remote.isErr()) {
       throw new Error("remote actor fixture rejected");
     }
-    expect((await upsertRemoteActor(env.DB, remote.value)).isOk()).toBe(true);
+    expect(
+      (
+        await upsertRemoteActor(env.DB, remote.value, [
+          {
+            kind: "Rsa",
+            keyId: `${remote.value.actorUri}#main-key`,
+            publicKeyPem: keys.publicKeyPem,
+          },
+        ])
+      ).isOk(),
+    ).toBe(true);
 
     const followId = "https://remote.example/activities/follow-fr-frank";
     const body = JSON.stringify({
@@ -294,15 +302,23 @@ describe("follow requests", () => {
       username: "fr-grace",
       domain: "remote.example",
       inboxUri: "https://remote.example/users/fr-grace/inbox",
-      publicKeyId: "https://remote.example/users/fr-grace#main-key",
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Grace",
       fetchedAt: fetchedAt.value,
     });
     if (remote.isErr()) {
       throw new Error("remote actor fixture rejected");
     }
-    expect((await upsertRemoteActor(env.DB, remote.value)).isOk()).toBe(true);
+    expect(
+      (
+        await upsertRemoteActor(env.DB, remote.value, [
+          {
+            kind: "Rsa",
+            keyId: `${remote.value.actorUri}#main-key`,
+            publicKeyPem: keys.publicKeyPem,
+          },
+        ])
+      ).isOk(),
+    ).toBe(true);
 
     const body = JSON.stringify({
       "@context": "https://www.w3.org/ns/activitystreams",

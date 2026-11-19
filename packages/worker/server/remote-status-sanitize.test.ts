@@ -4,7 +4,6 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { nowIso } from "./clock";
-import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { persistRemoteObject } from "./remote-status-persist";
@@ -17,7 +16,6 @@ const StatusSchema = z.object({
 });
 
 const hostileActor = async (): Promise<RemoteActor> => {
-  const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(nowIso());
   if (fetchedAt.isErr()) {
     throw new Error("clock");
@@ -28,15 +26,13 @@ const hostileActor = async (): Promise<RemoteActor> => {
     username: "mallory",
     domain: "hostile.example",
     inboxUri: `${actorUri}/inbox`,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: keys.publicKeyPem,
     displayName: "mallory",
     fetchedAt: fetchedAt.value,
   });
   if (actor.isErr()) {
     throw new Error("actor fixture rejected");
   }
-  expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+  expect((await upsertRemoteActor(env.DB, actor.value, [])).isOk()).toBe(true);
   return actor.value;
 };
 
