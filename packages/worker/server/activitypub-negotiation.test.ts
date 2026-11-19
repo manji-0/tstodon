@@ -114,7 +114,9 @@ describe("what a browser gets for an ActivityPub URL", () => {
       [`${user}/statuses/999`, `/@${author.username}/999`],
       ["/users/apneg-nobody", "/@apneg-nobody"],
     ];
-    for (const accept of [BROWSER_ACCEPT, "text/html", "*/*", undefined]) {
+    // Rails reads an Accept with `*/*` beside other types as a browser's, whatever it names first.
+    const apAndAll = "application/activity+json, */*";
+    for (const accept of [BROWSER_ACCEPT, "text/html", "*/*", apAndAll, undefined]) {
       for (const [path, page] of pages) {
         const response = await SELF.fetch(`https://example.com${path}`, {
           headers: accept === undefined ? {} : { Accept: accept },
@@ -129,7 +131,12 @@ describe("what a browser gets for an ActivityPub URL", () => {
 
   it("keeps the ActivityPub document for a JSON request", async () => {
     const author = await signedInAccount(AUTHOR);
-    for (const accept of ["application/json", "application/activity+json", MASTODON_ACCEPT]) {
+    for (const accept of [
+      "application/json",
+      "application/activity+json",
+      'application/ld+json; profile="https://www.w3.org/ns/activitystreams"',
+      MASTODON_ACCEPT,
+    ]) {
       const response = await get(`/users/${author.username}`, accept);
       expect(response.status, accept).toBe(200);
       expect(contentType(response), accept).toContain("application/activity+json");
