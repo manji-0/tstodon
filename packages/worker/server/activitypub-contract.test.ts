@@ -33,7 +33,7 @@ import { RemoteAccountId } from "./remote-account-id";
 const ORIGIN = "https://example.com";
 const activityJson = { headers: { accept: "application/activity+json" } };
 
-const fetchJson = async (path: string, init?: RequestInit) => {
+const fetchJson = async (path: string, init: RequestInit = activityJson) => {
   const response = await SELF.fetch(new URL(path, ORIGIN), init);
   expect(response.status, path).toBe(200);
   return response.json();

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
@@ -63,7 +64,7 @@ describe("authorized fetch of non-public notes", () => {
     expect(read(z.object({ type: z.literal("Note") }), await allowed.json()).type).toBe("Note");
 
     expect((await stranger.fetch(path)).status).toBe(404);
-    expect((await SELF.fetch(`https://example.com${path}`)).status).toBe(404);
+    expect((await SELF.fetch(`https://example.com${path}`, ACTIVITY_JSON)).status).toBe(404);
   });
 
   it("serves a direct note only to the actors it addresses", async () => {

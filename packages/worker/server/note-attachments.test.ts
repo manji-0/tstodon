@@ -12,6 +12,7 @@ import { getUsersByUsernameStatusesById } from "./routes/activitypub";
 import { parseInstanceIdentity } from "./runtime-config";
 import { insertScheduledStatus } from "./scheduled-status-store";
 import { findStatusById } from "./status-store";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const json = async (
   path: string,
@@ -142,7 +143,7 @@ describe("note attachments", () => {
     expect(created?.id).toBe(status.uri);
     expect(created?.attachment).toEqual(expected);
 
-    const outbox = await json(`/users/${status.account.username}/outbox?page=true`);
+    const outbox = await json(`/users/${status.account.username}/outbox?page=true`, ACTIVITY_JSON);
     const items = read(z.object({ orderedItems: z.array(Activity) }), outbox.body).orderedItems;
     expect(items.find((item) => item.object.id === status.uri)?.object.attachment).toEqual(
       expected,
@@ -182,7 +183,10 @@ describe("note attachments", () => {
     const updates = await queuedNotes(status.account.id, "Update");
     expect(updates.at(-1)?.attachment).toEqual(expected);
 
-    const fetched = await json(`/users/${status.account.username}/statuses/${status.id}`);
+    const fetched = await json(
+      `/users/${status.account.username}/statuses/${status.id}`,
+      ACTIVITY_JSON,
+    );
     expect(fetched.status).toBe(200);
     const note = read(z.looseObject({ attachment: z.unknown().optional() }), fetched.body);
     expect(note.attachment).toEqual(expected);
@@ -208,7 +212,10 @@ describe("note attachments", () => {
       const listed = await json(`/api/v1/accounts/${status.account.id}/statuses`, {
         headers: await authHeaders(email),
       });
-      const fetched = await json(`/users/${status.account.username}/statuses/${status.id}`);
+      const fetched = await json(
+        `/users/${status.account.username}/statuses/${status.id}`,
+        ACTIVITY_JSON,
+      );
       const note = read(
         z.object({ attachment: z.array(z.object({ url: z.string() })) }),
         fetched.body,

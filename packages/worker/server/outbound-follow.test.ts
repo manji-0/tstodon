@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -214,7 +215,7 @@ describe("following a remote account", () => {
     expect(read(z.array(z.object({ id: z.string() })), following.body).map((a) => a.id)).toEqual([
       RemoteAccountId.encode(remote.actorUri),
     ]);
-    const collection = await json(`/users/${viewer.username}/following?page=1`);
+    const collection = await json(`/users/${viewer.username}/following?page=1`, ACTIVITY_JSON);
     expect(collection.body).toMatchObject({ orderedItems: [remote.actorUri] });
   });
 
