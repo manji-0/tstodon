@@ -884,10 +884,41 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const deletesSigner =
     payload.kind === "Delete" &&
     RemoteDeleteTarget.of(actorUri, String(payload.object)).kind === "ActorDelete";
-  // Who signed the request, and whose activity it is: the same actor, but
-  // for a forward another actor's request carries the activity.
+  /**
+   * A refusal of `actor` (the request's signer, or the actor a forward
+   * vouches for): limited federation, a suspended domain, or an actor an
+   * admin suspended, whose own account `Delete` alone still counts.
+   */
+  const refusalOf = async (actor: RemoteActor): Promise<Response | undefined> => {
+    const refusedActorHost = RemoteActor.hostnames(actor).find(
+      (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
+    );
+    if (refusedActorHost !== undefined) {
+      refuse({
+        reason: suspended.has(refusedActorHost) ? "DomainSuspended" : "DomainNotAllowed",
+        status: 403,
+        actor: actorUri,
+        signer: actor.actorUri,
+      });
+      return c.json(FORBIDDEN_DOMAIN, 403);
+    }
+    const moderation = await getRemoteActorModeration(c.env.DB, actor.actorUri);
+    if (moderation.isErr()) {
+      return jsonRepositoryError(c, moderation.error.message);
+    }
+    if (
+      moderation.value.standing.kind === "Suspended" &&
+      !(deletesSigner && actor.actorUri === actorUri)
+    ) {
+      refuse({ reason: "ActorSuspended", status: 403, actor: actorUri, signer: actor.actorUri });
+      return c.json({ error: "This actor is suspended on this instance", kind: "Forbidden" }, 403);
+    }
+    return undefined;
+  };
+  // Who signed the request. The activity is that actor's, but for a forward:
+  // another actor's request carrying it, whose actor signed it too.
   let requestSigner: InboxSigner;
-  let author: InboxSigner;
+  let forwarder: RemoteActor | undefined;
   if (actorUsername) {
     const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
     if (actorAccount.isErr()) {
@@ -898,7 +929,6 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return c.json({ kind: "InvalidSignature" }, 401);
     }
     requestSigner = { kind: "Local", account: actorAccount.value };
-    author = requestSigner;
   } else {
     // A repeated account Delete from an actor already purged: there is nothing
     // to remove and its key can no longer be fetched.
@@ -958,99 +988,14 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       });
       return c.json({ kind: "InvalidSignature" }, 401);
     }
-    /**
-     * A refusal of `actor` (the request's signer, or the actor a forward
-     * vouches for): limited federation, a suspended domain, or an actor an
-     * admin suspended, whose own account `Delete` alone still counts.
-     */
-    const refusalOf = async (actor: RemoteActor): Promise<Response | undefined> => {
-      const refusedActorHost = RemoteActor.hostnames(actor).find(
-        (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
-      );
-      if (refusedActorHost !== undefined) {
-        refuse({
-          reason: suspended.has(refusedActorHost) ? "DomainSuspended" : "DomainNotAllowed",
-          status: 403,
-          actor: actorUri,
-          signer: actor.actorUri,
-        });
-        return c.json(FORBIDDEN_DOMAIN, 403);
-      }
-      const moderation = await getRemoteActorModeration(c.env.DB, actor.actorUri);
-      if (moderation.isErr()) {
-        return jsonRepositoryError(c, moderation.error.message);
-      }
-      if (
-        moderation.value.standing.kind === "Suspended" &&
-        !(deletesSigner && actor.actorUri === actorUri)
-      ) {
-        refuse({ reason: "ActorSuspended", status: 403, actor: actorUri, signer: actor.actorUri });
-        return c.json(
-          { error: "This actor is suspended on this instance", kind: "Forbidden" },
-          403,
-        );
-      }
-      return undefined;
-    };
     const signerRefusal = await refusalOf(keyOwner.value);
     if (signerRefusal !== undefined) {
       return signerRefusal;
     }
     requestSigner = { kind: "Remote", actor: keyOwner.value };
-    if (keyOwner.value.actorUri === actorUri) {
-      author = requestSigner;
-    } else {
-      // Another actor signed the request: a forward, which counts only when
-      // the activity's actor signed it too (Linked Data signature). As
-      // Mastodon, the forwarder's request is answered 202 either way.
-      if (!(await verifyInboxRequest(c.req.raw, keyOwner.value.publicKeyPem, bodyText))) {
-        refuse({ reason: "SignatureMismatch", status: 401, actor: actorUri });
-        return c.json({ kind: "InvalidSignature" }, 401);
-      }
-      const forward = await verifyForwardedActivity(
-        c.env.DB,
-        identity.value,
-        json.value,
-        actorUri,
-        {
-          allowHosts,
-          blockedHosts: suspended,
-          fetchSigner,
-        },
-      );
-      switch (forward.kind) {
-        case "Unavailable":
-          refuse({
-            reason: "KeyUnavailable",
-            status: 503,
-            actor: actorUri,
-            signer: keyOwner.value.actorUri,
-          });
-          c.header("Retry-After", "5");
-          return c.json({ kind: "VerificationUnavailable" }, 503);
-        case "RepositoryError":
-          return jsonRepositoryError(c, forward.message);
-        case "Unverified":
-          refuse({
-            reason: "UnverifiedForward",
-            status: 202,
-            actor: actorUri,
-            signer: keyOwner.value.actorUri,
-            detail: forward.reason,
-          });
-          return c.body(null, 202);
-        case "Verified": {
-          const authorRefusal = await refusalOf(forward.author);
-          if (authorRefusal !== undefined) {
-            return authorRefusal;
-          }
-          author = { kind: "Remote", actor: forward.author };
-          break;
-        }
-        default:
-          return assertNever(forward);
-      }
-    }
+    // Another actor signed the request: a forward, which counts only once
+    // the activity's actor's own signature is checked, after the request's.
+    forwarder = keyOwner.value.actorUri === actorUri ? undefined : keyOwner.value;
   }
   const publicKeyPem =
     requestSigner.kind === "Local"
@@ -1085,6 +1030,42 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     const senderHost = Hostname.ofUri(requestSigner.actor.actorUri);
     if (senderHost !== undefined) {
       await recordDeliveryReachability(c.env, senderHost, "Reachable", "inbound");
+    }
+  }
+  let author: InboxSigner = requestSigner;
+  if (forwarder !== undefined) {
+    // As Mastodon, the forwarder's request is answered 202 either way.
+    const forward = await verifyForwardedActivity(c.env.DB, identity.value, json.value, actorUri, {
+      allowHosts,
+      blockedHosts: suspended,
+      fetchSigner,
+    });
+    switch (forward.kind) {
+      case "Unavailable":
+        refuse({ reason: "KeyUnavailable", status: 503, actor: actorUri, signer: signerUri });
+        c.header("Retry-After", "5");
+        return c.json({ kind: "VerificationUnavailable" }, 503);
+      case "RepositoryError":
+        return jsonRepositoryError(c, forward.message);
+      case "Unverified":
+        refuse({
+          reason: "UnverifiedForward",
+          status: 202,
+          actor: actorUri,
+          signer: signerUri,
+          detail: forward.reason,
+        });
+        return c.body(null, 202);
+      case "Verified": {
+        const authorRefusal = await refusalOf(forward.author);
+        if (authorRefusal !== undefined) {
+          return authorRefusal;
+        }
+        author = { kind: "Remote", actor: forward.author };
+        break;
+      }
+      default:
+        return assertNever(forward);
     }
   }
   const activityId = ActivityId.parse(payload.id);
@@ -1130,6 +1111,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   }
   const applied = await dispatchInbox(
     {
+      route: forwarder === undefined ? { kind: "Direct" } : { kind: "Forwarded", forwarder },
       env: c.env,
       identity: identity.value,
       activity: received.activity,

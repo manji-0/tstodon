@@ -1,7 +1,9 @@
-import { SELF, env } from "cloudflare:test";
+import { createExecutionContext, env } from "cloudflare:test";
+import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { forgetInboxRefusalWindows } from "./inbox-refusal";
+import { postInbox } from "./routes/activitypub";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -48,8 +50,13 @@ const refusalsDuring = async (run: () => Promise<Response>) => {
   return { status: response.status, refusals };
 };
 
-const post = (request: Request | Promise<Request>) =>
-  Promise.resolve(request).then((ready) => SELF.fetch(ready));
+// The inbox runs in this isolate, so that `forgetInboxRefusalWindows` lets
+// every refusal be logged.
+const app = new Hono<{ Bindings: Env }>();
+app.post("/inbox", postInbox);
+
+const post = async (request: Request | Promise<Request>): Promise<Response> =>
+  app.request(await request, undefined, env, createExecutionContext());
 
 describe("forwarded activities", () => {
   it("applies a forwarded Create, Update and Delete that their actor signed", async () => {
@@ -194,5 +201,234 @@ describe("forwarded activities", () => {
     const response = await post(relay.forward(await eve.ldSigned(create(eve, "blocked"))));
     expect(response.status).toBe(403);
     expect(fetched).not.toHaveBeenCalled();
+  });
+});
+
+const actorRow = async (actorUri: string) =>
+  env.DB.prepare("SELECT display_name, public_key_pem FROM remote_actors WHERE actor_uri = ?")
+    .bind(actorUri)
+    .first<{ display_name: string; public_key_pem: string }>();
+
+const record = (value: unknown): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("expected an object");
+  }
+  return { ...value };
+};
+
+/** An actor document for `remote`, as an activity embeds it (`serve` adds the context). */
+const actorDocument = (remote: Remote, overrides: Record<string, unknown> = {}) => ({
+  id: remote.actorUri,
+  type: "Person",
+  preferredUsername: new URL(remote.actorUri).pathname.split("/").at(-1),
+  name: "Fetched",
+  inbox: `${remote.actorUri}/inbox`,
+  publicKey: {
+    id: `${remote.actorUri}#main-key`,
+    owner: remote.actorUri,
+    publicKeyPem: remote.publicKeyPem,
+  },
+  ...overrides,
+});
+
+const ACTOR_CONTEXT = ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"];
+
+/** `fetch` answering `documents` by URL (the fragment dropped), 404 for anything else. */
+const serve = (documents: Readonly<Record<string, unknown>>, status = 200) =>
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(new Request(input, init).url);
+    url.hash = "";
+    const document = documents[url.href];
+    return document === undefined
+      ? new Response(null, { status: 404 })
+      : new Response(JSON.stringify({ "@context": ACTOR_CONTEXT, ...record(document) }), {
+          status,
+          headers: { "content-type": "application/activity+json" },
+        });
+  });
+
+describe("forwards whose JSON says something else than their signature", () => {
+  it("drops a note whose content a nested context rewrites, the signature intact", async () => {
+    const alice = await remoteActor("fwd-ctx-alice", "fwd-ctx.example");
+    const relay = await remoteActor("fwd-ctx-relay", "fwd-forwarder.example");
+    const signed = await alice.ldSigned(create(alice, "ctx", "<p>signed</p>"));
+    const object = record(signed["object"]);
+    const forged = {
+      ...signed,
+      object: {
+        ...object,
+        "@context": { content: null },
+        content: "<p>forged</p>",
+        "as:content": object["content"],
+      },
+    };
+    const { status, refusals } = await refusalsDuring(() => post(relay.forward(forged)));
+    expect(status).toBe(202);
+    expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "AmbiguousJsonLd" }]);
+    expect(await storedContent(`${alice.actorUri}/statuses/ctx`)).toBeUndefined();
+  });
+
+  it("drops a Delete that `@id` retargets at another status or at the actor", async () => {
+    const alice = await remoteActor("fwd-retarget-alice", "fwd-retarget.example");
+    const relay = await remoteActor("fwd-retarget-relay", "fwd-forwarder.example");
+    for (const slug of ["kept", "deleted"]) {
+      expect(await alice.send(create(alice, slug))).toBe(202);
+    }
+    const deleted = `${alice.actorUri}/statuses/deleted`;
+    const signed = await alice.ldSigned({
+      id: `${deleted}#delete`,
+      type: "Delete",
+      to: [PUBLIC],
+      object: { id: deleted, type: "Tombstone" },
+    });
+    for (const id of [`${alice.actorUri}/statuses/kept`, alice.actorUri]) {
+      const forged = {
+        ...signed,
+        id: `${String(signed["id"])}-${id.length}`,
+        object: { "@context": { id: null }, "@id": deleted, id, type: "Tombstone" },
+      };
+      const { refusals } = await refusalsDuring(() => post(relay.forward(forged)));
+      expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "AmbiguousJsonLd" }]);
+    }
+    expect(await storedContent(`${alice.actorUri}/statuses/kept`)).toBeDefined();
+    expect(await actorRow(alice.actorUri)).not.toBeNull();
+  });
+
+  it("drops an actor Update whose key a nested context swaps", async () => {
+    const alice = await remoteActor("fwd-key-alice", "fwd-key.example");
+    const relay = await remoteActor("fwd-key-relay", "fwd-forwarder.example");
+    const evil = await remoteActor("fwd-key-evil", "fwd-key-evil.example", { cache: false });
+    const document = actorDocument(alice);
+    const signed = await alice.ldSigned({
+      id: `${alice.actorUri}#updates/1`,
+      "@context": ACTOR_CONTEXT,
+      type: "Update",
+      to: [PUBLIC],
+      object: document,
+    });
+    const forged = {
+      ...signed,
+      object: {
+        ...document,
+        publicKey: {
+          ...document.publicKey,
+          "@context": { publicKeyPem: null },
+          publicKeyPem: evil.publicKeyPem,
+          "https://w3id.org/security#publicKeyPem": alice.publicKeyPem,
+        },
+      },
+    };
+    const { refusals } = await refusalsDuring(() => post(relay.forward(forged)));
+    expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "AmbiguousJsonLd" }]);
+    expect((await actorRow(alice.actorUri))?.public_key_pem).toBe(alice.publicKeyPem);
+  });
+
+  it("drops a signature whose expiry is written as `sec:expiration`", async () => {
+    const alice = await remoteActor("fwd-exp-alice", "fwd-exp.example");
+    const relay = await remoteActor("fwd-exp-relay", "fwd-forwarder.example");
+    const stale = await alice.ldSigned(create(alice, "exp"), new Date(Date.now() - 3 * DAY_MS));
+    const { expires, ...signature } = record(stale["signature"]);
+    const forged = {
+      ...stale,
+      signature: { ...signature, "sec:expiration": { "@value": expires, "@type": "xsd:dateTime" } },
+    };
+    const { refusals } = await refusalsDuring(() => post(relay.forward(forged)));
+    expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "AmbiguousJsonLd" }]);
+    expect(await storedContent(`${alice.actorUri}/statuses/exp`)).toBeUndefined();
+  });
+});
+
+describe("forwarded actor activities", () => {
+  it("takes a forwarded actor Update from the actor's own document, not the one it carries", async () => {
+    const alice = await remoteActor("fwd-upd-alice", "fwd-upd.example");
+    const relay = await remoteActor("fwd-upd-relay", "fwd-forwarder.example");
+    serve({ [alice.actorUri]: actorDocument(alice, { name: "Fetched" }) });
+    const signed = await alice.ldSigned({
+      id: `${alice.actorUri}#updates/2`,
+      "@context": ACTOR_CONTEXT,
+      type: "Update",
+      to: [PUBLIC],
+      object: actorDocument(alice, { name: "Embedded" }),
+    });
+    expect((await post(relay.forward(signed))).status).toBe(202);
+    expect((await actorRow(alice.actorUri))?.display_name).toBe("Fetched");
+  });
+
+  it("purges an account on a forwarded Delete only when its server no longer serves it", async () => {
+    const alice = await remoteActor("fwd-gone-alice", "fwd-gone.example");
+    const relay = await remoteActor("fwd-gone-relay", "fwd-forwarder.example");
+    const remove = (n: number) => ({
+      id: `${alice.actorUri}#delete-${n}`,
+      type: "Delete",
+      to: [PUBLIC],
+      object: alice.actorUri,
+    });
+    const alive = serve({ [alice.actorUri]: actorDocument(alice) });
+    expect((await post(relay.forward(await alice.ldSigned(remove(1))))).status).toBe(202);
+    expect(await actorRow(alice.actorUri)).not.toBeNull();
+    alive.mockRestore();
+    serve({ [alice.actorUri]: {} }, 410);
+    expect((await post(relay.forward(await alice.ldSigned(remove(2))))).status).toBe(202);
+    expect(await actorRow(alice.actorUri)).toBeNull();
+  });
+
+  it("verifies a forward from an actor not cached yet, fetching its key", async () => {
+    const alice = await remoteActor("fwd-new-alice", "fwd-new.example", { cache: false });
+    const relay = await remoteActor("fwd-new-relay", "fwd-forwarder.example");
+    serve({ [alice.actorUri]: actorDocument(alice) });
+    expect((await post(relay.forward(await alice.ldSigned(create(alice, "new"))))).status).toBe(
+      202,
+    );
+    expect(await storedContent(`${alice.actorUri}/statuses/new`)).toContain("new");
+  });
+
+  it("does not take an actor's key from a document served on another host", async () => {
+    const alice = await remoteActor("fwd-host-key-alice", "fwd-host-key.example");
+    const relay = await remoteActor("fwd-host-key-relay", "fwd-forwarder.example");
+    const evil = await remoteActor("fwd-host-key-evil", "fwd-host-key-evil.example", {
+      cache: false,
+    });
+    // evil.example serves, at its own key URL, a document that claims to be
+    // Alice's actor with evil's key.
+    serve({
+      [evil.actorUri]: actorDocument(alice, {
+        publicKey: {
+          id: `${evil.actorUri}#main-key`,
+          owner: alice.actorUri,
+          publicKeyPem: evil.publicKeyPem,
+        },
+      }),
+    });
+    const signed = await evil.ldSigned({ ...create(alice, "evil"), actor: alice.actorUri });
+    const { refusals } = await refusalsDuring(() => post(relay.forward(signed)));
+    expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "KeyRejected" }]);
+    expect((await actorRow(alice.actorUri))?.public_key_pem).toBe(alice.publicKeyPem);
+    expect(await storedContent(`${alice.actorUri}/statuses/evil`)).toBeUndefined();
+  });
+});
+
+describe("tombstones", () => {
+  it("does not store again a status its author deleted, forwarded or delivered", async () => {
+    const alice = await remoteActor("fwd-tomb-alice", "fwd-tomb.example");
+    const relay = await remoteActor("fwd-tomb-relay", "fwd-forwarder.example");
+    const objectUri = `${alice.actorUri}/statuses/tomb`;
+    const signed = await alice.ldSigned(create(alice, "tomb"));
+    expect((await post(alice.forward(signed))).status).toBe(202);
+    expect(await storedContent(objectUri)).toBeDefined();
+    expect(await alice.send({ id: `${objectUri}#delete`, type: "Delete", object: objectUri })).toBe(
+      202,
+    );
+    expect(await storedContent(objectUri)).toBeUndefined();
+    // A signed Create of it again, under another activity id, and a late Update.
+    const again = await alice.ldSigned({ ...create(alice, "tomb"), id: `${objectUri}/activity-2` });
+    expect((await post(relay.forward(again))).status).toBe(202);
+    expect(
+      await alice.send({
+        id: `${objectUri}#updates/9`,
+        type: "Update",
+        object: { ...note(alice, "tomb", "<p>back</p>"), updated: new Date().toISOString() },
+      }),
+    ).toBe(202);
+    expect(await storedContent(objectUri)).toBeUndefined();
   });
 });

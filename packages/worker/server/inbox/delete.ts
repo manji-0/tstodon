@@ -1,11 +1,12 @@
 import { assertNever } from "@tstodon/core";
-import type { InstanceIdentity } from "@tstodon/domain";
+import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { err, ok } from "neverthrow";
 import { parseLocalStatusId } from "../activitypub";
 import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { removeRemoteStatus } from "../remote-status-delete";
-import { findRemoteStatusByObjectUri } from "../remote-status-store";
+import { findRemoteStatusByObjectUri, recordRemoteTombstone } from "../remote-status-store";
+import { fetchActivityJson } from "../federated-fetch";
 import { forwardRemoteActivity } from "../activity-forward";
 import type { ActivityOf, InboxHandler, RemoteDelivery } from "./handler";
 import { revokeQuoteStamp } from "./quote-answer";
@@ -40,10 +41,26 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
   signer,
   activity,
   body,
+  route,
+  allowHosts,
+  blockedHosts,
+  fetchSigner,
 }) => {
   const effect = remoteDeleteEffect(identity, activity);
   switch (effect.kind) {
     case "PurgeActor": {
+      // A forwarded account `Delete` is not taken on the forwarder's word:
+      // the account goes only when its own server no longer serves it.
+      if (route.kind === "Forwarded") {
+        const fetched = await fetchActivityJson(identity, effect.actorUri, {
+          allowHosts,
+          blockedHosts,
+          fetchSigner,
+        });
+        if (fetched.isOk() || fetched.error.kind === "VerificationUnavailable") {
+          return ok(undefined);
+        }
+      }
       const purged = await purgeRemoteActorAndAnnounce(env, effect.actorUri);
       return purged.isErr() ? err(purged.error) : ok(undefined);
     }
@@ -55,6 +72,14 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
       }
       if (revoked.value) {
         return ok(undefined);
+      }
+      // Mastodon's `Tombstone`: a `Create` of the URI, replayed or late, is
+      // not stored again. Only for a URI on the actor's own host.
+      if (Hostname.ofUri(effect.objectUri) === Hostname.ofUri(signer.actorUri)) {
+        const buried = await recordRemoteTombstone(env.DB, effect.objectUri, signer.actorUri);
+        if (buried.isErr()) {
+          return err(buried.error);
+        }
       }
       // As Mastodon's `Delete#delete_status`, forwarded before the status,
       // and the boosts and quotes that decide who hears it, are gone.

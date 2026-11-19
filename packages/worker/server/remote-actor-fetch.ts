@@ -571,6 +571,11 @@ const fetchKeyOwner = async (
   if (actor.isErr()) {
     return err(actor.error);
   }
+  // A document speaks only for its own host: one served at a key URL on
+  // another host than the actor it describes could rewrite that actor's key.
+  if (Hostname.ofUri(actor.value.actorUri) !== Hostname.ofUri(keyId)) {
+    return err({ kind: "InvalidSignature" });
+  }
   if (
     actor.value.publicKeyId !== keyId &&
     actor.value.actorUri !== keyId &&

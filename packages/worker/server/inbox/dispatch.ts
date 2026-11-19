@@ -19,6 +19,19 @@ import { receiveLocalUndo, receiveRemoteUndo } from "./undo";
 
 type Dispatched = Promise<Result<void, RepositoryError>>;
 
+/**
+ * The object an `Update` is applied with: as received, but for a forwarded
+ * `Update` of its actor, where the actor's URI makes `applyRemoteUpdate`
+ * fetch the actor's own document rather than trust the embedded one.
+ */
+const updatedObject = (receipt: InboxReceipt, signer: RemoteActor) => {
+  const object = receipt.received.object;
+  const objectId = typeof object === "string" ? object : object.id;
+  return receipt.route.kind === "Forwarded" && objectId === signer.actorUri
+    ? signer.actorUri
+    : object;
+};
+
 const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispatched => {
   const { activity, env, identity } = receipt;
   const delivery = { ...receipt, signer };
@@ -26,7 +39,9 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
     case "Create":
       return receiveRemoteCreate({ ...delivery, activity });
     case "Update":
-      return applyRemoteUpdate(env, identity, signer, receipt.received.object, {
+      // A forwarded actor `Update` is not taken as it came: the actor's own
+      // document is fetched instead.
+      return applyRemoteUpdate(env, identity, signer, updatedObject(receipt, signer), {
         allowHosts: receipt.allowHosts,
         blockedHosts: receipt.blockedHosts,
         fetchSigner: receipt.fetchSigner,

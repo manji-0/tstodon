@@ -15,8 +15,12 @@ declare module "jsonld" {
     canonizeOptions?: Readonly<{ algorithm?: "RDFC-1.0" | "URDNA2015"; maxWorkFactor?: number }>;
   }>;
 
+  type CompactOptions = Pick<CanonizeOptions, "documentLoader" | "safe">;
+
   const jsonld: Readonly<{
     canonize: (input: unknown, options: CanonizeOptions) => Promise<string>;
+    compact: (input: unknown, context: unknown, options: CompactOptions) => Promise<unknown>;
+    expand: (input: unknown, options: CompactOptions) => Promise<unknown>;
   }>;
   export default jsonld;
 }

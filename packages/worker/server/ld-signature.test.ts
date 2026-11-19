@@ -61,13 +61,162 @@ describe("canonicalizeJsonLd", () => {
   });
 });
 
+/** Signed by a key made here, at a fixed instant. */
+const ownSigned = async (document: Record<string, unknown>) => {
+  const keys = await generateAccountKeys();
+  const now = new Date("2026-11-19T00:00:00Z");
+  const signed = (
+    await signLdDocument(
+      document,
+      { keyId: "https://a.example/users/alice#main-key", privateKeyJwk: keys.privateKeyJwk },
+      now,
+    )
+  )._unsafeUnwrap();
+  return { signed, publicKeyPem: keys.publicKeyPem, now };
+};
+
+const record = (value: unknown): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("expected an object");
+  }
+  return { ...value };
+};
+
+const AS = "https://www.w3.org/ns/activitystreams";
+const ALICE = "https://a.example/users/alice";
+
+/**
+ * A body changed after signing so that its graph, and so the signature,
+ * stay the same while its JSON says something else: the signature still
+ * holds over the canonical form, and the body is refused all the same.
+ */
+const expectAmbiguous = async (
+  original: Readonly<Record<string, unknown>>,
+  forged: Readonly<Record<string, unknown>>,
+  publicKeyPem: string,
+  now: Date,
+) => {
+  const { signature: _a, ...originalDocument } = original;
+  const { signature: _b, ...forgedDocument } = forged;
+  expect((await canonicalizeJsonLd(forgedDocument))._unsafeUnwrap()).toBe(
+    (await canonicalizeJsonLd(originalDocument))._unsafeUnwrap(),
+  );
+  const read = readLdSignature(forged, now)._unsafeUnwrap();
+  expect((await ldSignedBytes(read))._unsafeUnwrapErr()).toEqual({ kind: "AmbiguousJsonLd" });
+  expect(await verifies(forged, publicKeyPem, now)).toBe(false);
+};
+
 describe("Mastodon's signatures", () => {
-  it.each(Object.keys(MASTODON_SIGNED))("verifies %s as Mastodon signed it", async (name) => {
+  it.each(["create", "update", "delete"])("verifies %s as Mastodon signed it", async (name) => {
     const document = mastodonSigned(name);
     expect(readLdSignature(document, signedAt(document))._unsafeUnwrap().keyId).toBe(
       MASTODON_KEY_ID,
     );
     expect(await verifies(document, MASTODON_PUBLIC_KEY_PEM, signedAt(document))).toBe(true);
+  });
+
+  it("refuses a document with terms its signature does not cover, which Mastodon verifies", async () => {
+    // `_misskey_content` and `relative` are in no context: the graph, and
+    // the signature, leave them out, so anyone could change them.
+    const document = mastodonSigned("undefinedTerms");
+    const read = readLdSignature(document, signedAt(document))._unsafeUnwrap();
+    expect((await ldSignedBytes(read))._unsafeUnwrapErr()).toEqual({ kind: "AmbiguousJsonLd" });
+  });
+
+  it("refuses a note whose content a nested context or a compact IRI rewrites", async () => {
+    const original = mastodonSigned("create");
+    const object = record(original["object"]);
+    const now = signedAt(original);
+    await expectAmbiguous(
+      original,
+      {
+        ...original,
+        object: {
+          ...object,
+          "@context": { content: null },
+          content: "<p>forged</p>",
+          "as:content": object["content"],
+        },
+      },
+      MASTODON_PUBLIC_KEY_PEM,
+      now,
+    );
+    // A term the document does not define, added after signing.
+    await expectAmbiguous(
+      original,
+      { ...original, object: { ...object, quoteUrl: "https://evil.example/notes/1" } },
+      MASTODON_PUBLIC_KEY_PEM,
+      now,
+    );
+  });
+
+  it("refuses a Delete retargeted with `@id`, at another status or at the actor", async () => {
+    const original = mastodonSigned("delete");
+    const object = record(original["object"]);
+    const now = signedAt(original);
+    for (const id of [`${String(object["id"])}9`, String(original["actor"])]) {
+      await expectAmbiguous(
+        original,
+        { ...original, object: { ...object, "@context": { id: null }, "@id": object["id"], id } },
+        MASTODON_PUBLIC_KEY_PEM,
+        now,
+      );
+    }
+  });
+
+  it("refuses a forwarded actor Update whose key a nested context swaps", async () => {
+    const publicKey = {
+      id: `${ALICE}#main-key`,
+      owner: ALICE,
+      publicKeyPem: "-----BEGIN PUBLIC KEY-----\nORIGINAL\n-----END PUBLIC KEY-----",
+    };
+    const { signed, publicKeyPem, now } = await ownSigned({
+      "@context": [AS, "https://w3id.org/security/v1"],
+      id: `${ALICE}#updates/1`,
+      type: "Update",
+      actor: ALICE,
+      to: [`${AS}#Public`],
+      object: {
+        id: ALICE,
+        type: "Person",
+        preferredUsername: "alice",
+        inbox: `${ALICE}/inbox`,
+        publicKey,
+      },
+    });
+    expect(await verifies(signed, publicKeyPem, now)).toBe(true);
+    const object = record(signed["object"]);
+    await expectAmbiguous(
+      signed,
+      {
+        ...signed,
+        object: {
+          ...object,
+          publicKey: {
+            ...publicKey,
+            "@context": { publicKeyPem: null },
+            publicKeyPem: "EVIL",
+            "https://w3id.org/security#publicKeyPem": publicKey.publicKeyPem,
+          },
+        },
+      },
+      publicKeyPem,
+      now,
+    );
+  });
+
+  it("refuses an expiry written as `sec:expiration`, which `expires` would not see", async () => {
+    const original = mastodonSigned("delete");
+    const signature = record(original["signature"]);
+    const { expires, ...rest } = signature;
+    const forged = {
+      ...original,
+      signature: { ...rest, "sec:expiration": { "@value": expires, "@type": "xsd:dateTime" } },
+    };
+    // Past its expiry, the forged signature is not read as expired.
+    const later = new Date(new Date(String(expires)).getTime() + 1000);
+    const read = readLdSignature(forged, later)._unsafeUnwrap();
+    expect((await ldSignedBytes(read))._unsafeUnwrapErr()).toEqual({ kind: "AmbiguousJsonLd" });
   });
 
   it("refuses a body changed after signing", async () => {

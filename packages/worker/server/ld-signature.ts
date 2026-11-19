@@ -3,7 +3,7 @@ import jsonld from "jsonld";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { importRsaPrivateKey, importRsaPublicKey } from "./http-signature";
-import { JSONLD_CONTEXTS } from "./jsonld-contexts";
+import { JSONLD_CONTEXTS, MASTODON_FULL_CONTEXT } from "./jsonld-contexts";
 
 /**
  * Linked Data Signatures (`RsaSignature2017`), as Mastodon's
@@ -35,7 +35,12 @@ export type LdSignatureRefusal =
    * `@reverse`, more than 1000 values), names a context the Worker does not
    * ship, or is not valid JSON-LD.
    */
-  | Readonly<{ kind: "UnsupportedJsonLd" }>;
+  | Readonly<{ kind: "UnsupportedJsonLd" }>
+  /**
+   * The document, or the signature, does not read the same as JSON and as
+   * the JSON-LD the signature covers (see {@link readsAsSigned}).
+   */
+  | Readonly<{ kind: "AmbiguousJsonLd" }>;
 
 const SignatureSchema = z.looseObject({
   type: z.string(),
@@ -54,6 +59,8 @@ export type LdSignedDocument = Readonly<{
   signatureValue: string;
   /** The signature's options, which it covers: all but `type`, `id` and the value. */
   options: Readonly<Record<string, unknown>>;
+  /** The `signature` object as received. */
+  signature: Readonly<Record<string, unknown>>;
   /** The document without its `signature`. */
   document: Readonly<Record<string, unknown>>;
 }>;
@@ -121,6 +128,7 @@ export const readLdSignature = (
     keyId: signature.value.creator,
     signatureValue: signature.value.signatureValue,
     options,
+    signature: signed.value.signature,
     document,
   });
 };
@@ -189,14 +197,140 @@ const signedBytes = async (
   return ok(encoder.encode(optionsHash + documentHash));
 };
 
+const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
- * The bytes `signed`'s signature covers. Canonicalizing is the costly part
- * of a check, so a caller that tries more than one key computes this once.
+ * Whether the JSON value `received` reads as `compacted`, its compaction:
+ * the same members with the same values, but where Mastodon's
+ * `patch_for_forwarding!` lets them differ (a list of one compacts to its
+ * item, the public collection to `as:Public`) and a `null`, which
+ * compaction drops. A nested `@context` never matches.
  */
-export const ldSignedBytes = (
+const readsAs = (received: unknown, compacted: unknown): boolean => {
+  if (Array.isArray(received)) {
+    const items: ReadonlyArray<unknown> = Array.isArray(compacted)
+      ? compacted
+      : compacted === undefined
+        ? []
+        : [compacted];
+    return received.length === items.length && received.every((v, i) => readsAs(v, items[i]));
+  }
+  if (isRecord(received)) {
+    return isRecord(compacted) && !("@context" in received) && sameMembers(received, compacted);
+  }
+  return received === compacted || (received === PUBLIC_COLLECTION && compacted === "as:Public");
+};
+
+const sameMembers = (
+  received: Readonly<Record<string, unknown>>,
+  compacted: Readonly<Record<string, unknown>>,
+): boolean =>
+  [...new Set([...Object.keys(received), ...Object.keys(compacted)])].every((key) =>
+    received[key] === null ? compacted[key] === undefined : readsAs(received[key], compacted[key]),
+  );
+
+const ABSOLUTE_IRI = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * Whether every member of the expanded document becomes RDF, so that the
+ * signature covers it: no property that expands to a blank node (a term no
+ * context defines, kept by the activity streams `@vocab` of `_:` but
+ * dropped from the graph), and no relative IRI as a node or a type.
+ */
+const allCovered = (expanded: unknown): boolean => {
+  if (Array.isArray(expanded)) {
+    return expanded.every(allCovered);
+  }
+  if (!isRecord(expanded)) {
+    return true;
+  }
+  return Object.entries(expanded).every(([key, value]) => {
+    if (key.startsWith("_:")) {
+      return false;
+    }
+    if (key === "@id") {
+      return typeof value === "string" && ABSOLUTE_IRI.test(value);
+    }
+    if (key === "@type" && !("@value" in expanded)) {
+      return (Array.isArray(value) ? value : [value]).every(
+        (type) => typeof type === "string" && ABSOLUTE_IRI.test(type),
+      );
+    }
+    return key === "@value" || allCovered(value);
+  });
+};
+
+/**
+ * Whether `document` (but its own `@context`) reads the same as plain JSON
+ * and compacted to `context`. A signature covers the JSON-LD graph, and
+ * tstodon reads the JSON: a term that a nested `@context` redefines, a
+ * compact or full IRI where a term is expected, `@id` for `id` or a term no
+ * context defines keep the graph, and so the signature, while changing what
+ * the JSON says. Mastodon reads the compacted form instead; tstodon takes
+ * only a document whose JSON already is that form.
+ */
+const readsAsCompacted = async (
+  document: Readonly<Record<string, unknown>>,
+  context: unknown,
+): Promise<Result<boolean, Readonly<{ kind: "UnsupportedJsonLd" }>>> => {
+  try {
+    const options = { documentLoader: loadContext, safe: false };
+    const [expanded, compacted] = await Promise.all([
+      jsonld.expand(document, options),
+      jsonld.compact(document, context, options),
+    ]);
+    if (!allCovered(expanded) || !isRecord(compacted)) {
+      return ok(false);
+    }
+    const { "@context": _given, ...received } = document;
+    const { "@context": _target, ...members } = compacted;
+    return ok(sameMembers(received, members));
+  } catch {
+    return err({ kind: "UnsupportedJsonLd" });
+  }
+};
+
+/**
+ * Whether `signed` reads as what its signature covers: the document
+ * compacted to the context Mastodon reads activities in, and the signature
+ * compacted to the identity context, as Mastodon's `verify_actor!` reads it.
+ */
+const readsAsSigned = async (
   signed: LdSignedDocument,
-): Promise<Result<Uint8Array, Readonly<{ kind: "UnsupportedJsonLd" }>>> =>
-  signedBytes(signed.options, signed.document);
+): Promise<Result<void, LdSignatureRefusal>> => {
+  // `type` is a bare name the identity context does not define; it is
+  // compared as a string, and not covered.
+  const { type: _type, ...options } = signed.signature;
+  const [document, signature] = await Promise.all([
+    readsAsCompacted(signed.document, MASTODON_FULL_CONTEXT),
+    readsAsCompacted({ ...options, "@context": IDENTITY_CONTEXT }, IDENTITY_CONTEXT),
+  ]);
+  if (document.isErr()) {
+    return err(document.error);
+  }
+  if (signature.isErr()) {
+    return err(signature.error);
+  }
+  return document.value && signature.value ? ok(undefined) : err({ kind: "AmbiguousJsonLd" });
+};
+
+/**
+ * The bytes `signed`'s signature covers, once the body is found to read as
+ * them ({@link readsAsSigned}). Canonicalizing is the costly part of a
+ * check, so a caller that tries more than one key computes this once.
+ */
+export const ldSignedBytes = async (
+  signed: LdSignedDocument,
+): Promise<Result<Uint8Array, LdSignatureRefusal>> => {
+  const unambiguous = await readsAsSigned(signed);
+  if (unambiguous.isErr()) {
+    return err(unambiguous.error);
+  }
+  return signedBytes(signed.options, signed.document);
+};
 
 /** Base64 as Ruby's lenient `Base64.decode64` reads it: whitespace is ignored. */
 const decodeBase64 = (value: string): Uint8Array | undefined => {

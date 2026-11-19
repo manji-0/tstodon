@@ -180,6 +180,9 @@ export const JSONLD_CONTEXTS: ReadonlyMap<string, Readonly<Record<string, unknow
   string,
   Readonly<Record<string, unknown>>
 >(${JSON.stringify(Object.entries(reference.contexts))});
+
+/** \`ContextHelper#full_context\`: what Mastodon compacts a signed activity to before it reads it. */
+export const MASTODON_FULL_CONTEXT: ReadonlyArray<unknown> = ${JSON.stringify(reference.fullContext)};
 `,
 );
 

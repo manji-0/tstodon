@@ -5,6 +5,8 @@
 #
 # - `contexts`: each context Mastodon has preloaded and tstodon ships
 #   (`CONTEXTS`), as Mastodon's JSON-LD processor holds it, under its URL;
+# - `fullContext`: `ContextHelper#full_context`, the context Mastodon compacts
+#   a signed activity to before it reads it;
 # - `canonical`: per document, `JsonLdHelper#canonicalize` (URDNA2015 N-Quads);
 # - `signed`: per document, `ActivityPub::LinkedDataSignature#sign!` with a key
 #   made for this run, whose public half is `publicKeyPem`.
@@ -49,6 +51,7 @@ signer = KeyHolder.new(input.fetch('keyId'), key)
 
 output = {
   'contexts' => CONTEXTS.to_h { |url| [url, JSON::LD::Context.new.parse(url).serialize] },
+  'fullContext' => helper.full_context,
   'publicKeyPem' => key.public_key.to_pem,
   'canonical' => {},
   'signed' => {},
