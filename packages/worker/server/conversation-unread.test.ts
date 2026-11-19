@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiConversation } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { ALL_SCOPES, authHeaders, signedInAccount } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 import { openStream } from "../test/stream-fixture";
 
 // Mastodon v4.7.5's `Api::V1::ConversationsController#unread`.
@@ -31,6 +32,7 @@ describe("POST /api/v1/conversations/:id/unread", () => {
     const author = "dm-unread-author@example.com";
     const recipient = "dm-unread-recipient@example.com";
     const { username } = await signedInAccount(recipient);
+    await acceptPrivateMentions(recipient);
     const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
       method: "POST",
       headers: { "content-type": "application/json", ...(await authHeaders(author)) },
