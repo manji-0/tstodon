@@ -10,7 +10,7 @@ import {
   startOutboxDeliveryWorkflow,
 } from "./delivery";
 import { newEntityId } from "./ids";
-import { ldSignedActivity, ldSignsNow } from "./own-activity-signature";
+import { deliveredActivity } from "./own-activity-signature";
 import { writeMetric } from "./metrics";
 import type { DepartedAccountActivity } from "./outbox-store";
 import {
@@ -116,9 +116,7 @@ export const readDepartingActor = async (
     username: account.value.username,
     privateKeyJwk: account.value.privateKeyJwk,
     kind: "Delete",
-    payload: ldSignsNow(env, activity)
-      ? await ldSignedActivity(identity.value, account.value, activity, new Date())
-      : activity,
+    payload: await deliveredActivity(env, account.value, activity),
     deliver,
     skipped,
   });

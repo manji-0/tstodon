@@ -84,7 +84,7 @@ export const sendActorUpdate = async (
   }
   return enqueueLocalActivity(
     env,
-    account.id,
+    account,
     "Update",
     actorUpdateActivity(document.value, newEntityId(), nowIso()),
   );

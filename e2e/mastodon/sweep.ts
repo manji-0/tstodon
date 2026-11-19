@@ -448,10 +448,10 @@ const D1Results = z.array(z.looseObject({ results: z.array(z.unknown()) }));
 
 /**
  * Run one SQL statement on the tstodon Worker's local D1 database, as an
- * operator does with Wrangler; the rows it answers.
+ * operator does with Wrangler; Wrangler's output.
  */
-export const tstodonSql = (sql: string): unknown[] => {
-  const out = run(
+const tstodonD1 = (sql: string): string =>
+  run(
     "pnpm",
     [
       "exec",
@@ -470,6 +470,10 @@ export const tstodonSql = (sql: string): unknown[] => {
     ],
     repositoryRoot,
   );
+
+/** {@link tstodonD1}, for the rows a query answers. */
+export const tstodonSql = (sql: string): unknown[] => {
+  const out = tstodonD1(sql);
   const parsed = D1Results.safeParse(JSON.parse(out.slice(out.indexOf("["))));
   if (!parsed.success) {
     throw new StepFailure(`wrangler d1 execute answered ${out.slice(0, 300)}`);
@@ -482,7 +486,7 @@ export const tstodonSql = (sql: string): unknown[] => {
  * the same user with a token for the admin API.
  */
 export const tstodonAdmin = async (user: E2eUser): Promise<E2eUser> => {
-  tstodonSql(
+  tstodonD1(
     `UPDATE "user" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE id = '${user.id}')`,
   );
   const headers = await appToken(

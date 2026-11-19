@@ -328,12 +328,7 @@ export const publishLocalNote = async (
   const enqueued =
     object === undefined
       ? ok(undefined)
-      : await enqueueLocalActivity(
-          env,
-          user.id,
-          "Create",
-          noteCreateActivity(identity, user, object),
-        );
+      : await enqueueLocalActivity(env, user, "Create", noteCreateActivity(identity, user, object));
   if (enqueued.isErr()) {
     return err(
       enqueued.error.kind === "RepositoryError"
@@ -354,7 +349,7 @@ export const publishLocalNote = async (
   if (object !== undefined && quoted !== undefined && quotedAuthor?.kind === "Remote") {
     const requested = await enqueueTargetedActivity(
       env,
-      user.id,
+      user,
       "QuoteRequest",
       quoteRequestActivity(`${actor}/quote_requests/${quoteId}`, actor, quoted.uri, object),
       quotedAuthor.actor.inboxUri,

@@ -4,15 +4,15 @@ import {
   DeliveryAttemptOutcome,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
   InstanceIdentity,
+  type LocalAccount,
   type OutboxJob as OutboxJobValue,
   Hostname,
   Username,
 } from "@tstodon/domain";
 import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
-import { findAccountById } from "./account-store";
 import type { RepositoryError } from "./d1";
-import { ldSignedActivity, ldSignsNow } from "./own-activity-signature";
+import { deliveredActivity } from "./own-activity-signature";
 import { signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
@@ -39,39 +39,21 @@ export type EnqueueLocalActivityError =
   | Readonly<{ kind: "QueueSendFailed"; message: string }>;
 
 /**
- * `payload` as `accountId` delivers it: Linked-Data-signed when Mastodon
- * would sign it ({@link ldSignsNow}). An account that cannot be read sends
- * it unsigned; its delivery settles on its own.
+ * Store `account`'s activity for its followers, Linked-Data-signed when
+ * Mastodon would sign it ({@link deliveredActivity}), and queue the job that
+ * lists their inboxes.
  */
-const deliveredPayload = async (
-  env: Env,
-  accountId: string,
-  payload: ApActivityDocumentJSON,
-): Promise<Readonly<Record<string, unknown>>> => {
-  if (!ldSignsNow(env, payload)) {
-    return payload;
-  }
-  const identity = parseInstanceIdentity(env);
-  const account = await findAccountById(env.DB, accountId);
-  if (identity.isErr() || account.isErr() || !account.value) {
-    console.error(
-      JSON.stringify({ kind: "ActivityNotLdSigned", activityId: payload.id, accountId }),
-    );
-    return payload;
-  }
-  return ldSignedActivity(identity.value, account.value, payload, new Date());
-};
-
 export const enqueueLocalActivity = async (
   env: Env,
-  accountId: string,
+  account: LocalAccount,
   kind: string,
   payload: ApActivityDocumentJSON,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
+  const accountId = account.id;
   const inserted = await insertOutboundActivity(env.DB, {
     signer: { kind: "Account", accountId },
     kind,
-    payload: await deliveredPayload(env, accountId, payload),
+    payload: await deliveredActivity(env, account, payload),
     audience: "Followers",
   });
   if (inserted.isErr()) {
@@ -118,39 +100,27 @@ export const enqueueLocalActivity = async (
 };
 
 /** Insert outbound activity and deliver to one inbox (Accept, etc.) without ExpandFollowers. */
-export const enqueueTargetedActivity = async (
+export const enqueueTargetedActivity = (
   env: Env,
-  accountId: string,
+  account: LocalAccount,
   kind: string,
   payload: ApActivityDocumentJSON,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(
-    env,
-    { kind: "Account", accountId },
-    kind,
-    await deliveredPayload(env, accountId, payload),
-    [inboxUrl],
-  );
+  enqueueSignedActivity(env, kind, { kind: "Own", account, activity: payload }, [inboxUrl]);
 
 /**
  * {@link enqueueTargetedActivity} to several inboxes as one activity, for an
  * audience that is not the signer's followers.
  */
-export const enqueueActivityToInboxes = async (
+export const enqueueActivityToInboxes = (
   env: Env,
-  accountId: string,
+  account: LocalAccount,
   kind: string,
   payload: ApActivityDocumentJSON,
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(
-    env,
-    { kind: "Account", accountId },
-    kind,
-    await deliveredPayload(env, accountId, payload),
-    inboxUrls,
-  );
+  enqueueSignedActivity(env, kind, { kind: "Own", account, activity: payload }, inboxUrls);
 
 /**
  * Forward an activity another server signed, as received, to `inboxUrls`
@@ -164,7 +134,12 @@ export const forwardActivityToInboxes = (
   body: Readonly<Record<string, unknown>>,
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(env, { kind: "Account", accountId }, kind, body, inboxUrls);
+  enqueueSignedActivity(
+    env,
+    kind,
+    { kind: "AsIs", signer: { kind: "Account", accountId }, body },
+    inboxUrls,
+  );
 
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
@@ -173,7 +148,12 @@ export const enqueueInstanceActorActivity = (
   payload: ApActivityDocumentJSON,
   inboxUrl: string,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(env, { kind: "InstanceActor" }, kind, payload, [inboxUrl]);
+  enqueueSignedActivity(
+    env,
+    kind,
+    { kind: "AsIs", signer: { kind: "InstanceActor" }, body: payload },
+    [inboxUrl],
+  );
 
 /**
  * `inboxUrls` without repeats and without those this server never contacts:
@@ -182,10 +162,11 @@ export const enqueueInstanceActorActivity = (
 export const admittedInboxes = async (
   env: Env,
   inboxUrls: ReadonlyArray<string>,
+  federationAllowList?: ReadonlySet<string>,
 ): Promise<string[]> => {
   const [suspended, allowHosts] = await Promise.all([
     suspendedDomains(env.DB),
-    federationAllowHosts(env),
+    federationAllowList ?? federationAllowHosts(env),
   ]);
   return [...new Set(inboxUrls)].filter((inboxUrl) => {
     const inboxHost = Hostname.ofUri(inboxUrl);
@@ -193,22 +174,35 @@ export const admittedInboxes = async (
   });
 };
 
+/** What an activity sent to named inboxes carries. */
+type OutboundBody =
+  /** A local account's own activity, signed as Mastodon would sign it ({@link deliveredActivity}). */
+  | Readonly<{ kind: "Own"; account: LocalAccount; activity: ApActivityDocumentJSON }>
+  /** A body delivered as it is: a forward, or the instance actor's activity. */
+  | Readonly<{ kind: "AsIs"; signer: OutboundSigner; body: unknown }>;
+
 const enqueueSignedActivity = async (
   env: Env,
-  signer: OutboundSigner,
   kind: string,
-  payload: unknown,
+  outbound: OutboundBody,
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
-  // An inbox this server never contacts is dropped quietly.
-  const admitted = await admittedInboxes(env, inboxUrls);
+  const allowHosts = await federationAllowHosts(env);
+  // An inbox this server never contacts is dropped quietly, before anything
+  // is signed for it.
+  const admitted = await admittedInboxes(env, inboxUrls, allowHosts);
   if (admitted.length === 0) {
     return ok(undefined);
   }
+  const signer: OutboundSigner =
+    outbound.kind === "Own" ? { kind: "Account", accountId: outbound.account.id } : outbound.signer;
   const inserted = await insertOutboundActivity(env.DB, {
     signer,
     kind,
-    payload,
+    payload:
+      outbound.kind === "Own"
+        ? await deliveredActivity(env, outbound.account, outbound.activity, allowHosts)
+        : outbound.body,
     audience: "Inboxes",
   });
   if (inserted.isErr()) {

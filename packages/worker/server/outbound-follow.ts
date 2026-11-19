@@ -100,7 +100,7 @@ export const followRemoteActor = async (
   }
   const enqueued = await enqueueTargetedActivity(
     env,
-    follower.id,
+    follower,
     "Follow",
     {
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -149,7 +149,7 @@ export const sendFollowUndo = (
   const followerUrl = InstanceIdentity.actorUrl(identity, follower.username);
   return enqueueTargetedActivity(
     env,
-    follower.id,
+    follower,
     "Undo",
     {
       "@context": "https://www.w3.org/ns/activitystreams",

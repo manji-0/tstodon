@@ -50,7 +50,7 @@ describe("an activity sent to named inboxes", () => {
     const inbox = "https://targeted-retention.example/inbox";
     const enqueued = await enqueueTargetedActivity(
       env,
-      account.id,
+      account,
       "Accept",
       {
         "@context": "https://www.w3.org/ns/activitystreams",

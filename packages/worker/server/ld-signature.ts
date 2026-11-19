@@ -13,7 +13,7 @@ import { JSONLD_CONTEXTS, MASTODON_FULL_CONTEXT } from "./jsonld-contexts";
  * than its actor (a forward), so the actor's own signature vouches for it.
  */
 
-export const LD_SIGNATURE_TYPE = "RsaSignature2017";
+export const LD_SIGNATURE_TYPE = "RsaSignature2017" as const;
 const IDENTITY_CONTEXT = "https://w3id.org/identity/v1";
 const SECURITY_CONTEXT = "https://w3id.org/security/v1";
 /** Mastodon's `sign!` default (`expires_in: 2.days`). */
@@ -360,16 +360,25 @@ const iso8601 = (instant: Date): string => `${instant.toISOString().slice(0, 19)
 
 export type LdSigningError = Readonly<{ kind: "UnsupportedJsonLd" } | { kind: "InvalidKey" }>;
 
+/** The `signature` object `sign!` adds to a document. */
+export type LdSignature = Readonly<{
+  type: typeof LD_SIGNATURE_TYPE;
+  creator: string;
+  created: string;
+  expires: string;
+  signatureValue: string;
+}>;
+
 /**
- * `document` signed by `keyId`'s private key at `now`, valid for two days,
- * as Mastodon's `LinkedDataSignature#sign!`: the security context is added
- * to `@context` after signing, as there.
+ * The signature of `document` (without any `signature` it has) by `keyId`'s
+ * private key at `now`, valid for two days, as Mastodon's
+ * `LinkedDataSignature#sign!` makes it.
  */
-export const signLdDocument = async (
+export const ldSignature = async (
   document: Readonly<Record<string, unknown>>,
   key: Readonly<{ keyId: string; privateKeyJwk: SensitiveValue<string> }>,
   now: Date,
-): Promise<Result<Record<string, unknown>, LdSigningError>> => {
+): Promise<Result<LdSignature, LdSigningError>> => {
   const options = {
     type: LD_SIGNATURE_TYPE,
     creator: key.keyId,
@@ -389,6 +398,22 @@ export const signLdDocument = async (
   const signature = new Uint8Array(
     await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey.value, bytes.value),
   );
+  return ok({ ...options, signatureValue: btoa(String.fromCharCode(...signature)) });
+};
+
+/**
+ * `document` with its {@link ldSignature}, as Mastodon's `sign!` returns it:
+ * the security context is added to `@context` after signing, as there.
+ */
+export const signLdDocument = async (
+  document: Readonly<Record<string, unknown>>,
+  key: Readonly<{ keyId: string; privateKeyJwk: SensitiveValue<string> }>,
+  now: Date,
+): Promise<Result<Record<string, unknown>, LdSigningError>> => {
+  const signature = await ldSignature(document, key, now);
+  if (signature.isErr()) {
+    return err(signature.error);
+  }
   const given: unknown = document["@context"];
   const entries: ReadonlyArray<unknown> = Array.isArray(given)
     ? given
@@ -399,6 +424,6 @@ export const signLdDocument = async (
   return ok({
     ...document,
     "@context": context.length === 1 ? context[0] : context,
-    signature: { ...options, signatureValue: btoa(String.fromCharCode(...signature)) },
+    signature: signature.value,
   });
 };

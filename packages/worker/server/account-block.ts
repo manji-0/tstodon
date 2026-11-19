@@ -95,7 +95,7 @@ export const blockAccountTarget = async (
     // Delivery is best effort: the block already holds here.
     await enqueueTargetedActivity(
       env,
-      blocker.id,
+      blocker,
       "Block",
       {
         "@context": "https://www.w3.org/ns/activitystreams",
@@ -131,7 +131,7 @@ export const unblockAccountTarget = async (
     const block = blockActivity(actorUrl, blockId, target.actorUri);
     await enqueueTargetedActivity(
       env,
-      blocker.id,
+      blocker,
       "Undo",
       {
         "@context": "https://www.w3.org/ns/activitystreams",

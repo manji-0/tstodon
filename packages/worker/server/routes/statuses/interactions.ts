@@ -103,7 +103,7 @@ const federateFeatured = async (
   }
   const statusId = note.id;
   const activity = featuredActivity(type, localNoteRef(identity, author, statusId), newEntityId());
-  const enqueued = await enqueueLocalActivity(env, author.id, type, activity);
+  const enqueued = await enqueueLocalActivity(env, author, type, activity);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "PinNotFederated", activity: type, statusId }));
   }
@@ -304,11 +304,11 @@ const activityObjectRef = async (
  */
 const federateRemoteInteraction = async (
   env: Env,
-  accountId: string,
+  account: LocalAccount,
   kind: "Like" | "Undo",
   activity: ApActivityDocumentOf<"Like" | "Undo">,
 ): Promise<void> => {
-  const enqueued = await enqueueLocalActivity(env, accountId, kind, activity);
+  const enqueued = await enqueueLocalActivity(env, account, kind, activity);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "InteractionNotFederated", activity: kind }));
   }
@@ -366,7 +366,7 @@ export const postV1StatusesByIdFavourite = async (
       const liked = { uri: target.status.objectUri, authorUri: target.status.actorUri };
       await federateRemoteInteraction(
         c.env,
-        user.value.id,
+        user.value,
         "Like",
         likeActivity(identity.value, user.value, created.value, liked),
       );
@@ -408,7 +408,7 @@ export const postV1StatusesByIdUnfavourite = async (
     const liked = { uri: target.status.objectUri, authorUri: target.status.actorUri };
     await federateRemoteInteraction(
       c.env,
-      user.value.id,
+      user.value,
       "Undo",
       undoActivity(likeActivity(identity.value, user.value, removed.value, liked)),
     );
@@ -492,7 +492,7 @@ const publishBoost = async (
   }
   const enqueued = await enqueueLocalActivity(
     env,
-    booster.id,
+    booster,
     "Announce",
     announceActivity(identity, booster, reblog, objectRef.value),
   );
@@ -647,7 +647,7 @@ export const postV1StatusesByIdUnreblog = async (
         ? undoActivity(announceActivity(identity.value, user.value, reblog.value, objectRef.value))
         : undefined;
     if (undo && reachesRemoteInboxes(undo, identity.value.domain)) {
-      const enqueued = await enqueueLocalActivity(c.env, user.value.id, "Undo", undo);
+      const enqueued = await enqueueLocalActivity(c.env, user.value, "Undo", undo);
       if (enqueued.isErr()) {
         console.error(
           JSON.stringify({ kind: "UnreblogNotFederated", statusId: found.value.status.id }),

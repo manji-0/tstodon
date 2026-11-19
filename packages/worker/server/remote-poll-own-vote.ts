@@ -108,7 +108,7 @@ export const voteOnRemotePoll = async (
     }
     const enqueued = await enqueueTargetedActivity(
       env,
-      voter.id,
+      voter,
       "Create",
       vote.activity,
       author.value.inboxUri,

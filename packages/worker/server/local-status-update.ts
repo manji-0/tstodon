@@ -68,7 +68,7 @@ export const announceNoteUpdate = async (
     );
     const enqueued = await enqueueLocalActivity(
       env,
-      account.id,
+      account,
       "Update",
       noteUpdateActivity(object, newEntityId(), updatedAt),
     );

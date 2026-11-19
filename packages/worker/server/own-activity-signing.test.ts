@@ -1,6 +1,6 @@
-import { schemaResult } from "@tstodon/core";
+import { schemaResult, Sensitive } from "@tstodon/core";
 import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import type { ApActivityDocumentJSON } from "@tstodon/api/activitypub";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -8,7 +8,7 @@ import { envWith } from "../test/env-fixture";
 import { enqueueLocalActivity } from "./delivery";
 import { ldSignedBytes, readLdSignature, verifyLdSignature } from "./ld-signature";
 import { listOutboundActivities } from "./outbox-store";
-import { ldSigningOf } from "./own-activity-signature";
+import { deliveredActivity, ldSigningOf } from "./own-activity-signature";
 import { ownActivitySamples } from "./own-activity-samples";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -84,7 +84,7 @@ describe("ldSigningOf", () => {
     expect(ldSigningOf(sample(name))).toBe(signing);
   });
 
-  it("does not sign what Mastodon does not: a private status, its boost and its Delete, a Like, a pin", () => {
+  it("does not sign what Mastodon does not: a private status, its edit, boost and Delete, a Like, a pin", () => {
     const note = sample("createRichNote");
     if (note.type !== "Create" || note.object.type !== "Note") {
       throw new Error("sample");
@@ -103,6 +103,13 @@ describe("ldSigningOf", () => {
       throw new Error("sample");
     }
     expect(ldSigningOf({ ...undo, object: { ...undo.object, to: [followers], cc: [] } })).toBe(
+      "Never",
+    );
+    const edit = sample("updateNote");
+    if (edit.type !== "Update" || edit.object.type !== "Note") {
+      throw new Error("sample");
+    }
+    expect(ldSigningOf({ ...edit, object: { ...edit.object, to: [followers], cc: [] } })).toBe(
       "Never",
     );
     const deleted = sample("deleteNote");
@@ -156,42 +163,70 @@ describe("own activities as delivered", () => {
     expect(create?.activity.signature).toBeUndefined();
   });
 
-  it("in secure mode, signs a status's Delete but not its Create, as Mastodon", async () => {
-    const account = await signedInAccount("ld-sign-secure@example.com");
-    const actor = `https://example.com/users/${account.username}`;
-    const note = `${actor}/statuses/1`;
-    const secure = envWith({ AUTHORIZED_FETCH: "true" });
-    const create = sample("createRichNote");
-    if (create.type !== "Create" || create.object.type !== "Note") {
-      throw new Error("sample");
-    }
-    const deleteNote = sample("deleteNote");
-    if (deleteNote.type !== "Delete") {
-      throw new Error("sample");
-    }
-    const object = { ...create.object, id: note, attributedTo: actor, to: [PUBLIC], cc: [] };
-    (
-      await enqueueLocalActivity(secure, account.id, "Create", {
-        ...create,
-        id: `${note}/activity`,
-        actor,
-        object,
-      })
-    )._unsafeUnwrap();
-    (
-      await enqueueLocalActivity(secure, account.id, "Delete", {
+  it.each([
+    ["secure mode", { AUTHORIZED_FETCH: "true" }],
+    ["limited federation", { FEDERATION_ALLOW_HOSTS: "mastodon.example" }],
+  ])(
+    "in %s, signs a status's Delete and the Undo of a boost but not a Create, as Mastodon",
+    async (mode, vars) => {
+      const account = await signedInAccount(`ld-sign-${mode.replace(" ", "-")}@example.com`);
+      const actor = `https://example.com/users/${account.username}`;
+      const note = `${actor}/statuses/1`;
+      const secure = envWith(vars);
+      const create = sample("createRichNote");
+      const deleteNote = sample("deleteNote");
+      const undo = sample("undoAnnounce");
+      if (
+        create.type !== "Create" ||
+        create.object.type !== "Note" ||
+        deleteNote.type !== "Delete" ||
+        undo.type !== "Undo" ||
+        undo.object.type !== "Announce"
+      ) {
+        throw new Error("sample");
+      }
+      const object = { ...create.object, id: note, attributedTo: actor, to: [PUBLIC], cc: [] };
+      const enqueue = async (kind: string, activity: ApActivityDocumentJSON) =>
+        (await enqueueLocalActivity(secure, account, kind, activity))._unsafeUnwrap();
+      await enqueue("Create", { ...create, id: `${note}/activity`, actor, object });
+      await enqueue("Delete", {
         ...deleteNote,
         id: `${note}#delete`,
         actor,
         to: [PUBLIC],
         cc: [],
         object: { id: note, type: "Tombstone", atomUri: note },
-      })
-    )._unsafeUnwrap();
-    const [deleted, created] = await stored(account.id);
-    expect(created?.activity.type).toBe("Create");
-    expect(created?.activity.signature).toBeUndefined();
-    expect(deleted?.activity.type).toBe("Delete");
-    expect(await verifiesAsForward(deleted?.body, account.publicKeyPem)).toBe(true);
+      });
+      const boost = `${actor}/statuses/2/activity`;
+      await enqueue("Undo", {
+        ...undo,
+        id: `${boost}/undo`,
+        actor,
+        object: { ...undo.object, id: boost, actor },
+      });
+      const [undone, deleted, created] = await stored(account.id);
+      expect(created?.activity.type).toBe("Create");
+      expect(created?.activity.signature).toBeUndefined();
+      expect(deleted?.activity.type).toBe("Delete");
+      expect(await verifiesAsForward(deleted?.body, account.publicKeyPem)).toBe(true);
+      expect(undone?.activity.type).toBe("Undo");
+      expect(await verifiesAsForward(undone?.body, account.publicKeyPem)).toBe(true);
+    },
+  );
+
+  it("delivers an activity unsigned, and says so, when its signature cannot be made", async () => {
+    const account = await signedInAccount("ld-sign-broken-key@example.com");
+    const announce = sample("announcePublic");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const delivered = await deliveredActivity(
+      env,
+      { ...account, privateKeyJwk: Sensitive.of("{}") },
+      announce,
+    );
+    expect(delivered).toEqual(announce);
+    expect(errors.mock.calls.map(([line]) => String(line))).toContainEqual(
+      expect.stringContaining('"kind":"ActivityNotLdSigned"'),
+    );
+    errors.mockRestore();
   });
 });

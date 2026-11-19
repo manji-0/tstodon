@@ -180,7 +180,7 @@ const sendAnswer = async (
   kind: "Accept" | "Reject",
   activity: ApActivityDocumentOf<"Accept" | "Reject">,
 ): Promise<void> => {
-  const enqueued = await enqueueTargetedActivity(env, author.id, kind, activity, signer.inboxUri);
+  const enqueued = await enqueueTargetedActivity(env, author, kind, activity, signer.inboxUri);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteRequestAnswerNotSent", answer: kind }));
   }

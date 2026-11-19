@@ -18,7 +18,7 @@ export const sendFollowReject = async (
   const actorUrl = InstanceIdentity.actorUrl(identity, account.username);
   await enqueueTargetedActivity(
     env,
-    account.id,
+    account,
     "Reject",
     {
       "@context": "https://www.w3.org/ns/activitystreams",

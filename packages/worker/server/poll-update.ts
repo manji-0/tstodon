@@ -110,7 +110,7 @@ const distributePollUpdate = async (
   if (!reachesRemoteInboxes(update, identity.domain)) {
     return;
   }
-  const enqueued = await enqueueLocalActivity(env, author.value.id, "Update", update);
+  const enqueued = await enqueueLocalActivity(env, author.value, "Update", update);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "PollUpdateNotFederated", statusId: note.id }));
   }
