@@ -62,7 +62,10 @@ import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
 import { processAuthorizeFollowRequestsJob } from "./follow-request-approval";
-import { processSeverSuspendedActorFollowsJob } from "./suspended-actor-severance";
+import {
+  processResumeSuspendedActorSeverancesJob,
+  processSeverSuspendedActorFollowsJob,
+} from "./suspended-actor-severance";
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
@@ -374,6 +377,8 @@ export const processOutboxJob = async (
       return processAuthorizeFollowRequestsJob(env, job);
     case "SeverSuspendedActorFollows":
       return processSeverSuspendedActorFollowsJob(env, job);
+    case "ResumeSuspendedActorSeverances":
+      return processResumeSuspendedActorSeverancesJob(env);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
     case "FanOutRemovedStatuses":

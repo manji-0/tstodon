@@ -25,6 +25,17 @@ export const queueCapturingEnv = (sent: OutboxJob[]): Env => {
   });
 };
 
+/** `env` whose outbox queue refuses every job, as an unavailable queue does. */
+export const queueFailingEnv = (): Env => {
+  const refuse = async () => {
+    throw new Error("queue unavailable");
+  };
+  const queue = { send: refuse, sendBatch: refuse };
+  return new Proxy(env, {
+    get: (target, key) => (key === "OUTBOX_PROCESS_QUEUE" ? queue : Reflect.get(target, key)),
+  });
+};
+
 /**
  * Run the captured jobs of `kind` one at a time, as the queue would, until none
  * is left, each through `around` (to meter it). Jobs of other kinds are

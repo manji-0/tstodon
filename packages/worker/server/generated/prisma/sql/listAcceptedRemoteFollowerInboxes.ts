@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param targetAccountId
  */
 export const listAcceptedRemoteFollowerInboxes = $runtime.makeTypedQueryFactory(
-  "SELECT a.inbox_uri, a.shared_inbox_uri\nFROM remote_follows f\nJOIN remote_actors a ON a.actor_uri = f.remote_actor_uri\nWHERE f.target_account_id = $1 AND f.follow_kind = 'Accepted'",
+  "SELECT a.inbox_uri, a.shared_inbox_uri\nFROM remote_follows f\nJOIN remote_actors a ON a.actor_uri = f.remote_actor_uri\nWHERE f.target_account_id = $1 AND f.follow_kind = 'Accepted'\nAND f.remote_actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')",
 ) as (
   targetAccountId: string,
 ) => $runtime.TypedSql<

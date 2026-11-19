@@ -393,6 +393,32 @@ export const listActorPeers = async (
     return parseRows(AccountIdsPageRowSchema, results).map((row) => row.account_id);
   });
 
+const ActorUriPageRowSchema = z.object({ actor_uri: z.string() });
+
+/**
+ * Up to `limit` actors an admin suspended before `before` that still have a
+ * follow or request with a local account: a severance whose next page was
+ * never queued, or whose job gave up.
+ */
+export const listStalledSuspendedActors = async (
+  db: D1Database,
+  before: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT m.actor_uri FROM remote_actor_moderation m
+         WHERE m.moderation = 'Suspended' AND m.updated_at < ?
+           AND (EXISTS (SELECT 1 FROM remote_follows f WHERE f.remote_actor_uri = m.actor_uri)
+             OR EXISTS (SELECT 1 FROM outbound_follows o WHERE o.actor_uri = m.actor_uri))
+         LIMIT ?`,
+      )
+      .bind(before, limit)
+      .all();
+    return parseRows(ActorUriPageRowSchema, results).map((row) => row.actor_uri);
+  });
+
 const RemovedActorFollowRowSchema = z.object({
   account_id: z.string(),
   follow_activity_id: z.string().nullable(),

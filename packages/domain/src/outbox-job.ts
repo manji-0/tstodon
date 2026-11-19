@@ -234,6 +234,12 @@ const SeverSuspendedActorFollowsSchema = z.object({
 });
 
 /**
+ * Queue a fresh `SeverSuspendedActorFollows` for each actor suspended over an
+ * hour ago that still has follows with local accounts (hourly cron).
+ */
+const ResumeSuspendedActorSeverancesSchema = unitKind("ResumeSuspendedActorSeverances");
+
+/**
  * Accept the next page of a local account's pending follow requests after it
  * was unlocked (Mastodon's `AuthorizeFollowWorker`s): those still pending are
  * the next page, so the job carries no cursor.
@@ -387,6 +393,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   SeverBlockedDomainFollowsSchema,
   AuthorizeFollowRequestsSchema,
   SeverSuspendedActorFollowsSchema,
+  ResumeSuspendedActorSeverancesSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
 ]);

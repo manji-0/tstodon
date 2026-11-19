@@ -5,7 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { ActivityId, type OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter } from "../test/meter";
-import { drainJobs, queueCapturingEnv } from "../test/queue-capture";
+import { drainJobs, queueCapturingEnv, queueFailingEnv } from "../test/queue-capture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { moderateRemoteActor } from "./admin-actions";
 import { processOutboxJob } from "./outbox-job";
@@ -233,5 +233,62 @@ describe("suspending a remote actor", () => {
       .bind(suspended.actorUri)
       .first<{ n: number }>();
     expect(left?.n).toBe(0);
+  });
+});
+
+describe("a suspended actor whose severance stalls", () => {
+  it("gets no followers-only post, and the hourly sweep finishes the severance", async () => {
+    const suspended = await remoteActor("stalled", "suspend-stalled.example");
+    const emails = Array.from(
+      { length: SUSPENDED_ACTOR_PAGE_SIZE * 2 + 5 },
+      (_, index) => `suspend-stalled-${index}@example.com`,
+    );
+    const accounts = await Promise.all(emails.map((email) => signedInAccount(email)));
+    for (const account of accounts) {
+      await followedBy(suspended, account.id, `${suspended.actorUri}/follows/${account.id}`);
+    }
+    const [lastId, lastEmail] = accounts
+      .map((account, index) => [account.id, emails[index] ?? ""] as const)
+      .toSorted(([a], [b]) => (a < b ? -1 : 1))
+      .at(-1) ?? ["", ""];
+    const followsLeft = async () =>
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM remote_follows WHERE remote_actor_uri = ?")
+          .bind(suspended.actorUri)
+          .first<{ n: number }>()
+      )?.n;
+
+    // The first page is severed; queueing the next one fails.
+    const moderated = await moderateRemoteActor(queueFailingEnv(), suspended.actorUri, "suspend");
+    expect(moderated.isOk()).toBe(true);
+    expect(await followsLeft()).toBe(accounts.length - SUSPENDED_ACTOR_PAGE_SIZE);
+
+    const posted = await SELF.fetch(`${ORIGIN}/api/v1/statuses`, {
+      method: "POST",
+      headers: { ...(await authHeaders(lastEmail)), "content-type": "application/json" },
+      body: JSON.stringify({ status: "for my followers", visibility: "private" }),
+    });
+    expect(posted.status).toBe(200);
+    const create = await env.DB.prepare(
+      "SELECT id FROM outbound_activities WHERE account_id = ? AND kind = 'Create' ORDER BY rowid DESC LIMIT 1",
+    )
+      .bind(lastId)
+      .first<{ id: string }>();
+    const activityId = ActivityId.parse(create?.id ?? "")._unsafeUnwrap();
+    expect(await processOutboxJob(env, { kind: "ExpandFollowers", activityId })).toBe("ok");
+    expect(await deliveryInboxes(activityId)).not.toContain(`${suspended.actorUri}/inbox`);
+
+    // An hour on, the sweep queues the rest of the severance.
+    await env.DB.prepare(
+      "UPDATE remote_actor_moderation SET updated_at = '2020-01-01T00:00:00.000Z' WHERE actor_uri = ?",
+    )
+      .bind(suspended.actorUri)
+      .run();
+    const sent: OutboxJob[] = [];
+    const target = queueCapturingEnv(sent);
+    expect(await processOutboxJob(target, { kind: "ResumeSuspendedActorSeverances" })).toBe("ok");
+    await drainJobs(target, sent, "SeverSuspendedActorFollows");
+    expect(await followsLeft()).toBe(0);
+    expect(await queued(lastId, "Reject")).toHaveLength(1);
   });
 });

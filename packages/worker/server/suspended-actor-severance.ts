@@ -12,6 +12,7 @@ import { parseInstanceIdentity } from "./runtime-config";
 import { notifySeverance } from "./severance";
 import {
   listActorPeers,
+  listStalledSuspendedActors,
   type SeveredActorPage,
   severActorPage,
 } from "./severed-relationship-store";
@@ -175,4 +176,38 @@ export const processSeverSuspendedActorFollowsJob = (env: Env, job: SeverJob) =>
     }
     const chained = await queueSeverJob(env, page.value.next);
     return { outcome: chained ? "ok" : "retry", size: page.value.severed, chained };
+  });
+
+/** Actors one hourly sweep resumes; any more wait for the next hour. */
+const RESUME_LIMIT = 5;
+/** A suspension younger than this may still have its next page in the queue. */
+const RESUME_AFTER_MS = 60 * 60 * 1000;
+
+/**
+ * Restart the severance of actors suspended over an hour ago that still have
+ * follows with local accounts: a next page that could not be queued, or a
+ * job that gave up its retries (hourly cron). The leftover accounts are
+ * recorded under a new event, as each account has one event either way.
+ */
+export const processResumeSuspendedActorSeverancesJob = (env: Env) =>
+  measureJobPage(env, "ResumeSuspendedActorSeverances", async () => {
+    const actorUris = await listStalledSuspendedActors(
+      env.DB,
+      new Date(Date.now() - RESUME_AFTER_MS).toISOString(),
+      RESUME_LIMIT,
+    );
+    if (actorUris.isErr()) {
+      return { outcome: "retry", size: -1, chained: false };
+    }
+    let queued = 0;
+    for (const actorUri of actorUris.value) {
+      const job: SeverJob = {
+        kind: "SeverSuspendedActorFollows",
+        actorUri,
+        eventId: newEntityId(),
+        afterAccountId: "",
+      };
+      queued += (await queueSeverJob(env, job)) ? 1 : 0;
+    }
+    return { outcome: "ok", size: actorUris.value.length, chained: queued > 0 };
   });
