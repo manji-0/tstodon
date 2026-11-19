@@ -327,20 +327,33 @@ describe("ActivityPub followers, following and outbox collections", () => {
     const path = `/users/${account.username}/outbox?page=true`;
     expect((await SELF.fetch(new URL(path, ORIGIN))).status).toBe(200);
 
-    // Every D1 read that binds the boosted status's id fails, as a transient error.
+    // Every D1 read that binds the boosted status's id, alone or in a JSON
+    // list, fails as a transient error, also within a batch.
+    const bindsTarget = (statement: object): boolean => {
+      const params: unknown = Reflect.get(statement, "params");
+      return (
+        Array.isArray(params) &&
+        params.some((param) => typeof param === "string" && param.includes(target.id))
+      );
+    };
     const prototype: object = Object.getPrototypeOf(env.DB.prepare("SELECT 1"));
     const originals = new Map(
       ["first", "all", "raw", "run"].map((name) => [name, Reflect.get(prototype, name)]),
     );
     for (const [name, original] of originals) {
       Reflect.set(prototype, name, function (this: object, ...args: unknown[]) {
-        const params: unknown = Reflect.get(this, "params");
-        if (Array.isArray(params) && params.includes(target.id)) {
-          return Promise.reject(new Error("D1_ERROR: injected"));
-        }
-        return Reflect.apply(original, this, args);
+        return bindsTarget(this)
+          ? Promise.reject(new Error("D1_ERROR: injected"))
+          : Reflect.apply(original, this, args);
       });
     }
+    const batch: unknown = Reflect.get(env.DB, "batch");
+    if (typeof batch !== "function") throw new Error("no batch");
+    Reflect.set(env.DB, "batch", (statements: D1PreparedStatement[]): unknown =>
+      statements.some(bindsTarget)
+        ? Promise.reject(new Error("D1_ERROR: injected"))
+        : Reflect.apply(batch, env.DB, [statements]),
+    );
     try {
       const response = await SELF.fetch(new URL(path, ORIGIN));
       expect(response.status).toBe(500);
@@ -349,6 +362,7 @@ describe("ActivityPub followers, following and outbox collections", () => {
       for (const [name, original] of originals) {
         Reflect.set(prototype, name, original);
       }
+      Reflect.set(env.DB, "batch", batch);
     }
   });
 

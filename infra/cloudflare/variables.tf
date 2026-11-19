@@ -65,8 +65,8 @@ variable "attach_queue_consumer" {
 
 variable "queue_consumer_batch_size" {
   type        = number
-  description = "Queue consumer max_batch_size."
-  default     = 10
+  description = "Queue consumer max_batch_size (maxBatchSize in app/queues/tstodon-outbox-process.ts)."
+  default     = 5
 }
 
 variable "queue_consumer_max_retries" {

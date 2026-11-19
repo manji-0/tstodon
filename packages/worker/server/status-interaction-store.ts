@@ -415,3 +415,26 @@ export const listLocalBoosterAccountIds = async (
       .all();
     return parseRows(AccountIdRow, rows.results).map((row) => row.account_id);
   });
+
+/**
+ * The next `limit` local accounts, by id after `afterAccountId` (empty for
+ * the first page), that currently boost the target, each once.
+ */
+export const listLocalBoosterAccountIdsPage = async (
+  db: D1Database,
+  target: StatusTargetValue,
+  afterAccountId: string,
+  limit: number,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare(
+        `SELECT DISTINCT account_id FROM statuses
+         WHERE kind = 'LocalReblog' AND (reblog_of_id = ? OR reblog_of_remote_id = ?)
+           AND account_id > ?
+         ORDER BY account_id LIMIT ?`,
+      )
+      .bind(...statusTargetColumns(target), afterAccountId, limit)
+      .all();
+    return parseRows(AccountIdRow, rows.results).map((row) => row.account_id);
+  });

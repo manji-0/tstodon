@@ -1,10 +1,10 @@
 import { InstanceIdentity, type ThreadStatus, type Visibility } from "@tstodon/domain";
 import type { Result } from "neverthrow";
-import { findAccountById } from "./account-store";
+import { findAccountById, findAccountsByIds } from "./account-store";
 import { readableRow, type RepositoryError } from "./d1";
 import { findShownStatusAnywhere } from "./found-status";
-import { findDeliveredRemoteStatus } from "./remote-status-store";
-import { findStatusById, listStatusReplyUris } from "./status-store";
+import { findDeliveredRemoteStatus, findRemoteStatusesByObjectUris } from "./remote-status-store";
+import { findStatusById, findStatusesByIds, listStatusReplyUris } from "./status-store";
 
 /**
  * The status `in_reply_to_id` names, local or cached remote, when Mastodon's
@@ -64,4 +64,65 @@ export const loadNoteReply = async (
     inReplyTo,
     addressAuthor: open && parent.isOk() && parent.value ? parent.value.actorUri : undefined,
   };
+};
+
+/**
+ * {@link loadNoteReply} for several notes, keyed by note id; a note that
+ * replies to nothing has no entry. The parents of all the notes are read at
+ * once.
+ */
+export const loadNoteReplies = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  notes: ReadonlyArray<
+    Readonly<{ id: string; inReplyToId: string | null; visibility: Visibility }>
+  >,
+): Promise<ReadonlyMap<string, NoteReply>> => {
+  const toLocal = notes.flatMap((note) =>
+    note.inReplyToId ? [{ note, parentId: note.inReplyToId }] : [],
+  );
+  const toRemote = notes.filter((note) => !note.inReplyToId);
+  const [parents, uris] = await Promise.all([
+    findStatusesByIds(
+      db,
+      toLocal.map((entry) => entry.parentId),
+    ),
+    listStatusReplyUris(
+      db,
+      toRemote.map((note) => note.id),
+    ),
+  ]);
+  const replyUris = uris.isOk() ? uris.value : new Map<string, string>();
+  const [authors, remoteParents] = await Promise.all([
+    findAccountsByIds(
+      db,
+      parents.isOk() ? [...parents.value.values()].map((parent) => parent.accountId) : [],
+    ),
+    findRemoteStatusesByObjectUris(db, [...replyUris.values()]),
+  ]);
+  const local = toLocal.flatMap(({ note, parentId }): [string, NoteReply][] => {
+    const parent = parents.isOk() ? parents.value.get(parentId) : undefined;
+    const author = parent && authors.isOk() ? authors.value.get(parent.accountId) : undefined;
+    return parent && author
+      ? [
+          [
+            note.id,
+            {
+              inReplyTo: `${InstanceIdentity.actorUrl(identity, author.username)}/statuses/${parent.id}`,
+              addressAuthor: undefined,
+            },
+          ],
+        ]
+      : [];
+  });
+  const remote = toRemote.flatMap((note): [string, NoteReply][] => {
+    const inReplyTo = replyUris.get(note.id);
+    if (!inReplyTo) {
+      return [];
+    }
+    const parent = remoteParents.isOk() ? remoteParents.value.get(inReplyTo) : undefined;
+    const open = note.visibility.kind === "Public" || note.visibility.kind === "Unlisted";
+    return [[note.id, { inReplyTo, addressAuthor: open && parent ? parent.actorUri : undefined }]];
+  });
+  return new Map([...local, ...remote]);
 };

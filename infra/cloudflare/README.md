@@ -88,7 +88,7 @@ A state created before the KV namespaces were dropped (OPS-7) still holds `cloud
 | Variable                                                                             | Default                                         | Queue file export                                                          |
 | ------------------------------------------------------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------- |
 | `outbox_queue_name` / `outbox_dlq_name`                                              | `tstodon-outbox-process` / `tstodon-outbox-dlq` | file names; `deadLetterQueue` in `tstodon-outbox-process.ts`               |
-| `queue_consumer_batch_size`, `_max_retries`, `_max_concurrency`, `_max_wait_time_ms` | `10`, `3`, `1`, `0`                             | `maxBatchSize`, `maxRetries`, `maxConcurrency`, `maxBatchTimeout` (outbox) |
+| `queue_consumer_batch_size`, `_max_retries`, `_max_concurrency`, `_max_wait_time_ms` | `5`, `3`, `1`, `0`                              | `maxBatchSize`, `maxRetries`, `maxConcurrency`, `maxBatchTimeout` (outbox) |
 | `dlq_consumer_batch_size`, `_max_retries`, `_max_wait_time_ms`                       | `10`, `5`, `5000`                               | the same in `tstodon-outbox-dlq.ts` (concurrency fixed at `1`)             |
 
 ## Media hostname
