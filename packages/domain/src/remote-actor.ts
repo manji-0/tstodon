@@ -94,6 +94,8 @@ export const RemoteActor = {
   profileSchema: RemoteActorProfileSchema,
   emptyProfile: EMPTY_PROFILE,
   parse: parseRemoteActor,
+  /** The actor's `url`, its profile page, or its id when it names none. */
+  profileUrl: (actor: RemoteActor): string => actor.profile.profileUrl ?? actor.actorUri,
   fromFetched: (input: {
     actorUri: string;
     username: string;

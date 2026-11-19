@@ -3,7 +3,7 @@ import {
   AccountPresentation,
   InstanceIdentity,
   type LocalAccount,
-  type RemoteActor,
+  RemoteActor,
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -459,7 +459,7 @@ export const mastodonRemoteAccount = (
     group: false,
     created_at: profile.publishedAt ?? actor.fetchedAt,
     note: profile.note.length > 0 ? textToHtml(profile.note) : "",
-    url: profile.profileUrl ?? actor.actorUri,
+    url: RemoteActor.profileUrl(actor),
     uri: actor.actorUri,
     avatar: profile.avatarUrl ?? identity.thumbnailUrl,
     avatar_static: profile.avatarUrl ?? identity.thumbnailUrl,

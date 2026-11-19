@@ -4,6 +4,7 @@ import { ApiStatus } from "@tstodon/api";
 import { ApStatusDocument } from "@tstodon/api/activitypub";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { remoteActor } from "../test/remote-actor-fixture";
 
 const ORIGIN = "https://example.com";
 const LONG_URL = "https://example.com/a/very/long/path/over/thirty/chars";
@@ -47,7 +48,8 @@ describe("a local post's HTML", () => {
     const posted = await send(email, "POST", "/api/v1/statuses", { status: text(bob.username) });
     expect(posted.mentions).toHaveLength(1);
     const bobUrl = posted.mentions[0]?.url ?? "";
-    expect(bobUrl).toBe(`${ORIGIN}/users/${bob.username}`);
+    // Mastodon's `url_for`: the profile page, where the Mention tag names the actor.
+    expect(bobUrl).toBe(`${ORIGIN}/@${bob.username}`);
     expectFormatted(posted.content, { username: bob.username, url: bobUrl }, ghost);
 
     const note = async () => {
@@ -60,7 +62,11 @@ describe("a local post's HTML", () => {
     const federated = await note();
     expect(federated.content).toBe(posted.content);
     expect(federated.tag).toEqual([
-      { type: "Mention", href: bobUrl, name: `@${bob.username}@example.com` },
+      {
+        type: "Mention",
+        href: `${ORIGIN}/users/${bob.username}`,
+        name: `@${bob.username}@example.com`,
+      },
       { type: "Hashtag", href: `${ORIGIN}/tags/cat`, name: "#cat" },
     ]);
     expect(federated["@context"]).toContainEqual(
@@ -72,9 +78,34 @@ describe("a local post's HTML", () => {
     });
     expect(edited.mentions).toHaveLength(1);
     const carolUrl = edited.mentions[0]?.url ?? "";
-    expect(carolUrl).toBe(`${ORIGIN}/users/${carol.username}`);
+    expect(carolUrl).toBe(`${ORIGIN}/@${carol.username}`);
     expectFormatted(edited.content, { username: carol.username, url: carolUrl }, ghost);
     expect((await note()).content).toBe(edited.content);
+  });
+
+  it("links a remote mention to the profile page its REST mention names", async () => {
+    const email = "post-format-remote@example.com";
+    await signedInAccount(email);
+    const dana = await remoteActor("pf-dana", "post-format.example", {
+      profileUrl: "https://post-format.example/@pf-dana",
+    });
+    const posted = await send(email, "POST", "/api/v1/statuses", {
+      status: "hi @pf-dana@post-format.example",
+    });
+    expect(posted.mentions.map((mention) => mention.url)).toEqual([
+      "https://post-format.example/@pf-dana",
+    ]);
+    expect(posted.content).toContain(
+      '<a href="https://post-format.example/@pf-dana" class="u-url mention">',
+    );
+    const response = await SELF.fetch(new URL(new URL(posted.uri).pathname, ORIGIN), {
+      headers: { accept: "application/activity+json" },
+    });
+    expect(expectContract(ApStatusDocument, await response.json()).tag).toContainEqual({
+      type: "Mention",
+      href: dana.actorUri,
+      name: "@pf-dana@post-format.example",
+    });
   });
 
   it("links the URLs Mastodon's server links, in the status and its ActivityPub Note", async () => {
