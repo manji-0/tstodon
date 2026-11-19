@@ -1,46 +1,111 @@
 import type { NodeInfoDiscoveryJSON, WebFingerJrdJSON } from "@tstodon/api/activitypub";
+import type { InstanceIdentity, LocalAccount } from "@tstodon/domain";
 import type { Context } from "hono";
-import { InstanceIdentity } from "@tstodon/domain";
-import { findAccountByUsername } from "../account-store";
+import { err, ok, type Result } from "neverthrow";
+import { findAccountStanding } from "../account-moderation-store";
+import { findAccountProfile } from "../account-profile-store";
+import { findAccountByUsername, isDeletedAccountName } from "../account-store";
+import type { RepositoryError } from "../d1";
 import { jsonRepositoryError } from "../http";
-import { parseInstanceIdentity } from "../runtime-config";
+import { mediaPublicUrl } from "../media-keys";
+import { pageRedirect } from "../page-redirect";
+import { isLimitedFederation, parseInstanceIdentity } from "../runtime-config";
+import {
+  accountJrd,
+  instanceActorJrd,
+  type WebFingerAvatar,
+  webFingerResource,
+} from "../webfinger-resource";
 
-/** The JRD for an account: its actor as the alias and the `self` link Mastodon resolves. */
-const jrd = (subject: string, actorUrl: string): WebFingerJrdJSON => ({
-  subject,
-  aliases: [actorUrl],
-  links: [{ rel: "self", type: "application/activity+json", href: actorUrl }],
-});
+/**
+ * Mastodon's `show_avatar?`: an avatar with a media type, unless the server
+ * hides profiles from strangers (limited federation). A suspended account
+ * shows none, as its actor document.
+ */
+const webFingerAvatar = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+): Promise<Result<WebFingerAvatar | undefined, RepositoryError>> => {
+  const [profile, standing, limited] = await Promise.all([
+    findAccountProfile(env.DB, account.id),
+    findAccountStanding(env.DB, account.id),
+    isLimitedFederation(env),
+  ]);
+  if (profile.isErr()) {
+    return err(profile.error);
+  }
+  if (standing.isErr()) {
+    return err(standing.error);
+  }
+  const { avatarObjectKey, avatarContentType } = profile.value;
+  return ok(
+    avatarObjectKey === null ||
+      avatarContentType === null ||
+      limited ||
+      standing.value.kind === "Suspended"
+      ? undefined
+      : { href: mediaPublicUrl(identity, avatarObjectKey), type: avatarContentType },
+  );
+};
 
-/** Served by `app/middleware/03.well-known.ts` (no route file: Void skips dot directories). */
+/** Mastodon's `head 400` / `head 404` / `head 410`, cached for 3 minutes. */
+const webFingerRefusal = (status: 400 | 404 | 410): Response =>
+  new Response(null, { status, headers: { "Cache-Control": "max-age=180, public" } });
+
+const webFingerAnswer = (document: WebFingerJrdJSON): Response =>
+  new Response(JSON.stringify(document), {
+    headers: {
+      "Content-Type": "application/jrd+json; charset=utf-8",
+      "Cache-Control": "max-age=259200, public",
+    },
+  });
+
+/**
+ * Mastodon's `WellKnown::WebfingerController`. The resource forms are
+ * `webFingerResource`'s; a deleted account is gone (410).
+ * Served by `app/middleware/03.well-known.ts` (no route file: Void skips dot directories).
+ */
 export const getWellKnownWebfinger = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const resource = c.req.query("resource");
-  if (!resource) {
-    return c.json({ kind: "MissingResource" }, 400);
+  const named = webFingerResource(identity.value, c.req.query("resource") ?? "");
+  switch (named.kind) {
+    case "Invalid":
+      return webFingerRefusal(400);
+    case "NotFound":
+      return webFingerRefusal(404);
+    case "InstanceActor":
+      return webFingerAnswer(instanceActorJrd(identity.value));
+    case "Account":
+      break;
   }
-  const prefix = `acct:`;
-  const suffix = `@${identity.value.domain}`;
-  if (!resource.startsWith(prefix) || !resource.endsWith(suffix)) {
-    return c.json({ kind: "UnknownResource", resource }, 404);
-  }
-  const username = resource.slice(prefix.length, resource.length - suffix.length);
-  // As Mastodon: `acct:<domain>@<domain>` names the instance actor.
-  if (username === identity.value.domain) {
-    return c.json(jrd(resource, InstanceIdentity.instanceActorUrl(identity.value)));
-  }
-  const account = await findAccountByUsername(c.env.DB, username);
+  const account = await findAccountByUsername(c.env.DB, named.username);
   if (account.isErr()) {
     return jsonRepositoryError(c, account.error.message);
   }
   if (!account.value) {
-    return c.json({ kind: "UnknownResource", resource }, 404);
+    const deleted = await isDeletedAccountName(c.env.DB, named.username.toLowerCase());
+    if (deleted.isErr()) {
+      return jsonRepositoryError(c, deleted.error.message);
+    }
+    return webFingerRefusal(deleted.value ? 410 : 404);
   }
-  return c.json(jrd(resource, InstanceIdentity.actorUrl(identity.value, account.value.username)));
+  const avatar = await webFingerAvatar(c.env, identity.value, account.value);
+  if (avatar.isErr()) {
+    return jsonRepositoryError(c, avatar.error.message);
+  }
+  return webFingerAnswer(accountJrd(identity.value, account.value.username, avatar.value));
 };
+
+/**
+ * Mastodon's `/about/more`, the instance actor's WebFinger `profile-page`:
+ * a permanent redirect to the about page.
+ */
+export const getAboutMore = (c: Context<{ Bindings: Env }, "/about/more">) =>
+  pageRedirect(c, "/about", 301);
 
 const webfingerTemplate = (publicOrigin: string): string =>
   `${publicOrigin.replace(/\/$/, "")}/.well-known/webfinger?resource={uri}`;

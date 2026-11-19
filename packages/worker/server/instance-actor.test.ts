@@ -1,4 +1,4 @@
-import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
+import { type ApActivityDocumentOf, WebFingerJrd } from "@tstodon/api/activitypub";
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
@@ -51,11 +51,12 @@ describe("instance actor", () => {
       "https://example.com/.well-known/webfinger?resource=acct:example.com@example.com",
     );
     expect(response.status).toBe(200);
-    const webfinger = read(
-      z.object({ links: z.array(z.object({ rel: z.string(), href: z.string() })) }),
-      await response.json(),
-    );
-    expect(webfinger.links).toContainEqual({ rel: "self", href: "https://example.com/actor" });
+    const webfinger = read(WebFingerJrd, await response.json());
+    expect(webfinger.links).toContainEqual({
+      rel: "self",
+      type: "application/activity+json",
+      href: "https://example.com/actor",
+    });
   });
 
   it("signs the activities it sends with its own key", async () => {
