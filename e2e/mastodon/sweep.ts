@@ -444,12 +444,14 @@ export const mastodonUsers = async (names: readonly string[]): Promise<E2eUser[]
   return users;
 };
 
+const D1Results = z.array(z.looseObject({ results: z.array(z.unknown()) }));
+
 /**
- * Give a tstodon user the admin role, as an operator does in the database;
- * the same user with a token for the admin API.
+ * Run one SQL statement on the tstodon Worker's local D1 database, as an
+ * operator does with Wrangler; the rows it answers.
  */
-export const tstodonAdmin = async (user: E2eUser): Promise<E2eUser> => {
-  run(
+export const tstodonSql = (sql: string): unknown[] => {
+  const out = run(
     "pnpm",
     [
       "exec",
@@ -462,10 +464,26 @@ export const tstodonAdmin = async (user: E2eUser): Promise<E2eUser> => {
       "e2e/mastodon/tstodon.wrangler.jsonc",
       "--persist-to",
       ".wrangler/e2e-mastodon",
+      "--json",
       "--command",
-      `UPDATE "user" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE id = '${user.id}')`,
+      sql,
     ],
     repositoryRoot,
+  );
+  const parsed = D1Results.safeParse(JSON.parse(out.slice(out.indexOf("["))));
+  if (!parsed.success) {
+    throw new StepFailure(`wrangler d1 execute answered ${out.slice(0, 300)}`);
+  }
+  return parsed.data.flatMap((statement) => statement.results);
+};
+
+/**
+ * Give a tstodon user the admin role, as an operator does in the database;
+ * the same user with a token for the admin API.
+ */
+export const tstodonAdmin = async (user: E2eUser): Promise<E2eUser> => {
+  tstodonSql(
+    `UPDATE "user" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE id = '${user.id}')`,
   );
   const headers = await appToken(
     user.origin,

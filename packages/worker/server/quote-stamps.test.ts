@@ -246,8 +246,10 @@ describe("quote stamps for local statuses", () => {
       .bind(quote.alice.id)
       .first();
     const queued = read(z.object({ id: z.string(), payload_json: z.string() }), row);
+    // Linked-Data-signed in any mode, as Mastodon's `RevokeQuoteService`.
     expect(JSON.parse(queued.payload_json)).toEqual({
-      "@context": stampContext,
+      "@context": [...stampContext, "https://w3id.org/security/v1"],
+      signature: expect.objectContaining({ creator: `${quote.aliceUri}#main-key` }),
       id: `${stampUri}#delete`,
       type: "Delete",
       actor: quote.aliceUri,

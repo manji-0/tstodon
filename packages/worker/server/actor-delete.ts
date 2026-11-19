@@ -10,6 +10,7 @@ import {
   startOutboxDeliveryWorkflow,
 } from "./delivery";
 import { newEntityId } from "./ids";
+import { ldSignedActivity, ldSignsNow } from "./own-activity-signature";
 import { writeMetric } from "./metrics";
 import type { DepartedAccountActivity } from "./outbox-store";
 import {
@@ -107,12 +108,17 @@ export const readDepartingActor = async (
   }
   const { deliver, skipped } = await partitionByDomainAvailability(env.DB, admitted);
   const actorUri = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  // Mastodon signs it in any mode (`always_sign`), so a server that hears of
+  // it from another can tell it is the actor's.
+  const activity = actorDeleteActivity(actorUri, newEntityId());
   return ok({
     id: newEntityId(),
     username: account.value.username,
     privateKeyJwk: account.value.privateKeyJwk,
     kind: "Delete",
-    payload: actorDeleteActivity(actorUri, newEntityId()),
+    payload: ldSignsNow(env, activity)
+      ? await ldSignedActivity(identity.value, account.value, activity, new Date())
+      : activity,
     deliver,
     skipped,
   });

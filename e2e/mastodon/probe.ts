@@ -24,6 +24,7 @@ import { pollScenarios } from "./probe-polls.js";
 import { reactionScenarios } from "./probe-reactions.js";
 import { followScenarios } from "./probe-follows.js";
 import { searchScenarios } from "./probe-search.js";
+import { signatureScenarios } from "./probe-signatures.js";
 import { threadScenarios } from "./probe-threads.js";
 import {
   Account,
@@ -348,6 +349,7 @@ const areas: ReadonlyArray<readonly [name: string, run: (cast: Cast) => Promise<
   ["moderation", moderationScenarios],
   ["quotes", quoteScenarios],
   ["move", moveScenarios],
+  ["signatures", signatureScenarios],
 ];
 
 /** `E2E_PROBE_AREAS=search,threads` runs those areas only. */

@@ -51,7 +51,7 @@ const boost = async (email: string, statusId: string, path = "reblog") =>
   json(`/api/v1/statuses/${statusId}/${path}`, { method: "POST", headers: await headers(email) });
 
 const AnnounceSchema = z.object({
-  "@context": z.string(),
+  "@context": z.union([z.string(), z.array(z.string())]),
   id: z.string(),
   type: z.literal("Announce"),
   actor: z.string(),
@@ -130,10 +130,13 @@ describe("outbox and boosts", () => {
         to: z.array(z.string()),
         cc: z.array(z.string()),
         object: AnnounceSchema.omit({ "@context": true }),
+        signature: z.object({ creator: z.string() }),
       }),
       (await activitiesOf(booster.id, "Undo"))[0],
     );
     expect(undo.id).toBe(`${announce.id}/undo`);
+    // Signed in any mode, as Mastodon's `RemoveStatusService`.
+    expect(undo.signature.creator).toBe(`${announce.actor}#main-key`);
     expect(undo.object.id).toBe(announce.id);
     expect(undo.to).toEqual(announce.to);
     expect(undo.cc).toEqual(announce.cc);

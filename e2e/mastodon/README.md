@@ -41,7 +41,7 @@ pnpm e2e:mastodon:probe    # the sweep; reports every gap, exits 1 if any
 
 `bootstrap.sh` is safe to rerun. A rerun gives each user a new token and rewrites `.state/e2e.env`. `MASTODON_VERSION` selects another image tag.
 
-`E2E_PROBE_AREAS=search,threads pnpm e2e:mastodon:probe` runs only those areas of the sweep. The areas are `base`, `search`, `direct`, `threads`, `follows`, `authorized-fetch`, `edits`, `reactions`, `polls`, `media`, `emoji`, `hashtags`, `profile`, `moderation`, `quotes` and `move`.
+`E2E_PROBE_AREAS=search,threads pnpm e2e:mastodon:probe` runs only those areas of the sweep. The areas are `base`, `search`, `direct`, `threads`, `follows`, `authorized-fetch`, `edits`, `reactions`, `polls`, `media`, `emoji`, `hashtags`, `profile`, `moderation`, `quotes`, `move` and `signatures`.
 
 ### One command, and CI
 
@@ -129,6 +129,7 @@ The other areas of the sweep are one file each. `sweep.ts` holds what they share
 | `probe-moderation.ts`       | `moderation`       | INT-7. A block ends the follows both ways and refuses a new one. A blocked account's mention does not notify. A report with `forward` reaches the other server's moderators, with the post, without the reporter's name.                                                                                    |
 | `probe-quotes.ts`           | `quotes`           | INT-5. The `quote` notification. A post that lets nobody, or only followers, quote it. A revoked quote. A deleted quoted post, a deleted quote. An edit that closes a post to quotes.                                                                                                                       |
 | `probe-move.ts`             | `move`             | INT-8. An account moves from each server to the other: its followers on both servers follow the new account, and both show the old one as moved.                                                                                                                                                            |
+| `probe-signatures.ts`       | `signatures`       | FED-13. A sensitive public post, which tstodon signs outside secure mode, reads on Mastodon as sent. Mastodon's `verify_actor!` accepts the Linked Data signature of a tstodon `Delete`.                                                                                                                    |
 
 A step that fails for a tracked gap is a `knownGap` step. It is listed as `gap`, does not fail the sweep, and fails it once it passes, so the marker goes away with the fix.
 

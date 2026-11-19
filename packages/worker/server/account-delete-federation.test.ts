@@ -147,13 +147,18 @@ describe("deleting a local account", () => {
       throw new Error("no Delete queued");
     }
     expect(queued.account_id).toBeNull();
+    // Linked-Data-signed in any mode, as Mastodon's `always_sign`.
     expect(queued.activity).toEqual({
-      "@context": "https://www.w3.org/ns/activitystreams",
+      "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
       id: expect.stringMatching(new RegExp(`^${actorUri}#deletes/[0-9]+$`)),
       type: "Delete",
       actor: actorUri,
       to: [PUBLIC_COLLECTION],
       object: actorUri,
+      signature: expect.objectContaining({
+        type: "RsaSignature2017",
+        creator: `${actorUri}#main-key`,
+      }),
     });
     expect(queued.inboxes).toEqual(
       [sharedInbox, `${followed.actorUri}/inbox`, `${bystander.actorUri}/inbox`].toSorted(),
