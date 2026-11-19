@@ -1,6 +1,11 @@
 packages:
   - packages/*
 
+# The v13 lockfile: one `packages` entry per version with its peers inline,
+# so a peer bump changes only the lines that record it.
+lockfile:
+  format: v13
+
 allowBuilds:
   # void ships better-sqlite3 for `void db`; tstodon manages D1 with wrangler.
   better-sqlite3: false

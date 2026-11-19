@@ -13,9 +13,9 @@
 // in .cache/mastodon-web-lock/, with the workspace's settings (catalog,
 // overrides: Vite and Vitest stay the workspace's). This script then replaces
 // those dependencies' entries in the workspace lock's `packages/worker`
-// importer, adds the package and snapshot entries the workspace lock lacks (an
-// entry it already has stays as it is), drops entries no importer reaches any
-// more, and runs `pnpm install` (which settles peer suffixes, keeping the
+// project, adds the package entries the workspace lock lacks (an entry it
+// already has stays as it is), drops entries no project reaches any more, and
+// runs `pnpm install` (which settles peer suffixes, keeping the
 // locked versions) and `pnpm install --frozen-lockfile`.
 // See docs/operations/mastodon-web-upstream.md.
 
@@ -59,9 +59,12 @@ const catalog = (name) => {
   if (!entry?.[1]) throw new Error(`pnpm-workspace.yaml has no catalog entry ${name}`);
   return entry[1].trim();
 };
+const rootPackage = readJson(path.join(root, "package.json"));
 const frontendPackage = {
   name: "mastodon-web-lock",
   private: true,
+  // The workspace's pnpm, which writes the workspace's lockfile format.
+  packageManager: rootPackage.packageManager,
   dependencies: frontend(worker.dependencies),
   // Vite+ core and Vitest as the workspace has them, so upstream's Vite
   // plugins resolve their peers to those and not to upstream's Vite.
@@ -86,77 +89,19 @@ copyFileSync(path.resolve(yarnLock), path.join(work, "yarn.lock"));
 const workspaceYaml = readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
 writeFileSync(
   path.join(work, "pnpm-workspace.yaml"),
-  workspaceYaml.replace(/^packages:\n(?: {2}- .*\n)+/m, "packages: []\n"),
+  workspaceYaml
+    .replace(/^packages:\n(?: {2}- .*\n)+/m, "packages: []\n")
+    // The workspace's patches are for packages the frontend does not use.
+    .replace(/^patchedDependencies:\n(?: {2}.*\n)+/m, ""),
 );
 execFileSync("pnpm", ["import"], { cwd: work, stdio: "inherit" });
 
 /**
- * A pnpm lockfile document as its top-level sections, each a list of
- * entries: a two-space-indented key line and the lines under it.
+ * A v13 lockfile document. pnpm writes it as JSON with a trailing comma after
+ * every entry (still YAML); dropping those commas leaves plain JSON. No
+ * lockfile string holds a comma before a closing bracket.
  */
-const parseDocument = (text) => {
-  const sections = [];
-  let section;
-  let entry;
-  for (const line of text.split("\n")) {
-    if (/^\S/.test(line)) {
-      section = { head: line, entries: [], extra: [] };
-      sections.push(section);
-      entry = undefined;
-    } else if (section && /^ {2}\S/.test(line)) {
-      // `  key:` or `  key: {}`; keys hold no `: `.
-      entry = { key: unquote(line.trim().replace(/:(?: .*)?$/, "")), lines: [line] };
-      section.entries.push(entry);
-    } else if (entry && line !== "") {
-      entry.lines.push(line);
-    } else if (section && !entry && line !== "") {
-      section.extra.push(line);
-    }
-  }
-  return sections;
-};
-
-const unquote = (text) => text.replace(/^'(.*)'$/, "$1");
-
-const WIDE = ["importers:", "packages:", "snapshots:"];
-
-const formatDocument = (sections) =>
-  sections
-    .map(({ head, entries, extra }) => {
-      const block = [head, ...extra];
-      for (const { lines } of entries) {
-        if (WIDE.includes(head)) block.push("");
-        block.push(...lines);
-      }
-      return block.join("\n");
-    })
-    .join("\n\n");
-
-/** The snapshot key a `name: version` dependency line points at, or undefined for a link. */
-const snapshotKey = (name, version) => {
-  const v = unquote(version);
-  if (v.startsWith("link:") || v.startsWith("file:")) return undefined;
-  // An alias (`emoji-mart: emoji-mart-lazyload@3.0.1-j`) names the package itself.
-  return v.split("(")[0].includes("@") ? v : `${name}@${v}`;
-};
-
-/** The snapshot keys an entry depends on: `version:` lines of importers, `name: version` lines of snapshots. */
-const dependenciesOf = (entry, importer) => {
-  const keys = [];
-  let name;
-  for (const line of entry.lines.slice(1)) {
-    if (importer) {
-      const dep = /^ {6}(\S.*):$/.exec(line);
-      if (dep) name = unquote(dep[1]);
-      const version = /^ {8}version: (.+)$/.exec(line);
-      if (version && name) keys.push(snapshotKey(name, version[1]));
-    } else {
-      const dep = /^ {6}('[^']+'|[^:\s]+): (.+)$/.exec(line);
-      if (dep) keys.push(snapshotKey(unquote(dep[1]), dep[2]));
-    }
-  }
-  return keys.filter(Boolean);
-};
+const parseDocument = (text) => JSON.parse(text.replace(/,(\s*[}\]])/g, "$1"));
 
 const lockPath = path.join(root, "pnpm-lock.yaml");
 const lockText = readFileSync(lockPath, "utf8");
@@ -164,106 +109,109 @@ const lockText = readFileSync(lockPath, "utf8");
 const split = lockText.lastIndexOf("\n---\n");
 const prefix = split === -1 ? "" : lockText.slice(0, split + 5);
 const workspace = parseDocument(split === -1 ? lockText : lockText.slice(split + 5));
-const imported = parseDocument(readFileSync(path.join(work, "pnpm-lock.yaml"), "utf8"));
-
-const section = (sections, head) => {
-  const found = sections.find((s) => s.head === head);
-  if (!found) throw new Error(`Lockfile has no ${head}`);
-  return found;
-};
-
-const importers = section(workspace, "importers:");
-const workerImporter = importers.entries.find((e) => e.key === "packages/worker");
-const frontendImporter = section(imported, "importers:").entries.find((e) => e.key === ".");
-if (!workerImporter) throw new Error("Lockfile has no packages/worker importer");
-if (!frontendImporter) throw new Error("pnpm import wrote no importer");
-
-/**
- * An importer's dependency blocks by group (`dependencies`, `devDependencies`):
- * a six-space `name:` line and the specifier and version lines under it.
- */
-const importerGroups = (entry) => {
-  const groups = new Map();
-  let group;
-  let block;
-  for (const line of entry.lines.slice(1)) {
-    const groupHead = /^ {4}(\S+):$/.exec(line);
-    if (groupHead) {
-      group = new Map();
-      groups.set(groupHead[1], group);
-      continue;
-    }
-    const name = /^ {6}(\S.*):$/.exec(line);
-    if (name && group) {
-      block = [line];
-      group.set(unquote(name[1]), block);
-    } else if (block) {
-      block.push(line);
-    }
+const importedText = readFileSync(path.join(work, "pnpm-lock.yaml"), "utf8");
+const imported = parseDocument(importedText.slice(importedText.lastIndexOf("\n---\n") + 5));
+for (const [name, document] of [
+  ["pnpm-lock.yaml", workspace],
+  ["the imported lock", imported],
+]) {
+  if (document.lockfileVersion !== "13.0") {
+    throw new Error(`${name} is lockfile ${document.lockfileVersion}; set lockfile.format: v13`);
   }
-  return groups;
-};
+}
 
-const workerGroups = importerGroups(workerImporter);
-const frontendGroups = importerGroups(frontendImporter);
-for (const [groupName, group] of workerGroups) {
-  for (const name of group.keys()) {
+const workerProject = workspace.projects["packages/worker"];
+const frontendProject = imported.projects["."];
+if (!workerProject) throw new Error("Lockfile has no packages/worker project");
+if (!frontendProject) throw new Error("pnpm import wrote no project");
+
+// The frontend's dependencies take the versions pnpm import locked.
+for (const [group, deps] of Object.entries(workerProject)) {
+  if (typeof deps !== "object") continue;
+  for (const name of Object.keys(deps)) {
     if (!frontendNames.has(name)) continue;
-    const locked = frontendGroups.get(groupName)?.get(name);
-    if (!locked) throw new Error(`pnpm import locked no ${groupName} ${name}`);
-    group.set(name, locked);
+    const locked = frontendProject[group]?.[name];
+    if (locked === undefined) throw new Error(`pnpm import locked no ${group} ${name}`);
+    deps[name] = locked;
   }
 }
-const compareKeys = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-workerImporter.lines = [
-  workerImporter.lines[0],
-  ...[...workerGroups].flatMap(([groupName, group]) => [
-    `    ${groupName}:`,
-    ...[...group].sort(([a], [b]) => compareKeys(a, b)).flatMap(([, block]) => block),
-  ]),
-];
 
-for (const head of ["packages:", "snapshots:"]) {
-  const target = section(workspace, head);
-  const have = new Map(target.entries.map((e) => [e.key, e]));
-  for (const entry of section(imported, head).entries) {
-    const existing = have.get(entry.key);
-    if (!existing) {
-      target.entries.push(entry);
-    } else if (
-      existing.lines.includes("    optional: true") &&
-      !entry.lines.includes("    optional: true")
-    ) {
-      // A snapshot the frontend needs is not optional, whatever else uses it.
-      existing.lines = existing.lines.filter((line) => line !== "    optional: true");
-      if (existing.lines.length === 1)
-        existing.lines = [`${existing.lines[0].replace(/:$/, "")}: {}`];
+// Add the package versions the workspace lock lacks; an entry it has stays.
+for (const [key, entry] of Object.entries(imported.packages)) {
+  const existing = workspace.packages[key];
+  if (!existing) {
+    workspace.packages[key] = entry;
+  } else if (existing.optional && !entry.optional) {
+    // A package the frontend needs is not optional, whatever else uses it.
+    delete existing.optional;
+  }
+}
+
+/** The package key a dependency resolves to, or undefined for a workspace link. */
+const packageKey = (name, version) => {
+  if (version.startsWith("link:") || version.startsWith("file:")) return undefined;
+  if (version.startsWith("workspace:")) return undefined;
+  const plain = version.replace(/^npm:/, "");
+  // An alias (`emoji-mart-lazyload@3.0.1-j`) names the package itself.
+  return /^(@[^/]+\/)?[^@]+@/.test(plain) ? plain : `${name}@${plain}`;
+};
+/** The version a project's dependency resolves to: a plain version, `{specifier, version}`, or a catalog entry. */
+const projectVersion = (name, value) => {
+  if (typeof value === "object") return value.version;
+  if (value.startsWith("catalog:")) {
+    const catalogName = value.slice("catalog:".length) || "default";
+    return workspace.settings?.catalogs?.[catalogName]?.[name];
+  }
+  return value;
+};
+/** The package keys a package entry depends on, its peers in every snapshot included. */
+const dependenciesOf = (entry) => {
+  const keys = [];
+  const add = (name, version) => {
+    const key = version === undefined ? undefined : packageKey(name, version);
+    if (key) keys.push(key);
+  };
+  for (const variant of [entry, ...(entry.snapshots ?? [])]) {
+    for (const group of ["dependencies", "optionalDependencies"]) {
+      for (const [name, version] of Object.entries(variant[group] ?? {})) add(name, version);
+    }
+    for (const [name, peer] of Object.entries(variant.peerDependencies ?? {})) {
+      add(name, peer.version);
     }
   }
-}
+  return keys;
+};
 
-// Keep what the importers reach; pnpm sorts each section by key.
-const snapshots = section(workspace, "snapshots:");
-const packages = section(workspace, "packages:");
-const byKey = new Map(snapshots.entries.map((e) => [e.key, e]));
+// Keep what the projects reach; pnpm sorts each section by key.
 const reached = new Set();
-const queue = importers.entries.flatMap((e) => dependenciesOf(e, true));
+const queue = Object.values(workspace.projects).flatMap((project) =>
+  Object.values(project)
+    .filter((deps) => typeof deps === "object")
+    .flatMap((deps) =>
+      Object.entries(deps).flatMap(([name, value]) => {
+        const version = projectVersion(name, value);
+        const key = version === undefined ? undefined : packageKey(name, version);
+        return key ? [key] : [];
+      }),
+    ),
+);
 while (queue.length > 0) {
   const key = queue.pop();
   if (reached.has(key)) continue;
   reached.add(key);
-  const entry = byKey.get(key);
-  if (!entry) throw new Error(`Lockfile has no snapshot ${key}`);
-  queue.push(...dependenciesOf(entry, false));
+  const entry = workspace.packages[key];
+  if (!entry) throw new Error(`Lockfile has no package ${key}`);
+  queue.push(...dependenciesOf(entry));
 }
-const packageOf = (key) => key.replace(/\(.*$/, "");
-const reachedPackages = new Set([...reached].map(packageOf));
-snapshots.entries = snapshots.entries.filter((e) => reached.has(e.key));
-packages.entries = packages.entries.filter((e) => reachedPackages.has(e.key));
-const compare = (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
-for (const s of [importers, packages, snapshots]) s.entries.sort(compare);
+const compareKeys = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+workspace.packages = Object.fromEntries(
+  Object.entries(workspace.packages)
+    .filter(([key]) => reached.has(key))
+    .sort(([a], [b]) => compareKeys(a, b)),
+);
 
-writeFileSync(lockPath, `${prefix}${formatDocument(workspace)}\n`);
+// pnpm install below rewrites the lock in its own layout.
+writeFileSync(lockPath, `${prefix}${JSON.stringify(workspace, null, "\t")}\n`);
 console.log(
   `Locked the Mastodon frontend's dependencies from ${path.relative(root, path.resolve(yarnLock))}`,
 );
