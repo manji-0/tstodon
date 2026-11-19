@@ -1,4 +1,7 @@
-/** Sweep area INT-7: what a block does on the other server, and a forwarded report reaching the remote moderators. */
+/**
+ * Sweep area INT-7: what a block does on the other server, a forwarded report
+ * reaching the remote moderators, and what an admin suspension does there.
+ */
 import { z } from "zod";
 import { A, signUp, sleep, type E2eUser } from "../lib.js";
 import { mastodonUser } from "./lib.js";
@@ -31,6 +34,7 @@ const AdminReports = z.array(
   }),
 );
 const FiledReport = z.looseObject({ id: z.string(), forwarded: z.boolean() });
+const SuspendedFlag = z.looseObject({ suspended: z.boolean().optional() });
 
 const block = (user: E2eUser, accountId: string, action: "block" | "unblock") =>
   call(user, `/api/v1/accounts/${accountId}/${action}`, Anything, { method: "POST", body: {} });
@@ -174,5 +178,53 @@ export const moderationScenarios = async ({ stamp, erin }: Cast): Promise<void> 
   );
   await step("a forwarded report reaches the remote moderators: Mastodon → tstodon", async () => {
     await forwardedReport(mona, bob, await tstodonAdmin(tstodonModerator));
+  });
+
+  const moderate = (admin: E2eUser, accountId: string, action: "suspend" | "unsuspend") =>
+    call(
+      admin,
+      action === "suspend"
+        ? `/api/v1/admin/accounts/${accountId}/action`
+        : `/api/v1/admin/accounts/${accountId}/unsuspend`,
+      Anything,
+      { method: "POST", body: action === "suspend" ? { type: "suspend" } : {} },
+    );
+
+  await step("a tstodon suspension reaches Mastodon, and so does lifting it", async () => {
+    const admin = await tstodonAdmin(tstodonModerator);
+    const suspended = await signUp(A, "susp");
+    await follow(mona, suspended);
+    const onMastodon = (await resolveAccount(mona, suspended)).id;
+    const shownSuspended = async () =>
+      (await call(mona, `/api/v1/accounts/${onMastodon}`, SuspendedFlag)).suspended === true;
+    await moderate(admin, suspended.id, "suspend");
+    await eventually("Mastodon shows the account suspended", async () =>
+      (await shownSuspended()) ? true : undefined,
+    );
+    await moderate(admin, suspended.id, "unsuspend");
+    await eventually("Mastodon shows the account again", async () =>
+      (await shownSuspended()) ? undefined : true,
+    );
+  });
+
+  await step("suspending a Mastodon account on tstodon ends its follow there", async () => {
+    const admin = await tstodonAdmin(tstodonModerator);
+    const [follower] = await mastodonUsers([`sus_${stamp}`]);
+    if (!follower) {
+      throw new StepFailure("no Mastodon user");
+    }
+    const followedId = await follow(follower, bob);
+    const followerOnTstodon = (await resolveAccount(admin, follower)).id;
+    await moderate(admin, followerOnTstodon, "suspend");
+    try {
+      await relationshipBecomes(
+        follower,
+        followedId,
+        "Mastodon no longer shows the follow after the Reject",
+        (state) => !state.following && !state.requested,
+      );
+    } finally {
+      await moderate(admin, followerOnTstodon, "unsuspend");
+    }
   });
 };

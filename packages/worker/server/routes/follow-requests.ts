@@ -1,8 +1,7 @@
 import type { ApiAccountJSON } from "@tstodon/api";
-import { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
-import { enqueueTargetedActivity } from "../delivery";
+import { acceptRemoteFollowRequest } from "../follow-request-approval";
 import {
   jsonAuthError,
   jsonRepositoryError,
@@ -13,7 +12,6 @@ import {
 import { availableAccountDocumentsByIds } from "../account-documents";
 import { mastodonRelationship } from "../relationship-document";
 import {
-  authorizeRemoteFollowRequest,
   findPendingRemoteFollowRequest,
   findRemoteActorByUri,
   listPendingRemoteFollowRequesters,
@@ -147,42 +145,17 @@ export const postV1FollowRequestsByIdAuthorize = async (
   if (remote.kind === "error") {
     return jsonRepositoryError(c, remote.message);
   }
-  const followActivityId = await findPendingRemoteFollowRequest(
-    c.env.DB,
-    user.value.id,
-    remote.actorUri,
+  const authorized = await acceptRemoteFollowRequest(
+    c.env,
+    identity.value,
+    user.value,
+    remote.actor,
   );
-  if (followActivityId.isErr()) {
-    return jsonRepositoryError(c, followActivityId.error.message);
-  }
-  const authorized = await authorizeRemoteFollowRequest(c.env.DB, user.value.id, remote.actorUri);
   if (authorized.isErr()) {
     return jsonRepositoryError(c, authorized.error.message);
   }
   if (!authorized.value) {
     return notFound(c);
-  }
-  const acceptActor = InstanceIdentity.actorUrl(identity.value, user.value.username);
-  if (followActivityId.value) {
-    const followerInbox = RemoteActor.deliveryInbox(remote.actor);
-    await enqueueTargetedActivity(
-      c.env,
-      user.value.id,
-      "Accept",
-      {
-        "@context": "https://www.w3.org/ns/activitystreams",
-        id: `${acceptActor}/activities/accept-${followActivityId.value}`,
-        type: "Accept",
-        actor: acceptActor,
-        object: {
-          id: followActivityId.value,
-          type: "Follow",
-          actor: remote.actorUri,
-          object: acceptActor,
-        },
-      },
-      followerInbox,
-    );
   }
   const flags = await relationshipFlags(c.env.DB, user.value.id, id);
   if (flags.isErr()) {

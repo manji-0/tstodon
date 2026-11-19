@@ -29,7 +29,10 @@ import {
 } from "./remote-actor-moderation-store";
 import { departedAccountActivityStatements } from "./outbox-store";
 import { findRemoteActorByUri } from "./remote-actor-store";
+import { federateActorChange } from "./local-actor";
+import { parseInstanceIdentity } from "./runtime-config";
 import { severAndNotify } from "./severance";
+import { severSuspendedActor } from "./suspended-actor-severance";
 import {
   clearRemoteMediaForDomain,
   type DomainBlockInput,
@@ -75,21 +78,33 @@ export const adminAccountStates = async (
   );
 };
 
-/** Apply one moderation transition to a local account and store the result. */
+/**
+ * Apply one moderation transition to a local account and store the result.
+ * A suspension, or its lifting, federates as an actor `Update`, with
+ * `suspended` or the profile back, as Mastodon's `SuspendAccountService` and
+ * `UnsuspendAccountService` (`distribute_update_actor!`).
+ */
 export const moderateLocalAccount = async (
-  db: D1Database,
+  env: Env,
   accountId: string,
   action: LocalAccountModerationAction,
 ): Promise<Result<void, RepositoryError>> => {
-  const current = await findLocalAccountModeration(db, accountId);
+  const current = await findLocalAccountModeration(env.DB, accountId);
   if (current.isErr()) {
     return err(current.error);
   }
-  return saveLocalAccountModeration(
-    db,
-    accountId,
-    LocalAccountModeration.apply(current.value, action),
-  );
+  const next = LocalAccountModeration.apply(current.value, action);
+  const stored = await saveLocalAccountModeration(env.DB, accountId, next);
+  const wasSuspended = current.value.standing.kind === "Suspended";
+  if (stored.isErr() || wasSuspended === (next.standing.kind === "Suspended")) {
+    return stored;
+  }
+  const identity = parseInstanceIdentity(env);
+  const account = await findAccountById(env.DB, accountId);
+  if (identity.isOk() && account.isOk() && account.value) {
+    await federateActorChange(env, identity.value, account.value, "Suspension");
+  }
+  return stored;
 };
 
 /** The local account at `id` with its moderation state, if there is one. */
@@ -134,7 +149,12 @@ export const findAdminRemoteActor = async (
 /**
  * Apply one moderation transition to a remote actor and store the result.
  * Suspending an actor removes the follows between it and local accounts
- * (`account_suspension` in `/severed_relationships`).
+ * (`account_suspension` in `/severed_relationships`) and tells its server
+ * with a `Reject(Follow)` or `Undo(Follow)` for each, in pages
+ * (`severSuspendedActor`). Lifting the suspension restores none of them.
+ * Deviation: Mastodon keeps local accounts' follows of a suspended actor
+ * (they come back with an unsuspension) and only rejects the actor's own
+ * follows; tstodon severs both ways.
  */
 export const moderateRemoteActor = async (
   env: Env,
@@ -158,14 +178,10 @@ export const moderateRemoteActor = async (
   if (actor.isErr()) {
     return err(actor.error);
   }
-  if (!actor.value) {
-    return stored;
+  if (actor.value) {
+    await severSuspendedActor(env, actor.value);
   }
-  return severAndNotify(env, {
-    scope: { kind: "Actor", actorUri },
-    type: "account_suspension",
-    targetName: `${actor.value.username}@${actor.value.domain}`,
-  });
+  return stored;
 };
 
 export type AccountActionError =
@@ -175,11 +191,11 @@ export type AccountActionError =
   | RepositoryError;
 
 const applyLocalEffect = async (
-  db: D1Database,
+  env: Env,
   accountId: string,
   effect: LocalAccountActionEffect,
 ): Promise<Result<void, RepositoryError>> =>
-  effect.kind === "Moderate" ? moderateLocalAccount(db, accountId, effect.action) : ok(undefined);
+  effect.kind === "Moderate" ? moderateLocalAccount(env, accountId, effect.action) : ok(undefined);
 
 const applyRemoteEffect = async (
   env: Env,
@@ -246,7 +262,7 @@ export const takeAccountAction = async (
   }
   const applied =
     target.kind === "Local"
-      ? await applyLocalEffect(db, target.accountId, AccountActionType.localEffect(input.type))
+      ? await applyLocalEffect(env, target.accountId, AccountActionType.localEffect(input.type))
       : await applyRemoteEffect(env, target.actorUri, AccountActionType.remoteEffect(input.type));
   if (applied.isErr()) {
     return err(applied.error);

@@ -4,7 +4,7 @@ import { err, type Result } from "neverthrow";
 import type { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
+import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
 
@@ -24,10 +24,11 @@ export const SeveranceTypeSchema = z.union([
 
 export type SeveranceType = z.infer<typeof SeveranceTypeSchema>;
 
-/** Whose follows a decision removes: every actor of a server, or one actor. */
-export type SeveranceScope =
-  | Readonly<{ kind: "Domain"; domain: Hostname }>
-  | Readonly<{ kind: "Actor"; actorUri: string }>;
+/**
+ * Whose follows a decision removes at once: every actor of a server. One
+ * suspended actor's are removed in pages ({@link severActorPage}).
+ */
+export type SeveranceScope = Readonly<{ kind: "Domain"; domain: Hostname }>;
 
 /** A decision to sever, as the caller names it. */
 export type SeveranceInput = Readonly<{
@@ -65,8 +66,7 @@ export type SeveredFollow = Readonly<{
  * The actors in a scope, `r` being `remote_actors`. An admin block names a
  * hostname, so it matches the account domain's (`host`) or the actor URI's
  * (`uri_host`), as `RemoteActor.onAnyHost`, and covers every port of it.
- * Each scope has its own SQL so that SQLite searches `remote_actors` by the
- * index of the column it names; an empty value matches no actor.
+ * An empty domain matches no actor.
  */
 const actorMatch = (scope: SeveranceScope): Readonly<{ sql: string; binds: string[] }> => {
   switch (scope.kind) {
@@ -74,10 +74,6 @@ const actorMatch = (scope: SeveranceScope): Readonly<{ sql: string; binds: strin
       return scope.domain === ""
         ? { sql: "0", binds: [] }
         : { sql: "(r.host = ? OR r.uri_host = ?)", binds: [scope.domain, scope.domain] };
-    case "Actor":
-      return scope.actorUri === ""
-        ? { sql: "0", binds: [] }
-        : { sql: "r.actor_uri = ?", binds: [scope.actorUri] };
   }
 };
 
@@ -345,6 +341,195 @@ export const severAccountPage = async (
   return written.map((results) => ({
     unfollowed: removedFollows(results[3]),
     rejected: removedFollows(results[4]),
+  }));
+};
+
+/** One page of an actor's severance: the local accounts it covers. */
+export type ActorSeverancePage = Readonly<{
+  eventId: string;
+  type: SeveranceType;
+  targetName: string;
+  actorUri: string;
+  accountIds: ReadonlyArray<string>;
+}>;
+
+/** A follow an actor page removed: the local account and the `Follow` activity's id, when known. */
+export type RemovedActorFollow = Readonly<{ accountId: string; followActivityId: string | null }>;
+
+/** What an actor page removed and recorded, for the caller to notify and federate. */
+export type SeveredActorPage = Readonly<{
+  events: ReadonlyArray<AccountSeveranceEvent>;
+  /** The page accounts' follows of the actor: each gets an `Undo(Follow)`. */
+  unfollowed: ReadonlyArray<RemovedActorFollow>;
+  /** The actor's follows of the page accounts: each gets a `Reject(Follow)`. */
+  rejected: ReadonlyArray<RemovedActorFollow>;
+}>;
+
+const AccountIdsPageRowSchema = z.object({ account_id: z.string() });
+
+/**
+ * The next `limit` local accounts, by id after `afterAccountId`, that follow
+ * `actorUri`, are followed by it, or have a request pending with it.
+ */
+export const listActorPeers = async (
+  db: D1Database,
+  actorUri: string,
+  afterAccountId: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT account_id FROM (
+           SELECT account_id FROM outbound_follows WHERE actor_uri = ?1
+           UNION
+           SELECT target_account_id FROM remote_follows WHERE remote_actor_uri = ?1
+         )
+         WHERE account_id > ?2
+         ORDER BY account_id LIMIT ?3`,
+      )
+      .bind(actorUri, afterAccountId, limit)
+      .all();
+    return parseRows(AccountIdsPageRowSchema, results).map((row) => row.account_id);
+  });
+
+const ActorUriPageRowSchema = z.object({ actor_uri: z.string() });
+
+/**
+ * Up to `limit` actors an admin suspended before `before` that still have a
+ * follow or request with a local account: a severance whose next page was
+ * never queued, or whose job gave up.
+ */
+export const listStalledSuspendedActors = async (
+  db: D1Database,
+  before: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT m.actor_uri FROM remote_actor_moderation m
+         WHERE m.moderation = 'Suspended' AND m.updated_at < ?
+           AND (EXISTS (SELECT 1 FROM remote_follows f WHERE f.remote_actor_uri = m.actor_uri)
+             OR EXISTS (SELECT 1 FROM outbound_follows o WHERE o.actor_uri = m.actor_uri))
+         LIMIT ?`,
+      )
+      .bind(before, limit)
+      .all();
+    return parseRows(ActorUriPageRowSchema, results).map((row) => row.actor_uri);
+  });
+
+const RemovedActorFollowRowSchema = z.object({
+  account_id: z.string(),
+  follow_activity_id: z.string().nullable(),
+});
+
+const removedActorFollows = (result: D1Result | undefined): RemovedActorFollow[] =>
+  parseRows(RemovedActorFollowRowSchema, result?.results).map((row) => ({
+    accountId: row.account_id,
+    followActivityId: row.follow_activity_id,
+  }));
+
+/**
+ * Remove the follows between `actorUri` and the page's local accounts, both
+ * ways and in every state, and record the accepted ones under `eventId`, with
+ * an account event for each account that lost one, all in one batch: a
+ * follow is recorded exactly when it is removed. The event is written with
+ * the first page that has a follow to record. Pending requests are removed
+ * unrecorded. Unlike {@link severAccountPage}, it keeps the accounts'
+ * notifications from the actor, as a suspension hides them.
+ */
+export const severActorPage = async (
+  db: D1Database,
+  page: ActorSeverancePage,
+): Promise<Result<SeveredActorPage, RepositoryError>> => {
+  const now = nowIso();
+  const accounts = jsonStringArray(page.accountIds);
+  const accountEvents = page.accountIds.map((accountId) => ({ id: newEntityId(), accountId }));
+  const active = `FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
+     WHERE o.actor_uri = ? AND o.state = 'Accepted'
+       AND o.account_id IN (SELECT value FROM json_each(?))`;
+  const passive = `FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
+     WHERE f.remote_actor_uri = ? AND f.follow_kind = 'Accepted'
+       AND f.target_account_id IN (SELECT value FROM json_each(?))`;
+  const written = await runD1Batch(db, [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO relationship_severance_events (id, type, target_name, purged, created_at)
+         SELECT ?, ?, ?, 0, ?
+         WHERE EXISTS (SELECT 1 ${active}) OR EXISTS (SELECT 1 ${passive})`,
+      )
+      .bind(
+        page.eventId,
+        page.type,
+        page.targetName,
+        now,
+        page.actorUri,
+        accounts,
+        page.actorUri,
+        accounts,
+      ),
+    db
+      .prepare(
+        `INSERT INTO severed_relationships
+           (id, event_id, local_account_id, remote_acct, direction, show_reblogs, notify, languages_json, created_at)
+         SELECT o.id, ?, o.account_id, r.username || '@' || r.domain, 'active',
+                o.reblogs, o.notify, o.languages_json, ?
+         ${active}`,
+      )
+      .bind(page.eventId, now, page.actorUri, accounts),
+    db
+      .prepare(
+        `INSERT INTO severed_relationships
+           (id, event_id, local_account_id, remote_acct, direction, show_reblogs, notify, languages_json, created_at)
+         SELECT f.id, ?, f.target_account_id, r.username || '@' || r.domain, 'passive',
+                NULL, NULL, NULL, ?
+         ${passive}`,
+      )
+      .bind(page.eventId, now, page.actorUri, accounts),
+    db
+      .prepare(
+        `INSERT INTO account_severance_events
+           (id, event_id, account_id, followers_count, following_count, created_at)
+         SELECT json_extract(e.value, '$.id'), ?1, json_extract(e.value, '$.accountId'),
+           (SELECT COUNT(*) FROM severed_relationships
+              WHERE event_id = ?1 AND local_account_id = json_extract(e.value, '$.accountId')
+                AND direction = 'passive'),
+           (SELECT COUNT(*) FROM severed_relationships
+              WHERE event_id = ?1 AND local_account_id = json_extract(e.value, '$.accountId')
+                AND direction = 'active'),
+           ?2
+         FROM json_each(?3) e
+         WHERE EXISTS (SELECT 1 FROM severed_relationships
+                       WHERE event_id = ?1 AND local_account_id = json_extract(e.value, '$.accountId'))`,
+      )
+      .bind(page.eventId, now, JSON.stringify(accountEvents)),
+    db
+      .prepare(
+        `DELETE FROM outbound_follows
+         WHERE actor_uri = ? AND account_id IN (SELECT value FROM json_each(?))
+         RETURNING account_id, follow_activity_id`,
+      )
+      .bind(page.actorUri, accounts),
+    db
+      .prepare(
+        `DELETE FROM remote_follows
+         WHERE remote_actor_uri = ? AND target_account_id IN (SELECT value FROM json_each(?))
+         RETURNING target_account_id AS account_id, follow_activity_id`,
+      )
+      .bind(page.actorUri, accounts),
+  ]);
+  if (written.isErr()) {
+    return err(written.error);
+  }
+  const events = await findAccountSeveranceEvents(
+    db,
+    accountEvents.map(({ id }) => id),
+  );
+  return events.map((found) => ({
+    events: found,
+    unfollowed: removedActorFollows(written.value[4]),
+    rejected: removedActorFollows(written.value[5]),
   }));
 };
 

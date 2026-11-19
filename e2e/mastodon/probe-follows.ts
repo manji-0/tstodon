@@ -1,4 +1,7 @@
-/** Sweep area INT-6: follow requests to a locked account, `Reject`, removed followers, and a quick unfollow. */
+/**
+ * Sweep area INT-6: follow requests to a locked account, `Reject`, unlocking
+ * with requests pending, removed followers, and a quick unfollow.
+ */
 import { A, signUp, sleep, type E2eUser } from "../lib.js";
 import {
   Account,
@@ -9,6 +12,7 @@ import {
   type Cast,
   eventually,
   follow,
+  mastodonUsers,
   onHome,
   post,
   relationship,
@@ -127,6 +131,19 @@ const lockedAccount = async (
   }
 };
 
+/** Post a tstodon settings form with the user's browser session. */
+const postSettings = async (user: E2eUser, path: string, fields: Record<string, string>) => {
+  const response = await user.browser(path, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(fields).toString(),
+  });
+  const page = await response.text();
+  if (!response.ok) {
+    throw new StepFailure(`POST ${path} → ${response.status} ${page.slice(0, 300)}`);
+  }
+};
+
 export const followScenarios = async ({ stamp, mona, carol, dana }: Cast): Promise<void> => {
   const alice = await signUp(A, "faye");
   const bob = await signUp(A, "finn");
@@ -134,6 +151,32 @@ export const followScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
 
   await lockedAccount(stamp, "Mastodon → tstodon", locked, mona, carol);
   await lockedAccount(stamp, "tstodon → Mastodon", dana, alice, bob);
+
+  await step("unlocking accepts a pending follow request: Mastodon → tstodon", async () => {
+    const [requester] = await mastodonUsers([`unl_${stamp}`]);
+    if (!requester) {
+      throw new StepFailure("no Mastodon user");
+    }
+    await setLocked(locked, true);
+    try {
+      const { targetId } = await requestFollow(requester, locked);
+      // The privacy page, as Mastodon's own settings form.
+      await postSettings(locked, "/settings/privacy", {
+        account_unlocked: "1",
+        account_discoverable: "1",
+        account_indexable: "1",
+        account_show_collections: "1",
+      });
+      await relationshipBecomes(
+        requester,
+        targetId,
+        "the request is accepted once the account is unlocked",
+        (state) => state.following && !state.requested,
+      );
+    } finally {
+      await setLocked(locked, false);
+    }
+  });
 
   await bothWays("remove a follower", alice, mona, async (owner, follower) => {
     const ownerId = await follow(follower, owner);

@@ -506,7 +506,7 @@ const changeAccount = async (
   if (!account.value) {
     return notFound(c);
   }
-  const changed = await moderateLocalAccount(c.env.DB, account.value.id, action);
+  const changed = await moderateLocalAccount(c.env, account.value.id, action);
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }

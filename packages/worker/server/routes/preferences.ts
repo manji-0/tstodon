@@ -4,7 +4,10 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { findComposeDefaults, updateAccountDefaults } from "../account-defaults-store";
 import { findAccountProfile, upsertAccountProfile } from "../account-profile-store";
-import { findAccountById, setAccountLocked } from "../account-store";
+import { findAccountById } from "../account-store";
+import { changeAccountLocked } from "../follow-request-approval";
+import { federateActorChange } from "../local-actor";
+import { parseInstanceIdentity } from "../runtime-config";
 import {
   ColorSchemeSchema,
   ContrastSchema,
@@ -289,14 +292,26 @@ export const postSettingsPrivacy = async (c: Context<{ Bindings: Env }, "/settin
   if (savedProfile.isErr()) {
     return saveFailed();
   }
-  const locked = await setAccountLocked(
-    c.env.DB,
-    accountId,
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return saveFailed();
+  }
+  const locked = await changeAccountLocked(
+    c.env,
+    identity.value,
+    signedIn.account,
     form.value.account_unlocked === undefined,
   );
-  return locked.isErr()
-    ? saveFailed()
-    : renderPrivacy(c, accountId, { kind: "notice", text: "Changes saved." });
+  if (locked.isErr()) {
+    return saveFailed();
+  }
+  // As Mastodon's `Settings::PrivacyController`, the saved flags federate
+  // with an actor `Update`.
+  const saved = await findAccountById(c.env.DB, accountId);
+  if (saved.isOk() && saved.value) {
+    await federateActorChange(c.env, identity.value, saved.value, "Privacy");
+  }
+  return renderPrivacy(c, accountId, { kind: "notice", text: "Changes saved." });
 };
 
 warmSchemas([AppearanceFormSchema, PostingDefaultsFormSchema, PrivacyFormSchema]);

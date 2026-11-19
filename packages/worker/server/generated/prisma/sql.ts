@@ -562,6 +562,8 @@ export * from "./sql/listAccountMovesByIdsJson";
 
 export * from "./sql/listAccountProfiles";
 
+export * from "./sql/listAccountReachInboxes";
+
 export * from "./sql/listAccountsDueKeyRotation";
 
 export * from "./sql/listAdminAccountIds";

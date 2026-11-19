@@ -96,3 +96,28 @@ export const sendActorUpdate = async (
     object,
   });
 };
+
+/**
+ * {@link sendActorUpdate} after a change already stored, as Mastodon queues
+ * `ActivityPub::UpdateDistributionWorker` from the credentials, profile and
+ * privacy settings and its (un)suspension services. Best effort: a failure is
+ * logged, and the change stands either way. `reason` names the change.
+ */
+export const federateActorChange = async (
+  env: Env,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  reason: "Profile" | "Privacy" | "Suspension",
+): Promise<void> => {
+  const sent = await sendActorUpdate(env, identity, account);
+  if (sent.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "ActorUpdateNotFederated",
+        reason,
+        accountId: account.id,
+        error: sent.error.kind,
+      }),
+    );
+  }
+};
