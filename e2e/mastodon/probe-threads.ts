@@ -50,16 +50,29 @@ const contextBecomes = (
  * answers that half for ten minutes, so the context is read only once the
  * whole chain is linked.
  */
-const linkedOnMastodon = (viewer: E2eUser, statusId: string, hops: number) =>
-  eventually(`${viewer.acct}'s copy links ${hops} ancestors`, async () => {
-    let linked = 0;
-    let current = await call(viewer, `/api/v1/statuses/${statusId}`, Status);
-    while (current.in_reply_to_id !== null) {
-      linked += 1;
-      current = await call(viewer, `/api/v1/statuses/${current.in_reply_to_id}`, Status);
+const linkedOnMastodon = async (viewer: E2eUser, statusId: string, hops: number) => {
+  let linked = 0;
+  try {
+    await eventually(
+      `${viewer.acct}'s copy links ${hops} ancestors`,
+      async () => {
+        linked = 0;
+        let current = await call(viewer, `/api/v1/statuses/${statusId}`, Status);
+        while (current.in_reply_to_id !== null) {
+          linked += 1;
+          current = await call(viewer, `/api/v1/statuses/${current.in_reply_to_id}`, Status);
+        }
+        return linked === hops ? true : undefined;
+      },
+      30_000,
+    );
+  } catch (error) {
+    if (error instanceof StepFailure) {
+      throw new StepFailure(`${error.message} (saw ${linked} linked)`);
     }
-    return linked === hops ? true : undefined;
-  });
+    throw error;
+  }
+};
 
 const sameMembers = (actual: readonly string[], expected: readonly string[]): boolean =>
   actual.length === expected.length && expected.every((uri) => actual.includes(uri));
