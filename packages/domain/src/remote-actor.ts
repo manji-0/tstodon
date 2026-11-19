@@ -84,6 +84,13 @@ export type RemoteActorParseError = Readonly<{ kind: "InvalidActor" }>;
 
 const parseRemoteActor = schemaResult(RemoteActorSchema);
 
+/**
+ * Mastodon's `Account::USERNAME_ONLY_RE`, which its `Account` validates a
+ * remote account's username against, with `USERNAME_LENGTH_HARD_LIMIT`.
+ */
+const REMOTE_USERNAME = /^[a-z0-9_]+(?:[.-]+[a-z0-9_]+)*$/i;
+const REMOTE_USERNAME_MAX_LENGTH = 2048;
+
 const hostnames = (actor: RemoteActor): ReadonlyArray<Hostname> => {
   const uriHost = Hostname.ofUri(actor.actorUri);
   return [Hostname.ofAuthority(actor.domain), ...(uriHost ? [uriHost] : [])];
@@ -137,6 +144,9 @@ export const RemoteActor = {
     });
     return parsed.mapErr((): RemoteActorParseError => ({ kind: "InvalidActor" }));
   },
+  /** Whether Mastodon would store a remote account under `username` (its `preferredUsername`). */
+  acceptsUsername: (username: string): boolean =>
+    username.length <= REMOTE_USERNAME_MAX_LENGTH && REMOTE_USERNAME.test(username),
   deliveryInbox: (actor: RemoteActor): string => actor.sharedInboxUri ?? actor.inboxUri,
   /**
    * The hostnames a domain rule is checked against: the account domain's and

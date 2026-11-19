@@ -204,6 +204,11 @@ export const remoteActorFromDocument = (
   if (document.value.id !== actorUri || document.value.publicKey.owner !== actorUri) {
     return err({ kind: "InvalidSignature" });
   }
+  // Mastodon's `Account` validates a remote username, so it stores no
+  // account under one that does not match.
+  if (!RemoteActor.acceptsUsername(document.value.preferredUsername)) {
+    return err({ kind: "InvalidSignature" });
+  }
   let parsedUri: URL;
   try {
     parsedUri = new URL(document.value.id);
