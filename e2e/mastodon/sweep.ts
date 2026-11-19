@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { appToken, sleep, type E2eUser } from "../lib.js";
-import { mastodonUser } from "./lib.js";
+import { MASTODON, mastodonUser } from "./lib.js";
 
 /** The Mastodon users `bootstrap.sh` provisions; each scenario file signs up its own tstodon users. */
 export type Cast = Readonly<{
@@ -330,15 +330,36 @@ export const relationship = async (viewer: E2eUser, accountId: string) => {
   return state;
 };
 
+/**
+ * Wait until `viewer` follows the account and has no request to it left.
+ * Mastodon caches its relationship answer for a day, and its
+ * `FollowRequest#authorize!` writes the follow and deletes the request in two
+ * commits that each clear that cache: a relationship read that overlaps an
+ * `Accept` can cache the state before both commits or between them. So on
+ * Mastodon the answer is the viewer's following list, which it reads from the
+ * database; `authorize!` deletes the request right after the follow is there.
+ */
+export const followsAfterAccept = (viewer: E2eUser, accountId: string, label: string) =>
+  eventually(label, async () => {
+    if (viewer.origin === MASTODON) {
+      const following = await call(
+        viewer,
+        `/api/v1/accounts/${viewer.id}/following?limit=80`,
+        Accounts,
+      );
+      return following.some((account) => account.id === accountId) ? true : undefined;
+    }
+    const state = await relationship(viewer, accountId);
+    return state.following && !state.requested ? true : undefined;
+  });
+
 export const follow = async (follower: E2eUser, followed: E2eUser): Promise<string> => {
   const account = await resolveAccount(follower, followed);
   await call(follower, `/api/v1/accounts/${account.id}/follow`, Anything, {
     method: "POST",
     body: {},
   });
-  await eventually(`${followed.acct} accepts`, async () =>
-    (await relationship(follower, account.id)).following ? true : undefined,
-  );
+  await followsAfterAccept(follower, account.id, `${followed.acct} accepts`);
   return account.id;
 };
 
