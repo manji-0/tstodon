@@ -56,9 +56,9 @@ export const PRUNE_PAGE_SIZE = 50;
  * Seconds before the next job of an import runs. An import has one job in
  * flight, so this spaces its pages: at most `IMPORT_PAGE_SIZE /
  * IMPORT_PAGE_DELAY_SECONDS` rows a second for one import. It is not a
- * server-wide limit: the queue consumer takes up to `maxBatchSize` (10)
+ * server-wide limit: the queue consumer takes up to `maxBatchSize` (5)
  * messages per invocation and runs them one after the other, so imports of
- * different accounts add up, to at most 10 jobs (100 rows, each maybe a
+ * different accounts add up, to at most 5 jobs (50 rows, each maybe a
  * WebFinger lookup and an actor fetch) in one invocation's subrequest budget.
  */
 export const IMPORT_PAGE_DELAY_SECONDS = 2;

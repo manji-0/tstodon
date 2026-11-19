@@ -71,7 +71,7 @@ import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
 import { listOutboxStatusIds, type OutboxReader } from "../actor-outbox-store";
-import { loadLocalNoteDocument } from "../local-note-document";
+import { loadLocalNoteDocument, loadLocalNoteDocuments } from "../local-note-document";
 import type { CustomEmoji } from "../emoji";
 import { accountCounts } from "../account-count-store";
 import { findAccountStanding } from "../account-moderation-store";
@@ -82,7 +82,7 @@ import { verifyForwardedActivity } from "../inbox-forward";
 import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
-import { statusTargetRef } from "../quote-uri";
+import { statusTargetRef, statusTargetRefs } from "../quote-uri";
 import { findQuoteById } from "../quote-store";
 import {
   quoteAuthorizationDocument,
@@ -625,23 +625,44 @@ const outboxReader = async (
 type OutboxItem = ApOutboxPageJSON["orderedItems"][number];
 
 /**
- * A status of an outbox page as Mastodon's `OutboxSerializer` renders it: a
- * note's `Create` with the note as it is now, or a boost's `Announce`.
- * Nothing for a boost whose status is gone.
+ * The statuses of an outbox page, in order, as Mastodon's `OutboxSerializer`
+ * renders them: a note's `Create` with the note as its URI serves it now, or
+ * a boost's `Announce`. Nothing for a boost whose status is gone. The notes
+ * and the boosted statuses are read for the whole page at once.
  */
-const outboxItem = async (
+const outboxItems = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
-  status: LocalStatusValue,
+  statuses: ReadonlyArray<LocalStatusValue>,
   emojis: ReadonlyArray<CustomEmoji>,
-): Promise<Result<OutboxItem | undefined, RepositoryError>> => {
-  if (status.kind === "LocalNote") {
-    const note = await loadLocalNoteDocument(env, identity, account, status, { emojis });
-    return note.map((object) => noteCreateActivity(identity, account, object));
+): Promise<Result<OutboxItem[], RepositoryError>> => {
+  const notes = statuses.flatMap((status) => (status.kind === "LocalNote" ? [status] : []));
+  const boosts = statuses.flatMap((status) => (status.kind === "LocalReblog" ? [status] : []));
+  const [documents, boosted] = await Promise.all([
+    loadLocalNoteDocuments(env, identity, account, notes, emojis),
+    statusTargetRefs(
+      env,
+      identity,
+      boosts.map((boost) => boost.target),
+    ),
+  ]);
+  if (documents.isErr()) {
+    return err(documents.error);
   }
-  const boosted = await statusTargetRef(env, identity, status.target);
-  return boosted.map((ref) => (ref ? announceActivity(identity, account, status, ref) : undefined));
+  if (boosted.isErr()) {
+    return err(boosted.error);
+  }
+  return ok(
+    statuses.flatMap((status): OutboxItem[] => {
+      if (status.kind === "LocalNote") {
+        const document = documents.value.get(status.id);
+        return document ? [noteCreateActivity(identity, account, document)] : [];
+      }
+      const ref = boosted.value.get(status.target.statusId);
+      return ref ? [announceActivity(identity, account, status, ref)] : [];
+    }),
+  );
 };
 
 /**
@@ -716,22 +737,18 @@ export const getUsersByUsernameOutbox = async (
   }
   const emojis =
     page.items.length > 0 ? await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl) : [];
-  const rendered = await Promise.all(
-    page.items.map((statusId) => {
+  const items = await outboxItems(
+    c.env,
+    identity.value,
+    account,
+    page.items.flatMap((statusId) => {
       const status = statuses.value.get(statusId);
-      return status
-        ? outboxItem(c.env, identity.value, account, status, emojis)
-        : Promise.resolve(ok(undefined));
+      return status ? [status] : [];
     }),
+    emojis,
   );
-  const items: OutboxItem[] = [];
-  for (const item of rendered) {
-    if (item.isErr()) {
-      return jsonRepositoryError(c, item.error.message);
-    }
-    if (item.value) {
-      items.push(item.value);
-    }
+  if (items.isErr()) {
+    return jsonRepositoryError(c, items.error.message);
   }
   const document: ApOutboxPageJSON = {
     "@context": ACTIVITY_STREAMS,
@@ -739,7 +756,7 @@ export const getUsersByUsernameOutbox = async (
     type: "OrderedCollectionPage",
     partOf: id,
     ...pageLinks(id, CollectionPage.outboxLinks(page.items, CollectionPage.OUTBOX_LIMIT)),
-    orderedItems: items,
+    orderedItems: items.value,
   };
   // Mastodon's `expires_in(1.minute, public: public_fetch_mode? && signed_request_account.nil?)`,
   // varying by `Signature`: what a page holds depends on who signed for it.

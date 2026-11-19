@@ -149,3 +149,54 @@ export const loadNoteMentions = async (
     })),
   ];
 };
+
+/**
+ * {@link loadNoteMentions} for several notes, keyed by note id, in four
+ * statements. The accounts and actors of all the notes are read at once;
+ * each note lists its own in the order the read gives them, as its own read
+ * would.
+ */
+export const loadNotesMentions = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  statusIds: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, ReadonlyArray<NoteMention>>> => {
+  const mentions = await listStatusMentions(db, statusIds);
+  if (mentions.isErr()) {
+    return new Map();
+  }
+  const entries = [...mentions.value.values()];
+  const [accounts, actors] = await Promise.all([
+    findAccountsByIds(
+      db,
+      entries.flatMap((entry) => entry.accountIds),
+    ),
+    findRemoteActorsByUris(
+      db,
+      entries.flatMap((entry) => entry.actorUris),
+    ),
+  ]);
+  return new Map(
+    [...mentions.value].map(([statusId, entry]) => {
+      const accountIds = new Set(entry.accountIds);
+      const actorUris = new Set(entry.actorUris);
+      return [
+        statusId,
+        [
+          ...(accounts.isOk() ? [...accounts.value.values()] : [])
+            .filter((account) => accountIds.has(account.id))
+            .map((account) => ({
+              href: InstanceIdentity.actorUrl(identity, account.username),
+              name: `@${account.username}@${identity.domain}`,
+            })),
+          ...(actors.isOk() ? [...actors.value.values()] : [])
+            .filter((actor) => actorUris.has(actor.actorUri))
+            .map((actor) => ({
+              href: actor.actorUri,
+              name: `@${actor.username}@${actor.domain}`,
+            })),
+        ],
+      ];
+    }),
+  );
+};

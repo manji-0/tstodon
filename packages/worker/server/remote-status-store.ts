@@ -24,6 +24,7 @@ import {
   type RepositoryError,
   runD1,
   runD1Batch,
+  sqlInJsonEach,
   type StoredRowInvalid,
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
@@ -330,6 +331,41 @@ export const recordRemoteTombstone = (
       .bind(objectUri, actorUri, nowIso())
       .run();
   });
+
+/**
+ * The statuses stored at several object URIs, keyed by object URI. A row
+ * that does not read as a status is left out, as a caller that goes on
+ * without one reads it ({@link readableRow}).
+ */
+export const findRemoteStatusesByObjectUris = async (
+  db: D1Database,
+  objectUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteStatus>, RepositoryError>> => {
+  const unique = [...new Set(objectUris)];
+  if (unique.length === 0) {
+    return ok(new Map());
+  }
+  const rows = await runD1(async () =>
+    db
+      .prepare(
+        `SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive,
+           language, published_at, edited_at, media_json, card_json, poll_json, emojis_json,
+           quote_policy_json
+         FROM remote_statuses WHERE object_uri ${sqlInJsonEach()}`,
+      )
+      .bind(jsonStringArray(unique))
+      .all(),
+  );
+  return rows.map(
+    ({ results }) =>
+      new Map(
+        okValues(results.map((row) => storedRemoteStatus(row))).map((status) => [
+          status.objectUri,
+          status,
+        ]),
+      ),
+  );
+};
 
 export const findRemoteStatusByObjectUri = async (
   db: D1Database,

@@ -4,12 +4,12 @@ import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import type { CustomEmoji } from "./emoji";
-import { loadNoteMentions } from "./mention-resolve";
-import { loadNoteMedia } from "./note-attachments";
-import { loadNotePoll } from "./poll-store";
-import { loadNoteQuotePolicy } from "./quote-policy-name";
-import { noteQuote } from "./quote-uri";
-import { loadNoteReply } from "./reply-target";
+import { loadNoteMentions, loadNotesMentions } from "./mention-resolve";
+import { loadNoteMedia, loadNotesMedia } from "./note-attachments";
+import { findPollsByStatusIds, loadNotePoll } from "./poll-store";
+import { loadNoteQuotePolicies, loadNoteQuotePolicy } from "./quote-policy-name";
+import { noteQuote, noteQuotes } from "./quote-uri";
+import { loadNoteReplies, loadNoteReply } from "./reply-target";
 
 /**
  * A stored local note as it is now, the way its URI serves it: with its
@@ -49,5 +49,52 @@ export const loadLocalNoteDocument = async (
       quotePolicy,
       emojis: extras.emojis,
     }),
+  );
+};
+
+/**
+ * {@link loadLocalNoteDocument} for several notes of `author`, keyed by note
+ * id, without their replies collections. The media, mentions, parents,
+ * polls, quotes and quote policies of all the notes are read at once, so
+ * the statements do not grow with the notes.
+ */
+export const loadLocalNoteDocuments = async (
+  env: Env,
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  notes: ReadonlyArray<LocalNote>,
+  emojis: ReadonlyArray<CustomEmoji>,
+): Promise<Result<ReadonlyMap<string, ApStatusDocumentJSON>, RepositoryError>> => {
+  const ids = notes.map((note) => note.id);
+  const [media, quotes, mentions, replies, polls, quotePolicies] = await Promise.all([
+    loadNotesMedia(env.DB, identity, notes),
+    noteQuotes(env, identity, ids),
+    loadNotesMentions(env.DB, identity, ids),
+    loadNoteReplies(env.DB, identity, notes),
+    findPollsByStatusIds(env.DB, ids, undefined),
+    loadNoteQuotePolicies(env.DB, author, notes),
+  ]);
+  if (media.isErr()) {
+    return err(media.error);
+  }
+  if (quotes.isErr()) {
+    return err(quotes.error);
+  }
+  return ok(
+    new Map(
+      notes.map((note) => [
+        note.id,
+        noteDocument(identity, author, note, {
+          quote: quotes.value.get(note.id),
+          mentions: mentions.get(note.id) ?? [],
+          reply: replies.get(note.id),
+          replies: undefined,
+          poll: polls.isOk() ? polls.value.get(note.id) : undefined,
+          media: media.value.get(note.id) ?? { attachments: [], authorSensitized: false },
+          quotePolicy: quotePolicies.get(note.id) ?? "nobody",
+          emojis,
+        }),
+      ]),
+    ),
   );
 };

@@ -5,12 +5,18 @@ import { ApiConversation, ApiNotification, ApiStatus } from "@tstodon/api";
 import type { LocalAccount } from "@tstodon/domain";
 import { expectContract } from "../test/api-contract";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
-import { meter, meterWork, patchD1, resetMeter, settle } from "../test/meter";
+import { meter, patchD1, resetMeter, settle } from "../test/meter";
+import {
+  drainHeld,
+  holdQueue,
+  QUERIES_PER_INVOCATION,
+  QUEUE_BATCH,
+  QUEUE_INVOCATION_BUDGET,
+} from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { openStream } from "../test/stream-fixture";
 import { deleteAccount } from "./account-store";
 import { parseRows } from "./d1";
-import { handleQueue } from "./queue-handler";
 import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
 
 /**
@@ -21,61 +27,11 @@ import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
  * grow with the recipients, and neither does one queue invocation's.
  */
 
-/** D1's queries per Worker invocation (Workers Paid). */
-const QUERIES_PER_INVOCATION = 1000;
-/** The outbox queue's `maxBatchSize` (`app/queues/tstodon-outbox-process.ts`). */
-const QUEUE_BATCH = 10;
-
 const get = async (token: string, path: string) => {
   const response = await SELF.fetch(`https://example.com${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return { status: response.status, body: await response.json() };
-};
-
-/** Queue messages the Worker sends from now on, held here instead of sent. */
-const holdQueue = (): Readonly<{ bodies: unknown[] }> => {
-  const bodies: unknown[] = [];
-  const proto = Object.getPrototypeOf(env.OUTBOX_PROCESS_QUEUE);
-  vi.spyOn(proto, "send").mockImplementation((body: unknown) => {
-    bodies.push(body);
-  });
-  vi.spyOn(proto, "sendBatch").mockImplementation((messages: unknown) => {
-    for (const message of Array.isArray(messages) ? messages : []) {
-      bodies.push(
-        typeof message === "object" && message !== null ? Reflect.get(message, "body") : undefined,
-      );
-    }
-  });
-  return { bodies };
-};
-
-const kindOf = (body: unknown): unknown =>
-  typeof body === "object" && body !== null ? Reflect.get(body, "kind") : undefined;
-
-/** Run `bodies` through the queue handler, `QUEUE_BATCH` per invocation; the most statements one took. */
-const drain = async (bodies: ReadonlyArray<unknown>): Promise<number> => {
-  let most = 0;
-  for (let start = 0; start < bodies.length; start += QUEUE_BATCH) {
-    resetMeter();
-    await meterWork(() =>
-      handleQueue(
-        {
-          messages: bodies.slice(start, start + QUEUE_BATCH).map((body) => ({
-            body,
-            attempts: 1,
-            ack: () => undefined,
-            retry: () => {
-              throw new Error(`job retried: ${JSON.stringify(body)}`);
-            },
-          })),
-        },
-        env,
-      ),
-    );
-    most = Math.max(most, meter.tally.statements);
-  }
-  return most;
 };
 
 afterEach(() => {
@@ -158,10 +114,7 @@ describe("a remote direct note to many local accounts", () => {
       await deliver("warm", await accounts("crowd-dm-warm", 1));
       queued.bodies.length = 0;
       const toThirty = await deliver("thirty", thirty);
-      const thirtyJobs = queued.bodies.filter((body) => kindOf(body) !== "ProcessLinkCard");
-      queued.bodies.length = 0;
       const toSixty = await deliver("sixty", sixty);
-      const sixtyJobs = queued.bodies.filter((body) => kindOf(body) !== "ProcessLinkCard");
 
       // A few statements of the stream renders vary from run to run; 30 more
       // recipients served inline would add over a thousand.
@@ -170,11 +123,11 @@ describe("a remote direct note to many local accounts", () => {
         `the inbox request made ${toThirty.statements} statements for 30 recipients, ${toSixty.statements} for 60`,
       ).toBeLessThan(20);
       expect(toThirty.statements).toBeLessThan(QUERIES_PER_INVOCATION);
-      const mostPerInvocation = await drain([...thirtyJobs, ...sixtyJobs]);
+      const mostPerInvocation = await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
       expect(
         mostPerInvocation,
         `one queue invocation of ${QUEUE_BATCH} jobs made ${mostPerInvocation} statements`,
-      ).toBeLessThan(QUERIES_PER_INVOCATION);
+      ).toBeLessThan(QUEUE_INVOCATION_BUDGET);
 
       for (const account of thirty) {
         const token = await accessTokenFor(account.id);
@@ -264,7 +217,7 @@ describe("a queued FinishRemoteNoteRecipient job", () => {
     const gone = await signedInAccount("queued-gone@example.com");
     const { job } = await storedNote("gone", [gone]);
     expect((await deleteAccount(env.DB, gone.id)).isOk()).toBe(true);
-    await drain([job(gone.id)]);
+    await drainHeld({ bodies: [job(gone.id)] }, ["FinishRemoteNoteRecipient"]);
   });
 
   it("is retried when the note's mentions cannot be read, rather than screened without them", async () => {
@@ -278,7 +231,9 @@ describe("a queued FinishRemoteNoteRecipient job", () => {
       }
       return Reflect.apply(prepare, this, [sql]);
     });
-    await expect(drain([job(reader.id)])).rejects.toThrow("job retried");
+    await expect(
+      drainHeld({ bodies: [job(reader.id)] }, ["FinishRemoteNoteRecipient"]),
+    ).rejects.toThrow("job retried");
   });
 
   it("notifies nobody an Update has since made silent", async () => {
@@ -293,7 +248,7 @@ describe("a queued FinishRemoteNoteRecipient job", () => {
     )
       .bind(statusId, dropped.id)
       .run();
-    await drain([job(dropped.id)]);
+    await drainHeld({ bodies: [job(dropped.id)] }, ["FinishRemoteNoteRecipient"]);
     expect(await mentionCount(dropped.id, statusId)).toBe(0);
   });
 });

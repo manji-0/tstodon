@@ -164,6 +164,25 @@ const FinishRemoteNoteRecipientSchema = z.object({
   steps: z.array(z.union([z.literal("Mention"), z.literal("Conversation")])).min(1),
 });
 
+/**
+ * Tell the local accounts that boosted a remote note that it was edited, as
+ * Mastodon's `FanOutOnWriteService#notify_about_update!`: an `update`
+ * notification from `actorUri` about `statusId`, stored once per account
+ * since `since` (the edit's instant). `Page` lists the boosters after
+ * `afterAccountId` (empty for the first page), queues a `Booster` job for
+ * each and the next page; `Booster` notifies one account.
+ */
+const NotifyRemoteNoteBoostersSchema = z.object({
+  kind: z.literal("NotifyRemoteNoteBoosters"),
+  statusId: StatusId.schema,
+  actorUri: z.string().min(1),
+  since: z.iso.datetime(),
+  step: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("Page"), afterAccountId: z.string() }),
+    z.object({ kind: z.literal("Booster"), accountId: z.string().min(1) }),
+  ]),
+});
+
 /** Federate one `Update(Question)` with the poll's current counts (debounced). */
 const DistributePollUpdateSchema = z.object({
   kind: z.literal("DistributePollUpdate"),
@@ -403,6 +422,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   CleanUpAccountStatusesSchema,
   ProcessLinkCardSchema,
   FinishRemoteNoteRecipientSchema,
+  NotifyRemoteNoteBoostersSchema,
   DistributePollUpdateSchema,
   DeliverPushSchema,
   MoveFollowsSchema,

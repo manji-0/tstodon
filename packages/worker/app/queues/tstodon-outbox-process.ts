@@ -3,7 +3,11 @@ import { defineQueue } from "void";
 import { withMetricsBudget } from "#server/metrics";
 import { handleQueue } from "#server/queue-handler";
 
-export const maxBatchSize = 10;
+// One batch is one invocation, whose D1 statements are capped at 1000. The
+// costliest jobs (a remote note's queued recipient with its `direct` stream
+// open) make about 83 each, so 5 keeps a batch near half the cap
+// (`remote-note-recipients.test.ts` measures it).
+export const maxBatchSize = 5;
 export const maxBatchTimeout = 0;
 export const maxRetries = 3;
 // Not Void options: `queueConsumerOptions` in `void-plugins.ts` writes them.
