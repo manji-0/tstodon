@@ -259,6 +259,25 @@ describe("notification policy", () => {
 
     const listed = await json("/api/v1/conversations", { headers: await auth(recipientEmail) });
     expect(listed.body).toEqual([]);
+
+    // Mastodon's dismissal deletes the filtered notifications, so a later
+    // accept joins only the messages still held.
+    await postStatus(senderEmail, {
+      status: `@${recipient.username} wanted`,
+      visibility: "direct",
+    });
+    const accepted = await json(`/api/v1/notifications/requests/${sender.id}/accept`, {
+      method: "POST",
+      headers: await auth(recipientEmail),
+    });
+    expect(accepted.status).toBe(200);
+    const after = read(
+      z.array(z.object({ last_status: z.object({ content: z.string() }).nullable() })),
+      (await json("/api/v1/conversations", { headers: await auth(recipientEmail) })).body,
+    );
+    expect(after.map((conversation) => conversation.last_status?.content)).toEqual([
+      expect.stringContaining("wanted"),
+    ]);
   });
 
   it("discards held notifications on dismiss", async () => {

@@ -303,6 +303,7 @@ export const acceptNotificationRequests = async (
         .prepare(
           `DELETE FROM withheld_conversation_statuses
            WHERE account_id = ? AND from_account_id IN (SELECT value FROM json_each(?))
+             AND held = 1
            RETURNING status_id`,
         )
         .bind(accountId, senders),
@@ -310,7 +311,10 @@ export const acceptNotificationRequests = async (
   ).map((results) => parseRows(StatusIdRow, results[1]?.results).map((row) => row.status_id));
 
 /**
- * Dismiss senders: their held notifications are discarded. One batch however
+ * Dismiss senders: their held notifications are discarded, and the statuses
+ * those kept out of the account's conversations stay out once the senders
+ * are accepted, as Mastodon's `FilteredNotificationCleanupWorker` deletes the
+ * notifications `UnfilterNotificationsWorker` would read. One batch however
  * many senders and notifications.
  */
 export const dismissNotificationRequests = async (
@@ -321,6 +325,12 @@ export const dismissNotificationRequests = async (
   (
     await closeNotificationRequests(db, accountId, fromAccountIds, (senders) => [
       d1PrepareTyped(db, dismissNotificationRequestsJsonSql(accountId, senders, nowIso())),
+      db
+        .prepare(
+          `UPDATE withheld_conversation_statuses SET held = 0
+           WHERE account_id = ? AND from_account_id IN (SELECT value FROM json_each(?))`,
+        )
+        .bind(accountId, senders),
     ])
   ).map(() => undefined);
 
