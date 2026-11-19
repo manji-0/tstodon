@@ -293,23 +293,6 @@ export const OutboxDeliveryRow = {
   parseMany: schemaResult(z.array(OutboxDeliveryRowSchema)),
 } as const;
 
-const RemoteStatusRowSchema = z
-  .object({
-    id: z.string().min(1).optional(),
-    object_uri: z.string().min(1).optional(),
-    actor_uri: z.string().min(1).optional(),
-    content_html: z.string().nullable().optional(),
-  })
-  .passthrough();
-
-export type RemoteStatusRow = z.infer<typeof RemoteStatusRowSchema>;
-
-export const RemoteStatusRow = {
-  schema: RemoteStatusRowSchema,
-  parse: schemaResult(RemoteStatusRowSchema),
-  parseMany: schemaResult(z.array(RemoteStatusRowSchema)),
-} as const;
-
 const InboxActivityRowSchema = z
   .object({
     activity_id: z.string().min(1).optional(),
@@ -324,45 +307,6 @@ export const InboxActivityRow = {
   schema: InboxActivityRowSchema,
   parse: schemaResult(InboxActivityRowSchema),
   parseMany: schemaResult(z.array(InboxActivityRowSchema)),
-} as const;
-
-const AccountPrivateKeyRowSchema = z
-  .object({
-    private_key_jwk: z.string().min(1),
-  })
-  .passthrough();
-
-export type AccountPrivateKeyRow = z.infer<typeof AccountPrivateKeyRowSchema>;
-
-export const AccountPrivateKeyRow = {
-  schema: AccountPrivateKeyRowSchema,
-  parse: schemaResult(AccountPrivateKeyRowSchema),
-} as const;
-
-const RemoteFavouriteRowSchema = z
-  .object({
-    remote_actor_uri: z.string().min(1).optional(),
-    status_id: z.string().min(1).optional(),
-  })
-  .passthrough();
-
-export const RemoteFavouriteRow = {
-  schema: RemoteFavouriteRowSchema,
-  parse: schemaResult(RemoteFavouriteRowSchema),
-  parseMany: schemaResult(z.array(RemoteFavouriteRowSchema)),
-} as const;
-
-const RemoteAnnounceRowSchema = z
-  .object({
-    remote_actor_uri: z.string().min(1).optional(),
-    status_id: z.string().min(1).optional(),
-  })
-  .passthrough();
-
-export const RemoteAnnounceRow = {
-  schema: RemoteAnnounceRowSchema,
-  parse: schemaResult(RemoteAnnounceRowSchema),
-  parseMany: schemaResult(z.array(RemoteAnnounceRowSchema)),
 } as const;
 
 /** Mastodon API poll, as the client API serves it. */

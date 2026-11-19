@@ -6,7 +6,6 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { signAccessJwt } from "../packages/worker/test/access-jwt-fixture.js";
 import {
-  AccountPrivateKeyRow,
   ApPerson,
   MastodonAccount,
   type ApPerson as ApPersonValue,
@@ -19,21 +18,6 @@ export const A = process.env.E2E_A_ORIGIN ?? "http://127.0.0.1:8791";
 export const B = process.env.E2E_B_ORIGIN ?? "http://127.0.0.1:8792";
 export const A_DOMAIN = process.env.E2E_A_DOMAIN ?? "127.0.0.1:8791";
 export const B_DOMAIN = process.env.E2E_B_DOMAIN ?? "127.0.0.1:8792";
-
-const PrivateKeyJwkSchema = z
-  .object({
-    kty: z.string().min(1),
-    n: z.string().optional(),
-    e: z.string().optional(),
-    d: z.string().optional(),
-    p: z.string().optional(),
-    q: z.string().optional(),
-    dp: z.string().optional(),
-    dq: z.string().optional(),
-    qi: z.string().optional(),
-  })
-  .passthrough();
-const parsePrivateKeyJwk = schemaResult(PrivateKeyJwkSchema);
 
 const d1ExecuteRowSchema = z.object({ results: z.array(z.unknown()).optional() }).passthrough();
 const d1ExecuteEnvelopeSchema = z.union([z.array(d1ExecuteRowSchema), d1ExecuteRowSchema]);
@@ -48,8 +32,6 @@ export type HttpJsonResult = {
   body: JsonBody;
   headers: Headers;
 };
-
-export type ActorDocument = ApPersonValue;
 
 export function fail(message: string, detail?: unknown): never {
   console.error(`FAIL: ${message}`, detail ?? "");
@@ -275,89 +257,6 @@ export const d1Rows = <T>(
   label: string,
 ): T[] => expectParsed(label, parseMany, d1Json(instance, sql));
 
-export const accountPrivateKeyJwk = (instance: E2eInstance, username: string): string => {
-  const rows = d1Json(
-    instance,
-    `SELECT private_key_jwk FROM accounts WHERE username = '${username.replaceAll("'", "''")}' LIMIT 1`,
-  );
-  const row = expectParsed(
-    `private key missing for ${username} on ${instance}`,
-    AccountPrivateKeyRow.parse,
-    rows[0],
-  );
-  return row.private_key_jwk;
-};
-
-const sha256DigestHeader = async (body: string): Promise<string> => {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
-  const bytes = new Uint8Array(hash);
-  return `SHA-256=${btoa(String.fromCharCode(...bytes))}`;
-};
-
-export const signInboxPost = async (
-  inboxUrl: string,
-  privateKeyJwkJson: string,
-  keyId: string,
-  body: string,
-): Promise<Record<string, string>> => {
-  const url = new URL(inboxUrl);
-  const digest = await sha256DigestHeader(body);
-  const date = new Date().toUTCString();
-  const headerNames = ["(request-target)", "host", "date", "digest"];
-  const signingString = [
-    `(request-target): post ${url.pathname}${url.search}`,
-    `host: ${url.host}`,
-    `date: ${date}`,
-    `digest: ${digest}`,
-  ].join("\n");
-  const jwkParsed = expectParsed(
-    "account private key jwk",
-    parsePrivateKeyJwk,
-    JSON.parse(privateKeyJwkJson),
-  );
-  const jwkData: JsonWebKey = { kty: jwkParsed.kty };
-  if (jwkParsed.n !== undefined) jwkData.n = jwkParsed.n;
-  if (jwkParsed.e !== undefined) jwkData.e = jwkParsed.e;
-  if (jwkParsed.d !== undefined) jwkData.d = jwkParsed.d;
-  if (jwkParsed.p !== undefined) jwkData.p = jwkParsed.p;
-  if (jwkParsed.q !== undefined) jwkData.q = jwkParsed.q;
-  if (jwkParsed.dp !== undefined) jwkData.dp = jwkParsed.dp;
-  if (jwkParsed.dq !== undefined) jwkData.dq = jwkParsed.dq;
-  if (jwkParsed.qi !== undefined) jwkData.qi = jwkParsed.qi;
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    jwkData,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    new TextEncoder().encode(signingString),
-  );
-  const bytes = new Uint8Array(signature);
-  const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="${headerNames.join(" ")}",signature="${btoa(String.fromCharCode(...bytes))}"`;
-  return {
-    Host: url.host,
-    Date: date,
-    Digest: digest,
-    Signature: signatureHeader,
-    "Content-Type": "application/activity+json",
-  };
-};
-
-export const postSignedInbox = async (
-  inboxUrl: string,
-  privateKeyJwkJson: string,
-  keyId: string,
-  activity: unknown,
-): Promise<HttpJsonResult> => {
-  const body = JSON.stringify(activity);
-  const headers = await signInboxPost(inboxUrl, privateKeyJwkJson, keyId, body);
-  return getJson(inboxUrl, { method: "POST", headers, body });
-};
-
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export const waitRows = async <T>(
@@ -403,34 +302,6 @@ export const fetchApPerson = async (actorUrl: string, label: string): Promise<Ap
     return fail(label, result);
   }
   return result.body;
-};
-
-/**
- * Seed a remote actor row and its key (`remote_actor_keys`) so inbox
- * verification can skip loopback fetch (workerd blocks 127.0.0.1).
- */
-export const seedRemoteActor = (instance: E2eInstance, actor: ActorDocument): void => {
-  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
-  const shared = actor.endpoints?.sharedInbox ? quote(actor.endpoints.sharedInbox) : "NULL";
-  const now = quote(new Date().toISOString());
-  const sql = `INSERT INTO remote_actors (
-      actor_uri, username, domain, inbox_uri, shared_inbox_uri,
-      public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at
-    ) VALUES (
-      ${quote(actor.id)}, ${quote(actor.preferredUsername)}, ${quote(new URL(actor.id).host)},
-      ${quote(actor.inbox)}, ${shared}, ${quote(actor.id)}, '-',
-      ${quote(actor.name ?? actor.preferredUsername)}, ${now}, ${now}, ${now}
-    )
-    ON CONFLICT(actor_uri) DO UPDATE SET
-      inbox_uri = excluded.inbox_uri,
-      shared_inbox_uri = excluded.shared_inbox_uri,
-      updated_at = excluded.updated_at;
-    INSERT INTO remote_actor_keys (key_id, actor_uri, type, public_key_pem)
-    VALUES (${quote(actor.publicKey.id)}, ${quote(actor.id)}, 'rsa', ${quote(actor.publicKey.publicKeyPem)})
-    ON CONFLICT(key_id) DO UPDATE SET
-      actor_uri = excluded.actor_uri,
-      public_key_pem = excluded.public_key_pem`;
-  d1Json(instance, sql);
 };
 
 /** Call a Mastodon client API endpoint as a signed-in user; fail on a non-2xx answer. */
