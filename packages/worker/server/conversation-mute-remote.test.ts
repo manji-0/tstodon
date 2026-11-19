@@ -3,6 +3,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 
 const json = async (path: string, init?: RequestInit) => {
@@ -108,6 +109,7 @@ describe("muted conversations", () => {
   it("hides remote direct replies into a muted thread from the direct timeline", async () => {
     const email = "mute-direct-author@example.com";
     const author = await me(email);
+    await acceptPrivateMentions(email);
     const authorUrl = `https://example.com/users/${author.username}`;
     const remote = await remoteActor("mute-direct-replier");
     const direct = (n: number, inReplyTo: string) => ({

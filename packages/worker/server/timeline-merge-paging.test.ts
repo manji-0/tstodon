@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 
 // About a dozen posts per case, each some 50 D1 statements.
 vi.setConfig({ testTimeout: 45_000 });
@@ -98,6 +99,7 @@ describe("timelines merged from several sources", () => {
     const mine = "merge-direct-me@example.com";
     const aEmail = "merge-direct-a@example.com";
     const bEmail = "merge-direct-b@example.com";
+    await acceptPrivateMentions(mine);
 
     const expected: string[] = [];
     expected.push(await post(mine, `@${a.username} one`, "direct"));

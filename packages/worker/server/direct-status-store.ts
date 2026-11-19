@@ -34,6 +34,10 @@ export const listDirectStatusesForAccount = async (
            SELECT m.status_id FROM status_mentions m CROSS JOIN statuses s ON s.id = m.status_id
            WHERE m.account_id = ? AND s.kind = 'LocalNote' AND s.visibility = 'direct'
              AND s.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+             AND NOT EXISTS (
+               SELECT 1 FROM withheld_conversation_statuses w
+               WHERE w.account_id = m.account_id AND w.status_id = m.status_id
+             )
              ${mentionBefore}
            ORDER BY 1 DESC LIMIT ?
          )

@@ -191,6 +191,7 @@ const notifyContracts = (env: Env): NotifyContracts => {
         notification.accountId,
         notification.fromAccountId,
         notification.statusId,
+        notification.kind === "mention",
       ),
     // The stream render and push fan-out read about forty statements; the
     // notification row is already written, so they run after the response.

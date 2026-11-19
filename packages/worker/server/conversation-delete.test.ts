@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -80,6 +81,7 @@ describe("conversations", () => {
   it("removes a conversation until a newer message arrives", async () => {
     const alice = "conversation-delete-alice@example.com";
     const bob = "conversation-delete-bob@example.com";
+    await acceptPrivateMentions(bob);
     const bobAccount = await json("/api/v1/accounts/verify_credentials", {
       headers: await auth(bob),
     });

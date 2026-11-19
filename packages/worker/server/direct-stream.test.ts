@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { openStream } from "../test/stream-fixture";
 import { RemoteAccountId } from "./remote-account-id";
@@ -56,6 +57,7 @@ describe("direct stream", () => {
       signedInAccount(author),
       signedInAccount(recipient),
     ]);
+    await Promise.all([acceptPrivateMentions(recipient), acceptPrivateMentions(author)]);
     const direct = { kind: "Direct" } as const;
     const recipientSocket = await openStream({ email: recipient, query: "?stream=direct" });
     const authorSocket = await openStream({ email: author, query: "?stream=direct" });
@@ -90,6 +92,28 @@ describe("direct stream", () => {
     authorSocket.close();
   });
 
+  it("send a held direct note's conversation when the request is accepted, not before", async () => {
+    const author = "dm-held-author@example.com";
+    const recipient = "dm-held-recipient@example.com";
+    const authorAccount = await signedInAccount(author);
+    const direct = { kind: "Direct" } as const;
+    const socket = await openStream({ email: recipient, query: "?stream=direct" });
+
+    const statusId = await postTo(author, recipient, "direct", "held back");
+    expect(await socket.heardNothing(direct)).toBe(true);
+
+    const accepted = await json(
+      recipient,
+      `/api/v1/notifications/requests/${authorAccount.id}/accept`,
+      { method: "POST" },
+    );
+    expect(accepted.status).toBe(200);
+    const heard = await socket.next();
+    expect(heard).toMatchObject({ stream: ["direct"], event: "conversation" });
+    expect(conversationOf(heard.payload).last_status).toMatchObject({ id: statusId });
+    socket.close();
+  });
+
   it("send nothing for a direct note from an account the recipient blocks", async () => {
     const author = "dm-blocked-author@example.com";
     const recipient = "dm-blocker@example.com";
@@ -112,6 +136,7 @@ describe("direct stream", () => {
   it("send a remote direct note that mentions the account as a conversation", async () => {
     const email = "dm-remote-recipient@example.com";
     const account = await signedInAccount(email);
+    await acceptPrivateMentions(email);
     const socket = await openStream({ email, query: "?stream=direct" });
     const remote = await remoteActor("dm-stream-sender");
     const origin = new URL(remote.actorUri).origin;
@@ -149,6 +174,7 @@ describe("direct stream", () => {
   it("send the account's direct stream the read conversation, and nothing on removal", async () => {
     const author = "dm-read-author@example.com";
     const recipient = "dm-read-recipient@example.com";
+    await acceptPrivateMentions(recipient);
     const recipientSocket = await openStream({ email: recipient, query: "?stream=direct" });
     const otherSocket = await openStream({ email: recipient, query: "?stream=direct" });
     const authorSocket = await openStream({ email: author, query: "?stream=direct" });

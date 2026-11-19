@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiAccount, ApiConversation, ApiHashtag, ApiStatus, ApiTrendsLink } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 
 type Page<T> = Readonly<{ items: T[]; next?: string | undefined; prev?: string | undefined }>;
 
@@ -51,6 +52,7 @@ describe("GET /api/v1/conversations paging", () => {
   it("pages by each conversation's last status id, as Mastodon does", async () => {
     const alice = "conv-paging-alice@example.com";
     const bob = "conv-paging-bob@example.com";
+    await acceptPrivateMentions(bob);
     const bobResponse = await SELF.fetch("https://example.com/api/v1/accounts/verify_credentials", {
       headers: await authHeaders(bob),
     });

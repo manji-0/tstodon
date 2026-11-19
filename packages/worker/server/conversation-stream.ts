@@ -18,8 +18,8 @@ const CONVERSATION_WINDOW = 20;
 const READ_WINDOW = 100;
 
 /**
- * Send each account in `accountIds` the conversation `matches` picks out of
- * its list within `window`, as `GET /api/v1/conversations` would now show it,
+ * Send each account in `accountIds` the conversations `matches` picks out of
+ * its list within `window`, as `GET /api/v1/conversations` would now show them,
  * on its `direct` stream (Mastodon's `conversation` event). An account whose
  * list has no match hears nothing. Best effort: the change is stored either
  * way, and shows on the next list fetch.
@@ -48,23 +48,21 @@ const publishConversation = async (
       const conversations = await listConversationsForAccount(env.DB, identity, accountId, {
         limit: window,
       });
-      const conversation = conversations.isOk() ? conversations.value.find(matches) : undefined;
-      if (!conversation) {
+      const matched = conversations.isOk() ? conversations.value.filter(matches) : [];
+      if (matched.length === 0) {
         continue;
       }
-      const documents = await conversationDocuments(env, identity, accountId, [conversation]);
+      const documents = await conversationDocuments(env, identity, accountId, matched);
       if (documents.isErr()) {
         console.error(JSON.stringify({ kind: "ConversationNotPublished", accountId }));
         continue;
       }
-      const [payload] = documents.value;
-      if (!payload) {
-        continue;
+      for (const payload of documents.value) {
+        await publishToHub(env, accountId, {
+          channels: [{ kind: "Direct" }],
+          event: { kind: "conversation", payload },
+        });
       }
-      await publishToHub(env, accountId, {
-        channels: [{ kind: "Direct" }],
-        event: { kind: "conversation", payload },
-      });
     } catch {
       console.error(JSON.stringify({ kind: "ConversationNotPublished", accountId }));
     }
@@ -91,6 +89,23 @@ export const publishConversationUpdate = (
     CONVERSATION_WINDOW,
     (conversation) => conversation.lastStatus.status.id === statusId,
   );
+
+/**
+ * Tell `accountId` about each conversation that one of `statusIds` now ends,
+ * as Mastodon's `AccountConversation.add_status` streams each conversation
+ * an accepted notification request adds a direct message to.
+ */
+export const publishConversationsJoined = (
+  env: Env,
+  identity: InstanceIdentity,
+  accountId: string,
+  statusIds: ReadonlyArray<string>,
+): Promise<void> => {
+  const joined = new Set(statusIds);
+  return publishConversation(env, identity, [accountId], CONVERSATION_WINDOW, (conversation) =>
+    joined.has(conversation.lastStatus.status.id),
+  );
+};
 
 /**
  * Tell `accountId`'s `direct` stream that it marked `conversationId` read,

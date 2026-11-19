@@ -3,7 +3,7 @@ import { type Hostname, NotificationPolicy, NotificationPolicyAction } from "@ts
 import { nowIso } from "./clock";
 import { ok, type Result } from "neverthrow";
 import { z } from "zod";
-import { jsonStringArray, runD1, runD1Batch, type RepositoryError } from "./d1";
+import { jsonStringArray, parseRows, runD1, runD1Batch, type RepositoryError } from "./d1";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 import {
@@ -191,12 +191,18 @@ export const countNotificationRequests = async (
     };
   });
 
+/**
+ * Hold a notification as a request. A held mention also keeps its status out
+ * of the account's conversations until the sender is accepted
+ * (`withheld_conversation_statuses`).
+ */
 export const holdNotification = async (
   db: D1Database,
   notificationId: string,
   accountId: string,
   fromAccountId: string,
   statusId: string | undefined,
+  mention: boolean,
 ): Promise<Result<void, RepositoryError>> => {
   const written = await runD1(async () => {
     const createdAt = nowIso();
@@ -220,6 +226,16 @@ export const holdNotification = async (
         createdAt,
       ),
     );
+    if (mention && statusId !== undefined) {
+      await db
+        .prepare(
+          `INSERT INTO withheld_conversation_statuses (account_id, from_account_id, status_id)
+           VALUES (?, ?, ?)
+           ON CONFLICT(account_id, status_id) DO NOTHING`,
+        )
+        .bind(accountId, fromAccountId, statusId)
+        .run();
+    }
   });
   return written.map(() => undefined);
 };
@@ -245,50 +261,68 @@ export const findNotificationRequestSenders = async (
         ).map((row) => row.from_account_id),
       );
 
-/** Delete the senders' requests and then their emptied groups, after `first`. */
+/**
+ * Run `around` and then delete the senders' requests and their emptied
+ * groups, in one batch. Resolves to the batch's results.
+ */
 const closeNotificationRequests = async (
   db: D1Database,
   accountId: string,
   fromAccountIds: ReadonlyArray<string>,
-  first: (sendersJson: string) => D1PreparedStatement,
-): Promise<Result<void, RepositoryError>> => {
+  around: (sendersJson: string) => ReadonlyArray<D1PreparedStatement>,
+): Promise<Result<D1Result[], RepositoryError>> => {
   if (fromAccountIds.length === 0) {
-    return ok(undefined);
+    return ok([]);
   }
   const senders = jsonStringArray([...fromAccountIds]);
-  const batched = await runD1Batch(db, [
-    first(senders),
+  return runD1Batch(db, [
+    ...around(senders),
     d1PrepareTyped(db, deleteNotificationRequestsJsonSql(accountId, senders)),
     d1PrepareTyped(db, deleteEmptyNotificationRequestGroupsJsonSql(accountId, senders)),
   ]);
-  return batched.map(() => undefined);
 };
 
+const StatusIdRow = z.object({ status_id: z.string() });
+
 /**
- * Accept senders: their held notifications merge back into the list and
- * later ones are not held. One batch however many senders.
+ * Accept senders: their held notifications merge back into the list, later
+ * ones are not held, and the statuses their held mentions kept out of the
+ * account's conversations join them, as Mastodon's
+ * `UnfilterNotificationsWorker`. One batch however many senders. Resolves to
+ * the ids of those statuses.
  */
-export const acceptNotificationRequests = (
+export const acceptNotificationRequests = async (
   db: D1Database,
   accountId: string,
   fromAccountIds: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> =>
-  closeNotificationRequests(db, accountId, fromAccountIds, (senders) =>
-    d1PrepareTyped(db, insertNotificationAcceptancesJsonSql(accountId, senders, nowIso())),
-  );
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  (
+    await closeNotificationRequests(db, accountId, fromAccountIds, (senders) => [
+      d1PrepareTyped(db, insertNotificationAcceptancesJsonSql(accountId, senders, nowIso())),
+      db
+        .prepare(
+          `DELETE FROM withheld_conversation_statuses
+           WHERE account_id = ? AND from_account_id IN (SELECT value FROM json_each(?))
+           RETURNING status_id`,
+        )
+        .bind(accountId, senders),
+    ])
+  ).map((results) => parseRows(StatusIdRow, results[1]?.results).map((row) => row.status_id));
 
 /**
  * Dismiss senders: their held notifications are discarded. One batch however
  * many senders and notifications.
  */
-export const dismissNotificationRequests = (
+export const dismissNotificationRequests = async (
   db: D1Database,
   accountId: string,
   fromAccountIds: ReadonlyArray<string>,
 ): Promise<Result<void, RepositoryError>> =>
-  closeNotificationRequests(db, accountId, fromAccountIds, (senders) =>
-    d1PrepareTyped(db, dismissNotificationRequestsJsonSql(accountId, senders, nowIso())),
-  );
+  (
+    await closeNotificationRequests(db, accountId, fromAccountIds, (senders) => [
+      d1PrepareTyped(db, dismissNotificationRequestsJsonSql(accountId, senders, nowIso())),
+    ])
+  ).map(() => undefined);
 
 export const isSenderAccepted = async (
   db: D1Database,
