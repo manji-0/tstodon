@@ -361,17 +361,20 @@ describe("remote Update of a note", () => {
   // (`non_matching_uri_hosts?`).
   it("ignores an Update of a cached note whose id is on another host than the signer's", async () => {
     const author = await remoteActor("update-cached-off-host");
-    const original = {
-      ...note(author, "cached-off-host", "<p>before</p>"),
-      id: "https://elsewhere.example/notes/cached-off-host",
-    };
+    const onHost = note(author, "cached-off-host", "<p>before</p>");
+    const original = { ...onHost, id: "https://elsewhere.example/notes/cached-off-host" };
     expect(
       await author.send({
         id: "https://remote.example/activities/create-cached-off-host",
         type: "Create",
-        object: original,
+        object: onHost,
       }),
     ).toBe(202);
+    // A `Create` no longer stores a note on another host than its signer's;
+    // a row stored before that check is moved there by hand.
+    await env.DB.prepare("UPDATE remote_statuses SET object_uri = ? WHERE object_uri = ?")
+      .bind(original.id, onHost.id)
+      .run();
     const id = await storedStatusId(original.id);
 
     expect(

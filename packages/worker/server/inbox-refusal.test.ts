@@ -204,7 +204,7 @@ describe("inbox refusal events", () => {
     );
   });
 
-  it("logs a key that belongs to another actor than the activity's", async () => {
+  it("logs a forward its actor did not sign, answered 202 as Mastodon", async () => {
     const { testEnv, refusals } = metricsEnv();
     const host = "refusal-mismatch.example";
     const mallory = await remoteActor("refusal-mallory", host);
@@ -213,10 +213,10 @@ describe("inbox refusal events", () => {
       await inbox(testEnv)(
         await mallory.delivery({ ...activity(host, "1"), actor: alice.actorUri }),
       ),
-      401,
-      "ActorMismatch",
+      202,
+      "UnverifiedForward",
       refusals,
-      { actor: alice.actorUri, keyIdHost: host },
+      { actor: alice.actorUri, keyIdHost: host, signer: mallory.actorUri, detail: "Unsigned" },
     );
   });
 

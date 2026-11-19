@@ -3,6 +3,7 @@ import { expect } from "vite-plus/test";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { signFetchRequest, signInboxRequest } from "../server/http-signature";
 import { generateAccountKeys } from "../server/keys";
+import { signLdDocument } from "../server/ld-signature";
 import { upsertRemoteActor } from "../server/remote-actor-store";
 
 export type Remote = Readonly<{
@@ -11,6 +12,16 @@ export type Remote = Readonly<{
   send: (activity: Record<string, unknown>) => Promise<number>;
   /** The signed shared-inbox delivery `send` posts, unsent; signed at `date`, now by default. */
   delivery: (activity: Record<string, unknown>, date?: Date) => Promise<Request>;
+  /**
+   * `activity` as `delivery` sends it, with this actor's Linked Data
+   * signature (`RsaSignature2017`) made at `date`, now by default.
+   */
+  ldSigned: (activity: Record<string, unknown>, date?: Date) => Promise<Record<string, unknown>>;
+  /**
+   * A shared-inbox delivery of `body` exactly as given, signed with this
+   * actor's key: how a server forwards another actor's activity.
+   */
+  forward: (body: Record<string, unknown>, date?: Date) => Promise<Request>;
   /** A GET signed with this actor's key (authorized fetch). */
   fetch: (path: string) => Promise<Response>;
   /** The signed GET `fetch` sends, unsent; signed at `date`, now by default. */
@@ -76,15 +87,16 @@ export const remoteActor = async (
   if (options.cache !== false) {
     expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
   }
-  const delivery = async (
-    activity: Record<string, unknown>,
+  const asDelivered = (activity: Record<string, unknown>): Record<string, unknown> => ({
+    "@context": "https://www.w3.org/ns/activitystreams",
+    actor: actorUri,
+    ...activity,
+  });
+  const forward = async (
+    document: Record<string, unknown>,
     date: Date = new Date(),
   ): Promise<Request> => {
-    const body = JSON.stringify({
-      "@context": "https://www.w3.org/ns/activitystreams",
-      actor: actorUri,
-      ...activity,
-    });
+    const body = JSON.stringify(document);
     const headers = await signInboxRequest(
       new URL("https://example.com/inbox"),
       keys.privateKeyJwk,
@@ -100,6 +112,22 @@ export const remoteActor = async (
       headers: headers.value,
       body,
     });
+  };
+  const delivery = (activity: Record<string, unknown>, date?: Date): Promise<Request> =>
+    forward(asDelivered(activity), date);
+  const ldSigned = async (
+    activity: Record<string, unknown>,
+    date: Date = new Date(),
+  ): Promise<Record<string, unknown>> => {
+    const signed = await signLdDocument(
+      asDelivered(activity),
+      { keyId: `${actorUri}#main-key`, privateKeyJwk: keys.privateKeyJwk },
+      date,
+    );
+    if (signed.isErr()) {
+      throw new Error(`LD signature failed: ${signed.error.kind}`);
+    }
+    return signed.value;
   };
   const signedGet = async (path: string, date: Date = new Date()): Promise<Request> => {
     const url = new URL(path, "https://example.com");
@@ -122,6 +150,8 @@ export const remoteActor = async (
     fetch: async (path) => SELF.fetch(await signedGet(path)),
     signedGet,
     delivery,
+    ldSigned,
+    forward,
     send: async (activity) => (await SELF.fetch(await delivery(activity))).status,
   };
 };
