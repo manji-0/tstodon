@@ -494,8 +494,8 @@ describe("multibase values too long to decode", () => {
   });
 });
 
-describe("the remote_actors key columns after migration 0151", () => {
-  it("holds a key a build from before 0151 still parses, and fails to verify with", async () => {
+describe("the remote_actors key columns after migration 0152", () => {
+  it("holds a key a build from before 0152 still parses, and fails to verify with", async () => {
     const legacy = await remoteActor("keys-legacy", "keys-legacy.example");
     const migrations = z
       .array(z.object({ name: z.string(), queries: z.array(z.string()) }))
@@ -510,7 +510,7 @@ describe("the remote_actors key columns after migration 0151", () => {
     )
       .bind(legacy.actorUri)
       .all();
-    // The row schema of a build from before 0151.
+    // The row schema of a build from before 0152.
     const old = z.object({ public_key_id: z.string().min(1), public_key_pem: z.string().min(1) });
     const row = old.parse(rows.results[0]);
     expect(row.public_key_pem).toBe(LEGACY_PUBLIC_KEY_PEM);

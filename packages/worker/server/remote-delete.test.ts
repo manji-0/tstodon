@@ -49,4 +49,31 @@ describe("remote Delete", () => {
     ).toBe(202);
     expect(await storedNote(objectUri)).toBe(0);
   });
+
+  it("drops a Create that arrives after its Delete, as Mastodon's tombstone", async () => {
+    const author = await remoteActor("delete-first-author");
+    const objectUri = "https://remote.example/notes/deleted-first";
+    expect(
+      await author.send({
+        id: "https://remote.example/activities/delete-first",
+        type: "Delete",
+        object: { id: objectUri, type: "Tombstone" },
+      }),
+    ).toBe(202);
+    expect(
+      await author.send({
+        id: "https://remote.example/activities/create-deleted-first",
+        type: "Create",
+        object: {
+          id: objectUri,
+          type: "Note",
+          attributedTo: author.actorUri,
+          content: "<p>late</p>",
+          published: "2026-10-20T00:00:00.000Z",
+          to: ["https://www.w3.org/ns/activitystreams#Public"],
+        },
+      }),
+    ).toBe(202);
+    expect(await storedNote(objectUri)).toBe(0);
+  });
 });

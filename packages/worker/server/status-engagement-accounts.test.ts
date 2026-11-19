@@ -89,7 +89,7 @@ describe("status engagement accounts", () => {
 
     const actorUri = "https://engagement.example/users/kat";
     await remoteActorFixture(actorUri, "kat", "engagement.example");
-    const liked = await upsertRemoteFavourite(env.DB, actorUri, statusId);
+    const liked = await upsertRemoteFavourite(env.DB, actorUri, statusId, "https://act/like/1");
     expect(liked.isOk()).toBe(true);
 
     const listed = await json(`/api/v1/statuses/${statusId}/favourited_by`);

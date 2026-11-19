@@ -16,8 +16,8 @@
 -- @param {String} $16:featuredTagsUri?
 -- @param {String} $17:legacyPublicKeyPem
 -- The actor's keys are in `remote_actor_keys`; `public_key_id` and
--- `public_key_pem` are unread (migration 0151) and written as the actor URI
--- and a placeholder key, which a build from before 0151 can still read.
+-- `public_key_pem` are unread (migration 0152) and written as the actor URI
+-- and a placeholder key, which a build from before 0152 can still read.
 INSERT INTO remote_actors (
   actor_uri, username, domain, inbox_uri, shared_inbox_uri,
   public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,

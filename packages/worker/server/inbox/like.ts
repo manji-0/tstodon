@@ -16,7 +16,7 @@ export const receiveRemoteLike: InboxHandler<RemoteDelivery<"Like">> = async ({
   if (!statusId) {
     return ok(undefined);
   }
-  const liked = await upsertRemoteFavourite(env.DB, signer.actorUri, statusId);
+  const liked = await upsertRemoteFavourite(env.DB, signer.actorUri, statusId, activity.id);
   if (liked.isOk() && liked.value) {
     await notifyStatusAuthor(env, signer.actorUri, statusId, "favourite");
   }

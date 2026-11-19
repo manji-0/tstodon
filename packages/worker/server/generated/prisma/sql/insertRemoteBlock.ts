@@ -7,17 +7,27 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param actorUri
  * @param accountId
+ * @param activityUri
  * @param createdAt
+ * @param undoneAfter
  */
 export const insertRemoteBlock = $runtime.makeTypedQueryFactory(
-  "INSERT OR IGNORE INTO remote_blocks (actor_uri, account_id, created_at)\nVALUES ($1, $2, $3)",
+  "INSERT INTO remote_blocks (actor_uri, account_id, activity_uri, created_at)\nSELECT $1, $2, $3, $4\nWHERE NOT EXISTS (\nSELECT 1 FROM undone_before_arrival\nWHERE actor_uri = $1 AND activity_uri = $3 AND created_at > $5\n)\nON CONFLICT (actor_uri, account_id) DO UPDATE SET activity_uri = excluded.activity_uri",
 ) as (
   actorUri: string,
   accountId: string,
+  activityUri: string,
   createdAt: string,
+  undoneAfter: string,
 ) => $runtime.TypedSql<insertRemoteBlock.Parameters, insertRemoteBlock.Result>;
 
 export namespace insertRemoteBlock {
-  export type Parameters = [actorUri: string, accountId: string, createdAt: string];
+  export type Parameters = [
+    actorUri: string,
+    accountId: string,
+    activityUri: string,
+    createdAt: string,
+    undoneAfter: string,
+  ];
   export type Result = {};
 }

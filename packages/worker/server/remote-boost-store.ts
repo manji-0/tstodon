@@ -1,4 +1,9 @@
-import { RemoteBoost, type RemoteBoostValue, Visibility } from "@tstodon/domain";
+import {
+  RemoteBoost,
+  type RemoteBoostValue,
+  UndoneBeforeArrival,
+  Visibility,
+} from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -67,10 +72,15 @@ const remoteBoostFromRow = (raw: unknown): RemoteBoostValue | undefined => {
   return row.isOk() ? boostFromRow(row.value) : undefined;
 };
 
-/** Record a boost; `true` only when it is new (a redelivery or a second boost of the status answers `false`). */
+/**
+ * Record a boost; `true` only when it is new (a redelivery or a second boost
+ * of the status answers `false`). An Announce whose `Undo` came first is
+ * dropped and answers `false`.
+ */
 export const insertRemoteBoost = async (
   db: D1Database,
   boost: RemoteBoostValue,
+  nowMs: number = Date.now(),
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
@@ -83,7 +93,8 @@ export const insertRemoteBoost = async (
         boost.target.kind === "RemoteStatus" ? boost.target.statusId : null,
         visibilitySql(boost.visibility),
         boost.publishedAt,
-        nowIso(),
+        new Date(nowMs).toISOString(),
+        UndoneBeforeArrival.forgottenBefore(nowMs),
       ),
       CountedRow,
     );

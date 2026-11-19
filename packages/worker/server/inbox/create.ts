@@ -6,11 +6,7 @@ import type { FederatedFetchOptions } from "../federated-fetch";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
 import { persistRemoteObject } from "../remote-status-persist";
-import {
-  findDeliveredRemoteStatus,
-  hasRemoteTombstone,
-  type KnownRemoteStatus,
-} from "../remote-status-store";
+import { findDeliveredRemoteStatus, type KnownRemoteStatus } from "../remote-status-store";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
 /**
@@ -29,14 +25,6 @@ export const applyRemoteCreate = async (
   const objectUri = typeof object === "string" ? object : object.id;
   // Mastodon's `non_matching_uri_hosts?`: an actor creates objects on its own host only.
   if (Hostname.ofUri(objectUri) !== Hostname.ofUri(signer.actorUri)) {
-    return ok(undefined);
-  }
-  // Mastodon's `tombstone_exists?`: a status its author deleted stays deleted.
-  const buried = await hasRemoteTombstone(env.DB, objectUri);
-  if (buried.isErr()) {
-    return err(buried.error);
-  }
-  if (buried.value) {
     return ok(undefined);
   }
   const vote = await handleRemotePollVote(env, identity, signer, object);

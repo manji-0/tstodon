@@ -27,6 +27,7 @@ import {
   claimRemoteOutboxBackfill as claimRemoteOutboxBackfillSql,
   releaseRemoteOutboxBackfill as releaseRemoteOutboxBackfillSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
+  deleteRemoteFollowByActivity as deleteRemoteFollowByActivitySql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   claimRemoteActorKeyRefetch as claimRemoteActorKeyRefetchSql,
   claimRemoteActorRefresh as claimRemoteActorRefreshSql,
@@ -279,9 +280,9 @@ export const findRemoteActorsByUris = async (
 };
 
 /**
- * What `remote_actors.public_key_pem` holds since migration 0151, which moved
+ * What `remote_actors.public_key_pem` holds since migration 0152, which moved
  * keys to `remote_actor_keys`: an RSA key whose private half was thrown away.
- * A build from before 0151 (during a deploy, or after a rollback) still parses
+ * A build from before 0152 (during a deploy, or after a rollback) still parses
  * it, fails to verify any signature with it, and fetches the actor again.
  * The migration writes the same key.
  */
@@ -652,6 +653,16 @@ export const deleteRemoteFollow = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, deleteRemoteFollowSql(remoteActorUri, targetAccountId));
+  });
+
+/** End `remoteActorUri`'s follow, or follow request, made by the `Follow` `followActivityId`. */
+export const deleteRemoteFollowByActivity = async (
+  db: D1Database,
+  remoteActorUri: string,
+  followActivityId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, deleteRemoteFollowByActivitySql(remoteActorUri, followActivityId));
   });
 
 /**

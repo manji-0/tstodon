@@ -10,7 +10,8 @@ import type { InboxHandler, RemoteDelivery } from "./handler";
  * `ActivityPub::Activity::Block`, the follows between the two end both ways,
  * with an `Undo(Follow)` and a `Reject(Follow)` back to the actor, and the
  * block is recorded so `StatusPolicy#show?` can hide the actor's public posts
- * (`author_blocking?`).
+ * (`author_blocking?`). A `Block` whose `Undo` came first still ends the
+ * follows, but is not recorded (`delete_arrived_first?`).
  */
 export const receiveRemoteBlock: InboxHandler<RemoteDelivery<"Block">> = async ({
   env,
@@ -22,7 +23,7 @@ export const receiveRemoteBlock: InboxHandler<RemoteDelivery<"Block">> = async (
   if (!target) {
     return ok(undefined);
   }
-  const recorded = await recordRemoteBlock(env.DB, signer.actorUri, target.id);
+  const recorded = await recordRemoteBlock(env.DB, signer.actorUri, target.id, activity.id);
   if (recorded.isErr()) {
     return err(recorded.error);
   }
