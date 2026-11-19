@@ -27,8 +27,12 @@ export type InboxRefusalReason =
   | "DigestMismatch"
   /** 401: the activity names a local actor that does not exist. */
   | "UnknownLocalActor"
-  /** 401: the key belongs to another actor than the activity's. */
-  | "ActorMismatch"
+  /**
+   * 202, as Mastodon: another actor signed the request (a forward), and the
+   * activity's actor's own Linked Data signature is missing or does not
+   * verify (`detail` says why). Nothing is applied.
+   */
+  | "UnverifiedForward"
   /** 401: the key could not be used: its document was refused, gone, or not an actor's key. */
   | "KeyRejected"
   /** 401: the signature does not verify with the signer's key. */
@@ -50,7 +54,7 @@ export type InboxRefusalReason =
 
 export type InboxRefusal = Readonly<{
   reason: InboxRefusalReason;
-  status: 400 | 401 | 403 | 413 | 429 | 503;
+  status: 202 | 400 | 401 | 403 | 413 | 429 | 503;
   path: string;
   /** The `Signature` header's `keyId`, when there is one. Only its host is logged. */
   keyId?: string | undefined;

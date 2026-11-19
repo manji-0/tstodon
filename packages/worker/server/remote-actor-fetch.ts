@@ -10,6 +10,7 @@ import {
   type WebfingerRefusal,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
+import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { parseAccountHandle } from "./account-handle";
 import { nowIso } from "./clock";
@@ -537,13 +538,43 @@ export const resolveRemoteActor = async (
   if (byUri.value && byUri.value.publicKeyId === keyId) {
     return refetchRotatedKey(db, identity, keyId, byUri.value, options);
   }
+  return fetchKeyOwner(db, identity, keyId, { kind: "Expected", actorUri }, options);
+};
+
+const DocumentIdSchema = z.object({ id: z.string() });
+
+/** Whose key a fetched key document must be: the actor the caller expects, or the one it names. */
+type KeyOwnerClaim = Readonly<{ kind: "Expected"; actorUri: string }> | Readonly<{ kind: "Named" }>;
+
+/**
+ * Fetch `keyId`, the document of the actor that owns it, and cache that
+ * actor once the key is its own and passes `checkSignature`.
+ */
+const fetchKeyOwner = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  keyId: string,
+  owner: KeyOwnerClaim,
+  options: KeyResolveOptions,
+): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
   const fetched = await fetchActivityJson(identity, keyId, options);
   if (fetched.isErr()) {
     return err(fetched.error);
   }
-  const actor = remoteActorFromDocument(fetched.value, actorUri);
+  const named = DocumentIdSchema.safeParse(fetched.value);
+  const expected =
+    owner.kind === "Expected" ? owner.actorUri : named.success ? named.data.id : undefined;
+  if (expected === undefined) {
+    return err({ kind: "InvalidSignature" });
+  }
+  const actor = remoteActorFromDocument(fetched.value, expected);
   if (actor.isErr()) {
     return err(actor.error);
+  }
+  // A document speaks only for its own host: one served at a key URL on
+  // another host than the actor it describes could rewrite that actor's key.
+  if (Hostname.ofUri(actor.value.actorUri) !== Hostname.ofUri(keyId)) {
+    return err({ kind: "InvalidSignature" });
   }
   if (
     actor.value.publicKeyId !== keyId &&
@@ -556,6 +587,29 @@ export const resolveRemoteActor = async (
     return err({ kind: "InvalidSignature" });
   }
   return cacheFetchedActor(db, identity, actor.value, options);
+};
+
+/**
+ * The actor that owns `keyId`, whoever an activity signed with it names: the
+ * cached owner of the key (refetched once if it rotated, see
+ * {@link refetchRotatedKey}), or else the actor whose document `keyId` is.
+ * The inbox compares it with the activity's actor: a request signed by
+ * another actor is a forward.
+ */
+export const resolveKeyOwner = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  keyId: string,
+  options: KeyResolveOptions,
+): Promise<Result<RemoteActor, RemoteActorResolveError>> => {
+  const byKey = await findRemoteActorByPublicKeyId(db, keyId);
+  if (byKey.isErr()) {
+    return err(byKey.error);
+  }
+  if (byKey.value) {
+    return refetchRotatedKey(db, identity, keyId, byKey.value, options);
+  }
+  return fetchKeyOwner(db, identity, keyId, { kind: "Named" }, options);
 };
 
 /** A fetch that got no usable document, as opposed to a refusal or a storage error. */

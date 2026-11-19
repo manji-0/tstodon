@@ -1,0 +1,38 @@
+diff --git a/lib/platform.js b/lib/platform.js
+index 49d1f9c82f86d3851cf67a182856002e5a37342e..4fa466059263e418eebd6e0864741ce329e2eb49 100644
+--- a/lib/platform.js
++++ b/lib/platform.js
+@@ -3,28 +3,13 @@
+  */
+ 'use strict';
+ 
+-const nodeLoader = require('./documentLoaders/node');
+-
++// tstodon: no default document loader. The Worker passes its own, which
++// never fetches, and the Node.js one would bundle an HTTP client.
+ const api = {};
+ module.exports = api;
+ 
+-/**
+- * Setup Node.js document loaders.
+- *
+- * @param jsonld the jsonld api.
+- */
+-api.setupDocumentLoaders = function(jsonld) {
+-  jsonld.documentLoaders.node = nodeLoader;
+-  // use node document loader by default
+-  jsonld.useDocumentLoader('node');
+-};
++/* eslint-disable-next-line no-unused-vars */
++api.setupDocumentLoaders = function(jsonld) {};
+ 
+-/**
+- * Setup Node.js globals.
+- *
+- * @param jsonld the jsonld api.
+- */
+ /* eslint-disable-next-line no-unused-vars */
+-api.setupGlobals = function(jsonld) {
+-  // none for Node.js
+-};
++api.setupGlobals = function(jsonld) {};

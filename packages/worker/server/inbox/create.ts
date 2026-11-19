@@ -1,11 +1,16 @@
-import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { Hostname, type InstanceIdentity, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
+import type { ReceivedActivity } from "../activity-forward";
 import type { FederatedFetchOptions } from "../federated-fetch";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
 import { persistRemoteObject } from "../remote-status-persist";
-import { findDeliveredRemoteStatus, type KnownRemoteStatus } from "../remote-status-store";
+import {
+  findDeliveredRemoteStatus,
+  hasRemoteTombstone,
+  type KnownRemoteStatus,
+} from "../remote-status-store";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
 /**
@@ -18,9 +23,22 @@ export const applyRemoteCreate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   object: string | Readonly<{ id: string } & Record<string, unknown>>,
-  options: FederatedFetchOptions,
+  options: FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>,
   known?: KnownRemoteStatus,
 ): Promise<Result<void, RepositoryError>> => {
+  const objectUri = typeof object === "string" ? object : object.id;
+  // Mastodon's `non_matching_uri_hosts?`: an actor creates objects on its own host only.
+  if (Hostname.ofUri(objectUri) !== Hostname.ofUri(signer.actorUri)) {
+    return ok(undefined);
+  }
+  // Mastodon's `tombstone_exists?`: a status its author deleted stays deleted.
+  const buried = await hasRemoteTombstone(env.DB, objectUri);
+  if (buried.isErr()) {
+    return err(buried.error);
+  }
+  if (buried.value) {
+    return ok(undefined);
+  }
   const vote = await handleRemotePollVote(env, identity, signer, object);
   if (vote.isErr()) {
     return err(vote.error);
@@ -28,7 +46,6 @@ export const applyRemoteCreate = async (
   if (vote.value.kind !== "NotAVote") {
     return ok(undefined);
   }
-  const objectUri = typeof object === "string" ? object : object.id;
   let read = known;
   if (read === undefined) {
     const found = await findDeliveredRemoteStatus(env.DB, objectUri);
@@ -61,6 +78,7 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
   identity,
   signer,
   received,
+  body,
   allowHosts,
   blockedHosts,
   fetchSigner,
@@ -69,4 +87,5 @@ export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async
     allowHosts,
     blockedHosts,
     fetchSigner,
+    forward: { kind: "Create", body },
   });

@@ -10,6 +10,7 @@ import {
 import { schemaResult } from "@tstodon/core";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
+import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
 import { nowInstant } from "./clock";
 import { readableRow, type RepositoryError, toRepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -307,6 +308,9 @@ const runLateSteps = async (
   if (written.isErr()) {
     return err(written.error);
   }
+  if (held !== undefined && late.options.forward !== undefined) {
+    await forwardRemoteActivity(env, identity, status, actor, late.options.forward);
+  }
   // The stream events come last. A redelivery that got this far before it
   // failed sends them again, and a client drops a status it already holds.
   // They are started here and run once the response is ready, best effort:
@@ -567,6 +571,13 @@ type PersistOptions = FederatedFetchOptions &
      * note. See {@link MAX_QUOTE_DEPTH}.
      */
     quoteDepth?: number;
+    /**
+     * The inbox activity the note arrived in, as received. When storing it
+     * or applying its edit owes late steps, they forward it
+     * ({@link forwardRemoteActivity}), as Mastodon forwards a new reply and
+     * a newer edit, but not a note it already had.
+     */
+    forward?: ReceivedActivity;
   }>;
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
@@ -873,7 +884,8 @@ export const remoteQuoteContext = (
 ): RemoteQuoteContext => {
   const depth = options.quoteDepth ?? 0;
   const mayFetch = depth < MAX_QUOTE_DEPTH;
-  const nested: PersistOptions = { ...options, delivery: "Fetched", quoteDepth: depth + 1 };
+  const { forward: _forward, ...fetchOnly } = options;
+  const nested: PersistOptions = { ...fetchOnly, delivery: "Fetched", quoteDepth: depth + 1 };
   return {
     fetchOptions: options,
     mayFetch,

@@ -18,8 +18,17 @@ export type InboxSigner =
 
 export type ActivityOf<K extends ActivityValue["kind"]> = Extract<ActivityValue, { kind: K }>;
 
+/**
+ * How an activity came: signed by its actor's request, or forwarded by
+ * another actor's request with its actor's Linked Data signature on it.
+ */
+export type InboxRoute =
+  | Readonly<{ kind: "Direct" }>
+  | Readonly<{ kind: "Forwarded"; forwarder: RemoteActor }>;
+
 /** A verified, first-seen inbox activity, before the signer picks its handlers. */
 export type InboxReceipt = Readonly<{
+  route: InboxRoute;
   env: Env;
   identity: InstanceIdentity;
   activity: ActivityValue;

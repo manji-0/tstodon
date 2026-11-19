@@ -315,6 +315,36 @@ export const findDeliveredRemoteStatus = async (
 ): Promise<RemoteStatusRead> =>
   readRemoteStatus(await findRow(db, findRemoteStatusByObjectUriSql(objectUri)));
 
+/** Remember that `actorUri` deleted its status `objectUri` (Mastodon's `Tombstone`). */
+export const recordRemoteTombstone = (
+  db: D1Database,
+  objectUri: string,
+  actorUri: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO remote_status_tombstones (object_uri, actor_uri, created_at) VALUES (?, ?, ?)",
+      )
+      .bind(objectUri, actorUri, nowIso())
+      .run();
+  });
+
+const TombstoneRow = z.object({ object_uri: z.string() });
+
+/** Whether the status `objectUri` was deleted by its author (Mastodon's `tombstone_exists?`). */
+export const hasRemoteTombstone = (
+  db: D1Database,
+  objectUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await db
+      .prepare("SELECT object_uri FROM remote_status_tombstones WHERE object_uri = ?")
+      .bind(objectUri)
+      .all();
+    return parseRows(TombstoneRow, rows.results).length > 0;
+  });
+
 export const findRemoteStatusByObjectUri = async (
   db: D1Database,
   objectUri: string,

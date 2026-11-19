@@ -12,6 +12,19 @@ const ExpandFollowersSchema = z.object({
   kind: z.literal("ExpandFollowers"),
   activityId: ActivityId.schema,
 });
+/** The most local accounts whose followers one forward reaches (see `ExpandForward`). */
+export const FORWARD_MAX_ACCOUNTS = 500;
+/**
+ * Deliver an inbound activity another server signed, as received (a forward,
+ * Mastodon's `ActivityPub::Forwarder`), to the remote followers of
+ * `followersOf`, leaving out `exceptInboxes`, its actor's own.
+ */
+const ExpandForwardSchema = z.object({
+  kind: z.literal("ExpandForward"),
+  activityId: ActivityId.schema,
+  followersOf: z.array(AccountId.schema).min(1).max(FORWARD_MAX_ACCOUNTS),
+  exceptInboxes: z.array(z.string()),
+});
 const DeliverTargetSchema = z.object({
   kind: z.literal("DeliverTarget"),
   activityId: ActivityId.schema,
@@ -363,6 +376,7 @@ const RefreshQuoteSchema = z.object({
 
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
+  ExpandForwardSchema,
   DeliverTargetSchema,
   ProcessExpiredPollsSchema,
   RefreshLinkCardsSchema,

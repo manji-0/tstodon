@@ -222,6 +222,39 @@ const activityGetHeaders = async (
 };
 
 /**
+ * Whether `href`'s own server says it is gone: a signed GET of it, under the
+ * same host guard as {@link fetchActivityJson}, answered 404 or 410 without
+ * a redirect. Anything else (a document, a redirect, another status, a
+ * refused host, no answer) is not proof that it is gone.
+ */
+export const answersGone = async (
+  identity: InstanceIdentity,
+  href: string,
+  options: FederatedFetchOptions,
+): Promise<boolean> => {
+  const url = parseFederatedUrl(href);
+  if (url.isErr()) {
+    return false;
+  }
+  try {
+    if ((await checkFederatedHost(url.value.hostname, identity.domain, options)) !== "Admitted") {
+      return false;
+    }
+    const key = await options.fetchSigner();
+    const response = await fetch(url.value, {
+      method: "GET",
+      headers: await activityGetHeaders(identity, url.value, key),
+      redirect: "manual",
+      signal: AbortSignal.timeout(5000),
+    });
+    await response.body?.cancel();
+    return response.status === 404 || response.status === 410;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * GET an ActivityPub document, signed by `options.fetchSigner`. Up to three
  * redirects are followed when they stay on the same origin (scheme, host and
  * port), each hop signed again for its own request target and checked

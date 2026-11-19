@@ -19,10 +19,11 @@ import {
   findOutboundActivityWithSigner,
   insertSkippedOutboxTargets,
   insertOutboundActivity,
+  markOutboundExpanded,
   type OutboundActivityWithSignerRow,
   type OutboundSigner,
 } from "./outbox-store";
-import { writeMetric } from "./metrics";
+import { elapsedMs, writeMetric } from "./metrics";
 import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
@@ -201,6 +202,73 @@ const enqueueSignedActivity = async (
   }
   writeMetric(env, "outbox.enqueue", [1], [kind, "targeted"]);
   return ok(undefined);
+};
+
+/**
+ * The last step of an expansion job (`ExpandFollowers`, `ExpandForward`):
+ * deliver the activity to `candidateInboxes` but those on this host, on a
+ * suspended domain or outside the allow list, each once. The fan-out row is
+ * marked expanded; an inbox on a domain marked unavailable gets a `Skipped`
+ * target, the rest are stored and the delivery Workflow starts. One
+ * `outbox.expand` point (doubles: target count, ms, ok flag, skipped count).
+ */
+export const deliverExpandedActivity = async (
+  env: Env,
+  activityId: string,
+  candidateInboxes: ReadonlyArray<string>,
+  startedAt: number,
+): Promise<void> => {
+  const identity = parseInstanceIdentity(env);
+  const sameHost = identity.isOk() ? identity.value.domain : "";
+  const suspended = await suspendedDomains(env.DB);
+  const allowHosts = await federationAllowHosts(env);
+  const remoteInboxes = [
+    ...new Set(
+      candidateInboxes.filter((inbox) => {
+        try {
+          const host = new URL(inbox).host.toLowerCase();
+          return (
+            host !== sameHost &&
+            !suspended.has(Hostname.ofAuthority(host)) &&
+            allowListAdmits(allowHosts, host)
+          );
+        } catch {
+          return false;
+        }
+      }),
+    ),
+  ];
+  await markOutboundExpanded(env.DB, activityId, remoteInboxes.length);
+  const { deliver, skipped } = await partitionByDomainAvailability(env.DB, remoteInboxes);
+  const skippedTargets = await recordSkippedTargets(env, activityId, skipped, "expand");
+  const ensured = skippedTargets.isErr()
+    ? skippedTargets
+    : await ensureOutboxTargets(env.DB, activityId, deliver);
+  if (ensured.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "OutboxExpandTargetsFailed",
+        activityId,
+        message: ensured.error.message,
+      }),
+    );
+    writeMetric(
+      env,
+      "outbox.expand",
+      [remoteInboxes.length, elapsedMs(startedAt), 0],
+      ["targets_failed"],
+    );
+    return;
+  }
+  if (deliver.length > 0) {
+    await startOutboxDeliveryWorkflow(env, activityId);
+  }
+  writeMetric(
+    env,
+    "outbox.expand",
+    [remoteInboxes.length, elapsedMs(startedAt), 1, skipped.length],
+    ["ok"],
+  );
 };
 
 /** The id of the activity's delivery Workflow instance. */

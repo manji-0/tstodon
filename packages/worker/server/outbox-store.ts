@@ -215,6 +215,52 @@ export const insertOutboundActivity = async (
   });
 };
 
+const ForwardRow = z.object({ id: z.string(), fanout: z.string().nullable() });
+
+/**
+ * Store an inbound activity that `accountId` forwards (`payloadJson`, as
+ * received), keyed by the inbound activity's id `forwardOf`, with its
+ * fan-out row `Queued` for an `ExpandForward` job. A retried delivery finds
+ * the row already there and stores nothing. Answers the stored forward's id
+ * while its fan-out is still `Queued` (its expansion may never have been
+ * queued), and `undefined` once it was expanded.
+ */
+export const insertForwardedActivity = async (
+  db: D1Database,
+  input: Readonly<{ accountId: string; kind: string; payloadJson: string; forwardOf: string }>,
+): Promise<Result<string | undefined, RepositoryError>> => {
+  const id = newEntityId();
+  const createdAt = nowIso();
+  const fanout = persistColumns(OutboxDelivery.queued());
+  const batched = await runD1Batch(db, [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO outbound_activities
+           (id, account_id, kind, payload_json, created_at, forward_of)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(id, input.accountId, input.kind, input.payloadJson, createdAt, input.forwardOf),
+    db
+      .prepare(
+        `INSERT INTO outbox_deliveries (id, activity_id, kind, attempt_count, created_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM outbound_activities WHERE id = ?)`,
+      )
+      .bind(newEntityId(), id, fanout.kind, fanout.attemptCount, createdAt, createdAt, id),
+    db
+      .prepare(
+        `SELECT a.id, d.kind AS fanout FROM outbound_activities a
+         LEFT JOIN outbox_deliveries d ON d.activity_id = a.id AND d.inbox_url IS NULL
+         WHERE a.forward_of = ?`,
+      )
+      .bind(input.forwardOf),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  const [stored] = parseRows(ForwardRow, batched.value[2]?.results ?? []);
+  return ok(stored?.fanout === "Queued" ? stored.id : undefined);
+};
+
 /** The last activity of a local account that is being deleted, and where it goes. */
 export type DepartedAccountActivity = Readonly<{
   id: string;

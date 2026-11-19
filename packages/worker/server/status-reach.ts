@@ -3,6 +3,7 @@ import type {
   FindThreadParent,
   ListLocalBoosterAccountIds,
   ListLocalBoosterFollowerInboxes,
+  ListLocalSharerAccountIds,
   ListRemoteFollowerInboxes,
   ListStatusInteractorInboxes,
   RemoteActor,
@@ -191,4 +192,58 @@ export const stampDeleteForward = async (
   const own = new Set([sender.inboxUri, sender.sharedInboxUri]);
   const inboxes = [...new Set(followers.value)].filter((inbox) => !own.has(inbox));
   return ok(inboxes.length === 0 ? undefined : { signerAccountId, inboxes });
+};
+
+export type RemoteActivityForwardOperations = Readonly<{
+  listLocalSharerAccountIds: ListLocalSharerAccountIds;
+  findThreadParent: FindThreadParent;
+}>;
+
+/**
+ * A forward of an inbound activity before its inboxes are listed: the local
+ * account whose key signs the requests, and the local accounts whose remote
+ * followers receive it.
+ */
+export type PlannedForward = Readonly<{
+  signerAccountId: string;
+  followersOf: ReadonlyArray<string>;
+}>;
+
+/**
+ * Who hears an activity about the remote status `status` that its author
+ * signed, as Mastodon's `ActivityPub::Forwarder` (and `forward_for_reply`,
+ * the same rule for a new reply, which nobody shared yet): only a public or
+ * unlisted status; the followers of the local accounts that boosted or
+ * quoted it and, when it replies to a local status, of that status's
+ * author. The replied-to local author signs, else the first sharer; with
+ * neither there is nothing to forward. At most `limit` accounts, the
+ * replied-to author first.
+ */
+export const remoteActivityForward = async (
+  operations: RemoteActivityForwardOperations,
+  status: ThreadStatus,
+  limit: number,
+): Promise<Result<PlannedForward | undefined, RepositoryError>> => {
+  if (!distributable(status)) {
+    return ok(undefined);
+  }
+  const sharers = await operations.listLocalSharerAccountIds(status, limit);
+  if (sharers.isErr()) {
+    return err(sharers.error);
+  }
+  const parent = await operations.findThreadParent(status);
+  if (parent.isErr()) {
+    return err(parent.error);
+  }
+  const repliedTo = parent.value?.kind === "Local" ? parent.value.status.accountId : undefined;
+  const signerAccountId = repliedTo ?? sharers.value[0];
+  if (signerAccountId === undefined) {
+    return ok(undefined);
+  }
+  return ok({
+    signerAccountId,
+    followersOf: [
+      ...new Set([...(repliedTo === undefined ? [] : [repliedTo]), ...sharers.value]),
+    ].slice(0, limit),
+  });
 };

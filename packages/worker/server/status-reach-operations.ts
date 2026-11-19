@@ -12,15 +12,16 @@ import { listStatusInteractorInboxes } from "./remote-interaction-store";
 import {
   listLocalBoosterAccountIds,
   listLocalBoosterFollowerInboxes,
+  listLocalSharerAccountIds,
 } from "./status-interaction-store";
-import type { StatusDeleteReachOperations } from "./status-reach";
+import type { RemoteActivityForwardOperations, StatusDeleteReachOperations } from "./status-reach";
 import { findThreadParent } from "./thread-context";
 
 /** The D1 lookups behind `statusReachInboxes` and `statusDeleteReach`. */
 export const statusReachOperations = (
   env: Env,
   identity: InstanceIdentity,
-): StatusDeleteReachOperations => ({
+): StatusDeleteReachOperations & RemoteActivityForwardOperations => ({
   listInteractorInboxes: async (status) => {
     if (status.kind === "Remote") {
       return listStatusInteractorInboxes(env.DB, {
@@ -51,6 +52,8 @@ export const statusReachOperations = (
   listLocalBoosterAccountIds: (status) => listLocalBoosterAccountIds(env.DB, targetOf(status)),
   listLocalBoosterFollowerInboxes: (status) =>
     listLocalBoosterFollowerInboxes(env.DB, targetOf(status)),
+  listLocalSharerAccountIds: (status, limit) =>
+    listLocalSharerAccountIds(env.DB, targetOf(status), limit),
 });
 
 const targetOf = (status: ThreadStatus) =>

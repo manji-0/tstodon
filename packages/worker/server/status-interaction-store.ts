@@ -368,6 +368,38 @@ export const listLocalBoosterFollowerInboxes = async (
     return [...new Set(rows.map((row) => row.shared_inbox_uri ?? row.inbox_uri))];
   });
 
+/**
+ * Up to `limit` local accounts that shared the target, each once: those
+ * that boost it, then those with a status that quotes it, whatever the
+ * quote's state (Mastodon's `Forwarder#shared_by_account_ids`).
+ */
+export const listLocalSharerAccountIds = async (
+  db: D1Database,
+  target: StatusTargetValue,
+  limit: number,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const [boosters, quoters] = await db.batch([
+      db
+        .prepare(
+          `SELECT account_id FROM statuses
+           WHERE kind = 'LocalReblog' AND (reblog_of_id = ? OR reblog_of_remote_id = ?)
+           GROUP BY account_id ORDER BY MIN(id) LIMIT ?`,
+        )
+        .bind(...statusTargetColumns(target), limit),
+      db
+        .prepare(
+          `SELECT s.account_id FROM status_quotes q
+           JOIN statuses s ON s.id = q.status_id
+           WHERE q.quoted_status_id = ? OR q.quoted_remote_status_id = ?
+           GROUP BY s.account_id ORDER BY MIN(s.id) LIMIT ?`,
+        )
+        .bind(...statusTargetColumns(target), limit),
+    ]);
+    const ids = [...(boosters?.results ?? []), ...(quoters?.results ?? [])];
+    return [...new Set(parseRows(AccountIdRow, ids).map((row) => row.account_id))].slice(0, limit);
+  });
+
 /** Every local account that currently boosts the target, for notifying them when it changes. */
 export const listLocalBoosterAccountIds = async (
   db: D1Database,

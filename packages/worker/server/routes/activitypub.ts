@@ -75,12 +75,9 @@ import { accountCounts } from "../account-count-store";
 import { findAccountStanding } from "../account-moderation-store";
 import { findAccountProfile } from "../account-profile-store";
 import { type IdCursor } from "../id-cursor";
-import { resolveRemoteActor } from "../remote-actor-fetch";
-import {
-  findRemoteActorByPublicKeyId,
-  findRemoteActorByUri,
-  findRemoteFollow,
-} from "../remote-actor-store";
+import { resolveKeyOwner } from "../remote-actor-fetch";
+import { verifyForwardedActivity } from "../inbox-forward";
+import { findRemoteActorByUri, findRemoteFollow } from "../remote-actor-store";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
 import { statusTargetRef } from "../quote-uri";
@@ -91,7 +88,7 @@ import {
 } from "../quote-authorization-document";
 import { ActivityJsonSchema, nameCollectionActivity } from "../activitypub-wire";
 import { parseJsonText } from "../json-column";
-import { schemaResult } from "@tstodon/core";
+import { assertNever, schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
 import { loadNoteReplies, loadNoteRepliesPage, type RepliedNote } from "../note-replies";
 import { findStatusById, findStatusesByIds } from "../status-store";
@@ -843,28 +840,6 @@ export const getUsersByUsernameCollectionsTags = async (
   return c.json(tags, 200, jsonLd);
 };
 
-/**
- * Why a key that `resolveRemoteActor` refused did not verify, read only on
- * that failure path: its signature was checked and failed, the key is cached
- * for (or served from the host of) another actor, or the key was unusable.
- */
-const keyRefusalReason = async (
-  db: D1Database,
-  keyId: string,
-  actorUri: string,
-  signatureChecked: boolean | undefined,
-): Promise<InboxRefusal["reason"]> => {
-  if (signatureChecked === false) {
-    return "SignatureMismatch";
-  }
-  const byKey = await findRemoteActorByPublicKeyId(db, keyId);
-  const keyOwner = byKey.isOk() ? byKey.value?.actorUri : undefined;
-  if (keyOwner !== undefined && keyOwner !== actorUri) {
-    return "ActorMismatch";
-  }
-  return Hostname.ofUri(keyId) !== Hostname.ofUri(actorUri) ? "ActorMismatch" : "KeyRejected";
-};
-
 const FORBIDDEN_DOMAIN = {
   error: "This instance does not federate with that domain",
   kind: "Forbidden",
@@ -932,7 +907,41 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const deletesSigner =
     payload.kind === "Delete" &&
     RemoteDeleteTarget.of(actorUri, String(payload.object)).kind === "ActorDelete";
-  let signer: InboxSigner;
+  /**
+   * A refusal of `actor` (the request's signer, or the actor a forward
+   * vouches for): limited federation, a suspended domain, or an actor an
+   * admin suspended, whose own account `Delete` alone still counts.
+   */
+  const refusalOf = async (actor: RemoteActor): Promise<Response | undefined> => {
+    const refusedActorHost = RemoteActor.hostnames(actor).find(
+      (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
+    );
+    if (refusedActorHost !== undefined) {
+      refuse({
+        reason: suspended.has(refusedActorHost) ? "DomainSuspended" : "DomainNotAllowed",
+        status: 403,
+        actor: actorUri,
+        signer: actor.actorUri,
+      });
+      return c.json(FORBIDDEN_DOMAIN, 403);
+    }
+    const moderation = await getRemoteActorModeration(c.env.DB, actor.actorUri);
+    if (moderation.isErr()) {
+      return jsonRepositoryError(c, moderation.error.message);
+    }
+    if (
+      moderation.value.standing.kind === "Suspended" &&
+      !(deletesSigner && actor.actorUri === actorUri)
+    ) {
+      refuse({ reason: "ActorSuspended", status: 403, actor: actorUri, signer: actor.actorUri });
+      return c.json({ error: "This actor is suspended on this instance", kind: "Forbidden" }, 403);
+    }
+    return undefined;
+  };
+  // Who signed the request. The activity is that actor's, but for a forward:
+  // another actor's request carrying it, whose actor signed it too.
+  let requestSigner: InboxSigner;
+  let forwarder: RemoteActor | undefined;
   if (actorUsername) {
     const actorAccount = await findAccountByUsername(c.env.DB, actorUsername);
     if (actorAccount.isErr()) {
@@ -942,7 +951,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       refuse({ reason: "UnknownLocalActor", status: 401, actor: actorUri });
       return c.json({ kind: "InvalidSignature" }, 401);
     }
-    signer = { kind: "Local", account: actorAccount.value };
+    requestSigner = { kind: "Local", account: actorAccount.value };
   } else {
     // A repeated account Delete from an actor already purged: there is nothing
     // to remove and its key can no longer be fetched.
@@ -969,7 +978,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       return c.json(FORBIDDEN_DOMAIN, 403);
     }
     let signatureChecked: boolean | undefined;
-    const remote = await resolveRemoteActor(c.env.DB, identity.value, signature.keyId, actorUri, {
+    const keyOwner = await resolveKeyOwner(c.env.DB, identity.value, signature.keyId, {
       allowHosts,
       blockedHosts: suspended,
       fetchSigner,
@@ -978,78 +987,59 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
         return signatureChecked;
       },
     });
-    if (remote.isErr()) {
-      if (remote.error.kind === "VerificationUnavailable") {
+    if (keyOwner.isErr()) {
+      if (keyOwner.error.kind === "VerificationUnavailable") {
         refuse({ reason: "KeyUnavailable", status: 503, actor: actorUri });
         c.header("Retry-After", "5");
         return c.json({ kind: "VerificationUnavailable" }, 503);
       }
-      if (remote.error.kind === "RepositoryError") {
-        return jsonRepositoryError(c, remote.error.message);
+      if (keyOwner.error.kind === "RepositoryError") {
+        return jsonRepositoryError(c, keyOwner.error.message);
       }
-      if (remote.error.kind === "DomainRefused") {
+      if (keyOwner.error.kind === "DomainRefused") {
         refuse({
-          reason: suspended.has(remote.error.host) ? "DomainSuspended" : "DomainNotAllowed",
+          reason: suspended.has(keyOwner.error.host) ? "DomainSuspended" : "DomainNotAllowed",
           status: 403,
           actor: actorUri,
         });
         return c.json(FORBIDDEN_DOMAIN, 403);
       }
       refuse({
-        reason: await keyRefusalReason(c.env.DB, signature.keyId, actorUri, signatureChecked),
+        reason: signatureChecked === false ? "SignatureMismatch" : "KeyRejected",
         status: 401,
         actor: actorUri,
       });
       return c.json({ kind: "InvalidSignature" }, 401);
     }
-    // Limited federation: an actor outside the allow list never federates here.
-    const refusedActorHost = RemoteActor.hostnames(remote.value).find(
-      (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
-    );
-    if (refusedActorHost !== undefined) {
-      refuse({
-        reason: suspended.has(refusedActorHost) ? "DomainSuspended" : "DomainNotAllowed",
-        status: 403,
-        actor: actorUri,
-        signer: remote.value.actorUri,
-      });
-      return c.json(FORBIDDEN_DOMAIN, 403);
+    const signerRefusal = await refusalOf(keyOwner.value);
+    if (signerRefusal !== undefined) {
+      return signerRefusal;
     }
-    // An admin suspended this actor: nothing it sends is processed, except
-    // the deletion of its own account.
-    const moderation = await getRemoteActorModeration(c.env.DB, remote.value.actorUri);
-    if (moderation.isErr()) {
-      return jsonRepositoryError(c, moderation.error.message);
-    }
-    if (moderation.value.standing.kind === "Suspended" && !deletesSigner) {
-      refuse({
-        reason: "ActorSuspended",
-        status: 403,
-        actor: actorUri,
-        signer: remote.value.actorUri,
-      });
-      return c.json({ error: "This actor is suspended on this instance", kind: "Forbidden" }, 403);
-    }
-    signer = { kind: "Remote", actor: remote.value };
+    requestSigner = { kind: "Remote", actor: keyOwner.value };
+    // Another actor signed the request: a forward, which counts only once
+    // the activity's actor's own signature is checked, after the request's.
+    forwarder = keyOwner.value.actorUri === actorUri ? undefined : keyOwner.value;
   }
   const publicKeyPem =
-    signer.kind === "Local" ? signer.account.publicKeyPem : signer.actor.publicKeyPem;
+    requestSigner.kind === "Local"
+      ? requestSigner.account.publicKeyPem
+      : requestSigner.actor.publicKeyPem;
   const verified = await verifyInboxRequest(c.req.raw, publicKeyPem, bodyText);
   if (!verified) {
     refuse({ reason: "SignatureMismatch", status: 401, actor: actorUri });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
   const signerUri =
-    signer.kind === "Local"
-      ? InstanceIdentity.actorUrl(identity.value, signer.account.username)
-      : signer.actor.actorUri;
+    requestSigner.kind === "Local"
+      ? InstanceIdentity.actorUrl(identity.value, requestSigner.account.username)
+      : requestSigner.actor.actorUri;
   // Counted per sending server only once its signature verified, so an
   // unsigned or forged delivery cannot spend another server's budget (the
   // per-address `inbox_ip` limit, in the middleware, comes before any of this).
-  if (signer.kind === "Remote") {
+  if (requestSigner.kind === "Remote") {
     const limited = await limitInboxDelivery(
       c,
-      Hostname.ofUri(signer.actor.actorUri) ?? signer.actor.domain,
+      Hostname.ofUri(requestSigner.actor.actorUri) ?? requestSigner.actor.domain,
     );
     if (limited !== undefined) {
       refuse({ reason: "RateLimitedDomain", status: 429, actor: actorUri, signer: signerUri });
@@ -1060,9 +1050,45 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     // delivery failures is cleared (one D1 write); one without costs nothing.
     // Only the signing actor's own host: the inbox URLs in its document are
     // whatever that server claims.
-    const senderHost = Hostname.ofUri(signer.actor.actorUri);
+    const senderHost = Hostname.ofUri(requestSigner.actor.actorUri);
     if (senderHost !== undefined) {
       await recordDeliveryReachability(c.env, senderHost, "Reachable", "inbound");
+    }
+  }
+  let author: InboxSigner = requestSigner;
+  if (forwarder !== undefined) {
+    // As Mastodon, the forwarder's request is answered 202 either way.
+    const forward = await verifyForwardedActivity(c.env.DB, identity.value, json.value, actorUri, {
+      allowHosts,
+      blockedHosts: suspended,
+      fetchSigner,
+    });
+    switch (forward.kind) {
+      case "Unavailable":
+        refuse({ reason: "KeyUnavailable", status: 503, actor: actorUri, signer: signerUri });
+        c.header("Retry-After", "5");
+        return c.json({ kind: "VerificationUnavailable" }, 503);
+      case "RepositoryError":
+        return jsonRepositoryError(c, forward.message);
+      case "Unverified":
+        refuse({
+          reason: "UnverifiedForward",
+          status: 202,
+          actor: actorUri,
+          signer: signerUri,
+          detail: forward.reason,
+        });
+        return c.body(null, 202);
+      case "Verified": {
+        const authorRefusal = await refusalOf(forward.author);
+        if (authorRefusal !== undefined) {
+          return authorRefusal;
+        }
+        author = { kind: "Remote", actor: forward.author };
+        break;
+      }
+      default:
+        return assertNever(forward);
     }
   }
   const activityId = ActivityId.parse(payload.id);
@@ -1108,6 +1134,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   }
   const applied = await dispatchInbox(
     {
+      route: forwarder === undefined ? { kind: "Direct" } : { kind: "Forwarded", forwarder },
       env: c.env,
       identity: identity.value,
       activity: received.activity,
@@ -1117,7 +1144,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
       blockedHosts: suspended,
       fetchSigner,
     },
-    signer,
+    author,
   );
   if (applied.isErr()) {
     await releaseInboxActivity(c.env.DB, claimKey);
