@@ -69,6 +69,7 @@ describe("isApiCorsPath", () => {
       "/api/v1/instance",
       "/oauth/token",
       "/oauth/revoke",
+      "/oauth/userinfo",
       "/.well-known/webfinger",
       "/.well-known/nodeinfo",
       "/nodeinfo/2.0",

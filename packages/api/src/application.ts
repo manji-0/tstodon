@@ -21,3 +21,18 @@ export const ApiCredentialApplication = ApiApplication.extend({
   client_secret_expires_at: z.number(),
 });
 export type ApiCredentialApplicationJSON = z.infer<typeof ApiCredentialApplication>;
+
+/**
+ * `OAuthUserinfoSerializer` (`GET` or `POST /oauth/userinfo`, OpenID
+ * Connect's UserInfo): `sub` is the account's ActivityPub URI, `profile` its
+ * web page and `picture` its original avatar.
+ */
+export const ApiOAuthUserinfo = z.object({
+  iss: z.string(),
+  sub: z.string(),
+  name: z.string(),
+  preferred_username: z.string(),
+  profile: z.string(),
+  picture: z.string(),
+});
+export type ApiOAuthUserinfoJSON = z.infer<typeof ApiOAuthUserinfo>;

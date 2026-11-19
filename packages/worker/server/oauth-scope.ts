@@ -157,6 +157,9 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/tags/:name", "read:follows", NONE),
   rule("/api/v1/timelines/list/:id", "read:lists", NONE),
   rule("/api/v1/timelines(?:/.*)?", "read:statuses", NONE),
+  // OpenID Connect's UserInfo takes `profile` alone, as Mastodon's
+  // `doorkeeper_authorize! :profile`.
+  rule("/oauth/userinfo", "profile", "profile"),
   // The web UI's settings blob (not part of Mastodon's public API).
   rule("/api/web/settings", NONE, "write:accounts"),
 ];
