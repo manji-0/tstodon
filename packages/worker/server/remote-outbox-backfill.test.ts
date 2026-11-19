@@ -322,6 +322,30 @@ describe("backfilling a remote outbox", () => {
     expect(await profileUris(remote)).toEqual([noteUri(remote, "note-audience")]);
   });
 
+  it("stores the objects of the types Mastodon converts, embedded or by URI", async () => {
+    const remote = await remoteActor("backfill-converted", "backfill.example");
+    const converted = (slug: string, type: string, published: string) =>
+      noteDocument(remote, slug, published, {
+        type,
+        name: slug,
+        content: undefined,
+        url: [{ type: "Link", mediaType: "text/html", href: `${origin(remote)}/w/${slug}` }],
+      });
+    const video = converted("converted-video", "Video", "2024-03-03T00:00:00.000Z");
+    const page = converted("converted-page", "Page", "2024-03-02T00:00:00.000Z");
+    const documents = new Map([
+      ...outboxDocuments(remote, [
+        createItem(remote, "converted-video", video.published, video),
+        createItem(remote, "converted-page", page.published, page.id),
+      ]),
+      [page.id, page],
+    ]);
+
+    await serving(documents, () => runBackfill(remote));
+
+    expect(await profileUris(remote)).toEqual([video.id, page.id]);
+  });
+
   it("ignores notes attributed to someone else, from another host, or not public", async () => {
     const remote = await remoteActor("backfill-foreign", "backfill.example");
     const other = await remoteActor("backfill-foreign-other", "backfill.example");

@@ -15,21 +15,92 @@ import { NoteDocumentSchema } from "./activitypub-wire";
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { isTruthy, stringList } from "./form-values";
+import { linkify } from "./html";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { remoteAttachmentMetadata } from "./remote-attachment";
 import { declaredEmojis, remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
+import { httpUrl } from "./sanitize-html";
 
 export const parseNoteDocument = schemaResult(NoteDocumentSchema);
 
-/** The note's language: the first `contentMap` key that is a language tag, as Mastodon reads it. */
-const noteLanguage = (
-  contentMap: Readonly<Record<string, unknown>> | undefined,
-): RemoteStatusValue["language"] => {
-  const tag = Object.keys(contentMap ?? {})
+type NoteDocument = z.infer<typeof NoteDocumentSchema>;
+
+type LanguageMap = Readonly<Record<string, unknown>>;
+
+/** A language map that has an entry, as Mastodon's `content_language_map?` and its siblings. */
+const filledMap = (map: LanguageMap | undefined): LanguageMap | undefined =>
+  map && Object.keys(map).length > 0 ? map : undefined;
+
+/**
+ * The note's language: the first key that is a language tag of its
+ * `contentMap`, or else of its `nameMap` or `summaryMap`, the map Mastodon's
+ * `StatusParser#raw_language_code` reads.
+ */
+const noteLanguage = (document: NoteDocument): RemoteStatusValue["language"] => {
+  const map =
+    filledMap(document.contentMap) ?? filledMap(document.nameMap) ?? filledMap(document.summaryMap);
+  const tag = Object.keys(map ?? {})
     .map((key) => key.trim().toLowerCase())
     .find((key) => /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(key));
   return tag ? { kind: "Present", value: tag } : { kind: "None" };
+};
+
+/** Ruby's `presence`: a string with more than blanks, else `undefined`. */
+const present = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0 ? value : undefined;
+
+/** The first value of a language map, as Mastodon reads `nameMap` and `summaryMap`. */
+const firstOf = (map: LanguageMap | undefined): unknown => Object.values(filledMap(map) ?? {})[0];
+
+const parseUrlLink = schemaResult(
+  z.looseObject({ href: z.unknown().optional(), mimeType: z.unknown().optional() }),
+);
+
+/**
+ * A note's `url` as Mastodon's `url_to_href(url, 'text/html')`: a string, the
+ * first of a list of strings, or the `href` of the first `Link` whose
+ * `mimeType` is `text/html` or absent. PeerTube's links name a `mediaType`
+ * instead, so its first link, the watch page, is taken. Only an `http(s)` URL
+ * is kept, as `StatusParser#url`.
+ */
+const noteUrl = (url: unknown): string | undefined => {
+  const links: ReadonlyArray<unknown> = Array.isArray(url) ? url : [url];
+  const first = links[0];
+  const chosen =
+    typeof first === "string"
+      ? first
+      : links
+          .flatMap((entry) => {
+            const link = parseUrlLink(entry);
+            return link.isOk() ? [link.value] : [];
+          })
+          .find((link) => (present(link.mimeType) ?? "text/html") === "text/html")?.href;
+  return typeof chosen === "string" ? httpUrl(chosen) : undefined;
+};
+
+/**
+ * The text and spoiler text Mastodon stores for a note
+ * (`StatusParser#processed_text`, `#processed_spoiler_text`). A converted
+ * object's text is its name as a heading, its summary, and a link to its
+ * `url`, or else its id; its content is not read, an `Article`'s neither, and
+ * it has no spoiler text.
+ */
+const noteText = (
+  document: NoteDocument,
+  url: string | undefined,
+): Readonly<{ contentHtml: string; spoilerText: string }> => {
+  if (document.type === "Note" || document.type === "Question") {
+    return { contentHtml: document.content, spoilerText: document.summary ?? "" };
+  }
+  const title = present(document.name) ?? present(firstOf(document.nameMap));
+  const summary = present(document.summary) ?? present(firstOf(document.summaryMap));
+  return {
+    contentHtml: [title && `<h2>${title}</h2>`, summary, linkify(url ?? document.id)]
+      .filter((part) => part !== undefined)
+      .join("\n\n"),
+    spoilerText: "",
+  };
 };
 
 const parseInteractionPolicy = schemaResult(z.object({ canQuote: z.unknown().optional() }));
@@ -131,32 +202,34 @@ export const noteFromUnknown = (
     ];
   });
   const poll = remotePollFromDocument(document.value);
+  const url = noteUrl(document.value.url);
+  const { contentHtml, spoilerText } = noteText(document.value, url);
   return RemoteStatus.fromFetched({
     id: id.value,
     media: attachments,
     actorUri,
     objectUri: document.value.id,
-    contentHtml: document.value.content,
-    spoilerText: document.value.summary ?? "",
+    contentHtml,
+    spoilerText,
     visibility: RemoteStatus.visibilityFromAudience(
       stringList(document.value.to),
       stringList(document.value.cc),
     ),
     sensitive: isTruthy(document.value.sensitive),
-    language: noteLanguage(document.value.contentMap),
+    language: noteLanguage(document.value),
     publishedAt: publishedAt.value,
     editedAt,
     poll,
     emojis: noteEmojis(raw, [
-      document.value.content,
-      document.value.summary ?? "",
+      contentHtml,
+      spoilerText,
       ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
     ]),
     quotePolicy: QuoteInteractionPolicy.fromCanQuote(
       canQuoteOf(document.value.interactionPolicy),
       author,
     ),
-    ...(document.value.url ? { url: document.value.url } : {}),
+    ...(url ? { url } : {}),
   });
 };
 
