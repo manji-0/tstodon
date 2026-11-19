@@ -133,6 +133,16 @@ describe("RateLimitPolicy.withOverrides", () => {
   });
 });
 
+describe("RateLimit.accountCheck", () => {
+  it("counts a signed-in page against the account's API budget", () => {
+    const check = RateLimit.accountCheck(policy, "account-1");
+    expect(check && RateLimitSubject.key(check.subject)).toBe("account:account-1");
+    expect(check?.hits.map((hit) => hit.name)).toEqual(["api_account"]);
+    const lifted = RateLimitPolicy.withOverrides({ api_account: false })._unsafeUnwrap();
+    expect(RateLimit.accountCheck(lifted, "account-1")).toBeUndefined();
+  });
+});
+
 describe("RateLimit.inboxDomainCheck", () => {
   it("keys on the sending server, case-insensitively", () => {
     const check = RateLimit.inboxDomainCheck(policy, "Remote.Example");

@@ -402,6 +402,16 @@ export const RateLimit = {
     return [...ipChecks, ...callerChecks(policy, request)];
   },
   /**
+   * The check for a signed-in page that does API work on its viewer's behalf
+   * (`/authorize_interaction` resolves and fetches as search does): the
+   * account's `api_account` budget, which a browser session has no token to
+   * be counted by in `checks`.
+   */
+  accountCheck: (policy: RateLimitPolicy, accountId: string): RateLimitCheck | undefined => {
+    const hit = hitFor(policy, "api_account");
+    return hit === undefined ? undefined : { subject: { kind: "Account", accountId }, hits: [hit] };
+  },
+  /**
    * The check for an inbox delivery whose signature verified, keyed on the
    * sending server, so unsigned or forged deliveries cannot spend a server's
    * budget.

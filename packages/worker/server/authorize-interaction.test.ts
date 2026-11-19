@@ -1,10 +1,15 @@
-import { SELF } from "cloudflare:test";
+import { createExecutionContext, SELF } from "cloudflare:test";
+import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
+import { signAccessJwt } from "../test/access-jwt-fixture";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { envWith } from "../test/env-fixture";
 import { ORIGIN, signUp } from "../test/passkey-browser";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { RemoteAccountId } from "./remote-account-id";
+import { getAuthorizeInteraction } from "./routes/authorize-interaction";
 
 /**
  * `/authorize_interaction` as Mastodon v4.7.5's `AuthorizeInteractionsController`
@@ -135,6 +140,75 @@ describe("/authorize_interaction signed in", () => {
       expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
       expect(await response.text()).toContain("isn't here");
     }
+  });
+});
+
+describe("/authorize_interaction refusals", () => {
+  it("does not open an account search would not list", async () => {
+    const { fetcher } = await signUp("ai_viewer_hidden");
+    const suspended = await signedInAccount("ai-suspended@example.com");
+    const action = await SELF.fetch(`${ORIGIN}/api/v1/admin/accounts/${suspended.id}/action`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("ai-moderator@example.com", { admin: true })),
+      },
+      body: JSON.stringify({ type: "suspend" }),
+    });
+    expect(action.status).toBe(200);
+    const remote = await remoteActor("aisuspended", "ai-hidden.example");
+    const moderated = await SELF.fetch(
+      `${ORIGIN}/api/v1/admin/accounts/${RemoteAccountId.encode(remote.actorUri)}/action`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(await authHeaders("ai-moderator@example.com", { admin: true })),
+        },
+        body: JSON.stringify({ type: "suspend" }),
+      },
+    );
+    expect(moderated.status).toBe(200);
+    for (const uri of [
+      `${ORIGIN}/@${suspended.username}`,
+      `${suspended.username}@example.com`,
+      remote.actorUri,
+      "aisuspended@ai-hidden.example",
+    ]) {
+      expect((await fetcher(interaction({ uri }))).status, uri).toBe(404);
+    }
+  });
+
+  it("encodes a remote username in the redirect", async () => {
+    const { fetcher } = await signUp("ai_viewer_encoded");
+    const odd = await remoteActor("odd?name", "ai-odd.example");
+    await redirectsTo(
+      await fetcher(interaction({ uri: odd.actorUri })),
+      "/@odd%3Fname@ai-odd.example",
+    );
+  });
+
+  it("counts against the signed-in account's API budget", async () => {
+    const { email } = await signUp("ai_viewer_limited");
+    const assertion = await signAccessJwt({ email });
+    const app = new Hono<{ Bindings: Env }>();
+    app.get("/authorize_interaction", getAuthorizeInteraction);
+    const limited = envWith({
+      RATE_LIMITS_ENABLED: "true",
+      RATE_LIMITS: JSON.stringify({ api_account: { limit: 2, period: 300 } }),
+    });
+    const open = () =>
+      app.request(
+        `http://127.0.0.1${interaction({ uri: "ai_nobody_here@example.com" })}`,
+        { headers: { "Cf-Access-Jwt-Assertion": assertion } },
+        limited,
+        createExecutionContext(),
+      );
+    const seen: number[] = [];
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      seen.push((await open()).status);
+    }
+    expect(seen).toEqual([404, 404, 429]);
   });
 });
 

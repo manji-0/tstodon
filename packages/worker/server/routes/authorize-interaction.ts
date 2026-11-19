@@ -1,13 +1,15 @@
 import { warmSchemas } from "@tstodon/core";
-import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import type { InstanceIdentity, LocalAccount, RemoteActor } from "@tstodon/domain";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
 import { findAccountById, findAccountByUsername } from "../account-store";
 import { errorPage } from "../auth-pages";
 import { browserSession } from "../browser-session";
 import type { RepositoryError } from "../d1";
 import { pageRedirect, signInRedirect } from "../page-redirect";
+import { limitAccount } from "../rate-limit";
 import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { readQueryParams } from "../request-params";
@@ -29,26 +31,49 @@ import { instanceName } from "./account-settings";
 
 const QuerySchema = z.object({ uri: z.string().optional(), acct: z.string().optional() });
 
-const remoteAcct = (actor: RemoteActor): string => `${actor.username}@${actor.domain}`;
+/** `/@acct` (or `/@acct/id`), each part encoded: a remote `preferredUsername` is arbitrary text. */
+const localPath = (username: string): string => `/@${encodeURIComponent(username)}`;
+const remotePath = (actor: RemoteActor): string =>
+  `/@${encodeURIComponent(actor.username)}@${encodeURIComponent(actor.domain)}`;
+const statusPath = (accountPath: string, id: string): string =>
+  `${accountPath}/${encodeURIComponent(id)}`;
+
+/** A local account's path, if account search would list it (not pending, not suspended). */
+const listedLocalPath = async (
+  db: D1Database,
+  account: LocalAccount | undefined,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  (await searchableLocalAccounts(db, account ? [account] : [])).map(
+    ([listed]) => listed && localPath(listed.username),
+  );
+
+/** A remote account's path, if account search would list it. */
+const listedRemotePath = async (
+  env: Env,
+  actor: RemoteActor,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  (await searchableRemoteActors(env, [actor])).map(([listed]) => listed && remotePath(listed));
 
 /** The web app's path for what a URL names (Mastodon's `web_url("@acct")` / `web_url("@acct/id")`). */
 const webPath = async (
-  db: D1Database,
+  env: Env,
   resource: UrlResource,
 ): Promise<Result<string | undefined, RepositoryError>> => {
   switch (resource.kind) {
     case "LocalAccount":
-      return ok(`/@${resource.account.username}`);
+      return listedLocalPath(env.DB, resource.account);
     case "RemoteAccount":
-      return ok(`/@${remoteAcct(resource.actor)}`);
+      return listedRemotePath(env, resource.actor);
     case "Status": {
       const found = resource.status;
       if (found.kind === "LocalStatus") {
-        const author = await findAccountById(db, found.status.accountId);
-        return author.map((account) => account && `/@${account.username}/${found.status.id}`);
+        const author = await findAccountById(env.DB, found.status.accountId);
+        return author.map(
+          (account) => account && statusPath(localPath(account.username), found.status.id),
+        );
       }
-      const author = await findRemoteActorByUri(db, found.status.actorUri);
-      return author.map((actor) => actor && `/@${remoteAcct(actor)}/${found.status.id}`);
+      const author = await findRemoteActorByUri(env.DB, found.status.actorUri);
+      return author.map((actor) => actor && statusPath(remotePath(actor), found.status.id));
     }
   }
 };
@@ -67,7 +92,7 @@ const handlePath = async (
   const local = bare.includes("@") ? localHandleUsername(identity, bare) : bare;
   if (local !== undefined) {
     const account = await findAccountByUsername(env.DB, local);
-    return account.map((found) => found && `/@${found.username}`);
+    return account.isErr() ? err(account.error) : listedLocalPath(env.DB, account.value);
   }
   const actor = await resolveRemoteActorByHandle(
     env.DB,
@@ -76,7 +101,7 @@ const handlePath = async (
     await resolveFetchOptions(env, identity),
   );
   if (actor.isOk()) {
-    return ok(`/@${remoteAcct(actor.value)}`);
+    return listedRemotePath(env, actor.value);
   }
   return actor.error.kind === "RepositoryError" ? err(actor.error) : ok(undefined);
 };
@@ -100,7 +125,7 @@ const interactionPath = async (
   if (resource.isErr()) {
     return err(resource.error);
   }
-  return resource.value ? webPath(env.DB, resource.value) : ok(undefined);
+  return resource.value ? webPath(env, resource.value) : ok(undefined);
 };
 
 /** Mastodon's `not_found` page. */
@@ -123,6 +148,11 @@ export const getAuthorizeInteraction = async (
       );
     case "Account":
       break;
+  }
+  // It resolves and fetches as search does, so it spends the account's API budget.
+  const limited = await limitAccount(c, session.account.id);
+  if (limited) {
+    return limited;
   }
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
