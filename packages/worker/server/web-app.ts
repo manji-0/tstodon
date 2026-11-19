@@ -27,6 +27,7 @@ import {
 import { queryTyped, runTypedBatch } from "./typed-sql";
 import { vapidPublicKey } from "./vapid";
 import { parseJsonText } from "./json-column";
+import { signInRedirect } from "./page-redirect";
 import { findTokenPushSubscription } from "./push-subscription-store";
 import { subscriptionDocument } from "./routes/push";
 import { WEB_APP_ID, webAccessTokenId } from "./web-token";
@@ -382,6 +383,76 @@ const embedPage = (
     <div id="mastodon-status" data-props="${attribute(JSON.stringify({ locale: options.locale, id: options.statusId }))}"></div>
   </body>
 </html>`;
+
+/**
+ * The page Mastodon's `shares/show` renders in its `modal` layout: the
+ * standalone composer (the `share` pack), booted from the viewer's initial
+ * state with the shared text in `compose.text`.
+ */
+const sharePage = (
+  manifest: WebManifest,
+  options: Readonly<{
+    locale: string;
+    title: string;
+    state: unknown;
+    appearance: Appearance;
+    styleNonce: string;
+  }>,
+): string => `<!doctype html>
+<html lang="${attribute(options.locale)}" data-contrast="${options.appearance.contrast}" data-color-scheme="${options.appearance.colorScheme}"${options.appearance.colorScheme === "auto" ? ' data-system-theme="true"' : ""}>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex">
+    ${manifest.dev ? devTags(manifest) : ""}
+    <script${manifest.dev ? ' type="module"' : ""} src="${attribute(manifest.themeSelection)}"></script>
+    ${themeColorMetas(options.appearance.colorScheme)}
+    <meta name="style-nonce" content="${attribute(options.styleNonce)}">
+    <title>${attribute(options.title)}</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">
+    <link rel="stylesheet" href="${attribute(manifest.theme)}" media="all" crossorigin="anonymous">
+    ${manifest.polyfills ? `<script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>` : ""}
+    ${entryTags(manifest.common)}
+    <script id="initial-state" type="application/json">${scriptJson(options.state)}</script>
+    ${entryTags(manifest.share)}
+  </head>
+  <body class="modal-layout with-zig-zag-decoration compose-standalone">
+    <div class="container-alt">
+      <div id="mastodon-compose" data-props="${attribute(JSON.stringify({ locale: options.locale }))}"></div>
+    </div>
+  </body>
+</html>`;
+
+/**
+ * `GET /share?text=…`, Mastodon's `SharesController`: the composer with
+ * `title`, `text` and `url` joined by spaces, as Mastodon's
+ * `render_initial_state`. A signed-out browser signs in first.
+ */
+export const getShare = async (c: Context<{ Bindings: Env }, "/share">) => {
+  const viewer = await currentViewer(c.req.raw, c.env);
+  if (viewer === undefined) {
+    return signInRedirect(c);
+  }
+  const text = ["title", "text", "url"].flatMap((name) => c.req.query(name) ?? []).join(" ");
+  const locale = pickLocale(c.req.header("Accept-Language"), webManifest.locales);
+  const identity = parseInstanceIdentity(c.env);
+  const [state, appearance] = await Promise.all([
+    initialState(c.env, c.req.raw, locale, viewer),
+    findAppearance(c.env.DB, viewer.account.id).then((found) => found.unwrapOr(DEFAULT_APPEARANCE)),
+  ]);
+  c.header("Cache-Control", "private, no-store");
+  const styleNonce = newStyleNonce();
+  c.header("Content-Security-Policy", contentSecurityPolicy({ ...policyOptions(c), styleNonce }));
+  return c.html(
+    sharePage(webManifest, {
+      locale,
+      title: identity.isOk() ? identity.value.name : "tstodon",
+      state: { ...state, compose: { ...state.compose, text } },
+      appearance,
+      styleNonce,
+    }),
+  );
+};
 
 /** `/@alice/123/embed`: a status's embed page. */
 const EMBED_PATH = /^\/@([^/@]+)\/(\d+)\/embed\/?$/;

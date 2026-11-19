@@ -35,6 +35,8 @@ export const WebManifestSchema = z.object({
   application: EntrySchema,
   remoteInteractionHelper: EntrySchema,
   embed: EntrySchema,
+  /** The standalone composer of `/share`. */
+  share: EntrySchema,
   locales: z.array(z.string()),
 });
 
