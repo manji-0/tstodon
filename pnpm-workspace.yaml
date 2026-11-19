@@ -42,3 +42,5 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+patchedDependencies:
+  jsonld@9.0.0: patches/jsonld@9.0.0.patch

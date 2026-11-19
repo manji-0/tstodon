@@ -44,6 +44,7 @@
     "@tstodon/domain": "workspace:*",
     "@types/node": "^26.6.6",
     "jose": "^6.2.12",
+    "jsonld": "9.0.0",
     "neverthrow": "^8.2.0",
     "prisma": "7.10.0",
     "tsx": "^4.23.15",

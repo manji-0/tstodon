@@ -88,6 +88,8 @@ export default defineConfig({
           testTimeout: 15_000,
           include: ["packages/worker/server/**/*.test.ts"],
           setupFiles: ["./packages/worker/test/apply-migrations.ts"],
+          // jsonld.js is CommonJS, which workerd only loads as an ES module here.
+          deps: { optimizer: { ssr: { enabled: true, include: ["jsonld"] } } },
         },
       },
     ],

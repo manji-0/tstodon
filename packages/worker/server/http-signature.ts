@@ -46,19 +46,13 @@ export type SignatureError = Readonly<{
   message: string;
 }>;
 
-/** Sign `headers` (with their `values`) for `method url`; returns the Signature header. */
-const signRequest = async (
-  method: string,
-  url: URL,
+/** An RSA private key (a stored JWK) for RSASSA-PKCS1-v1_5 with SHA-256. */
+export const importRsaPrivateKey = async (
   privateKeyJwk: SensitiveValue<string>,
-  keyId: string,
-  headers: ReadonlyArray<string>,
-  values: Record<string, string>,
-): Promise<Result<string, SignatureError>> => {
-  const signingString = buildSigningString(method, url.pathname + url.search, headers, values);
+): Promise<Result<CryptoKey, string>> => {
   const parsed = parseJsonColumn(RsaPrivateJwkSchema, privateKeyJwk.reveal());
   if (parsed.isErr()) {
-    return err({ kind: "InvalidSignature", message: parsed.error.message });
+    return err(parsed.error.message);
   }
   const jwk: JsonWebKey = {
     kty: parsed.value.kty,
@@ -80,13 +74,32 @@ const signRequest = async (
   if (parsed.value.key_ops !== undefined) {
     jwk.key_ops = [...parsed.value.key_ops];
   }
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
+  return ok(
+    await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["sign"],
+    ),
   );
+};
+
+/** Sign `headers` (with their `values`) for `method url`; returns the Signature header. */
+const signRequest = async (
+  method: string,
+  url: URL,
+  privateKeyJwk: SensitiveValue<string>,
+  keyId: string,
+  headers: ReadonlyArray<string>,
+  values: Record<string, string>,
+): Promise<Result<string, SignatureError>> => {
+  const signingString = buildSigningString(method, url.pathname + url.search, headers, values);
+  const imported = await importRsaPrivateKey(privateKeyJwk);
+  if (imported.isErr()) {
+    return err({ kind: "InvalidSignature", message: imported.error });
+  }
+  const key = imported.value;
   const signature = await crypto.subtle.sign(
     "RSASSA-PKCS1-v1_5",
     key,
@@ -256,6 +269,19 @@ const pemToSpki = (pem: string): ArrayBuffer => {
   return Uint8Array.from(atob(b64), (char) => char.charCodeAt(0)).buffer;
 };
 
+const RSA_SHA256 = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" } as const;
+
+/** An RSA public key from its PEM (SPKI), or undefined when it is not one. */
+export const importRsaPublicKey = async (publicKeyPem: string): Promise<CryptoKey | undefined> => {
+  try {
+    return await crypto.subtle.importKey("spki", pemToSpki(publicKeyPem), RSA_SHA256, false, [
+      "verify",
+    ]);
+  } catch {
+    return undefined;
+  }
+};
+
 const bytesFromB64 = (value: string): Uint8Array =>
   Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 
@@ -281,13 +307,9 @@ const verifySignature = async (
     parsed.headers,
     headerValues,
   );
-  const key = await crypto.subtle.importKey(
-    "spki",
-    pemToSpki(publicKeyPem),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
+  const key = await crypto.subtle.importKey("spki", pemToSpki(publicKeyPem), RSA_SHA256, false, [
+    "verify",
+  ]);
   return crypto.subtle.verify(
     "RSASSA-PKCS1-v1_5",
     key,
