@@ -96,7 +96,6 @@ Endpoints Mastodon 4.7 serves that tstodon does not, or serves as a stub.
 | REST-7  | `email_subscriptions`                           | Not served                                                                                                                        |
 | REST-8  | `POST /api/v1/accounts` and email confirmations | Sign-up is Cloudflare Access only; the API registration and `/api/v1/emails/confirmations` are not served                         |
 | REST-9  | `GET /oauth/userinfo`                           | Not served                                                                                                                        |
-| REST-10 | `POST /api/v2/notifications/clear`              | Not served                                                                                                                        |
 | REST-12 | `GET /api/v1/notifications/policy`              | The v1 notification policy is not served (v2 is)                                                                                  |
 | REST-13 | `POST /api/v1/conversations/:id/unread`         | Not served                                                                                                                        |
 

@@ -203,6 +203,7 @@ Labels:
 | GET    | `/api/v2/filters/statuses/:id`                      |
 | DELETE | `/api/v2/filters/statuses/:id`                      |
 | POST   | `/api/v1/notifications/clear`                       |
+| POST   | `/api/v2/notifications/clear`                       |
 | POST   | `/api/v1/notifications/:id/dismiss`                 |
 | GET    | `/api/v1/polls/:id`                                 |
 | POST   | `/api/v1/polls/:id/votes`                           |

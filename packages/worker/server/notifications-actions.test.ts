@@ -118,6 +118,31 @@ describe("notification actions", () => {
     expect(await unreadCount(email)).toBe(0);
   });
 
+  it("clears every notification through the v2 path too", async () => {
+    const email = "note-clear2-author@example.com";
+    await seedTwoNotifications("clear2");
+    expect((await notificationIds(email)).length).toBeGreaterThanOrEqual(2);
+    expect((await json("/api/v2/notifications/clear", { method: "POST" })).status).toBe(401);
+
+    const readOnly = await json("/api/v2/notifications/clear", {
+      method: "POST",
+      headers: await authHeaders(email, { scopes: ["read:notifications"] }),
+    });
+    expect(readOnly.status).toBe(403);
+
+    const cleared = await json("/api/v2/notifications/clear", {
+      method: "POST",
+      headers: await authHeaders(email, { scopes: ["write:notifications"] }),
+    });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual({});
+    expect(await notificationIds(email)).toHaveLength(0);
+    const groups = await json("/api/v2/notifications", { headers: await auth(email) });
+    expect(read(z.object({ notification_groups: z.array(z.unknown()) }), groups.body)).toEqual({
+      notification_groups: [],
+    });
+  });
+
   it("counts only notifications newer than the marker", async () => {
     const email = "note-marker-author@example.com";
     await seedTwoNotifications("marker");
