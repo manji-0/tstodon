@@ -215,6 +215,40 @@ export const insertOutboundActivity = async (
   });
 };
 
+/**
+ * Store an inbound activity that `accountId` forwards (`payloadJson`, as
+ * received), keyed by the inbound activity's id `forwardOf`, with its
+ * fan-out row `Queued` for an `ExpandForward` job. `undefined` when that
+ * activity was already forwarded: a retried delivery does not forward twice.
+ */
+export const insertForwardedActivity = async (
+  db: D1Database,
+  input: Readonly<{ accountId: string; kind: string; payloadJson: string; forwardOf: string }>,
+): Promise<Result<string | undefined, RepositoryError>> => {
+  const id = newEntityId();
+  const createdAt = nowIso();
+  const fanout = persistColumns(OutboxDelivery.queued());
+  const batched = await runD1Batch(db, [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO outbound_activities
+           (id, account_id, kind, payload_json, created_at, forward_of)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(id, input.accountId, input.kind, input.payloadJson, createdAt, input.forwardOf),
+    db
+      .prepare(
+        `INSERT INTO outbox_deliveries (id, activity_id, kind, attempt_count, created_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM outbound_activities WHERE id = ?)`,
+      )
+      .bind(newEntityId(), id, fanout.kind, fanout.attemptCount, createdAt, createdAt, id),
+  ]);
+  if (batched.isErr()) {
+    return err(batched.error);
+  }
+  return ok((batched.value[0]?.meta.changes ?? 0) > 0 ? id : undefined);
+};
+
 /** The last activity of a local account that is being deleted, and where it goes. */
 export type DepartedAccountActivity = Readonly<{
   id: string;

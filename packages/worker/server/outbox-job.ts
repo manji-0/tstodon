@@ -381,7 +381,10 @@ export const processOutboxJob = async (
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
-      if (activity.isErr() || !activity.value) {
+      if (activity.isErr()) {
+        return "retry";
+      }
+      if (!activity.value) {
         return "ok";
       }
       const identity = parseInstanceIdentity(env);

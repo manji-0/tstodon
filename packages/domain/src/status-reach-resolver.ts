@@ -31,11 +31,13 @@ export type ListLocalBoosterFollowerInboxes = (
 ) => Promise<Result<ReadonlyArray<string>, RepositoryError>>;
 
 /**
- * The local accounts that shared a status, each once: those that boosted it,
- * then those that quoted it (Mastodon's `Forwarder#shared_by_account_ids`).
+ * Up to `limit` local accounts that shared a status, each once: those that
+ * boosted it, then those that quoted it (Mastodon's
+ * `Forwarder#shared_by_account_ids`).
  */
 export type ListLocalSharerAccountIds = (
   status: ThreadStatus,
+  limit: number,
 ) => Promise<Result<ReadonlyArray<string>, RepositoryError>>;
 
 /** The local accounts that boosted a status, in boost order. */

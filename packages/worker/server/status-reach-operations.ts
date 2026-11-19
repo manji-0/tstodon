@@ -12,7 +12,7 @@ import { listStatusInteractorInboxes } from "./remote-interaction-store";
 import {
   listLocalBoosterAccountIds,
   listLocalBoosterFollowerInboxes,
-  listLocalQuoterAccountIds,
+  listLocalSharerAccountIds,
 } from "./status-interaction-store";
 import type { RemoteActivityForwardOperations, StatusDeleteReachOperations } from "./status-reach";
 import { findThreadParent } from "./thread-context";
@@ -52,15 +52,8 @@ export const statusReachOperations = (
   listLocalBoosterAccountIds: (status) => listLocalBoosterAccountIds(env.DB, targetOf(status)),
   listLocalBoosterFollowerInboxes: (status) =>
     listLocalBoosterFollowerInboxes(env.DB, targetOf(status)),
-  listLocalSharerAccountIds: async (status) => {
-    const [boosters, quoters] = await Promise.all([
-      listLocalBoosterAccountIds(env.DB, targetOf(status)),
-      listLocalQuoterAccountIds(env.DB, targetOf(status)),
-    ]);
-    return boosters.andThen((boosting) =>
-      quoters.map((quoting) => [...new Set([...boosting, ...quoting])]),
-    );
-  },
+  listLocalSharerAccountIds: (status, limit) =>
+    listLocalSharerAccountIds(env.DB, targetOf(status), limit),
 });
 
 const targetOf = (status: ThreadStatus) =>

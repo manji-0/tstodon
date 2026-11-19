@@ -216,16 +216,18 @@ export type PlannedForward = Readonly<{
  * unlisted status; the followers of the local accounts that boosted or
  * quoted it and, when it replies to a local status, of that status's
  * author. The replied-to local author signs, else the first sharer; with
- * neither there is nothing to forward.
+ * neither there is nothing to forward. At most `limit` accounts, the
+ * replied-to author first.
  */
 export const remoteActivityForward = async (
   operations: RemoteActivityForwardOperations,
   status: ThreadStatus,
+  limit: number,
 ): Promise<Result<PlannedForward | undefined, RepositoryError>> => {
   if (!distributable(status)) {
     return ok(undefined);
   }
-  const sharers = await operations.listLocalSharerAccountIds(status);
+  const sharers = await operations.listLocalSharerAccountIds(status, limit);
   if (sharers.isErr()) {
     return err(sharers.error);
   }
@@ -240,6 +242,8 @@ export const remoteActivityForward = async (
   }
   return ok({
     signerAccountId,
-    followersOf: [...new Set([...sharers.value, ...(repliedTo === undefined ? [] : [repliedTo])])],
+    followersOf: [
+      ...new Set([...(repliedTo === undefined ? [] : [repliedTo]), ...sharers.value]),
+    ].slice(0, limit),
   });
 };

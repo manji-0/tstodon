@@ -8,6 +8,14 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { drainJobs, queueCapturingEnv } from "../test/queue-capture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { postInbox } from "./routes/activitypub";
+import { FORWARD_MAX_ACCOUNTS } from "@tstodon/domain";
+import { ok } from "neverthrow";
+import { forwardRemoteActivity } from "./activity-forward";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import { findRemoteStatusByObjectUri } from "./remote-status-store";
+import { parseInstanceIdentity } from "./runtime-config";
+import { remoteActivityForward } from "./status-reach";
+import { statusReachOperations } from "./status-reach-operations";
 
 const ORIGIN = "https://example.com";
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -265,5 +273,63 @@ describe("forwarding a remote status's Update and Delete to its local sharers' f
     expect(await inbox.post(await carol.delivery(remove(boosted)))).toBe(202);
     expect(await inbox.post(await signedDelivery(carol, remove(lonely)))).toBe(202);
     expect(forwardJobs(sent)).toEqual([]);
+  });
+});
+
+describe("forwarding once, the replied-to author first", () => {
+  it("forwards once however often its handling runs, and keeps the replied-to author", async () => {
+    const author = "fwd-once-author@example.com";
+    const follower = await remoteActor("fwd-once-follower", "fwd-once-f.example");
+    const alice = await remoteActor("fwd-once-alice", "fwd-once-a.example");
+    await followLocal(follower, author);
+    const status = await api(author, "/api/v1/statuses", { status: "once" });
+    const inReplyTo = `${await actorOf(author)}/statuses/${status.id}`;
+    const signed = await alice.ldSigned({
+      id: `${alice.actorUri}/statuses/once/activity`,
+      type: "Create",
+      to: [PUBLIC],
+      object: note(alice, "once", { inReplyTo }),
+    });
+    const sent: OutboxJob[] = [];
+    const inbox = capturingInbox(sent);
+    expect(await inbox.post(await alice.forward(signed))).toBe(202);
+    expect(forwardJobs(sent)).toHaveLength(1);
+
+    // The late steps of the same delivery, run again by a retry.
+    const stored = (
+      await findRemoteStatusByObjectUri(env.DB, `${alice.actorUri}/statuses/once`)
+    )._unsafeUnwrap();
+    const actor = (await findRemoteActorByUri(env.DB, alice.actorUri))._unsafeUnwrap();
+    if (stored === undefined || actor === undefined) {
+      throw new Error("the reply was not stored");
+    }
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    await forwardRemoteActivity(inbox.testEnv, identity, stored, actor, {
+      kind: "Create",
+      body: signed,
+    });
+    expect(forwardJobs(sent)).toHaveLength(1);
+    const rows = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM outbound_activities WHERE forward_of = ?",
+    )
+      .bind(signed["id"])
+      .first<{ n: number }>();
+    expect(rows?.n).toBe(1);
+
+    // However many local accounts shared it, the replied-to author is kept.
+    const authorId = (await signedInAccount(author)).id;
+    const plan = await remoteActivityForward(
+      {
+        ...statusReachOperations(env, identity),
+        listLocalSharerAccountIds: async (_status, limit) =>
+          ok(Array.from({ length: limit }, (_, i) => `sharer-${i}`)),
+      },
+      { kind: "Remote", status: stored },
+      FORWARD_MAX_ACCOUNTS,
+    );
+    const planned = plan._unsafeUnwrap();
+    expect(planned?.signerAccountId).toBe(authorId);
+    expect(planned?.followersOf[0]).toBe(authorId);
+    expect(planned?.followersOf).toHaveLength(FORWARD_MAX_ACCOUNTS);
   });
 });

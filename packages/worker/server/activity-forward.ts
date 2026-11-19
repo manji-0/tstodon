@@ -11,7 +11,7 @@ import { deliverExpandedActivity } from "./delivery";
 import { forwardableBody } from "./ld-signature";
 import { writeMetric } from "./metrics";
 import type { OutboxJobOutcome } from "./outbox-job";
-import { findOutboundActivity, insertOutboundActivity } from "./outbox-store";
+import { findOutboundActivity, insertForwardedActivity } from "./outbox-store";
 import { listAcceptedRemoteFollowerInboxesOf } from "./remote-actor-store";
 import { remoteActivityForward } from "./status-reach";
 import { statusReachOperations } from "./status-reach-operations";
@@ -45,10 +45,15 @@ export const forwardRemoteActivity = async (
   if (body === undefined) {
     return;
   }
-  const plan = await remoteActivityForward(statusReachOperations(env, identity), {
-    kind: "Remote",
-    status,
-  });
+  const forwardOf = body["id"];
+  if (typeof forwardOf !== "string") {
+    return;
+  }
+  const plan = await remoteActivityForward(
+    statusReachOperations(env, identity),
+    { kind: "Remote", status },
+    FORWARD_MAX_ACCOUNTS,
+  );
   if (plan.isErr()) {
     logNotForwarded(status, "plan", plan.error.message);
     return;
@@ -57,22 +62,28 @@ export const forwardRemoteActivity = async (
     return;
   }
   const followersOf = plan.value.followersOf
-    .slice(0, FORWARD_MAX_ACCOUNTS)
     .map((id) => AccountId.parse(id))
     .flatMap((id) => (id.isOk() ? [id.value] : []));
-  const inserted = await insertOutboundActivity(env.DB, {
-    signer: { kind: "Account", accountId: plan.value.signerAccountId },
+  if (followersOf.length === 0) {
+    return;
+  }
+  const inserted = await insertForwardedActivity(env.DB, {
+    accountId: plan.value.signerAccountId,
     kind: activity.kind,
-    payload: body,
-    audience: "Followers",
+    payloadJson: JSON.stringify(body),
+    forwardOf,
   });
   if (inserted.isErr()) {
     logNotForwarded(status, "insert", inserted.error.message);
     return;
   }
-  const activityId = ActivityId.parse(inserted.value.id);
-  if (activityId.isErr() || followersOf.length === 0) {
-    logNotForwarded(status, "insert", "invalid activity or account id");
+  // Already forwarded by an earlier try of this delivery.
+  if (inserted.value === undefined) {
+    return;
+  }
+  const activityId = ActivityId.parse(inserted.value);
+  if (activityId.isErr()) {
+    logNotForwarded(status, "insert", "invalid activity id");
     return;
   }
   try {
@@ -99,7 +110,10 @@ export const processExpandForwardJob = async (
 ): Promise<OutboxJobOutcome> => {
   const startedAt = Date.now();
   const activity = await findOutboundActivity(env.DB, job.activityId);
-  if (activity.isErr() || !activity.value) {
+  if (activity.isErr()) {
+    return "retry";
+  }
+  if (!activity.value) {
     return "ok";
   }
   const inboxes = await listAcceptedRemoteFollowerInboxesOf(env.DB, job.followersOf);
