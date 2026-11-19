@@ -37,7 +37,7 @@ import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-s
 type ForwardingFetchOptions = FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>;
 
 const UpdateObjectSchema = z
-  .object({ id: z.string().min(1), type: z.string().min(1) })
+  .object({ id: z.string().min(1), type: z.union([z.string().min(1), z.array(z.string())]) })
   .passthrough();
 
 const parseUpdateObject = schemaResult(UpdateObjectSchema);
@@ -87,7 +87,8 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
   if (isStatusObjectType(object.value.type)) {
     return { kind: "NoteUpdate", objectUri: object.value.id, raw: object.value };
   }
-  if (ACTOR_TYPES.has(object.value.type)) {
+  const types = typeof object.value.type === "string" ? [object.value.type] : object.value.type;
+  if (types.some((type) => ACTOR_TYPES.has(type))) {
     return { kind: "ActorUpdate", raw };
   }
   return { kind: "Unsupported" };
@@ -147,18 +148,24 @@ const applyNoteUpdate = async (
   if (editedAt.isErr()) {
     return ok(undefined);
   }
+  const previous = cached.value.editedAt;
+  // As Mastodon's `ProcessStatusUpdateService#handle_explicit_update!`, an
+  // Update dated later than the stored edit takes the note's language, even
+  // when the text stays the same.
+  const explicit =
+    note.value.updated != null &&
+    (previous.kind !== "Edited" || isNewer(editedAt.value, previous.at));
   const refreshed = await applyMediaPolicy(env, signer, {
     ...parsed.value,
     id: cached.value.id,
     publishedAt: cached.value.publishedAt,
     visibility: cached.value.visibility,
-    language: cached.value.language,
+    language: explicit ? parsed.value.language : cached.value.language,
     editedAt: cached.value.editedAt,
   });
   const edited = contentChanged(cached.value, refreshed);
   // A late or replayed edit must not roll back a newer one. A count-only
   // refresh is not an edit and is always applied.
-  const previous = cached.value.editedAt;
   if (edited && previous.kind === "Edited" && !isNewer(editedAt.value, previous.at)) {
     return ok(undefined);
   }

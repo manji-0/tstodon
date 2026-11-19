@@ -394,17 +394,18 @@ export const refreshStaleLinkCards = async (env: Env): Promise<void> => {
 };
 
 /**
- * Unfurl the first link of a stored status (or remote status) once the
- * response is ready, never on the request path; the queue retries it only
- * after a transient failure.
+ * Unfurl the first link of a stored status (or remote status), or `cardUrl`
+ * when the status names its card's URL, once the response is ready, never on
+ * the request path; the queue retries it only after a transient failure.
  */
 export const startLinkCard = (
   env: Env,
   target: "Status" | "RemoteStatus",
   id: string,
   text: string,
+  cardUrl?: string,
 ): void => {
-  const url = extractFirstUrl(text);
+  const url = cardUrl ?? extractFirstUrl(text);
   if (!url) {
     return;
   }

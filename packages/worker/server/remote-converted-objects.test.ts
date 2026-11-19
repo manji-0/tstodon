@@ -46,6 +46,8 @@ type Software = Readonly<{
   /** The text Mastodon stores for the object `key`. */
   text: (key: string) => string;
   media: ReadonlyArray<Record<string, unknown>>;
+  /** The `href` of its `Link` attachment, unfurled in place of its text's link. */
+  cardUrl?: string;
   /** How its `Delete` names the object. */
   deleted: (objectUri: string) => unknown;
 }>;
@@ -103,6 +105,7 @@ const lemmy: Software = {
   text: (key) =>
     `<h2>Which servers convert Pages?</h2>\n\n${link(`https://lemmy.fed4.org/post/4242${key}`)}`,
   media: [],
+  cardUrl: "https://example.org/article",
   deleted: (objectUri) => objectUri,
 };
 
@@ -424,11 +427,12 @@ const serving = async <T>(
 };
 
 /**
- * Answer the preview fetch of the link the text of `software`'s object `key`
- * ends with: storing the status unfurls it, as Mastodon's `LinkCrawlWorker`.
+ * Answer the preview fetch of `software`'s object `key`: storing the status
+ * unfurls its `Link` attachment, or else the link its text ends with, as
+ * Mastodon's `LinkCrawlWorker` with `@links.first`.
  */
 const previewOf = (software: Software, key: string) =>
-  answerLinkPreviews([/href="([^"]+)"/.exec(software.text(key))?.[1] ?? ""]);
+  answerLinkPreviews([software.cardUrl ?? /href="([^"]+)"/.exec(software.text(key))?.[1] ?? ""]);
 
 describe.each(SOFTWARE)("a $type from $name", (software) => {
   it("is stored by its Create as Mastodon converts it, and reaches a follower's home", async () => {

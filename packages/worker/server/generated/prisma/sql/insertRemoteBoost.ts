@@ -13,9 +13,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param visibility
  * @param publishedAt
  * @param createdAt
+ * @param undoneAfter
  */
 export const insertRemoteBoost = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_boosts (\nid, actor_uri, activity_id, local_status_id, remote_status_id, visibility, published_at, created_at\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\nON CONFLICT DO NOTHING\nRETURNING id",
+  "INSERT INTO remote_boosts (\nid, actor_uri, activity_id, local_status_id, remote_status_id, visibility, published_at, created_at\n)\nSELECT $1, $2, $3, $4, $5, $6, $7, $8\nWHERE NOT EXISTS (\nSELECT 1 FROM undone_before_arrival\nWHERE actor_uri = $2 AND activity_uri = $3 AND created_at > $9\n)\nON CONFLICT DO NOTHING\nRETURNING id",
 ) as (
   id: string,
   actorUri: string,
@@ -25,6 +26,7 @@ export const insertRemoteBoost = $runtime.makeTypedQueryFactory(
   visibility: string,
   publishedAt: string,
   createdAt: string,
+  undoneAfter: string,
 ) => $runtime.TypedSql<insertRemoteBoost.Parameters, insertRemoteBoost.Result>;
 
 export namespace insertRemoteBoost {
@@ -37,6 +39,7 @@ export namespace insertRemoteBoost {
     visibility: string,
     publishedAt: string,
     createdAt: string,
+    undoneAfter: string,
   ];
   export type Result = {
     id: string | null;

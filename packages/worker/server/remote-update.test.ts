@@ -271,6 +271,32 @@ describe("remote Update of a note", () => {
     expect(edited.created_at).toBe("2026-10-20T00:00:00.000Z");
   });
 
+  it("takes the language of an edit, as Mastodon's update_immediate_attributes!", async () => {
+    const author = await remoteActor("update-language");
+    const id = await create(author, "relanguage", "<p>hello</p>");
+    const language = async () =>
+      read(z.object({ language: z.string().nullable() }), await json(`/api/v1/statuses/${id}`))
+        .language;
+    expect(await language()).toBeNull();
+    const edit = (slug: string, content: string, lang: string, updated: string) =>
+      update(
+        author,
+        slug,
+        note(author, "relanguage", content, { contentMap: { [lang]: content }, updated }),
+      );
+
+    expect(await edit("relanguage-de", "<p>hallo</p>", "de", "2026-10-21T00:00:00.000Z")).toBe(202);
+    expect(await language()).toBe("de");
+    // A language fix alone, dated later, is taken too, though it is no edit of the text.
+    expect(await edit("relanguage-nl", "<p>hallo</p>", "nl", "2026-10-22T00:00:00.000Z")).toBe(202);
+    expect(await language()).toBe("nl");
+    // An Update older than the stored edit does not roll it back.
+    expect(await edit("relanguage-old", "<p>hallo</p>", "fr", "2026-10-20T12:00:00.000Z")).toBe(
+      202,
+    );
+    expect(await language()).toBe("nl");
+  });
+
   it("reads a single Emoji object where a list is usual", async () => {
     const author = await remoteActor("update-single-emoji");
     const id = await create(author, "single-emoji", "<p>before</p>");

@@ -15,6 +15,7 @@ import {
   listAcceptedOutboundFollowActors as listAcceptedOutboundFollowActorsSql,
   listOutboundFollowsByActor as listOutboundFollowsByActorSql,
   rejectOutboundFollow as rejectOutboundFollowSql,
+  revokeOutboundFollow as revokeOutboundFollowSql,
   updateOutboundFollowOptions as updateOutboundFollowOptionsSql,
 } from "./generated/prisma/sql";
 
@@ -178,6 +179,19 @@ export const rejectOutboundFollow = async (
       CountedRow,
     );
     return rows.length > 0;
+  });
+
+/**
+ * `actorUri` takes back its `Accept` of the `Follow` `followActivityId`: the
+ * follow is a request again, as Mastodon's `Follow#revoke_request!`.
+ */
+export const revokeOutboundFollow = async (
+  db: D1Database,
+  actorUri: string,
+  followActivityId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, revokeOutboundFollowSql(actorUri, followActivityId));
   });
 
 /** Remove the follow; resolves to its `Follow` id, or `undefined` when there was none. */

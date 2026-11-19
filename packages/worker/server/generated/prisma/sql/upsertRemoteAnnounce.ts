@@ -10,15 +10,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  * @param activityId
  * @param createdAt
+ * @param undoneAfter
  */
 export const upsertRemoteAnnounce = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_announces (id, remote_actor_uri, status_id, activity_id, created_at)\nVALUES ($1, $2, $3, $4, $5)\nON CONFLICT(remote_actor_uri, status_id) DO UPDATE SET\nactivity_id = excluded.activity_id\nRETURNING id, created_at",
+  "INSERT INTO remote_announces (id, remote_actor_uri, status_id, activity_id, created_at)\nSELECT $1, $2, $3, $4, $5\nWHERE NOT EXISTS (\nSELECT 1 FROM undone_before_arrival\nWHERE actor_uri = $2 AND activity_uri = $4 AND created_at > $6\n)\nON CONFLICT(remote_actor_uri, status_id) DO UPDATE SET\nactivity_id = excluded.activity_id\nRETURNING id, created_at",
 ) as (
   id: string,
   remoteActorUri: string,
   statusId: string,
   activityId: string,
   createdAt: string,
+  undoneAfter: string,
 ) => $runtime.TypedSql<upsertRemoteAnnounce.Parameters, upsertRemoteAnnounce.Result>;
 
 export namespace upsertRemoteAnnounce {
@@ -28,6 +30,7 @@ export namespace upsertRemoteAnnounce {
     statusId: string,
     activityId: string,
     createdAt: string,
+    undoneAfter: string,
   ];
   export type Result = {
     id: string | null;

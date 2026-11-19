@@ -98,12 +98,15 @@ export const nameCollectionActivity = (
   };
 };
 
-export const NestedActivityObjectSchema = z
-  .object({
-    type: z.string().min(1),
-    object: z.union([z.string().min(1), z.object({ id: z.string().min(1) }).passthrough()]),
-  })
-  .passthrough();
+/**
+ * The activity an `Undo` embeds: its `id`, and its `type` and `object` when
+ * given. Mastodon reads one without a `type` as named by its `id` only.
+ */
+export const UndoneActivitySchema = z.looseObject({
+  id: z.string().min(1),
+  type: z.string().min(1).optional(),
+  object: z.unknown().optional(),
+});
 
 export const ActorPublicKeySchema = z.object({
   id: z.string().min(1),
@@ -184,10 +187,61 @@ export const CONVERTED_OBJECT_TYPES = [
   "Event",
 ] as const;
 
-/** Whether an object of `type` is stored as a status, as it is or converted. */
-export const isStatusObjectType = (type: string): boolean =>
-  SUPPORTED_NOTE_TYPES.some((supported) => supported === type) ||
-  CONVERTED_OBJECT_TYPES.some((converted) => converted === type);
+/** Whether an object of `type`, one or a list, is stored as a status, as it is or converted. */
+export const isStatusObjectType = (type: string | ReadonlyArray<string>): boolean =>
+  [...SUPPORTED_NOTE_TYPES, ...CONVERTED_OBJECT_TYPES].some((known) =>
+    typeof type === "string" ? known === type : type.includes(known),
+  );
+
+/**
+ * The one type an object whose `type` is a list is read as, as Mastodon's
+ * `equals_or_includes_any?`: a converted type it lists
+ * (`StatusParser#converted_object_type?`), else a note type it lists.
+ */
+const statusObjectType = (types: ReadonlyArray<unknown>): unknown =>
+  types.find((type) => CONVERTED_OBJECT_TYPES.some((converted) => converted === type)) ??
+  types.find((type) => SUPPORTED_NOTE_TYPES.some((supported) => supported === type)) ??
+  types[0];
+
+const parseJsonObject = schemaResult(JsonObjectSchema);
+
+/** `raw` with a `type` list read as {@link statusObjectType}; any other value as it is. */
+const withStatusObjectType = (raw: unknown): unknown => {
+  const object = parseJsonObject(raw);
+  const type = object.isOk() ? object.value["type"] : undefined;
+  return object.isOk() && Array.isArray(type)
+    ? { ...object.value, type: statusObjectType(type) }
+    : raw;
+};
+
+/**
+ * One entry of a note's `attachment`: a media file, or a `Link` whose `href`
+ * is the note's preview card (a Lemmy link post). Read leniently: an entry
+ * that does not read is left out, and the note is kept.
+ */
+const AttachmentDocumentSchema = z.looseObject({
+  mediaType: z.string().optional(),
+  /** A URI, a `Link`, or a list of either; read as Mastodon's `url_to_href`. */
+  url: z.unknown().optional(),
+  href: z.unknown().optional(),
+  name: z.string().nullable().optional(),
+  // Read by `remoteAttachmentMetadata`, which leaves out a value that does not read.
+  blurhash: z.unknown().optional(),
+  width: z.unknown().optional(),
+  height: z.unknown().optional(),
+  focalPoint: z.unknown().optional(),
+});
+
+const parseAttachmentDocument = schemaResult(AttachmentDocumentSchema);
+
+/** A note's `attachment`, one object or a list (Mastodon's `as_array`), without the entries that do not read. */
+const attachmentDocuments = (value: unknown) =>
+  (value === undefined || value === null ? [] : Array.isArray(value) ? value : [value]).flatMap(
+    (entry) => {
+      const parsed = parseAttachmentDocument(entry);
+      return parsed.isOk() ? [parsed.value] : [];
+    },
+  );
 
 /** A property's id: a URI, an object with an `id`, or the first of a list of them. */
 const ObjectIdSchema = z.unknown().transform(refId).pipe(z.string().min(1));
@@ -216,40 +270,46 @@ const NoteFields = {
   sensitive: booleanish,
   summary: z.string().nullable().optional(),
   inReplyTo: z.string().nullable().optional(),
-  attachment: z
-    .array(
-      z.object({
-        type: z.string().optional(),
-        mediaType: z.string().optional(),
-        url: z.string().optional(),
-        name: z.string().nullable().optional(),
-        // Read leniently (`remote-attachment.ts`): a malformed one is left out, and the note is kept.
-        blurhash: z.unknown().optional(),
-        width: z.unknown().optional(),
-        height: z.unknown().optional(),
-        focalPoint: z.unknown().optional(),
-      }),
-    )
-    .optional(),
+  attachment: z.unknown().optional().transform(attachmentDocuments),
   /** FEP-044f / GoToSocial interaction policy; read leniently, a malformed one is no policy. */
   interactionPolicy: z.unknown().optional(),
 };
 
 /**
  * A `Note`, a `Question` (a note with poll options), or an object of a
- * {@link CONVERTED_OBJECT_TYPES} type, whose content is not read.
+ * {@link CONVERTED_OBJECT_TYPES} type, whose content is not read. A `type`
+ * list is read as {@link statusObjectType}.
  */
-export const NoteDocumentSchema = z.discriminatedUnion("type", [
-  z.looseObject({
-    ...NoteFields,
-    type: z.literal(SUPPORTED_NOTE_TYPES),
-    content: z.string(),
-  }),
-  z.looseObject({
-    ...NoteFields,
-    type: z.literal(CONVERTED_OBJECT_TYPES),
-  }),
-]);
+export const NoteDocumentSchema = z.preprocess(
+  withStatusObjectType,
+  z.discriminatedUnion("type", [
+    z.looseObject({
+      ...NoteFields,
+      type: z.literal(SUPPORTED_NOTE_TYPES),
+      content: z.string(),
+    }),
+    z.looseObject({
+      ...NoteFields,
+      type: z.literal(CONVERTED_OBJECT_TYPES),
+    }),
+  ]),
+);
+
+/**
+ * A `Create` served at the URI of a status, as Lemmy shares a post with an
+ * `Announce` of its `Create` (Mastodon's
+ * `FetchRemoteStatusService#expected_activity_type?`): its `object` is the
+ * status, embedded or by its URI.
+ */
+export const CreateDocumentSchema = z.looseObject({
+  id: z.string().min(1),
+  type: z.union([
+    z.literal("Create"),
+    z.array(z.unknown()).refine((types) => types.includes("Create")),
+  ]),
+  actor: ObjectIdSchema,
+  object: z.unknown(),
+});
 
 /**
  * A poll vote as Mastodon sends it: a `Note` named for the chosen option,
@@ -272,9 +332,11 @@ warmSchemas([
   ActivityJsonSchema,
   CollectionActivitySchema,
   HashtagObjectSchema,
-  NestedActivityObjectSchema,
+  UndoneActivitySchema,
   ActorPublicKeySchema,
   ActorDocumentSchema,
+  AttachmentDocumentSchema,
   NoteDocumentSchema,
+  CreateDocumentSchema,
   PollVoteDocumentSchema,
 ]);
