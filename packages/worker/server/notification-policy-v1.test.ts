@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { ApiAccount, ApiNotificationPolicy, ApiNotificationPolicyV1 } from "@tstodon/api";
-import { authHeaders } from "../test/auth-fixture";
+import { ALL_SCOPES, authHeaders } from "../test/auth-fixture";
 import { expectContract } from "../test/api-contract";
 
 // Mastodon v4.7.5's `Api::V1::Notifications::PoliciesController`: the same
@@ -18,7 +18,9 @@ const send = async (
     method,
     headers: {
       ...(body === undefined ? {} : { "content-type": options?.contentType ?? "application/json" }),
-      ...(email === undefined ? {} : await authHeaders(email, { scopes: options?.scopes })),
+      ...(email === undefined
+        ? {}
+        : await authHeaders(email, { scopes: options?.scopes ?? ALL_SCOPES })),
     },
     ...(body === undefined ? {} : { body }),
   });

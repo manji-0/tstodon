@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiConversation } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
-import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { ALL_SCOPES, authHeaders, signedInAccount } from "../test/auth-fixture";
 import { openStream } from "../test/stream-fixture";
 
 // Mastodon v4.7.5's `Api::V1::ConversationsController#unread`.
@@ -12,7 +12,7 @@ const send = async (
   email: string | undefined,
   method: string,
   path: string,
-  scopes?: ReadonlyArray<string>,
+  scopes: ReadonlyArray<string> = ALL_SCOPES,
 ) => {
   const response = await SELF.fetch(`https://example.com${path}`, {
     method,
