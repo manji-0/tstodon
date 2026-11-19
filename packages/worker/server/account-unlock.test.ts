@@ -223,4 +223,27 @@ describe("unlocking an account", () => {
     }
     expect(await accepts(account.id)).toHaveLength(total);
   });
+
+  it("accepts requests a stalled unlock left pending on the next unlocked save", async () => {
+    const email = "unlock-stalled@example.com";
+    const account = await signedInAccount(email);
+    const fan = await remoteActor("stalled-fan", "unlock-stalled.test");
+    // A request still pending on an unlocked account, as a page that could not be queued leaves.
+    await env.DB.prepare(
+      `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, follow_activity_id, remote_request_kind, follow_kind, created_at)
+       VALUES ('unlock-stalled', ?, ?, ?, 'Queued', 'Pending', '2026-10-21T00:00:00.000Z')`,
+    )
+      .bind(fan.actorUri, account.id, `${fan.actorUri}/follows/1`)
+      .run();
+
+    const changed = await changeAccountLocked(
+      env,
+      parseInstanceIdentity(env)._unsafeUnwrap(),
+      account,
+      false,
+    );
+
+    expect(changed.isOk()).toBe(true);
+    expect(await remoteRequestState(account.id, fan.actorUri)).toBe("Accepted");
+  });
 });

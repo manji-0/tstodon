@@ -159,7 +159,8 @@ const queueAuthorizeJob = async (env: Env, accountId: LocalAccount["id"]): Promi
  * Store whether `account` approves followers by hand. Unlocking it accepts
  * its pending requests, as Mastodon's `UpdateAccountService`: the first page
  * now, the rest in queued pages, so the request stays bounded. A failed first
- * page is queued to run again; the lock itself is stored either way.
+ * page is queued to run again; the lock itself is stored either way. Saving
+ * an account as unlocked again accepts what a lost page left pending.
  */
 export const changeAccountLocked = async (
   env: Env,
@@ -168,9 +169,11 @@ export const changeAccountLocked = async (
   locked: boolean,
 ): Promise<Result<void, RepositoryError>> => {
   const stored = await setAccountLocked(env.DB, account.id, locked);
-  if (stored.isErr() || locked || !account.locked) {
+  if (stored.isErr() || locked) {
     return stored;
   }
+  // Also when it was unlocked already: requests a page could not queue are
+  // still pending, and listing none is one statement.
   const page = await authorizePage(env, identity, { ...account, locked });
   if (page.isErr() || page.value.more) {
     await queueAuthorizeJob(env, account.id);
