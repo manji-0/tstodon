@@ -289,8 +289,8 @@ importers:
         specifier: 2.1.9
         version: 2.1.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@formatjs/intl-pluralrules':
-        specifier: 6.3.13
-        version: 6.3.13
+        specifier: 7.0.4
+        version: 7.0.4
       '@formatjs/unplugin':
         specifier: 1.2.4
         version: 1.2.4(@voidzero-dev/vite-plus-core@1.3.0(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.102.0)(terser@5.50.0)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.4)(rollup@4.68.0)
@@ -2257,8 +2257,8 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@formatjs/bigdecimal@0.2.7':
-    resolution: {integrity: sha512-B4+XY/e4u5v261r3a37Kq2ax91gPZSKGyVpx8X5dygAggLlUz+6MeBpmAhaBFGB8WQ4JB1qD+QtKHk9aJkEb9Q==}
+  '@formatjs/bigdecimal@0.2.10':
+    resolution: {integrity: sha512-npIs6UARNOg5amJY5UOVsd6HUQQfzYjet0sa0SWIqzsnVhxLSpaIx2DjoIVrr/vqmjURjvroeW6dItjfy3Uf8A==}
 
   '@formatjs/cli@6.14.4':
     resolution: {integrity: sha512-I+Mgy82w1EAmy4YOeYM4qbQmTcjk6YiakcdPssASjbuDUtRrdw8v0vLdCCzm/x1bTJcv5dE0JJgPWB8f4ZfNKA==}
@@ -2297,11 +2297,11 @@ packages:
   '@formatjs/icu-skeleton-parser@2.1.11':
     resolution: {integrity: sha512-j8cUmOJzVgkHuS0QiQ6ga76UIoLOFSAMWhs7aZJztH3aAdCOAE6vpC8KVvFB4cU10ON0y2/5oOVmPJ43s2lTwA==}
 
-  '@formatjs/intl-localematcher@0.8.13':
-    resolution: {integrity: sha512-kHEAFOkeJSPNi7c5PaKaRjxcBrJwzzt81ifUu+8uve1EDW/VJl83KsxmqgqNZLzcFEhSliZGvx3+pk/RH0IOmg==}
+  '@formatjs/intl-localematcher@0.10.1':
+    resolution: {integrity: sha512-gBqglQK9rXuHsLmM8wzTMBy4Xo4d0jamirIVKuEL8F1rwbskWdpMA1kZarSkny+uvr5q/K6GSzE0Rcq1wZLl3g==}
 
-  '@formatjs/intl-pluralrules@6.3.13':
-    resolution: {integrity: sha512-78dxY4nu4BbB9J7WqqIFzr1EbhrbB6VE4KOGw4qlmX+IpS6YPM7tVYLLhDq7qOQCzq9+741iDMrgB1JlhHUM/Q==}
+  '@formatjs/intl-pluralrules@7.0.4':
+    resolution: {integrity: sha512-EeQ8YUs1QOpYLUiNHkHfR1rsOMtQUBQXEQwR9WmJRWfzvVXeYZ7vBeMARtlb2KuHUgdmfXjoin5oNn68hjyrEQ==}
 
   '@formatjs/intl@4.1.18':
     resolution: {integrity: sha512-d+AFsn+luyMAUTQImPJEK76bhEvzFKRG/1PCf1Q6sCH3ojHyHgJJkfvUFElpbDkihtm4uedK7/zoG24EL285nw==}
@@ -8597,7 +8597,7 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@formatjs/bigdecimal@0.2.7': {}
+  '@formatjs/bigdecimal@0.2.10': {}
 
   '@formatjs/cli@6.14.4': {}
 
@@ -8609,14 +8609,14 @@ snapshots:
 
   '@formatjs/icu-skeleton-parser@2.1.11': {}
 
-  '@formatjs/intl-localematcher@0.8.13':
+  '@formatjs/intl-localematcher@0.10.1':
     dependencies:
       '@formatjs/fast-memoize': 3.1.7
 
-  '@formatjs/intl-pluralrules@6.3.13':
+  '@formatjs/intl-pluralrules@7.0.4':
     dependencies:
-      '@formatjs/bigdecimal': 0.2.7
-      '@formatjs/intl-localematcher': 0.8.13
+      '@formatjs/bigdecimal': 0.2.10
+      '@formatjs/intl-localematcher': 0.10.1
 
   '@formatjs/intl@4.1.18':
     dependencies:
