@@ -83,6 +83,42 @@ const noteUrl = (url: unknown): string | undefined => {
   return typeof chosen === "string" ? httpUrl(chosen) : undefined;
 };
 
+const parseAttachmentLink = schemaResult(
+  z.looseObject({ href: z.unknown().optional(), mediaType: z.unknown().optional() }),
+);
+
+/**
+ * An attachment's `url` and the media type its `Link` names, as Mastodon's
+ * `url_to_href(url)` and `url_to_media_type(url)`: a string, the first of a
+ * list, or the `href` and `mediaType` of a `Link` (the first of a list).
+ */
+const attachmentUrl = (url: unknown): Readonly<{ href: unknown; mediaType: unknown }> => {
+  const first: unknown = Array.isArray(url) ? url[0] : url;
+  if (typeof first === "string") {
+    return { href: first, mediaType: undefined };
+  }
+  const link = parseAttachmentLink(first);
+  return link.isOk()
+    ? { href: link.value.href, mediaType: link.value.mediaType }
+    : { href: undefined, mediaType: undefined };
+};
+
+type AttachmentDocument = NonNullable<NoteDocument["attachment"]>[number];
+
+/** An attachment with an `href` is a link (a Lemmy link post), not media, as Mastodon's `process_attachments`. */
+const isLinkAttachment = (entry: AttachmentDocument): boolean => present(entry.href) !== undefined;
+
+/**
+ * The URL of the preview card of a note: the `href` of its first `Link`
+ * attachment, as Mastodon's `@links.first`, or `undefined` when it has none
+ * and the first link of its text is unfurled instead.
+ */
+export const noteCardUrl = (raw: unknown): string | undefined => {
+  const document = parseNoteDocument(raw);
+  const href = document.isOk() ? document.value.attachment.find(isLinkAttachment)?.href : undefined;
+  return typeof href === "string" ? httpUrl(href) : undefined;
+};
+
 /**
  * The text and spoiler text Mastodon stores for a note
  * (`StatusParser#processed_text`, `#processed_spoiler_text`). A converted
@@ -191,15 +227,15 @@ export const noteFromUnknown = (
   if (id.isErr()) {
     return err({ kind: "InvalidObject" });
   }
-  const attachments = (document.value.attachment ?? []).flatMap((entry) => {
-    const url = entry.url;
-    if (!url || url.length === 0) {
+  const attachments = document.value.attachment.flatMap((entry) => {
+    const url = attachmentUrl(entry.url);
+    if (isLinkAttachment(entry) || typeof url.href !== "string" || url.href.length === 0) {
       return [];
     }
     return [
       {
-        url,
-        mediaType: entry.mediaType ?? "",
+        url: url.href,
+        mediaType: entry.mediaType ?? (typeof url.mediaType === "string" ? url.mediaType : ""),
         description: entry.name ?? "",
         ...remoteAttachmentMetadata(entry),
       },

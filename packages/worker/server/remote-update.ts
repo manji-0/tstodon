@@ -37,7 +37,7 @@ import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-s
 type ForwardingFetchOptions = FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>;
 
 const UpdateObjectSchema = z
-  .object({ id: z.string().min(1), type: z.string().min(1) })
+  .object({ id: z.string().min(1), type: z.union([z.string().min(1), z.array(z.string())]) })
   .passthrough();
 
 const parseUpdateObject = schemaResult(UpdateObjectSchema);
@@ -87,7 +87,8 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
   if (isStatusObjectType(object.value.type)) {
     return { kind: "NoteUpdate", objectUri: object.value.id, raw: object.value };
   }
-  if (ACTOR_TYPES.has(object.value.type)) {
+  const types = typeof object.value.type === "string" ? [object.value.type] : object.value.type;
+  if (types.some((type) => ACTOR_TYPES.has(type))) {
     return { kind: "ActorUpdate", raw };
   }
   return { kind: "Unsupported" };

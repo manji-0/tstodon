@@ -8,6 +8,7 @@ import {
   type OutboxJob,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
+import { CreateDocumentSchema, refId } from "./activitypub-wire";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
@@ -25,6 +26,7 @@ import { startHomeFanOut } from "./home-fan-out";
 import { startPublicFanOut } from "./public-fan-out";
 import {
   applyMediaPolicy,
+  noteCardUrl,
   noteFromUnknown,
   noteHashtags,
   parseNoteDocument,
@@ -508,7 +510,7 @@ const writeLateSteps = async (
     return err(quote.error);
   }
   // Preview cards are built off the request path like for local posts.
-  startLinkCard(env, "RemoteStatus", status.id, status.contentHtml);
+  startLinkCard(env, "RemoteStatus", status.id, status.contentHtml, noteCardUrl(raw));
   if (late.kind === "Updated" && late.edit) {
     // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
     // Quotes are skipped: a local account cannot yet quote a remote status.
@@ -749,10 +751,46 @@ export const persistAnnouncedObject = async (
  * Store the document `objectUri` served as the note it is, under its author.
  * The document must name that URI as its id. `asker`, when it is the author,
  * vouches for its own note; any other author must sit on the URI's host and
- * is resolved first, as Mastodon's `FetchRemoteStatusService`. `undefined`
- * when the document is no note or the proof does not hold.
+ * is resolved first, as Mastodon's `FetchRemoteStatusService`. A `Create`
+ * served there stores its object (`expected_activity_type?`): the `Create`
+ * must sit on its actor's host (`trustworthy_attribution?`), and so must its
+ * object, which is fetched when only named. `undefined` when the document is
+ * no note or the proof does not hold.
  */
 export const storeNoteDocument = async (
+  env: Env,
+  identity: InstanceIdentity,
+  objectUri: string,
+  raw: unknown,
+  options: PersistOptions,
+  asker?: RemoteActor,
+): Promise<Result<RemoteStatusValue | undefined, RepositoryError>> => {
+  const created = parseCreateDocument(raw);
+  if (created.isErr()) {
+    return storeNote(env, identity, objectUri, raw, options, asker);
+  }
+  const actorHost = urlHost(created.value.actor);
+  const noteUri = refId(created.value.object);
+  if (
+    created.value.id !== objectUri ||
+    actorHost === undefined ||
+    actorHost !== urlHost(objectUri) ||
+    noteUri === undefined ||
+    actorHost !== urlHost(noteUri)
+  ) {
+    return ok(undefined);
+  }
+  if (typeof created.value.object !== "string") {
+    return storeNote(env, identity, noteUri, created.value.object, options, asker);
+  }
+  const fetched = await fetchActivityJson(identity, noteUri, options);
+  return fetched.isErr()
+    ? ok(undefined)
+    : storeNote(env, identity, noteUri, fetched.value, options, asker);
+};
+
+/** {@link storeNoteDocument} of a note: no `Create` is read here, so one never leads to another. */
+const storeNote = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
@@ -913,6 +951,8 @@ export const remoteQuoteContext = (
     },
   };
 };
+
+const parseCreateDocument = schemaResult(CreateDocumentSchema);
 
 const urlHost = (href: string): string | undefined => {
   try {
