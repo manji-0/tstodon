@@ -164,7 +164,7 @@ describe("deleting a local account", () => {
     expect(parseSignatureHeader(sent.headers.get("signature") ?? "")?.keyId).toBe(
       `${actorUri}#main-key`,
     );
-    expect(await verifyInboxRequest(sent.clone(), publicKeyPem, body)).toBe(true);
+    expect(await verifyInboxRequest(sent.clone(), { kind: "Rsa", publicKeyPem }, body)).toBe(true);
 
     // The key is kept while an inbox is still to be attempted, and no longer.
     expect(await keepsSignerKey(queued.id)).toBe(true);

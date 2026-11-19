@@ -10,8 +10,6 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param domain
  * @param inboxUri
  * @param sharedInboxUri
- * @param publicKeyId
- * @param publicKeyPem
  * @param displayName
  * @param fetchedAt
  * @param createdAt
@@ -25,15 +23,13 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param featuredTagsUri
  */
 export const upsertRemoteActor = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,\noutbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)\nON CONFLICT(actor_uri) DO UPDATE SET\nusername = excluded.username,\ndomain = excluded.domain,\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\npublic_key_id = excluded.public_key_id,\npublic_key_pem = excluded.public_key_pem,\ndisplay_name = excluded.display_name,\nprofile_json = excluded.profile_json,\noutbox_uri = excluded.outbox_uri,\nfeatured_uri = excluded.featured_uri,\nfeatured_tags_uri = excluded.featured_tags_uri,\nfollowers_uri = excluded.followers_uri,\nfollowing_uri = excluded.following_uri,\nfetched_at = excluded.fetched_at,\nlast_webfingered_at = excluded.last_webfingered_at,\nupdated_at = excluded.updated_at",
+  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,\noutbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri\n) VALUES ($1, $2, $3, $4, $5, $1, '', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)\nON CONFLICT(actor_uri) DO UPDATE SET\nusername = excluded.username,\ndomain = excluded.domain,\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\ndisplay_name = excluded.display_name,\nprofile_json = excluded.profile_json,\noutbox_uri = excluded.outbox_uri,\nfeatured_uri = excluded.featured_uri,\nfeatured_tags_uri = excluded.featured_tags_uri,\nfollowers_uri = excluded.followers_uri,\nfollowing_uri = excluded.following_uri,\nfetched_at = excluded.fetched_at,\nlast_webfingered_at = excluded.last_webfingered_at,\nupdated_at = excluded.updated_at",
 ) as (
   actorUri: string,
   username: string,
   domain: string,
   inboxUri: string,
   sharedInboxUri: string | null,
-  publicKeyId: string,
-  publicKeyPem: string,
   displayName: string,
   fetchedAt: string,
   createdAt: string,
@@ -54,8 +50,6 @@ export namespace upsertRemoteActor {
     domain: string,
     inboxUri: string,
     sharedInboxUri: string | null,
-    publicKeyId: string,
-    publicKeyPem: string,
     displayName: string,
     fetchedAt: string,
     createdAt: string,

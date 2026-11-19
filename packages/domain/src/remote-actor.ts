@@ -51,8 +51,6 @@ const RemoteActorSchema = z.object({
   domain: z.string().min(1),
   inboxUri: z.url(),
   sharedInboxUri: z.url().optional(),
-  publicKeyId: z.string().min(1),
-  publicKeyPem: z.string().min(1),
   displayName: z.string(),
   profile: RemoteActorProfileSchema,
   /** The actor this one moved to, once a verified `Move` said so. */
@@ -109,8 +107,6 @@ export const RemoteActor = {
     domain: string;
     inboxUri: string;
     sharedInboxUri?: string | undefined;
-    publicKeyId: string;
-    publicKeyPem: string;
     displayName: string;
     profile?: RemoteActorProfile | undefined;
     movedTo?: string | undefined;
@@ -128,8 +124,6 @@ export const RemoteActor = {
       username: input.username,
       domain: input.domain,
       inboxUri: input.inboxUri,
-      publicKeyId: input.publicKeyId,
-      publicKeyPem: input.publicKeyPem,
       displayName: input.displayName,
       profile: input.profile ?? EMPTY_PROFILE,
       fetchedAt: input.fetchedAt,

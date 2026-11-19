@@ -160,6 +160,8 @@ export * from "./sql/deleteReblogOf";
 
 export * from "./sql/deleteRemoteActor";
 
+export * from "./sql/deleteRemoteActorKeysExcept";
+
 export * from "./sql/deleteRemoteActorModeration";
 
 export * from "./sql/deleteRemoteActorPinByObjectUri";
@@ -354,9 +356,9 @@ export * from "./sql/findRecentSignupIntent";
 
 export * from "./sql/findRemoteActorByHandle";
 
-export * from "./sql/findRemoteActorByPublicKeyId";
-
 export * from "./sql/findRemoteActorByUri";
+
+export * from "./sql/findRemoteActorKey";
 
 export * from "./sql/findRemoteActorModeration";
 
@@ -1013,6 +1015,8 @@ export * from "./sql/upsertPushSubscription";
 export * from "./sql/upsertRemoteActor";
 
 export * from "./sql/upsertRemoteActorKeepingHandle";
+
+export * from "./sql/upsertRemoteActorKeys";
 
 export * from "./sql/upsertRemoteActorModeration";
 

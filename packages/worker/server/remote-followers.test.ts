@@ -42,15 +42,19 @@ const followFromRemote = async (name: string, username: string): Promise<string>
     username: name,
     domain: "remote.example",
     inboxUri: `${actorUri}/inbox`,
-    publicKeyId: `${actorUri}#main-key`,
-    publicKeyPem: keys.publicKeyPem,
     displayName: name,
     fetchedAt: fetchedAt.value,
   });
   if (actor.isErr()) {
     throw new Error("remote actor fixture rejected");
   }
-  expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+  expect(
+    (
+      await upsertRemoteActor(env.DB, actor.value, [
+        { kind: "Rsa", keyId: `${actor.value.actorUri}#main-key`, publicKeyPem: keys.publicKeyPem },
+      ])
+    ).isOk(),
+  ).toBe(true);
   const body = JSON.stringify({
     "@context": "https://www.w3.org/ns/activitystreams",
     id: `${actorUri}/follows/1`,

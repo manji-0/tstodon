@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param domain
  */
 export const findRemoteActorByHandle = $runtime.makeTypedQueryFactory(
-  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, public_key_id, public_key_pem, display_name, profile_json, moved_to, outbox_uri, featured_uri, featured_tags_uri, followers_uri, following_uri, fetched_at, last_webfingered_at\nFROM remote_actors WHERE lower(username) = lower($1) AND lower(domain) = lower($2)\nORDER BY last_webfingered_at IS NULL, last_webfingered_at DESC, fetched_at DESC, actor_uri\nLIMIT 1",
+  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, display_name, profile_json, moved_to, outbox_uri, featured_uri, featured_tags_uri, followers_uri, following_uri, fetched_at, last_webfingered_at\nFROM remote_actors WHERE lower(username) = lower($1) AND lower(domain) = lower($2)\nORDER BY last_webfingered_at IS NULL, last_webfingered_at DESC, fetched_at DESC, actor_uri\nLIMIT 1",
 ) as (
   username: string,
   domain: string,
@@ -23,8 +23,6 @@ export namespace findRemoteActorByHandle {
     domain: string;
     inbox_uri: string;
     shared_inbox_uri: string | null;
-    public_key_id: string;
-    public_key_pem: string;
     display_name: string;
     profile_json: string;
     moved_to: string | null;

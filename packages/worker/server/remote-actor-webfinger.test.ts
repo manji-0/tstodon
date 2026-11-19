@@ -4,7 +4,6 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { Hostname, IsoInstant, RemoteActor } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
-import { generateAccountKeys } from "./keys";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 import { remoteActorFromDocument } from "./remote-actor-fetch";
@@ -659,7 +658,9 @@ describe("an actor URI whose host SQL would read differently", () => {
         continue;
       }
       accepted.push(uri);
-      expect((await upsertRemoteActor(env.DB, actor.value)).isOk()).toBe(true);
+      expect((await upsertRemoteActor(env.DB, actor.value.actor, actor.value.keys)).isOk()).toBe(
+        true,
+      );
       const row = await env.DB.prepare(
         "SELECT uri_host, lower(uri_authority) AS authority FROM remote_actors WHERE actor_uri = ?",
       )
@@ -668,7 +669,7 @@ describe("an actor URI whose host SQL would read differently", () => {
       expect({ uri, ...row }).toEqual({
         uri,
         uri_host: Hostname.ofUri(uri),
-        authority: actor.value.domain,
+        authority: actor.value.actor.domain,
       });
     }
     expect(accepted).not.toContain("https://Ksil-k.example/users/a");
@@ -1062,20 +1063,17 @@ describe("a cached handle WebFinger confirmed over a day ago, when a post mentio
 describe("a legacy row whose actor URI the authority check would refuse", () => {
   it("keeps its own host when WebFinger confirms its handle for another actor", async () => {
     const legacy = "https://someone@wf-legacy.example/users/alice";
-    const keys = await generateAccountKeys();
     const legacyActor = RemoteActor.fromFetched({
       actorUri: legacy,
       username: "alice",
       domain: "wf-legacy.example",
       inboxUri: `${legacy}/inbox`,
-      publicKeyId: `${legacy}#main-key`,
-      publicKeyPem: keys.publicKeyPem,
       displayName: "Legacy alice",
       fetchedAt: IsoInstant.parse(EPOCH)._unsafeUnwrap(),
     });
     expect(legacyActor.isOk()).toBe(true);
     if (legacyActor.isOk()) {
-      expect((await upsertRemoteActor(env.DB, legacyActor.value)).isOk()).toBe(true);
+      expect((await upsertRemoteActor(env.DB, legacyActor.value, [])).isOk()).toBe(true);
     }
     const next = await remoteActor("alice", "social.wf-legacy.example", { cache: false });
     const confirmed = { subject: "acct:alice@wf-legacy.example", self: next.actorUri };

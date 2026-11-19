@@ -22,7 +22,7 @@ describe("remoteActorFromDocument", () => {
     (username) => {
       const actor = remoteActorFromDocument(document({ preferredUsername: username }), ACTOR);
       expect(actor.isOk()).toBe(true);
-      expect(actor.isOk() && actor.value.username).toBe(username.toLowerCase());
+      expect(actor.isOk() && actor.value.actor.username).toBe(username.toLowerCase());
     },
   );
 

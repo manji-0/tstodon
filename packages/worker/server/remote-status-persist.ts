@@ -650,13 +650,7 @@ const healFromFetch = async (
   const author =
     asker.actorUri === row.actorUri
       ? ok(asker)
-      : await resolveRemoteActor(
-          env.DB,
-          identity,
-          `${row.actorUri}#main-key`,
-          row.actorUri,
-          options,
-        );
+      : await resolveRemoteActor(env.DB, identity, row.actorUri, options);
   if (author.isErr()) {
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
@@ -772,13 +766,7 @@ export const storeNoteDocument = async (
   if (authorHost === undefined || authorHost !== urlHost(objectUri)) {
     return ok(undefined);
   }
-  const author = await resolveRemoteActor(
-    env.DB,
-    identity,
-    `${authorUri}#main-key`,
-    authorUri,
-    options,
-  );
+  const author = await resolveRemoteActor(env.DB, identity, authorUri, options);
   if (author.isErr()) {
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
@@ -856,13 +844,7 @@ const persistVouchedQuoted = async (
   if (embedded.vouchedBy === actor.actorUri) {
     return storeRemoteNote(env, identity, actor, embedded.object, options);
   }
-  const author = await resolveRemoteActor(
-    env.DB,
-    identity,
-    `${embedded.vouchedBy}#main-key`,
-    embedded.vouchedBy,
-    options,
-  );
+  const author = await resolveRemoteActor(env.DB, identity, embedded.vouchedBy, options);
   if (author.isErr()) {
     return author.error.kind === "RepositoryError" ? err(author.error) : ok(undefined);
   }
