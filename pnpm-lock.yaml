@@ -428,8 +428,8 @@ importers:
         specifier: 4.3.9
         version: 4.3.9
       intl-messageformat:
-        specifier: 11.2.13
-        version: 11.2.13
+        specifier: 12.1.5
+        version: 12.1.5
       jose:
         specifier: ^6.2.12
         version: 6.2.12
@@ -2301,8 +2301,14 @@ packages:
   '@formatjs/icu-messageformat-parser@3.5.16':
     resolution: {integrity: sha512-kl6b/4D56gjGZi4ZewSmvXbalHwjOUI5ogEHPZqw42goeXTTrL7/yuPzvdrvr0QigDtvaOeb+UeMf62jks43Yg==}
 
+  '@formatjs/icu-messageformat-parser@3.5.23':
+    resolution: {integrity: sha512-iB1fYfhtSGd8uH9A8b1m01Ujcv6QtQnJasefP3jPApmz72L/zNipzf3BdoinTMd1xuviVChjUJWL60iTwjUQ+w==}
+
   '@formatjs/icu-skeleton-parser@2.1.11':
     resolution: {integrity: sha512-j8cUmOJzVgkHuS0QiQ6ga76UIoLOFSAMWhs7aZJztH3aAdCOAE6vpC8KVvFB4cU10ON0y2/5oOVmPJ43s2lTwA==}
+
+  '@formatjs/icu-skeleton-parser@2.1.13':
+    resolution: {integrity: sha512-IdAJ9NrHn7AF0zqncD9UpxQozTYyJtbwwrZnJMEKVxTcOOXtVkUb2XYTpNOGTAv58NCsk0rjRB9G+i2SvBmGAQ==}
 
   '@formatjs/intl-localematcher@0.8.13':
     resolution: {integrity: sha512-kHEAFOkeJSPNi7c5PaKaRjxcBrJwzzt81ifUu+8uve1EDW/VJl83KsxmqgqNZLzcFEhSliZGvx3+pk/RH0IOmg==}
@@ -5360,6 +5366,9 @@ packages:
   intl-messageformat@11.2.13:
     resolution: {integrity: sha512-JaPaE6TIX+TAS5XLhDUh41geLw4QfBHX4s5pW8Km+L9fVC8HzB9yOuhbh4EMR/F1+8C6b9qk4763Cv+LdOG1kg==}
 
+  intl-messageformat@12.1.5:
+    resolution: {integrity: sha512-quhcDFAxy4wr/GrgWgmMjuegoedNUIxGNLORfXgDgdjuv8cBM88ClLTLXmfYC1roMSR1PPc55yUEkpJ5m67W2g==}
+
   invariant@2.2.4:
     resolution: {integrity: sha512-phJfQVBuaJM5raOpJjSfkiD6BpbCE4Ns//LaXl6wGYtUBY83nWS6Rf9tXm2e8VaK60JEjYldbPif/A2B1C2gNA==}
 
@@ -6485,8 +6494,8 @@ packages:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
 
-  sql-escaper@1.9.1:
-    resolution: {integrity: sha512-4p522TVYaJXTbMlYgAwacjyg3EJyYe9KYWYlYJVwZG1YjtzxU5m5iSzsZoGI69Po7j3i/2tKlpZQi7uvhTL+WA==}
+  sql-escaper@1.7.0:
+    resolution: {integrity: sha512-ZgP6E9SPnhrhWXxd8+nLKPot3Euzyo3Rpxe6EFAYz2Ffaq9Xg2SH+6d4yJi7vsQDHaQlhzQ1phAopgE6+a1UCQ==}
     engines: {bun: '>=1.0.0', deno: '>=2.0.0', node: '>=12.0.0'}
 
   stack-generator@2.0.10:
@@ -8604,7 +8613,13 @@ snapshots:
     dependencies:
       '@formatjs/icu-skeleton-parser': 2.1.11
 
+  '@formatjs/icu-messageformat-parser@3.5.23':
+    dependencies:
+      '@formatjs/icu-skeleton-parser': 2.1.13
+
   '@formatjs/icu-skeleton-parser@2.1.11': {}
+
+  '@formatjs/icu-skeleton-parser@2.1.13': {}
 
   '@formatjs/intl-localematcher@0.8.13':
     dependencies:
@@ -11216,6 +11231,11 @@ snapshots:
       '@formatjs/fast-memoize': 3.1.7
       '@formatjs/icu-messageformat-parser': 3.5.16
 
+  intl-messageformat@12.1.5:
+    dependencies:
+      '@formatjs/fast-memoize': 3.1.7
+      '@formatjs/icu-messageformat-parser': 3.5.23
+
   invariant@2.2.4:
     dependencies:
       loose-envify: 1.4.0
@@ -11520,7 +11540,7 @@ snapshots:
       long: 5.3.2
       lru.min: 1.1.5
       named-placeholders: 1.1.6
-      sql-escaper: 1.9.1
+      sql-escaper: 1.7.0
 
   named-placeholders@1.1.6:
     dependencies:
@@ -12506,7 +12526,7 @@ snapshots:
 
   split2@4.2.0: {}
 
-  sql-escaper@1.9.1: {}
+  sql-escaper@1.7.0: {}
 
   stack-generator@2.0.10:
     dependencies:
