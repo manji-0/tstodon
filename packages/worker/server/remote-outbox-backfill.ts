@@ -155,7 +155,9 @@ const withCollections = async (
     return actor;
   }
   const raw = await fetchActivityJson(identity, actor.actorUri, options);
-  const refreshed = raw.isOk() ? remoteActorFromDocument(raw.value, actor.actorUri) : undefined;
+  const refreshed = raw.isOk()
+    ? remoteActorFromDocument(raw.value, actor.actorUri, actor.username)
+    : undefined;
   if (!refreshed || refreshed.isErr()) {
     return actor;
   }
