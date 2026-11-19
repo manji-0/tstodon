@@ -44,6 +44,9 @@ export type IntegrityProof = Readonly<{
 
 const EDDSA_JCS_2022 = "eddsa-jcs-2022";
 
+/** The longest `proofValue` read: an Ed25519 signature is 64 bytes, at most 88 base58 characters. */
+const MAX_PROOF_VALUE_LENGTH = 128;
+
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -101,7 +104,7 @@ export const readIntegrityProof = async (
   if (proof["cryptosuite"] !== EDDSA_JCS_2022 || typeof value !== "string" || !present(value)) {
     return err({ kind: "UnsupportedProof" });
   }
-  const signature = decodeMultibase(value);
+  const signature = decodeMultibase(value, MAX_PROOF_VALUE_LENGTH);
   if (signature === undefined) {
     return err({ kind: "UnsupportedProof" });
   }

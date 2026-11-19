@@ -13,6 +13,7 @@
 -- @param {String} $13:followersUri?
 -- @param {String} $14:followingUri?
 -- @param {String} $15:featuredTagsUri?
+-- @param {String} $16:legacyPublicKeyPem
 -- `upsertRemoteActor` for a round trip that settled nothing: a new row takes
 -- the handle given ($2, $3: the URI's authority), unconfirmed; a cached row
 -- keeps the handle and confirmation time it holds as this runs, so a
@@ -22,7 +23,7 @@ INSERT INTO remote_actors (
   actor_uri, username, domain, inbox_uri, shared_inbox_uri,
   public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,
   outbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri
-) VALUES ($1, $2, $3, $4, $5, $1, '', $6, $7, $8, $9, $10, $11, $12, NULL, $13, $14, $15)
+) VALUES ($1, $2, $3, $4, $5, $1, $16, $6, $7, $8, $9, $10, $11, $12, NULL, $13, $14, $15)
 ON CONFLICT(actor_uri) DO UPDATE SET
   inbox_uri = excluded.inbox_uri,
   shared_inbox_uri = excluded.shared_inbox_uri,

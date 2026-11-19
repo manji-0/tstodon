@@ -1,4 +1,4 @@
-import { Hostname, type RemoteActorKey } from "@tstodon/domain";
+import type { RemoteActorKey } from "@tstodon/domain";
 import { multibaseKey } from "./multibase";
 
 /** Mastodon's `ProcessAccountService::MAX_PUBLIC_KEYS`: how many of each list it reads. */
@@ -25,16 +25,15 @@ const text = (value: unknown, name: string): string | undefined => {
  * `publicKey` whose `owner` is the actor, at most ten of each, the first of a
  * key id kept.
  *
- * Only a key given in the document counts, and its id must be on the actor's
- * host. Mastodon takes one whose id is the actor's URI or a fragment of it as
- * it is given, and fetches any other key id on the actor's host to read the
- * key there; tstodon takes such a key as the document gives it, and does not
- * fetch a key the document names only by its id.
+ * Only a key the document gives in full, under the actor's URI or a
+ * fragment of it, counts: Mastodon takes such a key as it is given. Mastodon
+ * fetches any other key id (GoToSocial's `/main-key`) to read the key at its
+ * own URL; tstodon reads such a key only when a signature names it
+ * (`fetchKeyOwner`), so a document cannot claim a key id another actor on its
+ * host owns.
  */
 export const actorKeys = (document: unknown, actorUri: string): ReadonlyArray<RemoteActorKey> => {
-  const actorHost = Hostname.ofUri(actorUri);
-  const onActorHost = (keyId: string): boolean =>
-    actorHost !== undefined && Hostname.ofUri(keyId) === actorHost;
+  const ownKeyId = (keyId: string): boolean => keyId.split("#")[0] === actorUri;
   const multikeys = asArray(member(document, "assertionMethod"))
     .slice(0, MAX_PUBLIC_KEYS)
     .flatMap((value): ReadonlyArray<RemoteActorKey> => {
@@ -45,7 +44,7 @@ export const actorKeys = (document: unknown, actorUri: string): ReadonlyArray<Re
         member(value, "controller") !== actorUri ||
         keyId === undefined ||
         multibase === undefined ||
-        !onActorHost(keyId)
+        !ownKeyId(keyId)
       ) {
         return [];
       }
@@ -60,7 +59,7 @@ export const actorKeys = (document: unknown, actorUri: string): ReadonlyArray<Re
       return member(value, "owner") === actorUri &&
         keyId !== undefined &&
         publicKeyPem !== undefined &&
-        onActorHost(keyId)
+        ownKeyId(keyId)
         ? [{ kind: "Rsa", keyId, publicKeyPem }]
         : [];
     });

@@ -14,13 +14,15 @@
 -- @param {String} $14:followersUri?
 -- @param {String} $15:followingUri?
 -- @param {String} $16:featuredTagsUri?
--- The actor's keys are in `remote_actor_keys` (`replaceRemoteActorKeys`);
--- `public_key_id` and `public_key_pem` are unread (migration 0151).
+-- @param {String} $17:legacyPublicKeyPem
+-- The actor's keys are in `remote_actor_keys`; `public_key_id` and
+-- `public_key_pem` are unread (migration 0151) and written as the actor URI
+-- and a placeholder key, which a build from before 0151 can still read.
 INSERT INTO remote_actors (
   actor_uri, username, domain, inbox_uri, shared_inbox_uri,
   public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,
   outbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri
-) VALUES ($1, $2, $3, $4, $5, $1, '', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+) VALUES ($1, $2, $3, $4, $5, $1, $17, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 ON CONFLICT(actor_uri) DO UPDATE SET
   username = excluded.username,
   domain = excluded.domain,

@@ -6,6 +6,17 @@
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
+/** Joins byte arrays without spreading them into arguments. */
+const concat = (...parts: ReadonlyArray<Uint8Array>): Uint8Array => {
+  const joined = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part, offset);
+    offset += part.length;
+  }
+  return joined;
+};
+
 const base58Digits: ReadonlyMap<string, number> = new Map(
   BASE58_ALPHABET.split("").map((char, index) => [char, index]),
 );
@@ -26,7 +37,7 @@ const decodeBase58 = (text: string): Uint8Array | undefined => {
     value >>= 8n;
   }
   const zeros = /^1*/.exec(text)?.[0].length ?? 0;
-  return Uint8Array.from([...Array<number>(zeros).fill(0), ...bytes]);
+  return concat(new Uint8Array(zeros), Uint8Array.from(bytes));
 };
 
 /** Base64url with or without padding, as Ruby's `Base64.urlsafe_decode64` reads it. */
@@ -46,8 +57,16 @@ const decodeBase64Url = (text: string): Uint8Array | undefined => {
   }
 };
 
-/** `Multibase.decode`: the bytes of a `z` or `u` multibase string. */
-export const decodeMultibase = (text: string): Uint8Array | undefined => {
+/**
+ * `Multibase.decode`: the bytes of a `z` or `u` multibase string, when it is
+ * at most `maxLength` characters long. Base58 decoding is quadratic in the
+ * length, so the caller caps it at what the value it reads can be (a key, a
+ * signature) before anything is decoded.
+ */
+export const decodeMultibase = (text: string, maxLength: number): Uint8Array | undefined => {
+  if (text.length > maxLength) {
+    return undefined;
+  }
   switch (text[0]) {
     case "z":
       return decodeBase58(text.slice(1));
@@ -111,12 +130,12 @@ const derLength = (length: number): Uint8Array => {
   for (let rest = length; rest > 0; rest >>= 8) {
     bytes.unshift(rest & 0xff);
   }
-  return Uint8Array.of(0x80 | bytes.length, ...bytes);
+  return concat(Uint8Array.of(0x80 | bytes.length), Uint8Array.from(bytes));
 };
 
 const der = (tag: number, ...parts: ReadonlyArray<Uint8Array>): Uint8Array => {
-  const body = Uint8Array.from(parts.flatMap((part) => [...part]));
-  return Uint8Array.of(tag, ...derLength(body.length), ...body);
+  const body = concat(...parts);
+  return concat(Uint8Array.of(tag), derLength(body.length), body);
 };
 
 /**
@@ -169,7 +188,13 @@ const rsaSpki = (key: Uint8Array): Uint8Array | undefined => {
   return undefined;
 };
 
-const base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
+const base64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+};
 
 /** PEM as Ruby's OpenSSL writes an RSA key: base64 in lines of 64. */
 const wrappedPem = (spki: Uint8Array): string =>
@@ -183,7 +208,20 @@ const wrappedPem = (spki: Uint8Array): string =>
  * Workers API verifies ML-DSA, so it is read as no key here.
  */
 export const multibaseKey = (text: string): MultibaseKey | undefined => {
-  const bytes = decodeMultibase(text);
+  try {
+    return keyFromBytes(decodeMultibase(text, MAX_KEY_LENGTH));
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * The longest `publicKeyMultibase` read: a 4096-bit RSA key is about 750
+ * base58 characters, an Ed25519 key 48.
+ */
+const MAX_KEY_LENGTH = 2048;
+
+const keyFromBytes = (bytes: Uint8Array | undefined): MultibaseKey | undefined => {
   if (bytes === undefined) {
     return undefined;
   }
@@ -192,7 +230,7 @@ export const multibaseKey = (text: string): MultibaseKey | undefined => {
     return key.length === 32
       ? {
           kind: "Ed25519",
-          publicKeyPem: `-----BEGIN PUBLIC KEY-----\n${base64(Uint8Array.from([...ED25519_SPKI_HEADER, ...key]))}\n-----END PUBLIC KEY-----\n`,
+          publicKeyPem: `-----BEGIN PUBLIC KEY-----\n${base64(concat(ED25519_SPKI_HEADER, key))}\n-----END PUBLIC KEY-----\n`,
         }
       : undefined;
   }

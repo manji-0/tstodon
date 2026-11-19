@@ -405,32 +405,31 @@ export const fetchApPerson = async (actorUrl: string, label: string): Promise<Ap
   return result.body;
 };
 
-/** Seed a remote actor row so inbox verification can skip loopback fetch (workerd blocks 127.0.0.1). */
+/**
+ * Seed a remote actor row and its key (`remote_actor_keys`) so inbox
+ * verification can skip loopback fetch (workerd blocks 127.0.0.1).
+ */
 export const seedRemoteActor = (instance: E2eInstance, actor: ActorDocument): void => {
-  const shared = actor.endpoints?.sharedInbox
-    ? `'${actor.endpoints.sharedInbox.replaceAll("'", "''")}'`
-    : "NULL";
-  const now = new Date().toISOString();
+  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
+  const shared = actor.endpoints?.sharedInbox ? quote(actor.endpoints.sharedInbox) : "NULL";
+  const now = quote(new Date().toISOString());
   const sql = `INSERT INTO remote_actors (
       actor_uri, username, domain, inbox_uri, shared_inbox_uri,
       public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at
     ) VALUES (
-      '${actor.id.replaceAll("'", "''")}',
-      '${actor.preferredUsername.replaceAll("'", "''")}',
-      '${new URL(actor.id).host.replaceAll("'", "''")}',
-      '${actor.inbox.replaceAll("'", "''")}',
-      ${shared},
-      '${actor.publicKey.id.replaceAll("'", "''")}',
-      '${actor.publicKey.publicKeyPem.replaceAll("'", "''")}',
-      '${(actor.name ?? actor.preferredUsername).replaceAll("'", "''")}',
-      '${now}', '${now}', '${now}'
+      ${quote(actor.id)}, ${quote(actor.preferredUsername)}, ${quote(new URL(actor.id).host)},
+      ${quote(actor.inbox)}, ${shared}, ${quote(actor.id)}, '-',
+      ${quote(actor.name ?? actor.preferredUsername)}, ${now}, ${now}, ${now}
     )
     ON CONFLICT(actor_uri) DO UPDATE SET
-      public_key_id = excluded.public_key_id,
-      public_key_pem = excluded.public_key_pem,
       inbox_uri = excluded.inbox_uri,
       shared_inbox_uri = excluded.shared_inbox_uri,
-      updated_at = excluded.updated_at`;
+      updated_at = excluded.updated_at;
+    INSERT INTO remote_actor_keys (key_id, actor_uri, type, public_key_pem)
+    VALUES (${quote(actor.publicKey.id)}, ${quote(actor.id)}, 'rsa', ${quote(actor.publicKey.publicKeyPem)})
+    ON CONFLICT(key_id) DO UPDATE SET
+      actor_uri = excluded.actor_uri,
+      public_key_pem = excluded.public_key_pem`;
   d1Json(instance, sql);
 };
 

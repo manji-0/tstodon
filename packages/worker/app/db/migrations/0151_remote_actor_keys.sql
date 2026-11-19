@@ -17,8 +17,21 @@ SELECT public_key_id, actor_uri, 'rsa', public_key_pem FROM remote_actors;
 
 -- `remote_actors.public_key_id` and `public_key_pem` are no longer read. A
 -- UNIQUE column cannot be dropped without rebuilding the table, so they stay,
--- written as the actor URI and ''. The first pass moves every value out of the
--- way (no key id starts with `#`), so the second cannot collide with a row it
--- has not reached yet.
+-- written as the actor URI and a placeholder RSA key whose private half was
+-- thrown away (`LEGACY_PUBLIC_KEY_PEM` in `server/remote-actor-store.ts`). A
+-- build from before this migration, run during the deploy or after a
+-- rollback, still reads every row: a signature it checks against the
+-- placeholder fails, and it fetches the actor again. The first pass moves
+-- every value out of the way (no key id starts with `#`), so the second cannot
+-- collide with a row it has not reached yet.
 UPDATE remote_actors SET public_key_id = '#' || actor_uri;
-UPDATE remote_actors SET public_key_id = actor_uri, public_key_pem = '';
+UPDATE remote_actors SET public_key_id = actor_uri, public_key_pem = '-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlDmOZr4ifqj8GjQ//kop
+6SpR+VT6yWUsAJ/rmi4ePhoOsjCQ1aCpeNm7wr2fq1ZeU6rLnfbACKrGL8WTGNmX
+7KuVNnIwJqgrvmfRm7MMAVkLt0QLMoqKwWQZGGNitKhRftoeGpRwPhVHOG0xca8E
+rh8ASUo1oZTCLa7wSdrwEH4RbRZzQo6FLpJIM+g0VuBsQtYlEZQAKBN5w5UP0WMB
+r9AUBKcxPM4rlch+u2nUB8Nxr3VXQeXvkCIB/lwcw6lh0pbueE1WT/6EHXhRIXSp
+ymhLcTzfEN/4GR3viA2r6SAt1PkhhnHH/K04XiZvmHwLt6aFzvZqyEUrc/riWwmd
+6QIDAQAB
+-----END PUBLIC KEY-----
+';

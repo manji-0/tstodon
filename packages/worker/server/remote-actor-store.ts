@@ -278,6 +278,24 @@ export const findRemoteActorsByUris = async (
   );
 };
 
+/**
+ * What `remote_actors.public_key_pem` holds since migration 0151, which moved
+ * keys to `remote_actor_keys`: an RSA key whose private half was thrown away.
+ * A build from before 0151 (during a deploy, or after a rollback) still parses
+ * it, fails to verify any signature with it, and fetches the actor again.
+ * The migration writes the same key.
+ */
+export const LEGACY_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlDmOZr4ifqj8GjQ//kop
+6SpR+VT6yWUsAJ/rmi4ePhoOsjCQ1aCpeNm7wr2fq1ZeU6rLnfbACKrGL8WTGNmX
+7KuVNnIwJqgrvmfRm7MMAVkLt0QLMoqKwWQZGGNitKhRftoeGpRwPhVHOG0xca8E
+rh8ASUo1oZTCLa7wSdrwEH4RbRZzQo6FLpJIM+g0VuBsQtYlEZQAKBN5w5UP0WMB
+r9AUBKcxPM4rlch+u2nUB8Nxr3VXQeXvkCIB/lwcw6lh0pbueE1WT/6EHXhRIXSp
+ymhLcTzfEN/4GR3viA2r6SAt1PkhhnHH/K04XiZvmHwLt6aFzvZqyEUrc/riWwmd
+6QIDAQAB
+-----END PUBLIC KEY-----
+`;
+
 /** A key and the cached actor that publishes it. */
 export type RemoteKeyOwner = Readonly<{ actor: RemoteActor; key: RemoteActorKey }>;
 
@@ -327,8 +345,8 @@ export const findRemoteActorKey = async (
 
 /**
  * The statements that make `keys` the keys `actorUri` publishes, as
- * Mastodon's `set_fetchable_key!`: each is stored (taken from another actor
- * that held its id), and the actor's others are dropped. They run after the
+ * Mastodon's `set_fetchable_key!`: each is stored, unless another actor
+ * holds its id, and the actor's others are dropped. They run after the
  * actor's own row is written, in the same batch.
  */
 const replaceRemoteActorKeysStatements = (
@@ -364,6 +382,7 @@ const upsertRemoteActorStatement = (actor: RemoteActor) => {
     actor.followersUri ?? null,
     actor.followingUri ?? null,
     actor.featuredTagsUri ?? null,
+    LEGACY_PUBLIC_KEY_PEM,
   );
 };
 
@@ -409,6 +428,7 @@ export const upsertRemoteActorKeepingHandle = async (
       actor.followersUri ?? null,
       actor.followingUri ?? null,
       actor.featuredTagsUri ?? null,
+      LEGACY_PUBLIC_KEY_PEM,
     ),
     ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
   ]);

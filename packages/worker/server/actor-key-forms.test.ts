@@ -1,16 +1,20 @@
 import { createExecutionContext, env } from "cloudflare:test";
+import { IsoInstant, RemoteActor } from "@tstodon/domain";
 import { Hono } from "hono";
+import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ed25519Signer } from "../test/integrity-proof-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { unsignedFetch } from "./federated-fetch";
-import { signInboxRequest } from "./http-signature";
+import { importRsaPublicKey, signInboxRequest, verifyInboxRequest } from "./http-signature";
+import { readIntegrityProof } from "./integrity-proof";
 import { verifyForwardedActivity } from "./inbox-forward";
 import { forgetInboxRefusalWindows } from "./inbox-refusal";
 import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { refreshRemoteActor } from "./remote-actor-fetch";
-import { findRemoteActorKey } from "./remote-actor-store";
+import { multibaseKey } from "./multibase";
+import { findRemoteActorKey, LEGACY_PUBLIC_KEY_PEM, upsertRemoteActor } from "./remote-actor-store";
 import { postInbox } from "./routes/activitypub";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -353,5 +357,188 @@ describe("forwards with FEP-8b32 integrity proofs", () => {
       expect(verdict.document).not.toHaveProperty("proof");
       expect(verdict.document).toMatchObject({ id: proved["id"], object: proved["object"] });
     }
+  });
+});
+
+const options = () => ({
+  allowHosts: new Set<string>(),
+  blockedHosts: new Set<never>(),
+  fetchSigner: unsignedFetch,
+});
+
+describe("keys an actor's document cannot claim", () => {
+  it("reads GoToSocial's `/main-key` from its own URL, as Mastodon does, also after a refetch drops it", async () => {
+    const gina = await remoteActor("keys-gts-gina", "keys-gts.example", { cache: false });
+    const keyId = `${gina.actorUri}/main-key`;
+    const own = await generateAccountKeys();
+    const publicKey = { id: keyId, owner: gina.actorUri, publicKeyPem: own.publicKeyPem };
+    serve({
+      [gina.actorUri]: actorDocument(gina, { publicKey }),
+      // What GoToSocial serves at a key id: a stub of the actor with its key.
+      [keyId]: { id: gina.actorUri, type: "Person", publicKey },
+    });
+    const send = (slug: string) =>
+      post(signedDelivery(create(gina, slug), keyId, own.privateKeyJwk));
+    expect((await send("first")).status).toBe(202);
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect((await refreshRemoteActor(env.DB, identity, gina.actorUri, options())).isOk()).toBe(
+      true,
+    );
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()).toBeUndefined();
+    expect((await send("second")).status).toBe(202);
+    expect(await storedContent(`${gina.actorUri}/statuses/second`)).toContain("second");
+  });
+
+  it("does not let an actor's document take a key id on its host that is not its own", async () => {
+    const victim = await remoteActor("keys-take-victim", "keys-take.example");
+    const attacker = await remoteActor("keys-take-attacker", "keys-take.example", {
+      cache: false,
+    });
+    serve({
+      [attacker.actorUri]: actorDocument(attacker, {
+        publicKey: [
+          {
+            id: `${attacker.actorUri}#main-key`,
+            owner: attacker.actorUri,
+            publicKeyPem: attacker.publicKeyPem,
+          },
+          {
+            id: `${victim.actorUri}#main-key`,
+            owner: attacker.actorUri,
+            publicKeyPem: attacker.publicKeyPem,
+          },
+          {
+            id: "https://keys-take.example/keys/1",
+            owner: attacker.actorUri,
+            publicKeyPem: attacker.publicKeyPem,
+          },
+        ],
+      }),
+    });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect((await refreshRemoteActor(env.DB, identity, attacker.actorUri, options())).isOk()).toBe(
+      true,
+    );
+    const victimKey = (
+      await findRemoteActorKey(env.DB, `${victim.actorUri}#main-key`)
+    )._unsafeUnwrap();
+    expect(victimKey?.actor.actorUri).toBe(victim.actorUri);
+    expect(victimKey?.key.publicKeyPem).toBe(victim.publicKeyPem);
+    expect(
+      (await findRemoteActorKey(env.DB, "https://keys-take.example/keys/1"))._unsafeUnwrap(),
+    ).toBeUndefined();
+    expect((await post(victim.delivery(create(victim, "still-mine")))).status).toBe(202);
+  });
+
+  it("leaves a key with the actor that holds it when another actor's keys are written", async () => {
+    const holder = await remoteActor("keys-move-holder", "keys-move.example");
+    const other = await remoteActor("keys-move-other", "keys-move.example");
+    const otherActor = (
+      await findRemoteActorKey(env.DB, `${other.actorUri}#main-key`)
+    )._unsafeUnwrap();
+    if (otherActor === undefined) {
+      throw new Error("fixture actor not cached");
+    }
+    const written = await upsertRemoteActor(env.DB, otherActor.actor, [
+      otherActor.key,
+      { kind: "Rsa", keyId: `${holder.actorUri}#main-key`, publicKeyPem: other.publicKeyPem },
+    ]);
+    expect(written.isOk()).toBe(true);
+    const held = (await findRemoteActorKey(env.DB, `${holder.actorUri}#main-key`))._unsafeUnwrap();
+    expect(held?.actor.actorUri).toBe(holder.actorUri);
+    expect(held?.key.publicKeyPem).toBe(holder.publicKeyPem);
+  });
+
+  it("reads an actor only from its own id, not from a document served at another path of its host", async () => {
+    const victim = await remoteActor("keys-path-victim", "keys-path.example", { cache: false });
+    const evil = await generateAccountKeys();
+    const evilKeyId = "https://keys-path.example/uploads/evil.json";
+    serve({
+      [victim.actorUri]: actorDocument(victim),
+      // Anyone who can upload JSON to the host serves this, claiming the actor.
+      [evilKeyId]: actorDocument(victim, {
+        inbox: "https://keys-path.example/uploads/inbox",
+        publicKey: { id: evilKeyId, owner: victim.actorUri, publicKeyPem: evil.publicKeyPem },
+      }),
+    });
+    const { status } = await refusalsDuring(() =>
+      post(signedDelivery(create(victim, "forged"), evilKeyId, evil.privateKeyJwk)),
+    );
+    expect(status).toBe(401);
+    expect((await findRemoteActorKey(env.DB, evilKeyId))._unsafeUnwrap()).toBeUndefined();
+    expect(await storedContent(`${victim.actorUri}/statuses/forged`)).toBeUndefined();
+  });
+});
+
+describe("multibase values too long to decode", () => {
+  it("refuses a long publicKeyMultibase and proofValue before decoding them", async () => {
+    const long = `z${"2".repeat(100_000)}`;
+    const started = Date.now();
+    expect(multibaseKey(long)).toBeUndefined();
+    expect(multibaseKey(`z${"r".repeat(3000)}`)).toBeUndefined();
+    const proof = await readIntegrityProof(
+      {
+        id: "https://long.example/1",
+        proof: {
+          type: "DataIntegrityProof",
+          cryptosuite: "eddsa-jcs-2022",
+          verificationMethod: "https://long.example/users/a#k",
+          proofPurpose: "assertionMethod",
+          proofValue: long,
+        },
+      },
+      new Date(),
+    );
+    expect(proof._unsafeUnwrapErr()).toEqual({ kind: "UnsupportedProof" });
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+});
+
+describe("the remote_actors key columns after migration 0151", () => {
+  it("holds a key a build from before 0151 still parses, and fails to verify with", async () => {
+    const legacy = await remoteActor("keys-legacy", "keys-legacy.example");
+    const migrations = z
+      .array(z.object({ name: z.string(), queries: z.array(z.string()) }))
+      .parse(Reflect.get(env, "TEST_MIGRATIONS"));
+    const placeholderWrite = (
+      migrations.find((entry) => entry.name.endsWith("_remote_actor_keys.sql"))?.queries ?? []
+    ).filter((query) => /UPDATE remote_actors SET public_key_id = actor_uri/.test(query));
+    expect(placeholderWrite).toHaveLength(1);
+    await env.DB.prepare(placeholderWrite[0] ?? "").run();
+    const rows = await env.DB.prepare(
+      "SELECT public_key_id, public_key_pem FROM remote_actors WHERE actor_uri = ?",
+    )
+      .bind(legacy.actorUri)
+      .all();
+    // The row schema of a build from before 0151.
+    const old = z.object({ public_key_id: z.string().min(1), public_key_pem: z.string().min(1) });
+    const row = old.parse(rows.results[0]);
+    expect(row.public_key_pem).toBe(LEGACY_PUBLIC_KEY_PEM);
+    expect(await importRsaPublicKey(row.public_key_pem)).toBeDefined();
+    const request = await legacy.delivery(create(legacy, "legacy"));
+    expect(
+      await verifyInboxRequest(
+        request,
+        { kind: "Rsa", publicKeyPem: row.public_key_pem },
+        await request.clone().text(),
+      ),
+    ).toBe(false);
+    // The worker writes the same placeholder.
+    const fetchedAt = IsoInstant.parse(new Date().toISOString())._unsafeUnwrap();
+    const actor = RemoteActor.fromFetched({
+      actorUri: "https://keys-legacy.example/users/new",
+      username: "new",
+      domain: "keys-legacy.example",
+      inboxUri: "https://keys-legacy.example/users/new/inbox",
+      displayName: "new",
+      fetchedAt,
+    })._unsafeUnwrap();
+    expect((await upsertRemoteActor(env.DB, actor, [])).isOk()).toBe(true);
+    const written = await env.DB.prepare(
+      "SELECT public_key_pem FROM remote_actors WHERE actor_uri = ?",
+    )
+      .bind(actor.actorUri)
+      .first();
+    expect(written).toEqual({ public_key_pem: LEGACY_PUBLIC_KEY_PEM });
   });
 });
