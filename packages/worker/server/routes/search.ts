@@ -21,19 +21,22 @@ import {
 } from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonRemoteStatuses } from "../remote-status-documents";
-import { isUrlQuery, localHandleUsername, resolveSearchUrl } from "../search-url";
+import {
+  isUrlQuery,
+  localHandleUsername,
+  resolveFetchOptions,
+  resolveSearchUrl,
+} from "../search-url";
 import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
 import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { findAccountByUsername } from "../account-store";
 import type { FederatedFetchOptions } from "../federated-fetch";
-import { suspendedDomains } from "../admin-domain-block-store";
 import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
-import { federationAllowHosts, parseInstanceIdentity } from "../runtime-config";
+import { parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
 import { listFeaturedTags, listFollowedTags, searchTags, tagDailyHistories } from "../tag-store";
 import type { Context } from "hono";
-import { instanceActorFetchSigner } from "../instance-actor";
 
 /** The remote actor a `resolve=true` query names by its `user@domain` handle, fetched if not cached. */
 const resolveSearchHandle = async (
@@ -92,11 +95,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   if (query.length === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
-  const fetchOptions = async (): Promise<FederatedFetchOptions> => ({
-    allowHosts: await federationAllowHosts(c.env),
-    blockedHosts: await suspendedDomains(c.env.DB),
-    fetchSigner: instanceActorFetchSigner(c.env.DB, identity.value),
-  });
+  const fetchOptions = () => resolveFetchOptions(c.env, identity.value);
   // As Mastodon's `SearchService`, a URL with `resolve=true` is looked up, not
   // searched for as text: the answer is the one status or account it names,
   // on the first page, and nothing else. It is looked up once whatever `type`

@@ -40,6 +40,15 @@ const ALLOWED_ELEMENTS = new Set([
   "h6",
 ]);
 
+/**
+ * Kept as a paragraph of strong text, as Mastodon's
+ * `UNSUPPORTED_ELEMENTS_TRANSFORMER`: a converted object's text starts with
+ * its name as an `<h2>`.
+ */
+const HEADINGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+
+const closingTag = (name: string): string => (HEADINGS.has(name) ? "</strong></p>" : `</${name}>`);
+
 const VOID_ELEMENTS = new Set(["br"]);
 
 /** Elements dropped together with everything inside them. */
@@ -363,7 +372,9 @@ export const sanitizeRemoteHtml = (html: string): string => {
       continue;
     }
     if (!closing) {
-      out += `<${name}${safeAttributes(name, tag.attributes)}>`;
+      out += HEADINGS.has(name)
+        ? "<p><strong>"
+        : `<${name}${safeAttributes(name, tag.attributes)}>`;
       open.push(name);
       openCount.set(name, (openCount.get(name) ?? 0) + 1);
       continue;
@@ -372,7 +383,7 @@ export const sanitizeRemoteHtml = (html: string): string => {
       continue;
     }
     for (let closed = open.pop(); closed !== undefined; closed = open.pop()) {
-      out += `</${closed}>`;
+      out += closingTag(closed);
       openCount.set(closed, (openCount.get(closed) ?? 1) - 1);
       if (closed === name) {
         break;
@@ -380,8 +391,8 @@ export const sanitizeRemoteHtml = (html: string): string => {
     }
   }
   flushText();
-  while (open.length > 0) {
-    out += `</${open.pop()}>`;
+  for (let closed = open.pop(); closed !== undefined; closed = open.pop()) {
+    out += closingTag(closed);
   }
   return out;
 };

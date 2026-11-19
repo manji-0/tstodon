@@ -28,6 +28,7 @@ const MANIFEST: WebManifest = {
   application: { js: "/packs/application.js", css: ["/packs/app.css"], preload: ["/packs/r.js"] },
   remoteInteractionHelper: { js: "/packs/remote_interaction_helper.js", css: [], preload: [] },
   embed: { js: "/packs/embed.js", css: [], preload: [] },
+  share: { js: "/packs/share.js", css: [], preload: [] },
   locales: ["en", "ja"],
 };
 

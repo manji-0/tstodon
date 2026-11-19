@@ -25,7 +25,8 @@ export type Remote = Readonly<{
  * `fetchedAt` is when it was cached, now by default. An account domain other
  * than `host` is stamped as confirmed by WebFinger then, as only a confirmation
  * stores one. `published` is the actor document's `published` date, none by
- * default.
+ * default. `path` is the actor URI's path, `/users/<username>` by default, for
+ * software that serves its actors elsewhere (PeerTube's `/accounts/<name>`).
  */
 export const remoteActor = async (
   username: string,
@@ -39,9 +40,10 @@ export const remoteActor = async (
     followingUri?: string;
     featuredUri?: string;
     published?: string;
+    path?: string;
   }> = {},
 ): Promise<Remote> => {
-  const actorUri = `https://${host}/users/${username}`;
+  const actorUri = `https://${host}${options.path ?? `/users/${username}`}`;
   const keys = await generateAccountKeys();
   const fetchedAt = IsoInstant.parse(options.fetchedAt ?? new Date().toISOString());
   const published =

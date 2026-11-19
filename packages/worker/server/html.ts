@@ -100,6 +100,24 @@ export const formatPostText = (
     .replace(/(?:<p><\/p>)+$/, "");
 };
 
+/**
+ * Mastodon's `FormattingHelper#linkify` of a remote object's URL: one
+ * paragraph, its URLs shortened links. A converted object's text ends with
+ * one (`StatusParser#processed_text`); a URL holds no hashtag or mention of
+ * its own, so those stay text.
+ */
+export const linkify = (text: string): string => {
+  let html = "";
+  let index = 0;
+  for (const entity of extractEntities(text)) {
+    if (entity.kind === "Url") {
+      html += escapeHtml(text.slice(index, entity.start)) + shortenedLink(entity.url);
+      index = entity.end;
+    }
+  }
+  return `<p>${html}${escapeHtml(text.slice(index))}</p>`;
+};
+
 /** The mentions Mastodon finds in post text (`@user`, `@user@domain`), lowercased. */
 const mentionHandles = (text: string): ReadonlyArray<{ username: string; domain?: string }> =>
   extractEntities(text).flatMap((entity) =>

@@ -464,6 +464,8 @@ const builtManifest = async (clientOutDir: string): Promise<unknown> => {
     remoteInteractionHelper: entry("src/entrypoints/remote_interaction_helper.ts"),
     // The page an embedded status frames (/@user/:id/embed).
     embed: entry("src/entrypoints/embed.tsx"),
+    // The standalone composer (/share).
+    share: entry("src/entrypoints/share.tsx"),
     locales: locales(),
   };
 };
@@ -485,6 +487,7 @@ const devManifest = async (): Promise<unknown> => {
     application: entry("entrypoints/application.ts"),
     remoteInteractionHelper: entry("entrypoints/remote_interaction_helper.ts"),
     embed: entry("entrypoints/embed.tsx"),
+    share: entry("entrypoints/share.tsx"),
     locales: locales(),
   };
 };

@@ -167,47 +167,89 @@ const PollOptionDocumentSchema = z
   })
   .passthrough();
 
-/** A `Note`, or a `Question` (a note with poll options). */
-export const NoteDocumentSchema = z
-  .object({
-    id: z.string().min(1),
-    type: z.union([z.literal("Note"), z.literal("Question")]),
-    oneOf: z.array(PollOptionDocumentSchema).optional(),
-    anyOf: z.array(PollOptionDocumentSchema).optional(),
-    endTime: z.string().nullable().optional(),
-    closed: z.union([z.string(), z.boolean()]).nullable().optional(),
-    votersCount: z.number().int().nonnegative().nullable().optional(),
-    attributedTo: z.string().min(1),
+/** The object types Mastodon stores as they are (`ActivityPub::Activity::SUPPORTED_TYPES`). */
+const SUPPORTED_NOTE_TYPES = ["Note", "Question"] as const;
+
+/**
+ * The object types Mastodon stores as a status that links to the object
+ * (`ActivityPub::Activity::CONVERTED_TYPES`): its text is the object's name,
+ * summary and link, and its content is dropped (`StatusParser#processed_text`).
+ */
+export const CONVERTED_OBJECT_TYPES = [
+  "Image",
+  "Audio",
+  "Video",
+  "Article",
+  "Page",
+  "Event",
+] as const;
+
+/** Whether an object of `type` is stored as a status, as it is or converted. */
+export const isStatusObjectType = (type: string): boolean =>
+  SUPPORTED_NOTE_TYPES.some((supported) => supported === type) ||
+  CONVERTED_OBJECT_TYPES.some((converted) => converted === type);
+
+/** A property's id: a URI, an object with an `id`, or the first of a list of them. */
+const ObjectIdSchema = z.unknown().transform(refId).pipe(z.string().min(1));
+
+const NoteFields = {
+  id: z.string().min(1),
+  oneOf: z.array(PollOptionDocumentSchema).optional(),
+  anyOf: z.array(PollOptionDocumentSchema).optional(),
+  endTime: z.string().nullable().optional(),
+  closed: z.union([z.string(), z.boolean()]).nullable().optional(),
+  votersCount: z.number().int().nonnegative().nullable().optional(),
+  /** The author: Mastodon reads the first entry (PeerTube lists the account, then the channel). */
+  attributedTo: ObjectIdSchema,
+  /** The content per language; Mastodon sends one entry, keyed by the post's language. */
+  contentMap: z.record(z.string(), z.unknown()).optional(),
+  /** The title of a converted object; any other value is no title. */
+  name: z.unknown().optional(),
+  nameMap: z.record(z.string(), z.unknown()).optional(),
+  summaryMap: z.record(z.string(), z.unknown()).optional(),
+  published: z.string().min(1),
+  updated: z.string().nullable().optional(),
+  /** A URI, a `Link`, or a list of either; read as Mastodon's `url_to_href`. */
+  url: z.unknown().optional(),
+  to: z.union([z.string(), z.array(z.string())]).optional(),
+  cc: z.union([z.string(), z.array(z.string())]).optional(),
+  sensitive: booleanish,
+  summary: z.string().nullable().optional(),
+  inReplyTo: z.string().nullable().optional(),
+  attachment: z
+    .array(
+      z.object({
+        type: z.string().optional(),
+        mediaType: z.string().optional(),
+        url: z.string().optional(),
+        name: z.string().nullable().optional(),
+        // Read leniently (`remote-attachment.ts`): a malformed one is left out, and the note is kept.
+        blurhash: z.unknown().optional(),
+        width: z.unknown().optional(),
+        height: z.unknown().optional(),
+        focalPoint: z.unknown().optional(),
+      }),
+    )
+    .optional(),
+  /** FEP-044f / GoToSocial interaction policy; read leniently, a malformed one is no policy. */
+  interactionPolicy: z.unknown().optional(),
+};
+
+/**
+ * A `Note`, a `Question` (a note with poll options), or an object of a
+ * {@link CONVERTED_OBJECT_TYPES} type, whose content is not read.
+ */
+export const NoteDocumentSchema = z.discriminatedUnion("type", [
+  z.looseObject({
+    ...NoteFields,
+    type: z.literal(SUPPORTED_NOTE_TYPES),
     content: z.string(),
-    /** The content per language; Mastodon sends one entry, keyed by the post's language. */
-    contentMap: z.record(z.string(), z.unknown()).optional(),
-    published: z.string().min(1),
-    updated: z.string().nullable().optional(),
-    url: z.string().optional(),
-    to: z.union([z.string(), z.array(z.string())]).optional(),
-    cc: z.union([z.string(), z.array(z.string())]).optional(),
-    sensitive: booleanish,
-    summary: z.string().nullable().optional(),
-    inReplyTo: z.string().nullable().optional(),
-    attachment: z
-      .array(
-        z.object({
-          type: z.string().optional(),
-          mediaType: z.string().optional(),
-          url: z.string().optional(),
-          name: z.string().nullable().optional(),
-          // Read leniently (`remote-attachment.ts`): a malformed one is left out, and the note is kept.
-          blurhash: z.unknown().optional(),
-          width: z.unknown().optional(),
-          height: z.unknown().optional(),
-          focalPoint: z.unknown().optional(),
-        }),
-      )
-      .optional(),
-    /** FEP-044f / GoToSocial interaction policy; read leniently, a malformed one is no policy. */
-    interactionPolicy: z.unknown().optional(),
-  })
-  .passthrough();
+  }),
+  z.looseObject({
+    ...NoteFields,
+    type: z.literal(CONVERTED_OBJECT_TYPES),
+  }),
+]);
 
 /**
  * A poll vote as Mastodon sends it: a `Note` named for the chosen option,

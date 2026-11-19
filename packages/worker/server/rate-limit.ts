@@ -312,6 +312,24 @@ export const rateLimitMiddleware =
   };
 
 /**
+ * The `api_account` limit for a signed-in page that resolves or fetches on
+ * its viewer's behalf; a 429 when the account is over.
+ */
+export const limitAccount = async <P extends string>(
+  c: Context<{ Bindings: Env }, P>,
+  accountId: string,
+  limiter: RateLimiter = defaultRateLimiter,
+): Promise<Response | undefined> => {
+  const policy = rateLimitPolicy(c.env);
+  const check = policy === undefined ? undefined : RateLimit.accountCheck(policy, accountId);
+  if (check === undefined) {
+    return undefined;
+  }
+  const verdict = await limiter.run(c.env, [check]);
+  return verdict.kind === "Limited" ? tooManyRequests(c, verdict) : undefined;
+};
+
+/**
  * The `inbox_domain` limit for a delivery whose signature verified, keyed on
  * the server that signed it; a 429 when that server is over. Remote servers
  * retry a 429 later, so nothing is lost.

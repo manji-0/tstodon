@@ -5,6 +5,7 @@ import {
   getWellKnownNodeinfo,
   getWellKnownWebfinger,
 } from "#server/routes/discovery";
+import { redirectToAuthorizeInteraction } from "#server/routes/authorize-interaction";
 import { getOauthAuthorizationServerMetadata } from "#server/routes/oauth";
 
 // Void's route scanner skips dot directories, so `routes/.well-known/` would
@@ -15,6 +16,7 @@ const WELL_KNOWN = {
   "/.well-known/host-meta.json": getWellKnownHostMetaJson,
   "/.well-known/nodeinfo": getWellKnownNodeinfo,
   "/.well-known/oauth-authorization-server": getOauthAuthorizationServerMetadata,
+  "/.well-known/proxy": redirectToAuthorizeInteraction,
 } as const;
 
 const isWellKnownPath = (path: string): path is keyof typeof WELL_KNOWN =>

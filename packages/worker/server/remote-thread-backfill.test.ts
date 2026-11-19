@@ -233,6 +233,42 @@ describe("opening a remote status", () => {
     ]);
   });
 
+  it("fetches an ancestor or a reply of a type Mastodon converts, such as a Lemmy Page", async () => {
+    const author = await remoteActor("thread-converted", "thread.example");
+    const page = noteDocument(author, "thread-converted-page", {
+      type: "Page",
+      name: "A Lemmy post",
+      content: undefined,
+    });
+    const opened = withReplies(author, "thread-converted-comment", [
+      noteUri(author, "thread-converted-video"),
+    ]);
+    const comment = { ...opened, inReplyTo: page.id };
+    await deliver(author, comment);
+    const commentId = await statusIdOf(comment.id);
+    const documents = new Map<string, unknown>([
+      [comment.id, comment],
+      [page.id, page],
+      [
+        noteUri(author, "thread-converted-video"),
+        noteDocument(author, "thread-converted-video", {
+          type: "Video",
+          name: "A PeerTube answer",
+          inReplyTo: comment.id,
+        }),
+      ],
+    ]);
+    const recording = recordingEnv();
+    await requested(commentId, recording.env);
+    await serving(documents, () => drain(recording));
+
+    const context = await contextOf(commentId);
+    expect(context.ancestors.map((entry) => entry.uri)).toEqual([page.id]);
+    expect(context.descendants.map((entry) => entry.uri)).toEqual([
+      noteUri(author, "thread-converted-video"),
+    ]);
+  });
+
   it("reads the replies of other accounts from the pages after the first, as Mastodon serves them", async () => {
     const author = await remoteActor("paged-author", "paged.example");
     const other = await remoteActor("paged-other", "paged.example");

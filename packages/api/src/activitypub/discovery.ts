@@ -11,8 +11,11 @@ export const WebFingerLink = z.object({
 export type WebFingerLinkJSON = z.infer<typeof WebFingerLink>;
 
 /**
- * The JRD `/.well-known/webfinger` answers for `acct:user@domain`: the
- * account's actor as `aliases` and the `self` link Mastodon resolves.
+ * The JRD `/.well-known/webfinger` answers, as Mastodon's
+ * `WebfingerSerializer`: the account's profile page and actor as `aliases`
+ * (the actor alone for the instance actor), and the `profile-page`, `self`,
+ * OStatus `subscribe` and FEP-3b86 `Create` / `Object` links, then the
+ * avatar when the account has one.
  */
 export const WebFingerJrd = z.object({
   subject: z.string().startsWith("acct:"),
