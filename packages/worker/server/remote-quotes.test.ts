@@ -189,6 +189,16 @@ describe("quoting a remote status", () => {
         quoteAuthorization: stamp,
       }),
     );
+    // As Mastodon's `accept_quote!`, the `Update` is no edit: the note was never
+    // edited, so it claims no `updated`.
+    expect(
+      updates.map((update) =>
+        Object.hasOwn(
+          read(z.object({ object: z.record(z.string(), z.unknown()) }), update.payload).object,
+          "updated",
+        ),
+      ),
+    ).not.toContain(true);
   });
 
   it("keeps the quote pending for a stamp on another host or an Accept by someone else", async () => {

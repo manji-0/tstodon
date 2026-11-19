@@ -96,6 +96,22 @@ export const markConversationRead = async (
     );
   });
 
+/**
+ * Forget the last status the account read in the conversation, so it reads
+ * as unread until the account reads it again.
+ */
+export const markConversationUnread = async (
+  db: D1Database,
+  accountId: string,
+  conversationId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare("DELETE FROM conversation_reads WHERE account_id = ? AND conversation_id = ?")
+      .bind(accountId, conversationId)
+      .run();
+  });
+
 /** The last status the account read in each of these conversations, keyed by conversation id. */
 export const listConversationReads = async (
   db: D1Database,

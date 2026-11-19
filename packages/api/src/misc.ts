@@ -10,6 +10,16 @@ export const ApiAsyncRefresh = z.object({
 });
 export type ApiAsyncRefreshJSON = z.infer<typeof ApiAsyncRefresh>;
 
+/**
+ * `REST::DomainBlockPreviewSerializer` (`GET /api/v1/domain_blocks/preview`):
+ * the follows a block of the domain would sever.
+ */
+export const ApiDomainBlockPreview = z.object({
+  following_count: z.number(),
+  followers_count: z.number(),
+});
+export type ApiDomainBlockPreviewJSON = z.infer<typeof ApiDomainBlockPreview>;
+
 /** The error tokens of a `422` validation error's `details`. */
 export const ERROR_TOKENS = [
   "ERR_TAKEN",
