@@ -113,7 +113,7 @@ const buildLocalNoteDocument = (
   sensitized: boolean,
   card: ApiPreviewCardJSON | null,
 ): ApiOriginalStatusJSON => {
-  const url = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
+  const uri = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   const attachments = mediaAttachmentsJson(identity, status.mediaIds, mediaById);
   return {
     id: status.id,
@@ -124,8 +124,8 @@ const buildLocalNoteDocument = (
     spoiler_text: status.spoilerText,
     visibility: Visibility.toMastodon(status.visibility),
     language: status.language.kind === "Present" ? status.language.value : null,
-    uri: url,
-    url,
+    uri,
+    url: InstanceIdentity.statusUrl(identity, account.username, status.id),
     replies_count: interactions.replies,
     reblogs_count: interactions.reblogs,
     favourites_count: interactions.favourites,

@@ -144,7 +144,7 @@ export const actorDocument = (
     endpoints: {
       sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
     },
-    url: id,
+    url: InstanceIdentity.profileUrl(identity, account.username),
     manuallyApprovesFollowers: profile ? account.locked : false,
     discoverable: profile ? profile.discoverable : false,
     indexable: profile ? profile.indexable : false,
@@ -540,6 +540,7 @@ export const noteDocument = (
     ...(quotes && quote?.authorization ? { quoteAuthorization: quote.authorization } : {}),
     id,
     attributedTo: actor,
+    url: InstanceIdentity.statusUrl(identity, account.username, note.id),
     content: note.contentHtml,
     published: note.createdAt,
     // Mastodon applies an `Update` of a note only when `updated` is newer

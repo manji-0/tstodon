@@ -287,7 +287,6 @@ export const mastodonAccount = (
   emojis: ReadonlyArray<CustomEmoji> = [],
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
 ): ApiAccountJSON => {
-  const url = InstanceIdentity.actorUrl(identity, account.username);
   return {
     id: account.id,
     username: account.username,
@@ -303,8 +302,8 @@ export const mastodonAccount = (
     group: false,
     created_at: account.createdAt,
     note: textToHtml(profile.note),
-    url,
-    uri: url,
+    url: InstanceIdentity.profileUrl(identity, account.username),
+    uri: InstanceIdentity.actorUrl(identity, account.username),
     avatar: profile.avatarObjectKey
       ? mediaUrl(identity, profile.avatarObjectKey)
       : identity.thumbnailUrl,
