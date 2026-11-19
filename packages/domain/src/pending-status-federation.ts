@@ -17,6 +17,8 @@ export const PendingStatusFederationSchema = z.object({
   activity: OwedStatusActivitySchema,
   /** Changes with each change of the status while the activity waits. */
   revision: z.number().int().min(0),
+  /** When the last change that owes an `Update` was made: the `updated` it carries. */
+  editedAt: IsoInstant.schema.optional(),
   /** The tries that failed so far, the first one included. */
   attempts: z.number().int().min(1),
   nextAttemptAt: IsoInstant.schema,

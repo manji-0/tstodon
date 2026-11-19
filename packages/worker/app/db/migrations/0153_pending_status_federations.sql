@@ -3,11 +3,14 @@
 -- `FederatePendingStatuses` job sends it later (FED-14). One row per status:
 -- an owed `Create` stays a `Create` through later edits. `revision` changes
 -- whenever the status changes while the row waits, so a retry that built an
--- older version stores nothing. The row goes with its status.
+-- older version stores nothing. `edited_at` is when the last change that
+-- owes an `Update` was made, the `updated` the `Update` carries. The row goes
+-- with its status.
 CREATE TABLE pending_status_federations (
   status_id TEXT PRIMARY KEY REFERENCES statuses(id) ON DELETE CASCADE,
   activity TEXT NOT NULL CHECK (activity IN ('Create', 'Update')),
   revision INTEGER NOT NULL DEFAULT 0,
+  edited_at TEXT,
   attempts INTEGER NOT NULL,
   next_attempt_at TEXT NOT NULL,
   created_at TEXT NOT NULL

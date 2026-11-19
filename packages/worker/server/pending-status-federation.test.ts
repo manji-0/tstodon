@@ -4,7 +4,11 @@ import { z } from "zod";
 import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
-import { failingQuoteReads } from "../test/d1-fault";
+import { beforeBatch, failingQuoteReads, failingReads, failingStatements } from "../test/d1-fault";
+import { PNG_40X30 } from "../test/image-fixtures";
+import { LocalAccountModeration } from "@tstodon/domain";
+import { saveLocalAccountModeration } from "./account-moderation-store";
+import { processDistributePollUpdateJob } from "./poll-update";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { processOutboxJob } from "./outbox-job";
 
@@ -37,7 +41,12 @@ const ActivitySchema = z.object({
   type: z.string(),
   object: z.union([
     z.string(),
-    z.object({ id: z.string(), content: z.string().optional(), quote: z.string().optional() }),
+    z.object({
+      id: z.string(),
+      content: z.string().optional(),
+      quote: z.string().optional(),
+      attachment: z.array(z.unknown()).optional(),
+    }),
   ]),
   instrument: z.object({ id: z.string() }).optional(),
 });
@@ -193,7 +202,7 @@ describe("a post whose Create could not be built when it was stored", () => {
     const { account, posted } = await unfederatedQuote("given-up");
 
     const logged = await loggedDuring(() =>
-      failingQuoteReads(undefined, async () => {
+      failingQuoteReads(posted.id, async () => {
         for (let run = 0; run < 20; run += 1) {
           await retry(posted.id);
         }
@@ -229,5 +238,162 @@ describe("an edit whose Update could not be built", () => {
       content: expect.stringContaining("edited: first"),
     });
     expect(await queued(account.id, "Create", posted.uri)).toHaveLength(1);
+  });
+});
+
+/** The batch that stores an owed activity. */
+const storesOwed = (sql: string): boolean =>
+  sql.includes("INSERT INTO outbound_activities") && sql.includes("pending_status_federations");
+
+describe("a retry whose post changes between its read and its store", () => {
+  it("stores nothing for the version it read, and sends the edited one", async () => {
+    const { email, account, posted } = await unfederatedQuote("raced-edit");
+
+    await beforeBatch(
+      storesOwed,
+      () => send(email, "PUT", `/api/v1/statuses/${posted.id}`, { status: "raced: edited" }),
+      () => retry(posted.id),
+    );
+    await retry(posted.id);
+
+    const creates = await queued(account.id, "Create", posted.uri);
+    expect(creates).toHaveLength(1);
+    expect(creates[0]?.object).toMatchObject({ content: expect.stringContaining("raced: edited") });
+  });
+
+  it("stores nothing once the post is deleted", async () => {
+    const { email, account, posted } = await unfederatedQuote("raced-delete");
+
+    await beforeBatch(
+      storesOwed,
+      async () => {
+        const deleted = await request(email, "DELETE", `/api/v1/statuses/${posted.id}`);
+        expect(deleted.status).toBe(200);
+      },
+      () => retry(posted.id),
+    );
+    await retry(posted.id);
+
+    expect(await queued(account.id, "Create", posted.uri)).toHaveLength(0);
+  });
+});
+
+const NotFederatedLine = z.object({
+  kind: z.literal("StatusNotFederated"),
+  statusId: z.string(),
+  cause: z.string(),
+});
+
+describe("a post whose media does not read back when it is stored", () => {
+  it("sends its Create, with the media, once the media reads", async () => {
+    const email = "pending-media@example.com";
+    const account = await signedInAccount(email);
+    const upload = new FormData();
+    upload.set("file", new File([PNG_40X30], "a.png", { type: "image/png" }));
+    const uploaded = await SELF.fetch(`${ORIGIN}/api/v2/media`, {
+      method: "POST",
+      headers: await authHeaders(email),
+      body: upload,
+    });
+    expect(uploaded.status).toBe(200);
+    const media = z.object({ id: z.string() }).parse(await uploaded.json());
+
+    // Only the read that builds the note's attachments, once the note is
+    // stored: the first one after its `notify` followers are listed.
+    let stored = false;
+    let failed = false;
+    const logged = await loggedDuring(() =>
+      failingReads(
+        (sql, params) => {
+          stored ||= sql.includes("notify != 0");
+          const fails =
+            stored &&
+            !failed &&
+            sql.includes("FROM media_attachments") &&
+            params.some((param) => typeof param === "string" && param.includes(media.id));
+          failed ||= fails;
+          return fails;
+        },
+        () => send(email, "POST", "/api/v1/statuses", { status: "media", media_ids: [media.id] }),
+      ),
+    );
+    const notFederated = logged.flatMap((line) => {
+      const parsed = NotFederatedLine.safeParse(line);
+      return parsed.success ? [parsed.data] : [];
+    });
+    expect(notFederated.map((line) => line.cause)).toEqual(["media"]);
+    const statusId = notFederated[0]?.statusId ?? "";
+    const uri = `https://example.com/users/${account.username}/statuses/${statusId}`;
+    expect(await queued(account.id, "Create", uri)).toHaveLength(0);
+
+    await retry(statusId);
+
+    const creates = await queued(account.id, "Create", uri);
+    expect(creates).toHaveLength(1);
+    expect(creates[0]?.object).toMatchObject({ attachment: [expect.anything()] });
+  });
+});
+
+describe("a post whose author is barred before the retry", () => {
+  it("is never sent, even once the author is let back in", async () => {
+    const { account, posted } = await unfederatedQuote("barred");
+    const disabled = LocalAccountModeration.apply(LocalAccountModeration.inGoodStanding, "disable");
+    expect((await saveLocalAccountModeration(env.DB, account.id, disabled)).isOk()).toBe(true);
+
+    await retry(posted.id);
+    const enabled = LocalAccountModeration.inGoodStanding;
+    expect((await saveLocalAccountModeration(env.DB, account.id, enabled)).isOk()).toBe(true);
+    await retry(posted.id);
+
+    expect(await queued(account.id, "Create", posted.uri)).toHaveLength(0);
+  });
+});
+
+describe("an edit that cannot tell whether its post still owes a Create", () => {
+  it("sends no Update then, and sends it later", async () => {
+    const email = "pending-unknown-owed@example.com";
+    const account = await signedInAccount(email);
+    const posted = await post(email, { status: "posted" });
+    expect(await queued(account.id, "Create", posted.uri)).toHaveLength(1);
+
+    const logged = await loggedDuring(() =>
+      failingStatements(
+        (sql, params) =>
+          /^\s*UPDATE pending_status_federations\b/.test(sql) && params.includes(posted.id),
+        () => send(email, "PUT", `/api/v1/statuses/${posted.id}`, { status: "edited: unknown" }),
+      ),
+    );
+    expect(logged).toContainEqual({
+      kind: "StatusUpdateNotFederated",
+      statusId: posted.id,
+      cause: "pending",
+    });
+    expect(await queued(account.id, "Update", posted.uri)).toHaveLength(0);
+    await retry(posted.id);
+
+    const updates = await queued(account.id, "Update", posted.uri);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.object).toMatchObject({
+      content: expect.stringContaining("edited: unknown"),
+    });
+    expect(await queued(account.id, "Create", posted.uri)).toHaveLength(1);
+  });
+});
+
+describe("a poll whose Create is still owed", () => {
+  it("sends its counts with the Create, not in an Update before it", async () => {
+    const email = "pending-poll@example.com";
+    const account = await signedInAccount(email);
+    const poll = await failingQuoteReads(undefined, () =>
+      post(email, { status: "a poll", poll: { options: ["yes", "no"], expires_in: 3600 } }),
+    );
+    expect(await queued(account.id, "Create", poll.uri)).toHaveLength(0);
+
+    const pollId = poll.poll?.id ?? "";
+    await processDistributePollUpdateJob(env, { kind: "DistributePollUpdate", pollId });
+    await retry(poll.id);
+
+    expect(await queued(account.id, "Update", poll.uri)).toHaveLength(0);
+    expect(await queued(account.id, "Create", poll.uri)).toHaveLength(1);
   });
 });

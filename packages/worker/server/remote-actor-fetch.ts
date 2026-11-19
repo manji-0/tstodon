@@ -221,9 +221,11 @@ export const remoteActorFromDocument = (
   }
   // Mastodon's `Account` validates a remote username when it changes
   // (`will_save_change_to_username?`), so it stores no account under one
-  // that does not match, and keeps refreshing one it already holds.
+  // that does not match, and keeps refreshing one it already holds. The
+  // comparison is exact, as Mastodon's; tstodon stores the username
+  // lowercased, so a refused one in another case counts as a change.
   if (
-    document.value.preferredUsername.toLowerCase() !== storedUsername &&
+    document.value.preferredUsername !== storedUsername &&
     !RemoteActor.acceptsUsername(document.value.preferredUsername)
   ) {
     return err({ kind: "InvalidSignature" });

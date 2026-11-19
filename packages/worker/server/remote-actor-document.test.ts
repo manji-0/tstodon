@@ -38,6 +38,14 @@ describe("remoteActorFromDocument", () => {
     },
   );
 
+  it("takes a refused username only when it is exactly the stored one, as will_save_change_to_username?", () => {
+    const read = (username: string, stored: string) =>
+      remoteActorFromDocument(document({ preferredUsername: username }), ACTOR, stored).isOk();
+    expect(read("bob.", "bob.")).toBe(true);
+    expect(read("Bob.", "bob.")).toBe(false);
+    expect(read("bob.", "bob")).toBe(false);
+  });
+
   it("refuses a username longer than Mastodon's hard limit of 2048", () => {
     expect(
       remoteActorFromDocument(document({ preferredUsername: "a".repeat(2048) }), ACTOR).isOk(),

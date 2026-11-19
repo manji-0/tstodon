@@ -332,8 +332,11 @@ export const publishLocalNote = async (
           },
     );
   }
-  if (federated?.isOk()) {
-    await requestQuoteApproval(env, identity, user, note, federated.value);
+  if (federated?.isOk() && quotedAuthor?.kind === "Remote") {
+    await requestQuoteApproval(env, identity, user, note, federated.value, {
+      uri: `${actor}/quote_requests/${quoteId}`,
+      inboxUri: quotedAuthor.actor.inboxUri,
+    });
   }
   // The author's own view of the note: the response and the author's stream
   // event both send it. A render that fails sends no event.

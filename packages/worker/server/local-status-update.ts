@@ -24,7 +24,7 @@ import { publishToAccount } from "./stream-publish";
  * later rather than sent without them: receivers replace a note's
  * attachments and quote with the `Update`'s, so one without them deletes
  * them remotely. A note that still owes an activity (its `Create` not sent
- * yet) sends that one with this version instead (FED-14).
+ * yet) sends that one with this version instead, `federate` or not (FED-14).
  */
 export const announceNoteUpdate = async (
   env: Env,
@@ -36,18 +36,18 @@ export const announceNoteUpdate = async (
 ): Promise<Result<ApiStatusJSON | undefined, EnqueueLocalActivityError>> => {
   // Stamped with this change, so a receiver takes it as newer than its copy.
   const stamped = { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) };
-  const owed = federate && (await deferToOwedActivity(env, note.id));
+  // Whether or not this change federates, an activity the note still owes
+  // goes out with this version.
+  const owed = await deferToOwedActivity(env, note.id, updatedAt);
   const federated =
-    federate && !owed ? await readNoteObject(env, identity, account, stamped) : undefined;
-  if (federated?.isErr()) {
-    console.error(
-      JSON.stringify({
-        kind: "StatusUpdateNotFederated",
-        statusId: note.id,
-        cause: federated.error.cause,
-      }),
-    );
-    await deferStatusActivity(env, note.id, "Update");
+    federate && owed === "None" ? await readNoteObject(env, identity, account, stamped) : undefined;
+  // Unknown whether a `Create` is owed: the `Update` is owed instead, which
+  // an owed `Create` outranks.
+  const cause =
+    owed === "Unknown" ? "pending" : federated?.isErr() ? federated.error.cause : undefined;
+  if (federate && cause !== undefined) {
+    console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id, cause }));
+    await deferStatusActivity(env, note.id, "Update", updatedAt);
   }
   if (federated?.isOk()) {
     const enqueued = await enqueueLocalActivity(

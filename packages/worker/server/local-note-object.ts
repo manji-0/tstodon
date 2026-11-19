@@ -1,5 +1,5 @@
 import type { ApActivityDocumentOf, ApStatusDocumentJSON } from "@tstodon/api/activitypub";
-import { InstanceIdentity, type LocalAccount, type LocalNote, StatusTarget } from "@tstodon/domain";
+import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { type NoteQuote, noteDocument, quoteRequestActivity } from "./activitypub";
 import { loadCustomEmojis } from "./custom-emoji-store";
@@ -9,9 +9,7 @@ import { loadNoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNotePoll } from "./poll-store";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
-import { findQuoteByQuoting } from "./quote-store";
 import { noteQuote } from "./quote-uri";
-import { findRemoteActorByUri } from "./remote-actor-store";
 import { loadNoteReply } from "./reply-target";
 
 /** A note's object as its `Create` or `Update` carries it, and the status it quotes. */
@@ -82,13 +80,29 @@ export const noteUpdateActivity = (
   };
 };
 
+/** Where a quote's `QuoteRequest` goes: the id the quote keeps to match the answer, and the quoted author's inbox. */
+export type QuoteRequestTarget = Readonly<{ uri: string; inboxUri: string }>;
+
+/** The `QuoteRequest` that asks the quoted author to approve the note's quote. */
+export const noteQuoteRequest = (
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  federated: NoteObject & Readonly<{ quote: NoteQuote }>,
+  requestUri: string,
+): ApActivityDocumentOf<"QuoteRequest"> =>
+  quoteRequestActivity(
+    requestUri,
+    InstanceIdentity.actorUrl(identity, account.username),
+    federated.quote.uri,
+    federated.object,
+  );
+
 /**
  * Ask the remote author of the status a just-federated note quotes for
- * approval with a `QuoteRequest`, while the quote is pending, under the id
- * the quote keeps to match the answer. A targeted outbox delivery: its
- * workflow retries a failed attempt with backoff, as Mastodon's
- * `QuoteRequestWorker` delivers through `DeliveryWorker`. As Mastodon,
- * nothing asks again when no answer comes. A failure is logged.
+ * approval with a `QuoteRequest`. A targeted outbox delivery: its workflow
+ * retries a failed attempt with backoff, as Mastodon's `QuoteRequestWorker`
+ * delivers through `DeliveryWorker`. As Mastodon, nothing asks again when no
+ * answer comes. A failure is logged.
  */
 export const requestQuoteApproval = async (
   env: Env,
@@ -96,34 +110,20 @@ export const requestQuoteApproval = async (
   account: LocalAccount,
   note: LocalNote,
   federated: NoteObject,
+  target: QuoteRequestTarget,
 ): Promise<void> => {
-  const authorUri = federated.quote?.addressAuthor;
-  if (federated.quote === undefined || authorUri === undefined) {
+  const { quote } = federated;
+  if (quote === undefined) {
     return;
   }
-  const quote = await findQuoteByQuoting(env.DB, StatusTarget.local(note.id));
-  if (quote.isOk() && quote.value?.state.kind !== "Pending") {
-    return;
-  }
-  const author = await findRemoteActorByUri(env.DB, authorUri);
-  const requestUri = quote.isOk() ? quote.value?.activityUri : undefined;
-  const inboxUri = author.isOk() ? author.value?.inboxUri : undefined;
-  const requested =
-    requestUri === undefined || inboxUri === undefined
-      ? undefined
-      : await enqueueTargetedActivity(
-          env,
-          account.id,
-          "QuoteRequest",
-          quoteRequestActivity(
-            requestUri,
-            InstanceIdentity.actorUrl(identity, account.username),
-            federated.quote.uri,
-            federated.object,
-          ),
-          inboxUri,
-        );
-  if (requested === undefined || requested.isErr()) {
+  const requested = await enqueueTargetedActivity(
+    env,
+    account.id,
+    "QuoteRequest",
+    noteQuoteRequest(identity, account, { ...federated, quote }, target.uri),
+    target.inboxUri,
+  );
+  if (requested.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteRequestNotSent", statusId: note.id }));
   }
 };
