@@ -77,7 +77,8 @@ export const forwardRemoteActivity = async (
     logNotForwarded(status, "insert", inserted.error.message);
     return;
   }
-  // Already forwarded by an earlier try of this delivery.
+  // Expanded by an earlier try of this delivery. One that stored the row
+  // but failed to queue its expansion is queued again here.
   if (inserted.value === undefined) {
     return;
   }

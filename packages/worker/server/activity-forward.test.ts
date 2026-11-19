@@ -295,7 +295,9 @@ describe("forwarding once, the replied-to author first", () => {
     expect(await inbox.post(await alice.forward(signed))).toBe(202);
     expect(forwardJobs(sent)).toHaveLength(1);
 
-    // The late steps of the same delivery, run again by a retry.
+    // The late steps of the same delivery, run again by a retry while the
+    // first expansion was never queued (a lost queue send): queued again,
+    // for the same stored forward.
     const stored = (
       await findRemoteStatusByObjectUri(env.DB, `${alice.actorUri}/statuses/once`)
     )._unsafeUnwrap();
@@ -304,11 +306,19 @@ describe("forwarding once, the replied-to author first", () => {
       throw new Error("the reply was not stored");
     }
     const identity = parseInstanceIdentity(env)._unsafeUnwrap();
-    await forwardRemoteActivity(inbox.testEnv, identity, stored, actor, {
-      kind: "Create",
-      body: signed,
-    });
-    expect(forwardJobs(sent)).toHaveLength(1);
+    const retry = () =>
+      forwardRemoteActivity(inbox.testEnv, identity, stored, actor, {
+        kind: "Create",
+        body: signed,
+      });
+    const [first] = forwardJobs(sent);
+    sent.length = 0;
+    await retry();
+    expect(forwardJobs(sent).map((job) => job.activityId)).toEqual([first?.activityId]);
+    // Once expanded, a retry queues nothing.
+    await expandForward(inbox.testEnv, sent);
+    await retry();
+    expect(forwardJobs(sent)).toEqual([]);
     const rows = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM outbound_activities WHERE forward_of = ?",
     )

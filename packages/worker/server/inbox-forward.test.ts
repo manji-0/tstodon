@@ -367,6 +367,20 @@ describe("forwarded actor activities", () => {
     expect((await post(relay.forward(await alice.ldSigned(remove(1))))).status).toBe(202);
     expect(await actorRow(alice.actorUri)).not.toBeNull();
     alive.mockRestore();
+    // Failures that are not the origin saying the account is gone.
+    const notGone = [
+      () => new Response(null, { status: 403 }),
+      () => new Response("not json", { status: 200 }),
+      () =>
+        new Response(null, { status: 302, headers: { location: "https://elsewhere.example/" } }),
+      () => new Response(null, { status: 500 }),
+    ];
+    for (const [n, answer] of notGone.entries()) {
+      const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => answer());
+      expect((await post(relay.forward(await alice.ldSigned(remove(10 + n))))).status).toBe(202);
+      expect(await actorRow(alice.actorUri)).not.toBeNull();
+      spy.mockRestore();
+    }
     serve({ [alice.actorUri]: {} }, 410);
     expect((await post(relay.forward(await alice.ldSigned(remove(2))))).status).toBe(202);
     expect(await actorRow(alice.actorUri)).toBeNull();

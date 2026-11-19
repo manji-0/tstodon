@@ -215,11 +215,15 @@ export const insertOutboundActivity = async (
   });
 };
 
+const ForwardRow = z.object({ id: z.string(), fanout: z.string().nullable() });
+
 /**
  * Store an inbound activity that `accountId` forwards (`payloadJson`, as
  * received), keyed by the inbound activity's id `forwardOf`, with its
- * fan-out row `Queued` for an `ExpandForward` job. `undefined` when that
- * activity was already forwarded: a retried delivery does not forward twice.
+ * fan-out row `Queued` for an `ExpandForward` job. A retried delivery finds
+ * the row already there and stores nothing. Answers the stored forward's id
+ * while its fan-out is still `Queued` (its expansion may never have been
+ * queued), and `undefined` once it was expanded.
  */
 export const insertForwardedActivity = async (
   db: D1Database,
@@ -242,11 +246,19 @@ export const insertForwardedActivity = async (
          SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM outbound_activities WHERE id = ?)`,
       )
       .bind(newEntityId(), id, fanout.kind, fanout.attemptCount, createdAt, createdAt, id),
+    db
+      .prepare(
+        `SELECT a.id, d.kind AS fanout FROM outbound_activities a
+         LEFT JOIN outbox_deliveries d ON d.activity_id = a.id AND d.inbox_url IS NULL
+         WHERE a.forward_of = ?`,
+      )
+      .bind(input.forwardOf),
   ]);
   if (batched.isErr()) {
     return err(batched.error);
   }
-  return ok((batched.value[0]?.meta.changes ?? 0) > 0 ? id : undefined);
+  const [stored] = parseRows(ForwardRow, batched.value[2]?.results ?? []);
+  return ok(stored?.fanout === "Queued" ? stored.id : undefined);
 };
 
 /** The last activity of a local account that is being deleted, and where it goes. */

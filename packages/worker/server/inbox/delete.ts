@@ -6,7 +6,7 @@ import { purgeRemoteActorAndAnnounce } from "../remote-actor-purge";
 import { RemoteDeleteTarget } from "../remote-delete";
 import { removeRemoteStatus } from "../remote-status-delete";
 import { findRemoteStatusByObjectUri, recordRemoteTombstone } from "../remote-status-store";
-import { fetchActivityJson } from "../federated-fetch";
+import { answersGone } from "../federated-fetch";
 import { forwardRemoteActivity } from "../activity-forward";
 import type { ActivityOf, InboxHandler, RemoteDelivery } from "./handler";
 import { revokeQuoteStamp } from "./quote-answer";
@@ -50,16 +50,12 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
   switch (effect.kind) {
     case "PurgeActor": {
       // A forwarded account `Delete` is not taken on the forwarder's word:
-      // the account goes only when its own server no longer serves it.
-      if (route.kind === "Forwarded") {
-        const fetched = await fetchActivityJson(identity, effect.actorUri, {
-          allowHosts,
-          blockedHosts,
-          fetchSigner,
-        });
-        if (fetched.isOk() || fetched.error.kind === "VerificationUnavailable") {
-          return ok(undefined);
-        }
+      // the account goes only when its own server answers 404 or 410 for it.
+      if (
+        route.kind === "Forwarded" &&
+        !(await answersGone(identity, effect.actorUri, { allowHosts, blockedHosts, fetchSigner }))
+      ) {
+        return ok(undefined);
       }
       const purged = await purgeRemoteActorAndAnnounce(env, effect.actorUri);
       return purged.isErr() ? err(purged.error) : ok(undefined);
