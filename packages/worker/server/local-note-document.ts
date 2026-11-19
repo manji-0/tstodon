@@ -1,6 +1,5 @@
-import type { ApCreateJSON, ApRepliesJSON, ApStatusDocumentJSON } from "@tstodon/api/activitypub";
-import { ACTIVITY_STREAMS } from "@tstodon/api/activitypub";
-import { InstanceIdentity, type LocalAccount, type LocalNote } from "@tstodon/domain";
+import type { ApRepliesJSON, ApStatusDocumentJSON } from "@tstodon/api/activitypub";
+import type { InstanceIdentity, LocalAccount, LocalNote } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { noteDocument } from "./activitypub";
 import type { RepositoryError } from "./d1";
@@ -51,20 +50,4 @@ export const loadLocalNoteDocument = async (
       emojis: extras.emojis,
     }),
   );
-};
-
-/** The `Create` of a local note, as it is delivered when the note is posted. */
-export const noteCreateActivity = (
-  identity: InstanceIdentity,
-  author: LocalAccount,
-  object: ApStatusDocumentJSON,
-): ApCreateJSON & Readonly<{ "@context": typeof ACTIVITY_STREAMS }> => {
-  const actor = InstanceIdentity.actorUrl(identity, author.username);
-  return {
-    "@context": ACTIVITY_STREAMS,
-    id: `${object.id}/activity`,
-    type: "Create",
-    actor,
-    object,
-  };
 };

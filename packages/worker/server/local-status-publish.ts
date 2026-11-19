@@ -22,8 +22,7 @@ import { replaceStatusMentions, replaceStatusRemoteMentions } from "./mention-st
 import { loadNoteMentions, mentionLinks, resolveMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
-import { noteDocument, quoteRequestActivity } from "./activitypub";
-import { noteCreateActivity } from "./local-note-document";
+import { noteCreateActivity, noteDocument, quoteRequestActivity } from "./activitypub";
 import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll, loadNotePoll } from "./poll-store";
 import { startLinkCard } from "./link-card";

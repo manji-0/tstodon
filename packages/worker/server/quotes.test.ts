@@ -287,13 +287,18 @@ describe("quote posts", () => {
       .first<{ payload_json: string }>();
     expect(row).not.toBeNull();
     const payload = z
-      .object({ object: z.record(z.string(), z.unknown()).optional() })
+      .object({
+        "@context": z.unknown(),
+        object: z.record(z.string(), z.unknown()).optional(),
+      })
       .parse(JSON.parse(row?.payload_json ?? "{}"));
     const quotedUri = String(payload.object?.quote);
     expect(quotedUri).toContain(original.id);
-    expect(payload.object?.quote_uri).toBe(quotedUri);
+    expect(payload.object?.quoteUri).toBe(quotedUri);
     expect(payload.object?._misskey_quote).toBe(quotedUri);
-    expect(Array.isArray(payload.object?.["@context"])).toBe(true);
+    // The note's terms are on the activity, as Mastodon sends them.
+    expect(payload.object?.["@context"]).toBeUndefined();
+    expect(Array.isArray(payload["@context"])).toBe(true);
 
     // The actor's status document (what a remote instance fetches) says the same.
     const note = await json(
@@ -304,7 +309,7 @@ describe("quote posts", () => {
     const document = read(
       z.object({
         quote: z.string(),
-        quote_uri: z.string(),
+        quoteUri: z.string(),
         _misskey_quote: z.string(),
       }),
       note.body,

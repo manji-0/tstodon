@@ -1,11 +1,11 @@
-import { type ApActorDocumentJSON, PUBLIC_COLLECTION } from "@tstodon/api/activitypub";
-import { InstanceIdentity, type LocalAccount } from "@tstodon/domain";
+import type { ApActorDocumentJSON } from "@tstodon/api/activitypub";
+import type { InstanceIdentity, LocalAccount } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { listAccountAliases } from "./account-alias-store";
 import { findAccountMove } from "./account-move-store";
 import { findAccountStanding } from "./account-moderation-store";
 import { findAccountProfile } from "./account-profile-store";
-import { type ActorProfile, actorDocument } from "./activitypub";
+import { type ActorProfile, actorDocument, actorUpdateActivity } from "./activitypub";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { loadCustomEmojis } from "./custom-emoji-store";
@@ -82,19 +82,12 @@ export const sendActorUpdate = async (
   if (document.isErr()) {
     return err(document.error);
   }
-  const actor = InstanceIdentity.actorUrl(identity, account.username);
-  // As Mastodon's `UpdateSerializer`: the actor's context on the activity,
-  // addressed to the public.
-  const { "@context": context, ...object } = document.value;
-  return enqueueLocalActivity(env, account.id, "Update", {
-    "@context": context,
-    id: `${actor}#updates/${newEntityId()}`,
-    type: "Update",
-    actor,
-    published: nowIso(),
-    to: [PUBLIC_COLLECTION],
-    object,
-  });
+  return enqueueLocalActivity(
+    env,
+    account.id,
+    "Update",
+    actorUpdateActivity(document.value, newEntityId(), nowIso()),
+  );
 };
 
 /**

@@ -97,9 +97,9 @@ const noteFields = {
   /** Mentions first, then hashtags, then custom emoji, as Mastodon's `virtual_tags`. */
   tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag, ApEmoji])),
   interactionPolicy: ApInteractionPolicy,
-  /** The quoted status (FEP-044f), with Misskey's and the older names. */
+  /** The quoted status (FEP-044f), with Misskey's and Fedibird's names. */
   quote: ApUri.optional(),
-  quote_uri: ApUri.optional(),
+  quoteUri: ApUri.optional(),
   _misskey_quote: ApUri.optional(),
   /** The quoted author's stamp, once the quote is accepted. */
   quoteAuthorization: ApUri.optional(),

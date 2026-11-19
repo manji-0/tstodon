@@ -1,7 +1,6 @@
-import { ACTIVITY_STREAMS, type ApActivityDocumentOf } from "@tstodon/api/activitypub";
-import { InstanceIdentity, type LocalNote, type OutboxJob } from "@tstodon/domain";
+import type { InstanceIdentity, LocalNote, OutboxJob } from "@tstodon/domain";
 import { findAccountById } from "./account-store";
-import { noteDocument } from "./activitypub";
+import { noteDocument, noteUpdateActivity } from "./activitypub";
 import { nowIso } from "./clock";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { enqueueLocalActivity } from "./delivery";
@@ -92,14 +91,8 @@ const distributePollUpdate = async (
     );
     return;
   }
-  const actor = InstanceIdentity.actorUrl(identity, author.value.username);
-  const update: ApActivityDocumentOf<"Update"> = {
-    "@context": ACTIVITY_STREAMS,
-    id: `${actor}/statuses/${note.id}/updates/${newEntityId()}`,
-    type: "Update",
-    actor,
-    published: nowIso(),
-    object: noteDocument(identity, author.value, note, {
+  const update = noteUpdateActivity(
+    noteDocument(identity, author.value, note, {
       // Best effort: the `Update` of a poll's counts carries no newer
       // `updated`, so Mastodon handles it as an implicit update, which keeps
       // the quote it has (`update_quote_approval!` returns without one).
@@ -111,7 +104,9 @@ const distributePollUpdate = async (
       quotePolicy: await loadNoteQuotePolicy(env.DB, author.value, note),
       emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
     }),
-  };
+    newEntityId(),
+    nowIso(),
+  );
   if (!reachesRemoteInboxes(update, identity.domain)) {
     return;
   }

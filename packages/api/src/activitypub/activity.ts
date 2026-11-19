@@ -1,14 +1,7 @@
 import { z } from "zod";
 import { ApActor } from "./actor";
 import { ApUri, withContext } from "./context";
-import {
-  ApHashtag,
-  ApPollVote,
-  ApQuoteAuthorization,
-  ApStatusDocument,
-  ApStatusObject,
-  ApTombstone,
-} from "./note";
+import { ApHashtag, ApPollVote, ApQuoteAuthorization, ApStatusObject, ApTombstone } from "./note";
 
 /*
  * The activities tstodon sends, as Mastodon's `ActivityPub::*Serializer`s
@@ -60,9 +53,8 @@ export const ApAnnounce = z.object({
 export type ApAnnounceJSON = z.infer<typeof ApAnnounce>;
 
 /**
- * `Create` of a local status, or of a vote on a remote poll. tstodon embeds
- * the status with its own `@context` (where Mastodon lifts the terms to the
- * activity's); the activity's `@context` is ActivityStreams alone.
+ * `Create` of a local status, or of a vote on a remote poll. As Mastodon's,
+ * the status's terms are on the activity's `@context`; the status carries none.
  */
 export const ApCreate = z.object({
   id: ApUri,
@@ -71,13 +63,13 @@ export const ApCreate = z.object({
   published: z.iso.datetime({ offset: true }).optional(),
   to: audience.optional(),
   cc: audience.optional(),
-  object: z.union([ApStatusDocument, ApPollVote]),
+  object: z.union([ApStatusObject, ApPollVote]),
 });
 export type ApCreateJSON = z.infer<typeof ApCreate>;
 
 /**
- * `Update` of a local status (an edit, a poll's counts), embedded with its
- * `@context` as in a `Create`, or of the actor (`UpdateSerializer`: the
+ * `Update` of a local status (an edit, a poll's counts), its terms on the
+ * activity as in a `Create`, or of the actor (`UpdateSerializer`: the
  * actor's terms on the activity, addressed to the public).
  */
 export const ApUpdate = z.object({
@@ -86,7 +78,7 @@ export const ApUpdate = z.object({
   actor: ApUri,
   published: z.iso.datetime({ offset: true }),
   to: audience.optional(),
-  object: z.union([ApStatusDocument, ApActor]),
+  object: z.union([ApStatusObject, ApActor]),
 });
 export type ApUpdateJSON = z.infer<typeof ApUpdate>;
 

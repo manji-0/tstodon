@@ -40,6 +40,7 @@ import {
   hashtagObject,
   announceActivity,
   localNoteRef,
+  noteCreateActivity,
   parseLocalActorUsername,
 } from "../activitypub";
 import { jsonRepositoryError } from "../http";
@@ -70,7 +71,7 @@ import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
 import type { InboxSigner } from "../inbox/handler";
 import { listOutboxStatusIds, type OutboxReader } from "../actor-outbox-store";
-import { loadLocalNoteDocument, noteCreateActivity } from "../local-note-document";
+import { loadLocalNoteDocument } from "../local-note-document";
 import type { CustomEmoji } from "../emoji";
 import { accountCounts } from "../account-count-store";
 import { findAccountStanding } from "../account-moderation-store";

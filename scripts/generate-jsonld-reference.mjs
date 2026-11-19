@@ -3,9 +3,13 @@
 // Worker canonicalizes with (it never fetches one), and
 // packages/worker/server/ld-signature.fixture.ts, what Mastodon makes of a
 // set of documents: their canonical N-Quads and their Linked Data signature.
-// `ld-signature.test.ts` holds `server/ld-signature.ts` to both. Run once per
-// Mastodon release; the tests need no Ruby. It runs
-// scripts/jsonld-reference.rb in the Mastodon image (Docker):
+// `ld-signature.test.ts` holds `server/ld-signature.ts` to both. It also
+// writes packages/worker/server/own-activity-signature.fixture.ts, what
+// Mastodon reads of each activity tstodon signs, built by tstodon's own
+// builders (scripts/own-activity-documents.ts) and signed by tstodon, which
+// `own-activity-signature.test.ts` holds the builders to. Run it once per
+// Mastodon release and after a change to a builder; the tests need no Ruby.
+// It runs scripts/jsonld-reference.rb in the Mastodon image (Docker):
 //
 //   node scripts/generate-jsonld-reference.mjs && pnpm fmt
 import { spawnSync } from "node:child_process";
@@ -168,6 +172,16 @@ const documents = {
   },
 };
 
+const own = spawnSync("pnpm", ["exec", "tsx", path("./own-activity-documents.ts")], {
+  encoding: "utf8",
+  maxBuffer: 64 * 1024 * 1024,
+});
+if (own.status !== 0) {
+  process.stderr.write(own.stderr);
+  process.exit(own.status ?? 1);
+}
+const ownActivities = JSON.parse(own.stdout);
+
 const run = spawnSync(
   "docker",
   [
@@ -183,7 +197,15 @@ const run = spawnSync(
     "cd /opt/mastodon && bundle exec ruby /reference.rb 2>/dev/null",
   ],
   {
-    input: JSON.stringify({ keyId: `${alice}#main-key`, documents }),
+    input: JSON.stringify({
+      keyId: `${alice}#main-key`,
+      documents,
+      own: {
+        keyId: ownActivities.keyId,
+        publicKeyPem: ownActivities.publicKeyPem,
+        signed: ownActivities.signed,
+      },
+    }),
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   },
@@ -231,4 +253,31 @@ export const MASTODON_FORWARDED: Readonly<Record<string, Readonly<Record<string,
 export const MASTODON_SIGNED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = ${JSON.stringify(reference.signed)};
 `,
 );
-console.log("wrote server/jsonld-contexts.ts and server/ld-signature.fixture.ts");
+writeFileSync(
+  path("../packages/worker/server/own-activity-signature.fixture.ts"),
+  `${header("What Mastodon makes of the activities tstodon signs (server/own-activity-samples.ts), signed by tstodon with a key made for the run.")}
+/** Each sample activity, unsigned, as tstodon's builders made it. */
+export const OWN_ACTIVITIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = ${JSON.stringify(ownActivities.documents)};
+
+/**
+ * What Mastodon makes of each one signed: \`read\`, the body compacted to its
+ * \`full_context\` as \`ProcessActivityService\` reads a signed activity;
+ * \`forwarded\`, the copy it forwards, or \`null\` when \`safe_for_forwarding?\`
+ * fails; \`verified\`, whether \`LinkedDataSignature#verify_actor!\` accepts
+ * tstodon's signature.
+ */
+export const MASTODON_READS: Readonly<
+  Record<
+    string,
+    Readonly<{
+      read: Readonly<Record<string, unknown>>;
+      forwarded: Readonly<Record<string, unknown>> | null;
+      verified: boolean;
+    }>
+  >
+> = ${JSON.stringify(reference.own)};
+`,
+);
+console.log(
+  "wrote server/jsonld-contexts.ts, server/ld-signature.fixture.ts and server/own-activity-signature.fixture.ts",
+);

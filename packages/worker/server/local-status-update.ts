@@ -1,7 +1,12 @@
 import type { ApiStatusJSON } from "@tstodon/api";
-import { InstanceIdentity, IsoInstant, type LocalAccount, type LocalNote } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  IsoInstant,
+  type LocalAccount,
+  type LocalNote,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { noteDocument } from "./activitypub";
+import { noteDocument, noteUpdateActivity } from "./activitypub";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
 import { startHomeFanOut } from "./home-fan-out";
@@ -46,29 +51,27 @@ export const announceNoteUpdate = async (
     );
   }
   if (media?.isOk() && quote?.isOk()) {
-    const actor = InstanceIdentity.actorUrl(identity, account.username);
-    const enqueued = await enqueueLocalActivity(env, account.id, "Update", {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${actor}/statuses/${note.id}/updates/${newEntityId()}`,
-      type: "Update",
-      actor,
-      published: updatedAt,
-      // Stamped with this change, so a receiver takes it as newer than its copy.
-      object: noteDocument(
-        identity,
-        account,
-        { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) },
-        {
-          quote: quote.value,
-          mentions: await loadNoteMentions(env.DB, identity, note.id),
-          reply: await loadNoteReply(env.DB, identity, note),
-          poll: await loadNotePoll(env.DB, note.id),
-          media: media.value,
-          quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
-          emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
-        },
-      ),
-    });
+    // Stamped with this change, so a receiver takes it as newer than its copy.
+    const object = noteDocument(
+      identity,
+      account,
+      { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) },
+      {
+        quote: quote.value,
+        mentions: await loadNoteMentions(env.DB, identity, note.id),
+        reply: await loadNoteReply(env.DB, identity, note),
+        poll: await loadNotePoll(env.DB, note.id),
+        media: media.value,
+        quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
+        emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+      },
+    );
+    const enqueued = await enqueueLocalActivity(
+      env,
+      account.id,
+      "Update",
+      noteUpdateActivity(object, newEntityId(), updatedAt),
+    );
     if (enqueued.isErr()) {
       return enqueued.map(() => undefined);
     }
