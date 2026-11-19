@@ -247,7 +247,10 @@ const applyNoteUpdate = async (
  * Refresh the cached profile of the actor that signed the Update; nobody
  * else's. The handle stays as stored, without a WebFinger round trip, as
  * Mastodon's `Update` passes the account's own username and domain to
- * `ProcessAccountService`; the stale-actor refresh confirms it again. Its `movedTo` follows the document as Mastodon's account processing
+ * `ProcessAccountService`; the stale-actor refresh confirms it again. A
+ * username Mastodon's `Account` would refuse is taken while it is the one
+ * stored, as Mastodon validates it only when it changes. Its `movedTo`
+ * follows the document as Mastodon's account processing
  * does: a target that lists the signer in `alsoKnownAs` is recorded, a
  * document without one clears a recorded move (the redirect was cancelled).
  * Only a `Move` carries followers over.
@@ -259,7 +262,7 @@ const applyActorUpdate = async (
   target: Extract<UpdateTarget, { kind: "ActorUpdate" }>,
   options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
-  const refreshed = remoteActorFromDocument(target.raw, signer.actorUri);
+  const refreshed = remoteActorFromDocument(target.raw, signer.actorUri, signer.username);
   if (refreshed.isErr()) {
     return ok(undefined);
   }

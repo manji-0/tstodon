@@ -221,7 +221,8 @@ export const remoteActorFromDocument = (
   }
   // Mastodon's `Account` validates a remote username when it changes
   // (`will_save_change_to_username?`), so it stores no account under one
-  // that does not match, and keeps refreshing one it already holds.
+  // that does not match, and keeps refreshing one it already holds. The
+  // username is stored lowercased, so it is compared lowercased.
   if (
     document.value.preferredUsername.toLowerCase() !== storedUsername &&
     !RemoteActor.acceptsUsername(document.value.preferredUsername)
@@ -814,11 +815,33 @@ const refetchRemoteActor = async (
   if (fetched.isErr()) {
     return err(fetched.error);
   }
-  const actor = remoteActorFromDocument(fetched.value, actorUri);
+  const actor = await readCachedActorDocument(db, fetched.value, actorUri);
   if (actor.isErr()) {
     return err(actor.error);
   }
   return cacheFetchedActor(db, identity, actor.value, options, check);
+};
+
+/**
+ * {@link remoteActorFromDocument} for an actor that may be cached already. A
+ * refused document is read again with the username the actor is cached
+ * under, so a username Mastodon would refuse now but that the actor already
+ * holds does not stop its refreshes. The cached row is read only then.
+ */
+const readCachedActorDocument = async (
+  db: D1Database,
+  raw: unknown,
+  actorUri: string,
+): Promise<Result<FetchedRemoteActor, RemoteActorResolveError>> => {
+  const read = remoteActorFromDocument(raw, actorUri);
+  if (read.isOk()) {
+    return read;
+  }
+  const cached = await findRemoteActorByUri(db, actorUri);
+  if (cached.isErr()) {
+    return err(cached.error);
+  }
+  return cached.value ? remoteActorFromDocument(raw, actorUri, cached.value.username) : read;
 };
 
 /**
