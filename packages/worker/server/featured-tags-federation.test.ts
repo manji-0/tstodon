@@ -14,6 +14,7 @@ import { envWith } from "../test/env-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 import { getUsersByUsernameCollectionsTags } from "./routes/activitypub";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 /**
  * INT-14, featured hashtags from tstodon to other servers: the `featuredTags`
@@ -71,7 +72,7 @@ describe("a local account's featured hashtags", () => {
 
     const actor = expectContract(
       ApActorDocument,
-      await (await SELF.fetch(`${ORIGIN}/users/${account.username}`)).json(),
+      await (await SELF.fetch(`${ORIGIN}/users/${account.username}`, ACTIVITY_JSON)).json(),
     );
     expect(actor.featuredTags).toBe(`${actorUri}/collections/tags`);
     expect(await featuredTags(account.username)).toMatchObject({

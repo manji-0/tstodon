@@ -22,9 +22,9 @@ import { publishToAccount } from "./stream-publish";
  * as a moderator marking it sensitive does: the `Update` that reaches remote
  * servers (when `federate`), the account's own streams, and the home and
  * public timelines. Returns the note's Mastodon document as it now reads.
- * When the note's media cannot be read, no `Update` is sent: receivers replace
- * a note's attachments with the `Update`'s, so one without them deletes the
- * media remotely.
+ * When the note's media or quote cannot be read, no `Update` is sent:
+ * receivers replace a note's attachments and quote with the `Update`'s, so
+ * one without them deletes them remotely.
  */
 export const announceNoteUpdate = async (
   env: Env,
@@ -35,10 +35,17 @@ export const announceNoteUpdate = async (
   federate: boolean,
 ): Promise<Result<ApiStatusJSON | undefined, EnqueueLocalActivityError>> => {
   const media = federate ? await loadNoteMedia(env.DB, identity, note) : undefined;
-  if (media?.isErr()) {
-    console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id }));
+  const quote = federate ? await noteQuote(env, identity, note.id) : undefined;
+  if (media?.isErr() || quote?.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "StatusUpdateNotFederated",
+        statusId: note.id,
+        cause: media?.isErr() ? "media" : "quote",
+      }),
+    );
   }
-  if (media?.isOk()) {
+  if (media?.isOk() && quote?.isOk()) {
     const actor = InstanceIdentity.actorUrl(identity, account.username);
     const enqueued = await enqueueLocalActivity(env, account.id, "Update", {
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -52,7 +59,7 @@ export const announceNoteUpdate = async (
         account,
         { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) },
         {
-          quote: await noteQuote(env, identity, note.id),
+          quote: quote.value,
           mentions: await loadNoteMentions(env.DB, identity, note.id),
           reply: await loadNoteReply(env.DB, identity, note),
           poll: await loadNotePoll(env.DB, note.id),

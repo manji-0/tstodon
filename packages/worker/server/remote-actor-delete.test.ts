@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -78,7 +79,7 @@ const accountStatus = async (id: string): Promise<number> =>
 const followerUris = async (username: string): Promise<string[]> => {
   const collection = read(
     z.object({ orderedItems: z.array(z.string()) }),
-    await (await call(`/users/${username}/followers?page=1`)).json(),
+    await (await call(`/users/${username}/followers?page=1`, ACTIVITY_JSON)).json(),
   );
   return collection.orderedItems;
 };

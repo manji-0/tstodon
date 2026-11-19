@@ -54,7 +54,11 @@ import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
-import { authorizeObjectFetch, restrictedActorDocument } from "../authorized-fetch";
+import {
+  authorizeObjectFetch,
+  type FetchAccess,
+  restrictedActorDocument,
+} from "../authorized-fetch";
 import {
   claimInboxActivity,
   completeInboxActivity,
@@ -152,6 +156,53 @@ const jsonLd = {
   "content-type": "application/activity+json",
 };
 
+/** Mastodon's `forbidden` body. */
+const NOT_ALLOWED = { error: "This action is not allowed", kind: "Forbidden" } as const;
+
+type DocumentOwner =
+  | Readonly<{ kind: "Served"; account: LocalAccount }>
+  | Readonly<{ kind: "Refused"; response: Response }>;
+
+/**
+ * The local account whose document a route serves, as Mastodon's
+ * `AccountOwnedConcern`: 404 for a name nobody has, and, cached for 3
+ * minutes, 410 for a deleted account (`permanently_unavailable?`) and 403
+ * for a suspended one (`check_account_suspension`). In secure mode the
+ * refusal stays `private`, as every answer there does.
+ */
+const documentOwner = async (
+  c: Context<{ Bindings: Env }>,
+  access: FetchAccess,
+  username: string,
+): Promise<DocumentOwner> => {
+  const refuse = (response: Response): DocumentOwner => ({ kind: "Refused", response });
+  const cacheControl = `max-age=180, ${access.kind === "Public" ? "public" : "private"}`;
+  const account = await findAccountByUsername(c.env.DB, username);
+  if (account.isErr()) {
+    return refuse(jsonRepositoryError(c, account.error.message));
+  }
+  if (!account.value) {
+    const deleted = await isDeletedAccountName(c.env.DB, username);
+    if (deleted.isErr()) {
+      return refuse(jsonRepositoryError(c, deleted.error.message));
+    }
+    if (!deleted.value) {
+      return refuse(c.json({ kind: "NotFound" }, 404));
+    }
+    c.header("Cache-Control", cacheControl);
+    return refuse(c.json({ kind: "Gone" }, 410));
+  }
+  const standing = await findAccountStanding(c.env.DB, account.value.id);
+  if (standing.isErr()) {
+    return refuse(jsonRepositoryError(c, standing.error.message));
+  }
+  if (standing.value.kind === "Suspended") {
+    c.header("Cache-Control", cacheControl);
+    return refuse(c.json(NOT_ALLOWED, 403));
+  }
+  return { kind: "Served", account: account.value };
+};
+
 export const getUsersByUsername = async (c: Context<{ Bindings: Env }, "/users/:username">) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -195,34 +246,28 @@ export const getUsersByUsernameStatusesById = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
+  const { account } = owner;
   const status = await findStatusById(c.env.DB, c.req.param("id"));
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  if (
-    !status.value ||
-    status.value.kind !== "LocalNote" ||
-    status.value.accountId !== account.value.id
-  ) {
+  if (!status.value || status.value.kind !== "LocalNote" || status.value.accountId !== account.id) {
     return c.json({ kind: "NotFound" }, 404);
   }
   const visibility = status.value.visibility.kind;
   // Only a note anyone may read lists its replies; the others carry an empty page.
   const replies =
     visibility === "Public" || visibility === "Unlisted"
-      ? await loadNoteReplies(c.env.DB, repliedNote(identity.value, account.value, status.value))
+      ? await loadNoteReplies(c.env.DB, repliedNote(identity.value, account, status.value))
       : ok(undefined);
   if (replies.isErr()) {
     return jsonRepositoryError(c, replies.error.message);
   }
-  const document = await loadLocalNoteDocument(c.env, identity.value, account.value, status.value, {
+  const document = await loadLocalNoteDocument(c.env, identity.value, account, status.value, {
     replies: replies.value,
     emojis: await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl),
   });
@@ -234,7 +279,7 @@ export const getUsersByUsernameStatusesById = async (
     // Followers-only and direct notes go to a signed fetch from an actor they
     // address (Mastodon's authorized fetch), and never into a shared cache.
     const signer = await signedFetchActor(c.env, identity.value, c.req.raw);
-    if (!signer || !(await noteAddresses(c.env.DB, note, account.value, signer.actorUri))) {
+    if (!signer || !(await noteAddresses(c.env.DB, note, account, signer.actorUri))) {
       return c.json({ kind: "NotFound" }, 404);
     }
     c.header("Cache-Control", "private");
@@ -265,26 +310,26 @@ export const getUsersByUsernameStatusesByIdReplies = async (
   if (query.isErr()) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
-  const status = account.value ? await findStatusById(c.env.DB, c.req.param("id")) : ok(undefined);
+  const { account } = owner;
+  const status = await findStatusById(c.env.DB, c.req.param("id"));
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
   const visibility = status.value?.visibility.kind;
   if (
-    !account.value ||
     !status.value ||
     status.value.kind !== "LocalNote" ||
-    status.value.accountId !== account.value.id ||
+    status.value.accountId !== account.id ||
     (visibility !== "Public" && visibility !== "Unlisted")
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
   if (access.kind === "Signed") {
-    const blocked = await blocksFetcher(c.env.DB, account.value, access.actor.actorUri);
+    const blocked = await blocksFetcher(c.env.DB, account, access.actor.actorUri);
     if (blocked.isErr()) {
       return jsonRepositoryError(c, blocked.error.message);
     }
@@ -292,7 +337,7 @@ export const getUsersByUsernameStatusesByIdReplies = async (
       return c.json({ kind: "NotFound" }, 404);
     }
   }
-  const note = repliedNote(identity.value, account.value, status.value);
+  const note = repliedNote(identity.value, account, status.value);
   if (!["1", "true"].includes(query.value.page ?? "")) {
     const replies = await loadNoteReplies(c.env.DB, note);
     if (replies.isErr()) {
@@ -324,16 +369,16 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
+  const { account } = owner;
   const quote = await findQuoteById(c.env.DB, c.req.param("id"));
   if (quote.isErr()) {
     return jsonRepositoryError(c, quote.error.message);
   }
   if (
-    !account.value ||
     !quote.value ||
     quote.value.state.kind !== "Accepted" ||
     quote.value.quoted.kind !== "LocalStatus"
@@ -351,21 +396,21 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
   }
   if (
     !quoted.value ||
-    quoted.value.accountId !== account.value.id ||
+    quoted.value.accountId !== account.id ||
     (visibility !== "Public" && visibility !== "Unlisted") ||
     !quoting.value
   ) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const target = localNoteRef(identity.value, account.value, quoted.value.id);
+  const target = localNoteRef(identity.value, account, quoted.value.id);
   // Mastodon's `authorize quoted_status, :show?`: a signed fetcher the author
   // blocks, or whose domain the author blocks, is refused. An unsigned fetch
   // of a public or unlisted stamp is served, as public fetch mode.
   const signer = await signedFetchActor(c.env, identity.value, c.req.raw);
   if (signer) {
     const [blocked, domainBlocked] = await Promise.all([
-      findBlock(c.env.DB, account.value.id, signer.actorUri),
-      isActorDomainBlocked(c.env.DB, account.value.id, signer.actorUri),
+      findBlock(c.env.DB, account.id, signer.actorUri),
+      isActorDomainBlocked(c.env.DB, account.id, signer.actorUri),
     ]);
     if (blocked.isErr()) {
       return jsonRepositoryError(c, blocked.error.message);
@@ -431,9 +476,6 @@ const pageLinks = (
   ...(links.prev ? { prev: `${collection}${CollectionPage.query(links.prev)}` } : {}),
 });
 
-/** Mastodon's `forbidden` body. */
-const NOT_ALLOWED = { error: "This action is not allowed", kind: "Forbidden" } as const;
-
 /**
  * A local account's `followers` or `following`, as Mastodon's
  * `FollowerAccountsController` / `FollowingAccountsController`. Without
@@ -457,16 +499,14 @@ const followCollection = async (
   if (query.isErr()) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
+  const { account } = owner;
   const [profile, counts] = await Promise.all([
-    findAccountProfile(c.env.DB, account.value.id),
-    accountCounts(c.env.DB, account.value.id),
+    findAccountProfile(c.env.DB, account.id),
+    accountCounts(c.env.DB, account.id),
   ]);
   if (profile.isErr()) {
     return jsonRepositoryError(c, profile.error.message);
@@ -474,7 +514,7 @@ const followCollection = async (
   if (counts.isErr()) {
     return jsonRepositoryError(c, counts.error.message);
   }
-  const id = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}/${name}`;
+  const id = `${InstanceIdentity.actorUrl(identity.value, account.username)}/${name}`;
   const totalItems = counts.value[name];
   const hidden = profile.value.hideCollections;
   const request = CollectionPage.fromQuery(query.value, "Present");
@@ -494,7 +534,7 @@ const followCollection = async (
   const list = name === "followers" ? listFollowers : listFollowing;
   const edges = await list(
     c.env.DB,
-    account.value.id,
+    account.id,
     CollectionPage.FOLLOWS_LIMIT + 1,
     idCursorOf(request.cursor),
   );
@@ -626,27 +666,15 @@ export const getUsersByUsernameOutbox = async (
   if (query.isErr()) {
     return c.json({ kind: "NotFound" }, 404);
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
-  // Mastodon's `check_account_suspension`: neither the count nor a page of a
-  // suspended account, for 3 minutes.
-  const standing = await findAccountStanding(c.env.DB, account.value.id);
-  if (standing.isErr()) {
-    return jsonRepositoryError(c, standing.error.message);
-  }
-  if (standing.value.kind === "Suspended") {
-    c.header("Cache-Control", "max-age=180, public");
-    return c.json(NOT_ALLOWED, 403);
-  }
-  const id = `${InstanceIdentity.actorUrl(identity.value, account.value.username)}/outbox`;
+  const { account } = owner;
+  const id = `${InstanceIdentity.actorUrl(identity.value, account.username)}/outbox`;
   const request = CollectionPage.fromQuery(query.value, "Truthy");
   if (request.kind === "Root") {
-    const counts = await accountCounts(c.env.DB, account.value.id);
+    const counts = await accountCounts(c.env.DB, account.id);
     if (counts.isErr()) {
       return jsonRepositoryError(c, counts.error.message);
     }
@@ -666,14 +694,14 @@ export const getUsersByUsernameOutbox = async (
     access.kind === "Signed"
       ? access.actor
       : await signedFetchActor(c.env, identity.value, c.req.raw);
-  const reader = await outboxReader(c.env.DB, account.value, signer);
+  const reader = await outboxReader(c.env.DB, account, signer);
   if (reader.isErr()) {
     return jsonRepositoryError(c, reader.error.message);
   }
   const ids = reader.value
     ? await listOutboxStatusIds(
         c.env.DB,
-        account.value.id,
+        account.id,
         reader.value,
         idCursorOf(request.cursor),
         CollectionPage.OUTBOX_LIMIT,
@@ -682,7 +710,6 @@ export const getUsersByUsernameOutbox = async (
   if (ids.isErr()) {
     return jsonRepositoryError(c, ids.error.message);
   }
-  const owner = account.value;
   const page = CollectionPage.take(request.cursor, ids.value, CollectionPage.OUTBOX_LIMIT);
   const statuses = await findStatusesByIds(c.env.DB, page.items);
   if (statuses.isErr()) {
@@ -694,7 +721,7 @@ export const getUsersByUsernameOutbox = async (
     page.items.map((statusId) => {
       const status = statuses.value.get(statusId);
       return status
-        ? outboxItem(c.env, identity.value, owner, status, emojis)
+        ? outboxItem(c.env, identity.value, account, status, emojis)
         : Promise.resolve(ok(undefined));
     }),
   );
@@ -743,22 +770,20 @@ export const getUsersByUsernameCollectionsFeatured = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
-  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  const { account } = owner;
+  const actor = InstanceIdentity.actorUrl(identity.value, account.username);
   const hidden =
     access.kind === "Signed"
-      ? await blocksFetcher(c.env.DB, account.value, access.actor.actorUri)
+      ? await blocksFetcher(c.env.DB, account, access.actor.actorUri)
       : ok(false);
   if (hidden.isErr()) {
     return jsonRepositoryError(c, hidden.error.message);
   }
-  const pinned = hidden.value ? ok([]) : await listPinnedStatuses(c.env.DB, account.value.id);
+  const pinned = hidden.value ? ok([]) : await listPinnedStatuses(c.env.DB, account.id);
   if (pinned.isErr()) {
     return jsonRepositoryError(c, pinned.error.message);
   }
@@ -791,25 +816,23 @@ export const getUsersByUsernameCollectionsTags = async (
   if (access.kind === "Denied") {
     return access.response;
   }
-  const account = await findAccountByUsername(c.env.DB, c.req.param("username"));
-  if (account.isErr()) {
-    return jsonRepositoryError(c, account.error.message);
+  const owner = await documentOwner(c, access, c.req.param("username"));
+  if (owner.kind === "Refused") {
+    return owner.response;
   }
-  if (!account.value) {
-    return c.json({ kind: "NotFound" }, 404);
-  }
+  const { account } = owner;
   const hidden =
     access.kind === "Signed"
-      ? await blocksFetcher(c.env.DB, account.value, access.actor.actorUri)
+      ? await blocksFetcher(c.env.DB, account, access.actor.actorUri)
       : ok(false);
   if (hidden.isErr()) {
     return jsonRepositoryError(c, hidden.error.message);
   }
-  const names = hidden.value ? ok([]) : await listFeaturedTags(c.env.DB, account.value.id);
+  const names = hidden.value ? ok([]) : await listFeaturedTags(c.env.DB, account.id);
   if (names.isErr()) {
     return jsonRepositoryError(c, names.error.message);
   }
-  const actor = InstanceIdentity.actorUrl(identity.value, account.value.username);
+  const actor = InstanceIdentity.actorUrl(identity.value, account.username);
   const tags: ApFeaturedTagsCollectionJSON = {
     "@context": [ACTIVITY_STREAMS, { Hashtag: "as:Hashtag" }],
     id: featuredTagsCollectionUri(actor),

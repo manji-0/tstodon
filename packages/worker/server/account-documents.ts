@@ -3,7 +3,7 @@ import {
   AccountPresentation,
   InstanceIdentity,
   type LocalAccount,
-  type RemoteActor,
+  RemoteActor,
   Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
@@ -287,7 +287,6 @@ export const mastodonAccount = (
   emojis: ReadonlyArray<CustomEmoji> = [],
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
 ): ApiAccountJSON => {
-  const url = InstanceIdentity.actorUrl(identity, account.username);
   return {
     id: account.id,
     username: account.username,
@@ -303,8 +302,8 @@ export const mastodonAccount = (
     group: false,
     created_at: account.createdAt,
     note: textToHtml(profile.note),
-    url,
-    uri: url,
+    url: InstanceIdentity.profileUrl(identity, account.username),
+    uri: InstanceIdentity.actorUrl(identity, account.username),
     avatar: profile.avatarObjectKey
       ? mediaUrl(identity, profile.avatarObjectKey)
       : identity.thumbnailUrl,
@@ -460,7 +459,7 @@ export const mastodonRemoteAccount = (
     group: false,
     created_at: profile.publishedAt ?? actor.fetchedAt,
     note: profile.note.length > 0 ? textToHtml(profile.note) : "",
-    url: profile.profileUrl ?? actor.actorUri,
+    url: RemoteActor.profileUrl(actor),
     uri: actor.actorUri,
     avatar: profile.avatarUrl ?? identity.thumbnailUrl,
     avatar_static: profile.avatarUrl ?? identity.thumbnailUrl,

@@ -102,7 +102,11 @@ export const resolveMentions = async (
   return ok({ locals: locals.value, remotes: [...remotes.values()], remoteHandles });
 };
 
-/** What `formatPostText` links each resolved mention to: the REST `mentions[].url`. */
+/**
+ * What `formatPostText` links each resolved mention to: the REST
+ * `mentions[].url`, the account's profile page (Mastodon's `url_for`). The
+ * `Mention` tags name the actor instead ({@link loadNoteMentions}).
+ */
 export const mentionLinks = (
   identity: InstanceIdentity,
   resolved: ResolvedMentions,
@@ -110,12 +114,12 @@ export const mentionLinks = (
   ...resolved.locals.map((account) => ({
     username: account.username,
     domain: null,
-    url: InstanceIdentity.actorUrl(identity, account.username),
+    url: InstanceIdentity.profileUrl(identity, account.username),
   })),
   ...resolved.remoteHandles.map(({ written, actor }) => ({
     username: written.username,
     domain: written.domain,
-    url: actor.actorUri,
+    url: RemoteActor.profileUrl(actor),
   })),
 ];
 

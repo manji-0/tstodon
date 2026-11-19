@@ -58,6 +58,8 @@ curl -s -o /dev/null -w '%{http_code}\n' $O/.well-known/nodeinfo                
 curl -s -o /dev/null -w '%{http_code}\n' $O/nodeinfo/2.0                                        # 200
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Accept: application/activity+json' $O/users/<user> # 200
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Accept: application/activity+json' $O/actor        # 200
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -H 'Accept: application/activity+json' $O/@<user>  # 301 to $O/users/<user>
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' $O/@<user>                                     # 302 to $O/auth/sign_in (the Worker's, not Access's)
 curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/activity+json' --data '{}' $O/inbox  # 400 (the Worker's ValidationError)
 curl -s -o /dev/null -w '%{http_code}\n' -X POST $O/oauth/token                                 # a 4xx JSON error, not 302
 ```

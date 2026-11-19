@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -295,7 +296,10 @@ describe("quote posts", () => {
     expect(Array.isArray(payload.object?.["@context"])).toBe(true);
 
     // The actor's status document (what a remote instance fetches) says the same.
-    const note = await json(`/users/${quotterAccount.username}/statuses/${quoting.id}`);
+    const note = await json(
+      `/users/${quotterAccount.username}/statuses/${quoting.id}`,
+      ACTIVITY_JSON,
+    );
     expect(note.status).toBe(200);
     const document = read(
       z.object({
@@ -313,7 +317,10 @@ describe("quote posts", () => {
       headers: await auth(author),
     });
     expect(revoked.status).toBe(200);
-    const afterRevoke = await json(`/users/${quotterAccount.username}/statuses/${quoting.id}`);
+    const afterRevoke = await json(
+      `/users/${quotterAccount.username}/statuses/${quoting.id}`,
+      ACTIVITY_JSON,
+    );
     expect(
       read(
         z.object({ quote: z.string(), quoteAuthorization: z.string().optional() }),

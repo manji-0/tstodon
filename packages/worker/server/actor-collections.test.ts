@@ -11,6 +11,7 @@ import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 /**
  * The followers, following and outbox collections, as Mastodon v4.7.5 serves
@@ -22,7 +23,7 @@ import { RemoteAccountId } from "./remote-account-id";
 
 const ORIGIN = "https://example.com";
 
-const fetchJson = async (path: string, init?: RequestInit): Promise<unknown> => {
+const fetchJson = async (path: string, init: RequestInit = ACTIVITY_JSON): Promise<unknown> => {
   const response = await SELF.fetch(new URL(path, ORIGIN), init);
   expect(response.status, path).toBe(200);
   return response.json();
@@ -185,7 +186,7 @@ describe("ActivityPub followers, following and outbox collections", () => {
         type: "OrderedCollection",
         totalItems: 3,
       });
-      expect((await SELF.fetch(new URL(`${path}?page=1`, ORIGIN))).status).toBe(403);
+      expect((await SELF.fetch(new URL(`${path}?page=1`, ORIGIN), ACTIVITY_JSON)).status).toBe(403);
       expect((await reader.fetch(`${path}?page=1`)).status).toBe(403);
     }
     // The outbox is not one of the hidden collections.

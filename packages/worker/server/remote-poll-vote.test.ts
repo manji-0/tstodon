@@ -10,6 +10,7 @@ import { processOutboxJob } from "./outbox-job";
 import { parseInstanceIdentity } from "./runtime-config";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
@@ -143,7 +144,9 @@ describe("remote votes on a local poll", () => {
   it("serves a single-choice poll as oneOf and a Create that carries the Question", async () => {
     const poll = await createPoll("oneof-author@example.com");
     const note = JsonObject.parse(
-      await (await SELF.fetch(`https://example.com${new URL(poll.statusUri).pathname}`)).json(),
+      await (
+        await SELF.fetch(`https://example.com${new URL(poll.statusUri).pathname}`, ACTIVITY_JSON)
+      ).json(),
     );
     expect(note.type).toBe("Question");
     expect(note.anyOf).toBeUndefined();

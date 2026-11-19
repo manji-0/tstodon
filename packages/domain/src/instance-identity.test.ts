@@ -26,6 +26,12 @@ describe("InstanceIdentity", () => {
       "https://social.example/users/alice",
     );
     expect(InstanceIdentity.sharedInboxUrl(identity.value)).toBe("https://social.example/inbox");
+    expect(InstanceIdentity.profileUrl(identity.value, "alice")).toBe(
+      "https://social.example/@alice",
+    );
+    expect(InstanceIdentity.statusUrl(identity.value, "alice", "42")).toBe(
+      "https://social.example/@alice/42",
+    );
   });
 
   it("builds webfinger subject and encoded resource URL", () => {

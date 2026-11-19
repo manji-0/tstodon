@@ -86,7 +86,7 @@ export const accountJrd = (
   username: string,
   avatar: WebFingerAvatar | undefined,
 ): WebFingerJrdJSON => {
-  const profile = `${origin(identity)}/@${username}`;
+  const profile = InstanceIdentity.profileUrl(identity, username);
   const actor = InstanceIdentity.actorUrl(identity, username);
   return {
     subject: InstanceIdentity.webfingerSubject(identity, username),

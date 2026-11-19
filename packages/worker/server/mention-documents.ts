@@ -1,5 +1,5 @@
 import type { ApiMentionJSON } from "@tstodon/api";
-import { InstanceIdentity, type LocalAccount, type RemoteActor } from "@tstodon/domain";
+import { InstanceIdentity, type LocalAccount, RemoteActor } from "@tstodon/domain";
 import type { StatusMentions } from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -23,7 +23,7 @@ export const mentionEntities = (
           {
             id: account.id,
             username: account.username,
-            url: InstanceIdentity.actorUrl(identity, account.username),
+            url: InstanceIdentity.profileUrl(identity, account.username),
             acct: account.username,
           },
         ]
@@ -36,7 +36,7 @@ export const mentionEntities = (
           {
             id: RemoteAccountId.encode(actor.actorUri),
             username: actor.username,
-            url: actor.actorUri,
+            url: RemoteActor.profileUrl(actor),
             acct: `${actor.username}@${actor.domain}`,
           },
         ]

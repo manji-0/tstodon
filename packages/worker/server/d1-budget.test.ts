@@ -5,6 +5,7 @@ import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { HOME_HORIZON_STEPS } from "./timeline-documents";
+import { ACTIVITY_JSON } from "../test/activity-json";
 
 /**
  * D1 bills every row a query reads. A read endpoint whose rows read grows
@@ -21,7 +22,9 @@ const MAX_GROWTH = 200;
 
 const get = async (token: string, path: string): Promise<number> =>
   measure(path, () =>
-    SELF.fetch(`https://example.com${path}`, { headers: { Authorization: `Bearer ${token}` } }),
+    SELF.fetch(`https://example.com${path}`, {
+      headers: { ...ACTIVITY_JSON.headers, Authorization: `Bearer ${token}` },
+    }),
   );
 
 /** The rows read by the request `send` makes, after the writes before it settle. */
@@ -272,9 +275,9 @@ describe("D1 rows read do not grow with unrelated rows", () => {
           `signed ${path} read ${rows} more rows after ${NOISE} more statuses of each kind`,
         ).toBeLessThan(MAX_GROWTH);
       }
-      const followers = await SELF.fetch(`https://example.com${base}/followers`);
+      const followers = await SELF.fetch(`https://example.com${base}/followers`, ACTIVITY_JSON);
       expect(await followers.json()).toMatchObject({ totalItems: 2 * NOISE });
-      const outbox = await SELF.fetch(`https://example.com${base}/outbox`);
+      const outbox = await SELF.fetch(`https://example.com${base}/outbox`, ACTIVITY_JSON);
       // Direct statuses are not counted.
       expect(await outbox.json()).toMatchObject({ totalItems: 25 + 3 * NOISE });
     },

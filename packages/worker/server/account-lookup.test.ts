@@ -347,7 +347,7 @@ describe("an account that moved to an unavailable account", () => {
         })
       ).body,
     );
-    expect((await setRemoteActorMovedTo(env.DB, source.actorUri, target.url)).isOk()).toBe(true);
+    expect((await setRemoteActorMovedTo(env.DB, source.actorUri, target.uri)).isOk()).toBe(true);
     expect((await movedOf("mover-local@moved-from-local.example"))?.id).toBe(target.id);
 
     const suspended = await json(`/api/v1/admin/accounts/${target.id}/suspend`, {
