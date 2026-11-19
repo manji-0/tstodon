@@ -26,6 +26,7 @@ import {
   claimRemoteOutboxBackfill as claimRemoteOutboxBackfillSql,
   releaseRemoteOutboxBackfill as releaseRemoteOutboxBackfillSql,
   deleteRemoteFollow as deleteRemoteFollowSql,
+  deleteRemoteFollowByActivity as deleteRemoteFollowByActivitySql,
   findPendingRemoteFollowRequest as findPendingRemoteFollowRequestSql,
   claimRemoteActorKeyRefetch as claimRemoteActorKeyRefetchSql,
   claimRemoteActorRefresh as claimRemoteActorRefreshSql,
@@ -582,6 +583,16 @@ export const deleteRemoteFollow = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, deleteRemoteFollowSql(remoteActorUri, targetAccountId));
+  });
+
+/** End `remoteActorUri`'s follow, or follow request, made by the `Follow` `followActivityId`. */
+export const deleteRemoteFollowByActivity = async (
+  db: D1Database,
+  remoteActorUri: string,
+  followActivityId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, deleteRemoteFollowByActivitySql(remoteActorUri, followActivityId));
   });
 
 /**

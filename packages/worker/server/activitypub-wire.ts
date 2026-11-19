@@ -98,12 +98,15 @@ export const nameCollectionActivity = (
   };
 };
 
-export const NestedActivityObjectSchema = z
-  .object({
-    type: z.string().min(1),
-    object: z.union([z.string().min(1), z.object({ id: z.string().min(1) }).passthrough()]),
-  })
-  .passthrough();
+/**
+ * The activity an `Undo` embeds: its `id`, and its `type` and `object` when
+ * given. Mastodon reads one without a `type` as named by its `id` only.
+ */
+export const UndoneActivitySchema = z.looseObject({
+  id: z.string().min(1),
+  type: z.string().min(1).optional(),
+  object: z.unknown().optional(),
+});
 
 export const ActorPublicKeySchema = z.object({
   id: z.string().min(1),
@@ -272,7 +275,7 @@ warmSchemas([
   ActivityJsonSchema,
   CollectionActivitySchema,
   HashtagObjectSchema,
-  NestedActivityObjectSchema,
+  UndoneActivitySchema,
   ActorPublicKeySchema,
   ActorDocumentSchema,
   NoteDocumentSchema,

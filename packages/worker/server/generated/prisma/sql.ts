@@ -168,7 +168,11 @@ export * from "./sql/deleteRemoteActorPins";
 
 export * from "./sql/deleteRemoteAnnounce";
 
+export * from "./sql/deleteRemoteAnnounceByActivity";
+
 export * from "./sql/deleteRemoteBlock";
+
+export * from "./sql/deleteRemoteBlockByActivity";
 
 export * from "./sql/deleteRemoteBoostByActivity";
 
@@ -179,6 +183,8 @@ export * from "./sql/deleteRemoteFeaturedTag";
 export * from "./sql/deleteRemoteFeaturedTags";
 
 export * from "./sql/deleteRemoteFollow";
+
+export * from "./sql/deleteRemoteFollowByActivity";
 
 export * from "./sql/deleteRemoteNotifications";
 
@@ -403,6 +409,8 @@ export * from "./sql/findStreamListeners";
 export * from "./sql/findTagModeration";
 
 export * from "./sql/findTokenPushSubscription";
+
+export * from "./sql/findUndoneBeforeArrival";
 
 export * from "./sql/findWebSettings";
 
@@ -882,6 +890,8 @@ export * from "./sql/releaseStaleInboxClaims";
 
 export * from "./sql/releaseStatusIdempotency";
 
+export * from "./sql/rememberUndone";
+
 export * from "./sql/rememberUndoneFollow";
 
 export * from "./sql/renameAuthPasskey";
@@ -893,6 +903,8 @@ export * from "./sql/replacePollOptions";
 export * from "./sql/reserveStatusIdempotency";
 
 export * from "./sql/resolveDirectConversationRoots";
+
+export * from "./sql/revokeOutboundFollow";
 
 export * from "./sql/rewriteEditedMediaKey";
 

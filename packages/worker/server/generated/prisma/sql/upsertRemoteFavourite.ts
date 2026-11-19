@@ -9,14 +9,18 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param remoteActorUri
  * @param statusId
  * @param createdAt
+ * @param activityId
+ * @param undoneAfter
  */
 export const upsertRemoteFavourite = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_favourites (id, remote_actor_uri, status_id, created_at)\nVALUES ($1, $2, $3, $4)\nON CONFLICT(remote_actor_uri, status_id) DO NOTHING\nRETURNING id",
+  "INSERT INTO remote_favourites (id, remote_actor_uri, status_id, created_at)\nSELECT $1, $2, $3, $4\nWHERE NOT EXISTS (\nSELECT 1 FROM undone_before_arrival\nWHERE actor_uri = $2 AND activity_uri = $5 AND created_at > $6\n)\nON CONFLICT(remote_actor_uri, status_id) DO NOTHING\nRETURNING id",
 ) as (
   id: string,
   remoteActorUri: string,
   statusId: string,
   createdAt: string,
+  activityId: string,
+  undoneAfter: string,
 ) => $runtime.TypedSql<upsertRemoteFavourite.Parameters, upsertRemoteFavourite.Result>;
 
 export namespace upsertRemoteFavourite {
@@ -25,6 +29,8 @@ export namespace upsertRemoteFavourite {
     remoteActorUri: string,
     statusId: string,
     createdAt: string,
+    activityId: string,
+    undoneAfter: string,
   ];
   export type Result = {
     id: string | null;

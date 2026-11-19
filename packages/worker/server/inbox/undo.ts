@@ -1,106 +1,156 @@
-import { schemaResult } from "@tstodon/core";
-import type { InstanceIdentity } from "@tstodon/domain";
-import { err, ok } from "neverthrow";
+import { assertNever, schemaResult } from "@tstodon/core";
+import { err, ok, type Result } from "neverthrow";
 import { parseLocalStatusId } from "../activitypub";
-import { NestedActivityObjectSchema } from "../activitypub-wire";
+import { refId, UndoneActivitySchema } from "../activitypub-wire";
+import type { RepositoryError } from "../d1";
 import { unfollowAccount } from "../follow-store";
 import { startHomeFanOut } from "../home-fan-out";
 import { deleteRemoteNotifications } from "../notification-store";
-import { deleteRemoteFollow, undoRemoteFollow } from "../remote-actor-store";
-import { deleteRemoteBlock } from "../remote-block-store";
+import { revokeOutboundFollow } from "../outbound-follow-store";
+import { deleteRemoteFollowByActivity, undoRemoteFollow } from "../remote-actor-store";
+import { deleteRemoteBlock, deleteRemoteBlockByActivity } from "../remote-block-store";
 import { deleteRemoteBoostByActivity } from "../remote-boost-store";
-import { deleteRemoteAnnounce, deleteRemoteFavourite } from "../remote-interaction-store";
+import {
+  deleteRemoteAnnounceByActivity,
+  deleteRemoteFavourite,
+  rememberUndone,
+} from "../remote-interaction-store";
 import { localAccountAt } from "./follow";
-import type { ActivityOf, InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
+import type { InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
 
-const parseNestedActivityObject = schemaResult(NestedActivityObjectSchema);
+const parseUndoneActivity = schemaResult(UndoneActivitySchema);
 
-const objectUriOf = (value: string | Readonly<{ id: string }>): string =>
-  typeof value === "string" ? value : value.id;
+/**
+ * The activity a remote `Undo` takes back, as Mastodon's
+ * `ActivityPub::Activity::Undo#perform` tells them apart by the embedded
+ * object's `type`. `object` is the URI the undone activity names.
+ */
+type Undone =
+  | Readonly<{ kind: "Follow" | "Like" | "Block" | "Accept"; id: string; object: string }>
+  | Readonly<{ kind: "Announce"; id: string }>
+  /** Named by its id only, or embedded without a `type` (`handle_reference`). */
+  | Readonly<{ kind: "Reference"; id: string }>
+  | Readonly<{ kind: "Unhandled" }>;
 
-/** What a remote actor's `Undo` may take back on this server. */
-type RemoteUndoTargets = Readonly<{
-  /** Names the local account whose follow by the signer ends. */
-  followedUri: string;
-  /** The id of the `Follow` an embedded `Follow` names. */
-  followActivityId: string | undefined;
-  favouritedStatusId: string | undefined;
-  boostedStatusId: string | undefined;
-  /** Keys the signer's boost row, whether the Undo embeds the Announce or names it. */
-  announceUri: string;
-}>;
-
-const remoteUndoTargets = (
-  identity: InstanceIdentity,
-  undo: ActivityOf<"Undo">,
-  object: string | Readonly<{ id: string }>,
-): RemoteUndoTargets => {
-  const nested = parseNestedActivityObject(object);
-  const undone = nested.isOk()
-    ? { type: nested.value.type, objectUri: objectUriOf(nested.value.object) }
-    : undefined;
-  const statusId =
-    undone && (undone.type === "Like" || undone.type === "Announce")
-      ? parseLocalStatusId(identity, undone.objectUri)
-      : undefined;
-  return {
-    followedUri: undone?.type === "Follow" ? undone.objectUri : undo.object,
-    followActivityId: undone?.type === "Follow" ? objectUriOf(object) : undefined,
-    favouritedStatusId: undone?.type === "Like" ? statusId : undefined,
-    boostedStatusId: undone?.type === "Announce" ? statusId : undefined,
-    announceUri: objectUriOf(object),
-  };
+const undoneActivity = (object: string | Readonly<{ id: string }>): Undone => {
+  if (typeof object === "string") {
+    return { kind: "Reference", id: object };
+  }
+  const parsed = parseUndoneActivity(object);
+  if (parsed.isErr()) {
+    return { kind: "Unhandled" };
+  }
+  const { id, type } = parsed.value;
+  const target = refId(parsed.value.object);
+  switch (type) {
+    case undefined:
+      return { kind: "Reference", id };
+    case "Announce":
+      return { kind: "Announce", id };
+    case "Follow":
+    case "Like":
+    case "Block":
+    case "Accept":
+      return target === undefined ? { kind: "Unhandled" } : { kind: type, id, object: target };
+    default:
+      return { kind: "Unhandled" };
+  }
 };
 
+/** End the boost the `Announce` `announceId` made: its timeline entry, its count and its notification. */
+const undoAnnounce = async (
+  env: Env,
+  actorUri: string,
+  announceId: string,
+): Promise<Result<void, RepositoryError>> => {
+  const boost = await deleteRemoteBoostByActivity(env.DB, announceId, actorUri);
+  if (boost.isErr()) {
+    return err(boost.error);
+  }
+  if (boost.value) {
+    await startHomeFanOut(env, {
+      event: "delete",
+      entryId: boost.value,
+      author: { kind: "RemoteActor", actorUri },
+    });
+  }
+  const counted = await deleteRemoteAnnounceByActivity(env.DB, actorUri, announceId);
+  if (counted.isErr()) {
+    return err(counted.error);
+  }
+  for (const statusId of counted.value) {
+    await deleteRemoteNotifications(env.DB, { actorUri, kinds: ["reblog"], statusId });
+  }
+  return ok(undefined);
+};
+
+/**
+ * A remote actor takes back an activity. As Mastodon's `delete_later!`, an
+ * `Undo` of a `Like`, an `Announce` or a `Block`, or of an activity named by
+ * its id only, is remembered before what it ends is deleted, so the activity
+ * is dropped if it comes after (or while) the `Undo` is handled.
+ */
 export const receiveRemoteUndo: InboxHandler<RemoteDelivery<"Undo">> = async ({
   env,
   identity,
   signer,
-  activity,
   received,
 }) => {
-  const targets = remoteUndoTargets(identity, activity, received.object);
   const actorUri = signer.actorUri;
-  const nested = parseNestedActivityObject(received.object);
-  if (nested.isOk() && nested.value.type === "Block") {
-    const blocked = await localAccountAt(env, identity, objectUriOf(nested.value.object));
-    if (blocked) {
-      const lifted = await deleteRemoteBlock(env.DB, actorUri, blocked.id);
-      if (lifted.isErr()) {
-        return err(lifted.error);
-      }
+  const undone = undoneActivity(received.object);
+  switch (undone.kind) {
+    case "Follow": {
+      const followed = await localAccountAt(env, identity, undone.object);
+      // Mastodon delivers a Follow and its Undo at once, and this Undo can be
+      // handled first; remembering it drops that Follow (`undoRemoteFollow`).
+      return followed ? undoRemoteFollow(env.DB, actorUri, followed.id, undone.id) : ok(undefined);
     }
+    case "Like": {
+      const statusId = parseLocalStatusId(identity, undone.object);
+      if (!statusId) {
+        return ok(undefined);
+      }
+      const remembered = await rememberUndone(env.DB, actorUri, undone.id);
+      if (remembered.isErr()) {
+        return err(remembered.error);
+      }
+      await deleteRemoteFavourite(env.DB, actorUri, statusId);
+      await deleteRemoteNotifications(env.DB, { actorUri, kinds: ["favourite"], statusId });
+      return ok(undefined);
+    }
+    case "Block": {
+      const blocked = await localAccountAt(env, identity, undone.object);
+      if (!blocked) {
+        return ok(undefined);
+      }
+      const remembered = await rememberUndone(env.DB, actorUri, undone.id);
+      return remembered.isErr() ? remembered : deleteRemoteBlock(env.DB, actorUri, blocked.id);
+    }
+    case "Accept":
+      return revokeOutboundFollow(env.DB, actorUri, undone.object);
+    case "Announce": {
+      const remembered = await rememberUndone(env.DB, actorUri, undone.id);
+      return remembered.isErr() ? remembered : undoAnnounce(env, actorUri, undone.id);
+    }
+    case "Reference": {
+      // Mastodon tries an Announce, a Follow and a Block by the id; a Like is
+      // not looked up by its id (`try_undo_like`), only remembered.
+      const remembered = await rememberUndone(env.DB, actorUri, undone.id);
+      if (remembered.isErr()) {
+        return remembered;
+      }
+      const announce = await undoAnnounce(env, actorUri, undone.id);
+      if (announce.isErr()) {
+        return announce;
+      }
+      const follow = await deleteRemoteFollowByActivity(env.DB, actorUri, undone.id);
+      return follow.isErr() ? follow : deleteRemoteBlockByActivity(env.DB, actorUri, undone.id);
+    }
+    case "Unhandled":
+      return ok(undefined);
+    default:
+      return assertNever(undone);
   }
-  const followed = await localAccountAt(env, identity, targets.followedUri);
-  if (followed) {
-    // Mastodon delivers a Follow and its Undo at once, and this Undo can be
-    // handled first; remembering it drops that Follow (`undoRemoteFollow`).
-    await (targets.followActivityId
-      ? undoRemoteFollow(env.DB, actorUri, followed.id, targets.followActivityId)
-      : deleteRemoteFollow(env.DB, actorUri, followed.id));
-  }
-  if (targets.favouritedStatusId) {
-    const statusId = targets.favouritedStatusId;
-    await deleteRemoteFavourite(env.DB, actorUri, statusId);
-    await deleteRemoteNotifications(env.DB, { actorUri, kinds: ["favourite"], statusId });
-  }
-  const undone = await deleteRemoteBoostByActivity(env.DB, targets.announceUri, actorUri);
-  if (undone.isErr()) {
-    return err(undone.error);
-  }
-  if (undone.value) {
-    await startHomeFanOut(env, {
-      event: "delete",
-      entryId: undone.value,
-      author: { kind: "RemoteActor", actorUri },
-    });
-  }
-  if (targets.boostedStatusId) {
-    const statusId = targets.boostedStatusId;
-    await deleteRemoteAnnounce(env.DB, actorUri, statusId);
-    await deleteRemoteNotifications(env.DB, { actorUri, kinds: ["reblog"], statusId });
-  }
-  return ok(undefined);
 };
 
 /** A local account's `Undo` names the account it stops following. */

@@ -13,7 +13,7 @@ import { nowInstant } from "../clock";
 import { startHomeFanOut } from "../home-fan-out";
 import { newEntityId } from "../ids";
 import { recordRemoteBoost } from "../remote-boost";
-import { upsertRemoteAnnounce } from "../remote-interaction-store";
+import { isUndoneBeforeArrival, upsertRemoteAnnounce } from "../remote-interaction-store";
 import { persistAnnouncedObject } from "../remote-status-persist";
 import { findStatusById, insertLocalReblog, readStatusById } from "../status-store";
 import type { InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
@@ -29,6 +29,16 @@ export const receiveRemoteAnnounce: InboxHandler<RemoteDelivery<"Announce">> = a
   blockedHosts,
   fetchSigner,
 }) => {
+  // As Mastodon's `delete_arrived_first?`, an Announce whose Undo came first
+  // is dropped before the boosted status is fetched. The statements that
+  // store it check again, for an Undo handled meanwhile.
+  const undone = await isUndoneBeforeArrival(env.DB, signer.actorUri, activity.id);
+  if (undone.isErr()) {
+    return err(undone.error);
+  }
+  if (undone.value) {
+    return ok(undefined);
+  }
   // As Mastodon's `announceable?`, a remote actor may share a local status
   // only when it is public or unlisted; otherwise the Announce is dropped.
   const statusId = parseLocalStatusId(identity, activity.object);
