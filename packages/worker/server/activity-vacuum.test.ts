@@ -212,6 +212,23 @@ describe("the activity vacuum", () => {
     expect(await state(`${base}/old-claim`)).toBe("Processing");
   });
 
+  it("forgets an Undo remembered for over six hours", async () => {
+    const insert = (activityUri: string, createdAt: string) =>
+      env.DB.prepare(
+        "INSERT INTO undone_before_arrival (actor_uri, activity_uri, created_at) VALUES ('https://remote.example/users/v', ?, ?)",
+      ).bind(activityUri, createdAt);
+    const hoursAgo = (hours: number) => new Date(NOW - hours * 60 * 60 * 1000).toISOString();
+    await env.DB.batch([
+      insert("https://remote.example/follows/7-hours", hoursAgo(7)),
+      insert("https://remote.example/follows/5-hours", hoursAgo(5)),
+    ]);
+    const pass = await vacuumActivities(env, NOW);
+    expect(pass._unsafeUnwrap().undone).toBe(1);
+    expect(await ids("SELECT activity_uri AS id FROM undone_before_arrival")).toEqual([
+      "https://remote.example/follows/5-hours",
+    ]);
+  });
+
   it("leaves a table alone when its retention is off", async () => {
     await env.DB.batch([
       insertDelivery("vf-delivered-old", "vacuum-off", "Delivered", "https://a.example/inbox", OLD),
@@ -225,7 +242,13 @@ describe("the activity vacuum", () => {
       INBOX_ACTIVITY_RETENTION_DAYS: "off",
     });
     const pass = await vacuumActivities(off, NOW);
-    expect(pass._unsafeUnwrap()).toEqual({ deliveries: 0, outbound: 0, inbox: 0, chained: false });
+    expect(pass._unsafeUnwrap()).toEqual({
+      deliveries: 0,
+      outbound: 0,
+      inbox: 0,
+      undone: 0,
+      chained: false,
+    });
     expect(
       await ids("SELECT id FROM outbox_deliveries WHERE id = 'vf-delivered-old'"),
     ).toHaveLength(1);
@@ -255,6 +278,11 @@ describe("the activity vacuum", () => {
         "SELECT activity_id FROM inbox_activities WHERE created_at < '2001' ORDER BY created_at LIMIT 500",
       ),
     ).toContain("idx_inbox_activities_created");
+    expect(
+      await plan(
+        "SELECT rowid FROM undone_before_arrival WHERE created_at < '2001' ORDER BY created_at LIMIT 500",
+      ),
+    ).toContain("idx_undone_before_arrival_created_at");
   });
 
   it("is run by the six-hourly cron, not the hourly one", async () => {

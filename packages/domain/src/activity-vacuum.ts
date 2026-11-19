@@ -1,6 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import type { RepositoryError } from "./repository-error";
+import { UndoneBeforeArrival } from "./undone-before-arrival";
 
 /** How long a table keeps its rows: a number of days, or no pruning at all. */
 const RetentionWindowSchema = z.discriminatedUnion("kind", [
@@ -54,11 +55,21 @@ export type PruneInboxActivities = (
   limit: number,
 ) => Promise<Result<number, RepositoryError>>;
 
+/**
+ * Delete up to `limit` of the `Undo`s remembered before `createdBefore`
+ * (`undone_before_arrival`, see {@link UndoneBeforeArrival}).
+ */
+export type PruneUndoneBeforeArrival = (
+  createdBefore: string,
+  limit: number,
+) => Promise<Result<number, RepositoryError>>;
+
 /** What one vacuum pass deleted per table, and whether a full batch asks for another pass. */
 export type ActivityVacuumPass = Readonly<{
   deliveries: number;
   outbound: number;
   inbox: number;
+  undone: number;
   chained: boolean;
 }>;
 
@@ -133,14 +144,16 @@ export const ActivityVacuum = {
 
   /**
    * One pass: a batch of finished deliveries, then outbound activities
-   * (whose check reads the deliveries left), then inbox activities. A table
-   * whose pruning is off is not queried.
+   * (whose check reads the deliveries left), then inbox activities, then the
+   * `Undo`s remembered past {@link UndoneBeforeArrival}'s fixed window. A
+   * table whose pruning is off is not queried.
    */
   pass: async (
     deps: Readonly<{
       pruneDeliveries: PruneTerminalDeliveries;
       pruneOutbound: PruneOutboundActivities;
       pruneInbox: PruneInboxActivities;
+      pruneUndone: PruneUndoneBeforeArrival;
     }>,
     retention: ActivityRetention,
     nowMs: number,
@@ -166,11 +179,18 @@ export const ActivityVacuum = {
     if (inbox.isErr()) {
       return err(inbox.error);
     }
+    const undone = await deps.pruneUndone(UndoneBeforeArrival.forgottenBefore(nowMs), BATCH);
+    if (undone.isErr()) {
+      return err(undone.error);
+    }
     return ok({
       deliveries: deliveries.value,
       outbound: outbound.value,
       inbox: inbox.value,
-      chained: [deliveries.value, outbound.value, inbox.value].some((count) => count >= BATCH),
+      undone: undone.value,
+      chained: [deliveries.value, outbound.value, inbox.value, undone.value].some(
+        (count) => count >= BATCH,
+      ),
     });
   },
 } as const;

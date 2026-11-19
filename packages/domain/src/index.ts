@@ -287,7 +287,8 @@ export {
   type RemoteStatus as RemoteStatusValue,
 } from "./remote-status";
 export type { HasRemoteFollow } from "./remote-follow-resolver";
-export type { InboxFollow, RecordInboxFollow } from "./remote-follow-store";
+export type { InboxFollow, InboxFollowRecord, RecordInboxFollow } from "./remote-follow-store";
+export { UndoneBeforeArrival } from "./undone-before-arrival";
 export type {
   DeleteRemoteStatus,
   PublishRemoteStatusRemoval,
