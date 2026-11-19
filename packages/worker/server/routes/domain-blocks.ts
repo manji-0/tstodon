@@ -1,10 +1,10 @@
 import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
-import { ApiDomainBlockParamsSchema } from "@tstodon/api";
+import { ApiDomainBlockParamsSchema, type ApiDomainBlockPreviewJSON } from "@tstodon/api";
 import { blockAccountDomain } from "../account-domain-block";
-import { listBlockedDomains, unblockDomain } from "../domain-block-store";
+import { listBlockedDomains, previewDomainBlock, unblockDomain } from "../domain-block-store";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
-import { readMergedParams, readParams } from "../request-params";
+import { readMergedParams, readParams, readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
 export const getV1DomainBlocks = async (c: Context<{ Bindings: Env }, "/api/v1/domain_blocks">) => {
@@ -17,6 +17,32 @@ export const getV1DomainBlocks = async (c: Context<{ Bindings: Env }, "/api/v1/d
     return jsonRepositoryError(c, domains.error.message);
   }
   return c.json(domains.value);
+};
+
+/**
+ * What blocking `domain` would sever, as Mastodon's
+ * `Api::V1::DomainBlocks::PreviewsController`. A domain that is missing or
+ * not a hostname matches no actor.
+ */
+export const getV1DomainBlocksPreview = async (
+  c: Context<{ Bindings: Env }, "/api/v1/domain_blocks/preview">,
+) => {
+  const user = await requireUser(c);
+  if (user.isErr()) {
+    return jsonAuthError(c, user.error);
+  }
+  const params = readQueryParams(c, ApiDomainBlockParamsSchema);
+  const domain = params.isOk() ? Hostname.fromInput(params.value.domain) : undefined;
+  if (domain === undefined) {
+    const none: ApiDomainBlockPreviewJSON = { following_count: 0, followers_count: 0 };
+    return c.json(none);
+  }
+  const counted = await previewDomainBlock(c.env.DB, user.value.id, domain);
+  if (counted.isErr()) {
+    return jsonRepositoryError(c, counted.error.message);
+  }
+  const preview: ApiDomainBlockPreviewJSON = counted.value;
+  return c.json(preview);
 };
 
 export const postV1DomainBlocks = async (

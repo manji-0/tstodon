@@ -137,6 +137,7 @@ Labels:
 | GET    | `/api/v1/blocks`                                    |
 | GET    | `/api/v1/mutes`                                     |
 | GET    | `/api/v1/domain_blocks`                             |
+| GET    | `/api/v1/domain_blocks/preview`                     |
 | POST   | `/api/v1/domain_blocks`                             |
 | DELETE | `/api/v1/domain_blocks`                             |
 | POST   | `/api/v1/statuses`                                  |

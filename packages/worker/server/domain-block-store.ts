@@ -2,7 +2,7 @@ import { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
-import { runD1, type RepositoryError } from "./d1";
+import { parseRows, runD1, toRepositoryError, type RepositoryError } from "./d1";
 import {
   deleteAccountDomainBlock as deleteAccountDomainBlockSql,
   findActorDomainBlock as findActorDomainBlockSql,
@@ -78,3 +78,43 @@ export const isActorDomainBlocked = (
     const rows = await queryTyped(db, findActorDomainBlockSql(accountId, actorUri), DomainRow);
     return rows.length > 0;
   });
+
+const PreviewCountsRow = z.object({ following_count: z.number(), followers_count: z.number() });
+
+export type DomainBlockPreview = z.infer<typeof PreviewCountsRow>;
+
+/**
+ * How many of the domain's actors the account follows and how many follow
+ * it: the accepted follows a block of the domain would sever, as Mastodon's
+ * `DomainBlockPreviewPresenter` counts them. An actor is on the domain as
+ * the block matches it, by its account domain or its URI's host.
+ */
+export const previewDomainBlock = async (
+  db: D1Database,
+  accountId: string,
+  domain: Hostname,
+): Promise<Result<DomainBlockPreview, RepositoryError>> => {
+  const counted = await runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM outbound_follows o
+            JOIN remote_actors r ON r.actor_uri = o.actor_uri
+            WHERE o.account_id = ?1 AND o.state = 'Accepted' AND ?2 IN (r.host, r.uri_host))
+             AS following_count,
+           (SELECT COUNT(*) FROM remote_follows f
+            JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
+            WHERE f.target_account_id = ?1 AND f.follow_kind = 'Accepted'
+              AND ?2 IN (r.host, r.uri_host))
+             AS followers_count`,
+      )
+      .bind(accountId, domain)
+      .all();
+    return parseRows(PreviewCountsRow, results);
+  });
+  if (counted.isErr()) {
+    return err(counted.error);
+  }
+  const [row] = counted.value;
+  return row ? ok(row) : err(toRepositoryError("invalid row"));
+};

@@ -114,6 +114,8 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/bookmarks", "read:bookmarks", NONE),
   rule("/api/v1/conversations(?:/.*)?", "read:statuses", "write:conversations"),
   rule("/api/v1/directory", "read:accounts", NONE),
+  // Mastodon reads the preview under the write scopes: it comes before a block.
+  rule("/api/v1/domain_blocks/preview", "write:blocks", "write:blocks"),
   rule("/api/v1/domain_blocks", "read:blocks", "write:blocks"),
   rule("/api/v1/endorsements", "read:accounts", NONE),
   rule("/api/v1/favourites", "read:favourites", NONE),
