@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { failingQuoteReads } from "../test/d1-fault";
 import { listOutboundActivities } from "./outbox-store";
 import { processDistributePollUpdateJob } from "./poll-update";
 
@@ -30,41 +31,6 @@ const post = (email: string, body: unknown) => send(email, "POST", "/api/v1/stat
 
 const fetchAs = (path: string) =>
   SELF.fetch(new URL(path, ORIGIN), { headers: { Accept: AP_ACCEPT } });
-
-/**
- * Every D1 read of `status_quotes` fails while `run` runs: those that bind
- * `id`, or every one without it. Writes go through.
- */
-const failingQuoteReads = async <T>(id: string | undefined, run: () => Promise<T>): Promise<T> => {
-  const prototype: object = Object.getPrototypeOf(env.DB.prepare("SELECT 1"));
-  const originals = new Map(
-    ["first", "all", "raw", "run"].map((name) => [name, Reflect.get(prototype, name)]),
-  );
-  for (const [name, original] of originals) {
-    Reflect.set(prototype, name, function (this: object, ...args: unknown[]) {
-      const sql: unknown = Reflect.get(this, "statement");
-      const params: unknown = Reflect.get(this, "params");
-      if (
-        typeof sql === "string" &&
-        /^\s*SELECT\b/i.test(sql) &&
-        sql.includes("status_quotes") &&
-        Array.isArray(params) &&
-        (id === undefined ||
-          params.some((param) => typeof param === "string" && param.includes(id)))
-      ) {
-        return Promise.reject(new Error("D1_ERROR: injected"));
-      }
-      return Reflect.apply(original, this, args);
-    });
-  }
-  try {
-    return await run();
-  } finally {
-    for (const [name, original] of originals) {
-      Reflect.set(prototype, name, original);
-    }
-  }
-};
 
 const ActivitySchema = z.object({
   type: z.string(),
@@ -155,17 +121,19 @@ describe("a local note's quote, when it cannot be read", () => {
       cause: "quote",
     });
 
-    await send(author, "PUT", `/api/v1/statuses/${posted.id}`, { status: "edited once" });
-    expect(await queued(account.id, "Update", posted.uri)).toBe(1);
+    // The edits are of the control: the post above still owes its `Create`,
+    // which an edit leaves to send the post's current version.
+    await send(author, "PUT", `/api/v1/statuses/${control.id}`, { status: "edited once" });
+    expect(await queued(account.id, "Update", control.uri)).toBe(1);
     const onEdit = await loggedDuring(() =>
-      failingQuoteReads(posted.id, () =>
-        send(author, "PUT", `/api/v1/statuses/${posted.id}`, { status: "edited twice" }),
+      failingQuoteReads(control.id, () =>
+        send(author, "PUT", `/api/v1/statuses/${control.id}`, { status: "edited twice" }),
       ),
     );
-    expect(await queued(account.id, "Update", posted.uri)).toBe(1);
+    expect(await queued(account.id, "Update", control.uri)).toBe(1);
     expect(onEdit).toContainEqual({
       kind: "StatusUpdateNotFederated",
-      statusId: posted.id,
+      statusId: control.id,
       cause: "quote",
     });
 

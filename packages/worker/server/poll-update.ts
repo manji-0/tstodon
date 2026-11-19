@@ -17,6 +17,7 @@ import {
 } from "./poll-store";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
+import { deferToOwedActivity } from "./pending-status-federation";
 import { loadNoteMedia } from "./note-attachments";
 import { loadNoteReply } from "./reply-target";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -82,6 +83,10 @@ const distributePollUpdate = async (
 ): Promise<void> => {
   const author = await findAccountById(env.DB, note.accountId);
   if (author.isErr() || !author.value) {
+    return;
+  }
+  // A note whose `Create` (or edit) is still owed sends the counts with it.
+  if ((await deferToOwedActivity(env, note.id, undefined)) === "Owed") {
     return;
   }
   const media = await loadNoteMedia(env.DB, identity, note);

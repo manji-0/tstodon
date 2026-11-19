@@ -238,6 +238,57 @@ describe("an actor cached before the WebFinger round trip", () => {
   });
 });
 
+const displayNameOf = async (actorUri: string): Promise<string> =>
+  (
+    await read(
+      z.object({ display_name: z.string() }),
+      await call(`/api/v1/accounts/${RemoteAccountId.encode(actorUri)}`),
+    )
+  ).display_name;
+
+describe("an actor cached under a username Mastodon's Account would refuse", () => {
+  // Mastodon validates a remote username only when it changes
+  // (`will_save_change_to_username?`).
+  it("is still refreshed by the cron while its document keeps that username", async () => {
+    const remote = await remoteActor("bob.", "wf-oddname.example", { fetchedAt: EPOCH });
+    serveRemotes([{ remote, username: "bob.", name: "Bob Refreshed" }], {});
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await displayNameOf(remote.actorUri)).toBe("Bob Refreshed");
+  });
+
+  it("is still refreshed while its document keeps that username in another case", async () => {
+    const remote = await remoteActor("bob_.", "wf-oddname-case.example", { fetchedAt: EPOCH });
+    serveRemotes([{ remote, username: "Bob_.", name: "Bob Cased" }], {});
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await displayNameOf(remote.actorUri)).toBe("Bob Cased");
+  });
+
+  it("is still refreshed by its own actor Update while that keeps the username", async () => {
+    const remote = await remoteActor("bob-", "wf-oddname-update.example");
+    const object = actorDocument({ remote, username: "bob-", name: "Bob Updated" });
+
+    expect(await remote.send({ id: `${remote.actorUri}#updates/1`, type: "Update", object })).toBe(
+      202,
+    );
+
+    expect(await displayNameOf(remote.actorUri)).toBe("Bob Updated");
+  });
+
+  it("is not renamed to such a username", async () => {
+    const remote = await remoteActor("carol", "wf-oddname-rename.example", { fetchedAt: EPOCH });
+    serveRemotes([{ remote, username: "carol.", name: "Carol Renamed" }], {});
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe("carol@wf-oddname-rename.example");
+    expect(await displayNameOf(remote.actorUri)).toBe("Remote carol");
+  });
+});
+
 describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
   it.each([
     ["the account domain answers 503", "blip", { "wf-blip.example": { status: 503 } }],
