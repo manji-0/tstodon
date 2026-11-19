@@ -88,6 +88,44 @@ describe("GET /api/v1/domain_blocks/preview", () => {
     });
   });
 
+  it("counts the local follows each way without a domain, as Mastodon's `where(domain: nil)`", async () => {
+    const email = "block-preview-local@example.com";
+    const local = async (target: string) => {
+      const account = await signedInAccount(target);
+      return account.id;
+    };
+    const [ann, bob] = await Promise.all([
+      local("block-preview-ann@example.com"),
+      local("block-preview-bob@example.com"),
+    ]);
+    const viewer = await signedInAccount(email);
+    for (const target of [ann, bob]) {
+      const followed = await SELF.fetch(`https://example.com/api/v1/accounts/${target}/follow`, {
+        method: "POST",
+        headers: await authHeaders(email),
+      });
+      expect(followed.status).toBe(200);
+    }
+    const back = await SELF.fetch(`https://example.com/api/v1/accounts/${viewer.id}/follow`, {
+      method: "POST",
+      headers: await authHeaders("block-preview-ann@example.com"),
+    });
+    expect(back.status).toBe(200);
+    // A remote follow is not on the local domain.
+    await follow(email, await remoteActor("eve", "preview-local.example"), true);
+
+    const response = await SELF.fetch("https://example.com/api/v1/domain_blocks/preview", {
+      headers: await authHeaders(email),
+    });
+    expect(response.status).toBe(200);
+    expect(expectContract(ApiDomainBlockPreview, await response.json())).toEqual({
+      following_count: 2,
+      followers_count: 1,
+    });
+    // An empty or unparsable domain names no account's domain.
+    expect((await preview(email, "")).body).toEqual({ following_count: 0, followers_count: 0 });
+  });
+
   it("takes write:blocks, follow or write, as Mastodon", async () => {
     const email = "block-preview-scope@example.com";
     expect((await preview(undefined, "preview.example")).status).toBe(401);

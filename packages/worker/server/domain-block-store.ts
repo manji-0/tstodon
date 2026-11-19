@@ -1,3 +1,4 @@
+import { assertNever } from "@tstodon/core";
 import { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
@@ -84,32 +85,64 @@ const PreviewCountsRow = z.object({ following_count: z.number(), followers_count
 export type DomainBlockPreview = z.infer<typeof PreviewCountsRow>;
 
 /**
- * How many of the domain's actors the account follows and how many follow
- * it: the accepted follows a block of the domain would sever, as Mastodon's
- * `DomainBlockPreviewPresenter` counts them. An actor is on the domain as
- * the block matches it, by its account domain or its URI's host.
+ * Whose follows a domain block preview counts: a remote domain's actors, or
+ * the local accounts, which Mastodon counts when no domain is given
+ * (`where(domain: nil)`).
+ */
+export type DomainBlockPreviewTarget =
+  | Readonly<{ kind: "Local" }>
+  | Readonly<{ kind: "Domain"; domain: Hostname }>;
+
+const previewStatement = (
+  db: D1Database,
+  accountId: string,
+  target: DomainBlockPreviewTarget,
+): D1PreparedStatement => {
+  switch (target.kind) {
+    case "Local":
+      return db
+        .prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM follows WHERE follower_account_id = ?1 AND kind = 'Accepted')
+               AS following_count,
+             (SELECT COUNT(*) FROM follows WHERE target_account_id = ?1 AND kind = 'Accepted')
+               AS followers_count`,
+        )
+        .bind(accountId);
+    case "Domain":
+      return db
+        .prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM outbound_follows o
+              JOIN remote_actors r ON r.actor_uri = o.actor_uri
+              WHERE o.account_id = ?1 AND o.state = 'Accepted' AND ?2 IN (r.host, r.uri_host))
+               AS following_count,
+             (SELECT COUNT(*) FROM remote_follows f
+              JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
+              WHERE f.target_account_id = ?1 AND f.follow_kind = 'Accepted'
+                AND ?2 IN (r.host, r.uri_host))
+               AS followers_count`,
+        )
+        .bind(accountId, target.domain);
+    default:
+      return assertNever(target);
+  }
+};
+
+/**
+ * How many of the target's accounts the account follows and how many follow
+ * it, accepted follows only, as Mastodon's `DomainBlockPreviewPresenter`
+ * counts them: for a domain, the follows a block of it would sever. An actor
+ * is on the domain as the block matches it, by its account domain or its
+ * URI's host.
  */
 export const previewDomainBlock = async (
   db: D1Database,
   accountId: string,
-  domain: Hostname,
+  target: DomainBlockPreviewTarget,
 ): Promise<Result<DomainBlockPreview, RepositoryError>> => {
   const counted = await runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `SELECT
-           (SELECT COUNT(*) FROM outbound_follows o
-            JOIN remote_actors r ON r.actor_uri = o.actor_uri
-            WHERE o.account_id = ?1 AND o.state = 'Accepted' AND ?2 IN (r.host, r.uri_host))
-             AS following_count,
-           (SELECT COUNT(*) FROM remote_follows f
-            JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
-            WHERE f.target_account_id = ?1 AND f.follow_kind = 'Accepted'
-              AND ?2 IN (r.host, r.uri_host))
-             AS followers_count`,
-      )
-      .bind(accountId, domain)
-      .all();
+    const { results } = await previewStatement(db, accountId, target).all();
     return parseRows(PreviewCountsRow, results);
   });
   if (counted.isErr()) {

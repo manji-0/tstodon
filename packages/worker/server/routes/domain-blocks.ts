@@ -1,9 +1,13 @@
 import { Hostname } from "@tstodon/domain";
 import type { Context } from "hono";
-import { ApiDomainBlockParamsSchema, type ApiDomainBlockPreviewJSON } from "@tstodon/api";
+import {
+  ApiDomainBlockParamsSchema,
+  ApiDomainBlockPreviewParamsSchema,
+  type ApiDomainBlockPreviewJSON,
+} from "@tstodon/api";
 import { blockAccountDomain } from "../account-domain-block";
 import { listBlockedDomains, previewDomainBlock, unblockDomain } from "../domain-block-store";
-import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { readMergedParams, readParams, readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
@@ -21,8 +25,9 @@ export const getV1DomainBlocks = async (c: Context<{ Bindings: Env }, "/api/v1/d
 
 /**
  * What blocking `domain` would sever, as Mastodon's
- * `Api::V1::DomainBlocks::PreviewsController`. A domain that is missing or
- * not a hostname matches no actor.
+ * `Api::V1::DomainBlocks::PreviewsController`. Without a `domain`, Mastodon
+ * counts the follows with local accounts (`where(domain: nil)`); one that is
+ * not a hostname matches no account.
  */
 export const getV1DomainBlocksPreview = async (
   c: Context<{ Bindings: Env }, "/api/v1/domain_blocks/preview">,
@@ -31,13 +36,21 @@ export const getV1DomainBlocksPreview = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const params = readQueryParams(c, ApiDomainBlockParamsSchema);
-  const domain = params.isOk() ? Hostname.fromInput(params.value.domain) : undefined;
-  if (domain === undefined) {
+  const params = readQueryParams(c, ApiDomainBlockPreviewParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const raw = params.value.domain;
+  const domain = raw === undefined ? undefined : Hostname.fromInput(raw);
+  if (raw !== undefined && domain === undefined) {
     const none: ApiDomainBlockPreviewJSON = { following_count: 0, followers_count: 0 };
     return c.json(none);
   }
-  const counted = await previewDomainBlock(c.env.DB, user.value.id, domain);
+  const counted = await previewDomainBlock(
+    c.env.DB,
+    user.value.id,
+    domain === undefined ? { kind: "Local" } : { kind: "Domain", domain },
+  );
   if (counted.isErr()) {
     return jsonRepositoryError(c, counted.error.message);
   }
