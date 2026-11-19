@@ -280,6 +280,23 @@ describe("notification policy", () => {
     ]);
   });
 
+  it("never lists a direct message the policy drops in the conversations", async () => {
+    const recipientEmail = "policy-dm-dropped@example.com";
+    const senderEmail = "policy-dm-dropping@example.com";
+    const recipient = await credentials(recipientEmail);
+    await credentials(senderEmail);
+    expect((await patchPolicy(recipientEmail, { for_private_mentions: "drop" })).status).toBe(200);
+
+    await postStatus(senderEmail, {
+      status: `@${recipient.username} dropped`,
+      visibility: "direct",
+    });
+
+    // Mastodon's `NotifyService` returns on `drop?` before `push_to_conversation!`.
+    const listed = await json("/api/v1/conversations", { headers: await auth(recipientEmail) });
+    expect(listed.body).toEqual([]);
+  });
+
   it("discards held notifications on dismiss", async () => {
     const recipientEmail = "policy-dismiss-recipient@example.com";
     const senderEmail = "policy-dismiss-sender@example.com";

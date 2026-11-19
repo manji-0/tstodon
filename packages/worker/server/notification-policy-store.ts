@@ -192,9 +192,47 @@ export const countNotificationRequests = async (
   });
 
 /**
- * Hold a notification as a request. A held mention also keeps its status out
- * of the account's conversations until the sender is accepted
- * (`withheld_conversation_statuses`).
+ * Keep `statusId` out of the account's conversations when it is a direct
+ * status, local or remote: until the sender is accepted while `held`, for
+ * good otherwise.
+ */
+const withholdDirectStatus = (
+  db: D1Database,
+  accountId: string,
+  fromAccountId: string,
+  statusId: string,
+  held: boolean,
+): Promise<D1Result> =>
+  db
+    .prepare(
+      `INSERT INTO withheld_conversation_statuses (account_id, from_account_id, status_id, held)
+       SELECT ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM statuses WHERE id = ? AND visibility = 'direct')
+          OR EXISTS (SELECT 1 FROM remote_statuses WHERE id = ? AND visibility = 'direct')
+       ON CONFLICT(account_id, status_id) DO NOTHING`,
+    )
+    .bind(accountId, fromAccountId, statusId, held ? 1 : 0, statusId, statusId)
+    .run();
+
+/**
+ * Keep the direct status of a mention the recipient's policy dropped out of
+ * its conversations for good, as Mastodon's `NotifyService` returns on
+ * `drop?` before `push_to_conversation!`.
+ */
+export const keepOutOfConversations = (
+  db: D1Database,
+  accountId: string,
+  fromAccountId: string,
+  statusId: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await withholdDirectStatus(db, accountId, fromAccountId, statusId, false);
+  });
+
+/**
+ * Hold a notification as a request. A held mention of a direct status also
+ * keeps the status out of the account's conversations until the sender is
+ * accepted (`withheld_conversation_statuses`).
  */
 export const holdNotification = async (
   db: D1Database,
@@ -227,14 +265,7 @@ export const holdNotification = async (
       ),
     );
     if (mention && statusId !== undefined) {
-      await db
-        .prepare(
-          `INSERT INTO withheld_conversation_statuses (account_id, from_account_id, status_id)
-           VALUES (?, ?, ?)
-           ON CONFLICT(account_id, status_id) DO NOTHING`,
-        )
-        .bind(accountId, fromAccountId, statusId)
-        .run();
+      await withholdDirectStatus(db, accountId, fromAccountId, statusId, true);
     }
   });
   return written.map(() => undefined);
