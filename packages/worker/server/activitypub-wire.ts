@@ -225,7 +225,7 @@ const AttachmentDocumentSchema = z.looseObject({
   url: z.unknown().optional(),
   href: z.unknown().optional(),
   name: z.string().nullable().optional(),
-  // Read leniently (`remote-attachment.ts`): a malformed one is left out, and the note is kept.
+  // Read by `remoteAttachmentMetadata`, which leaves out a value that does not read.
   blurhash: z.unknown().optional(),
   width: z.unknown().optional(),
   height: z.unknown().optional(),

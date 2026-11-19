@@ -103,7 +103,7 @@ const attachmentUrl = (url: unknown): Readonly<{ href: unknown; mediaType: unkno
     : { href: undefined, mediaType: undefined };
 };
 
-type AttachmentDocument = NonNullable<NoteDocument["attachment"]>[number];
+type AttachmentDocument = NoteDocument["attachment"][number];
 
 /** An attachment with an `href` is a link (a Lemmy link post), not media, as Mastodon's `process_attachments`. */
 const isLinkAttachment = (entry: AttachmentDocument): boolean => present(entry.href) !== undefined;
