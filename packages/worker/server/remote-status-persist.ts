@@ -1,7 +1,6 @@
 import {
   InstanceIdentity,
   RealtimeWindow,
-  StatusTarget,
   type RemoteActor,
   type RemoteStatus as RemoteStatusValue,
   type MentionedPost,
@@ -13,7 +12,7 @@ import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
 import { nowInstant } from "./clock";
-import { readableRow, type RepositoryError, toRepositoryError } from "./d1";
+import { readableRow, type RepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
@@ -55,7 +54,8 @@ import {
   listShownRemoteStatusMentions,
   recordRemoteStatusMentions,
 } from "./mention-store";
-import { listLocalBoosterAccountIds } from "./status-interaction-store";
+import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
+import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
 import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
 
@@ -271,8 +271,8 @@ const mentionsToNotify = (
 /**
  * The steps of storing or updating a remote note that run after the batch
  * that writes its row: the mention rows, the mention notifications, the
- * direct conversation of a new note, the quote, the link card, the boosters'
- * `update` notifications of an edit and the stream events, then the deletion
+ * direct conversation of a new note, the quote, the link card, the queued
+ * `update` notifications of an edit's boosters and the stream events, then the deletion
  * of the marker that owed them. A failure is returned, so the inbox
  * answers 5xx and the marker stays; the sender's redelivery runs every step
  * again, which is why each one gives the same result the second time: the
@@ -366,9 +366,10 @@ const reachRecipients = async (
   if (served.isErr()) {
     return err(served.error);
   }
-  return queueRecipients(
+  // Unqueued: the delivery fails and its redelivery queues them again.
+  return queueOutboxJobs(
     env,
-    queued.map(([accountId, accountSteps]) => ({
+    queued.map(([accountId, accountSteps]): OutboxJob => ({
       kind: "FinishRemoteNoteRecipient",
       statusId: status.id,
       actorUri: actor.actorUri,
@@ -410,30 +411,6 @@ const serveRecipients = async (
   const conversation = taking("Conversation");
   if (conversation.length > 0) {
     await publishConversationUpdate(env, identity, conversation, status.id);
-  }
-  return ok(undefined);
-};
-
-/** Workers Queues takes at most 100 messages in one `sendBatch`. */
-const SEND_BATCH_LIMIT = 100;
-
-const queueRecipients = async (
-  env: Env,
-  jobs: ReadonlyArray<Extract<OutboxJob, { kind: "FinishRemoteNoteRecipient" }>>,
-): Promise<Result<void, RepositoryError>> => {
-  for (let start = 0; start < jobs.length; start += SEND_BATCH_LIMIT) {
-    try {
-      await env.OUTBOX_PROCESS_QUEUE.sendBatch(
-        jobs.slice(start, start + SEND_BATCH_LIMIT).map((body) => ({ body })),
-      );
-    } catch (cause) {
-      // Unqueued: the delivery fails and its redelivery queues them again.
-      return err(
-        toRepositoryError(
-          `queueing note recipients failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-        ),
-      );
-    }
   }
   return ok(undefined);
 };
@@ -512,22 +489,13 @@ const writeLateSteps = async (
   // Preview cards are built off the request path like for local posts.
   startLinkCard(env, "RemoteStatus", status.id, status.contentHtml, noteCardUrl(raw));
   if (late.kind === "Updated" && late.edit) {
-    // As Mastodon's UpdateStatusService: local accounts that boosted the note hear it changed.
-    // Quotes are skipped: a local account cannot yet quote a remote status.
-    // Once per edit: a notification stored since the edit's marker is this edit's.
-    const boosters = await listLocalBoosterAccountIds(env.DB, StatusTarget.remote(status.id));
+    const boosters = await notifyRemoteNoteBoosters(env, {
+      statusId: status.id,
+      actorUri: actor.actorUri,
+      since: late.edit.createdAt,
+    });
     if (boosters.isErr()) {
       return err(boosters.error);
-    }
-    for (const accountId of boosters.value) {
-      const sent = await notifyFromRemoteOnce(
-        env,
-        { accountId, actorUri: actor.actorUri, kind: "update", statusId: status.id },
-        late.edit.createdAt,
-      );
-      if (sent.isErr()) {
-        return err(sent.error);
-      }
     }
   }
   return ok(undefined);

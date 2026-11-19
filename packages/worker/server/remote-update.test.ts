@@ -1,8 +1,9 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { drainHeld, type HeldQueue, holdQueue } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -538,6 +539,20 @@ describe("remote Update of a note", () => {
 });
 
 describe("update notifications to local boosters", () => {
+  // The boosters are notified by queued jobs, run here as the queue would.
+  let held: HeldQueue = { bodies: [] };
+  beforeEach(() => {
+    held = holdQueue();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const updateAndDrain = async (author: Remote, slug: string, object: Record<string, unknown>) => {
+    await update(author, slug, object);
+    await drainHeld(held, ["NotifyRemoteNoteBoosters"]);
+  };
+
   const NotificationsSchema = z.array(
     z.object({ type: z.string(), status: z.object({ id: z.string() }).nullable() }),
   );
@@ -564,15 +579,15 @@ describe("update notifications to local boosters", () => {
     const bystander = await authHeaders("update-notify-bystander@example.com");
 
     const edit = note(author, "boosted", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" });
-    await update(author, "boosted-1", edit);
+    await updateAndDrain(author, "boosted-1", edit);
     expect(await updates(booster, id)).toEqual(["update"]);
 
-    await update(author, "boosted-2", edit);
-    await update(author, "boosted-3", { ...edit, updated: "2026-10-20T12:00:00.000Z" });
+    await updateAndDrain(author, "boosted-2", edit);
+    await updateAndDrain(author, "boosted-3", { ...edit, updated: "2026-10-20T12:00:00.000Z" });
     expect(await updates(booster, id)).toEqual(["update"]);
     expect(await updates(bystander, id)).toEqual([]);
 
-    await update(
+    await updateAndDrain(
       author,
       "boosted-4",
       note(author, "boosted", "<p>v3</p>", { updated: "2026-10-22T00:00:00.000Z" }),
@@ -584,7 +599,7 @@ describe("update notifications to local boosters", () => {
     const author = await remoteActor("notify-no-booster-author");
     const id = await create(author, "unboosted", "<p>v1</p>");
     const reader = await authHeaders("update-notify-reader@example.com");
-    await update(
+    await updateAndDrain(
       author,
       "unboosted-1",
       note(author, "unboosted", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" }),
@@ -602,7 +617,7 @@ describe("update notifications to local boosters", () => {
       body: JSON.stringify({ for_not_following: "drop", for_not_followers: "drop" }),
     });
     expect(policy.status).toBe(200);
-    await update(
+    await updateAndDrain(
       author,
       "policy-1",
       note(author, "policy", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" }),
@@ -619,7 +634,7 @@ describe("update notifications to local boosters", () => {
       { method: "POST", headers: booster },
     );
     expect(muted.status).toBe(200);
-    await update(
+    await updateAndDrain(
       author,
       "muted-1",
       note(author, "muted", "<p>v2</p>", { updated: "2026-10-21T00:00:00.000Z" }),
