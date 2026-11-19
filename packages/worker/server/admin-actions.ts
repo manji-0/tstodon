@@ -151,8 +151,10 @@ export const findAdminRemoteActor = async (
  * Suspending an actor removes the follows between it and local accounts
  * (`account_suspension` in `/severed_relationships`) and tells its server
  * with a `Reject(Follow)` or `Undo(Follow)` for each, in pages
- * (`severSuspendedActor`). Lifting the suspension restores none of them, as
- * in Mastodon.
+ * (`severSuspendedActor`). Lifting the suspension restores none of them.
+ * Deviation: Mastodon keeps local accounts' follows of a suspended actor
+ * (they come back with an unsuspension) and only rejects the actor's own
+ * follows; tstodon severs both ways.
  */
 export const moderateRemoteActor = async (
   env: Env,
