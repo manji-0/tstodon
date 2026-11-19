@@ -14,15 +14,17 @@ const under = (path: string, prefix: string): boolean =>
   path === prefix || path.startsWith(`${prefix}/`);
 
 /**
- * Paths that get the open API CORS policy: the API, the OAuth token
- * endpoints, and the discovery documents (`/.well-known/*`, `/nodeinfo/*`).
+ * Paths that get the open API CORS policy: the API, the OAuth token and
+ * UserInfo endpoints, and the discovery documents (`/.well-known/*`,
+ * `/nodeinfo/*`).
  */
 export const isApiCorsPath = (path: string): boolean =>
   under(path, "/api") ||
   under(path, "/.well-known") ||
   under(path, "/nodeinfo") ||
   path === "/oauth/token" ||
-  path === "/oauth/revoke";
+  path === "/oauth/revoke" ||
+  path === "/oauth/userinfo";
 
 /**
  * Mastodon API: `Access-Control-Allow-Origin: *` like Mastodon's

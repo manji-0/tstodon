@@ -162,7 +162,16 @@ const quoteAnnouncer = async (
   return ok(
     account &&
       (async () => {
-        const announced = await announceNoteUpdate(env, identity, account, local, nowIso(), false);
+        // A quote's new state is no edit of the note quoting it.
+        const announced = await announceNoteUpdate(
+          env,
+          identity,
+          account,
+          local,
+          nowIso(),
+          false,
+          "Unedited",
+        );
         if (announced.isErr()) {
           console.error(JSON.stringify({ kind: "QuoteRefreshNotAnnounced", quoteId: quote.id }));
         }

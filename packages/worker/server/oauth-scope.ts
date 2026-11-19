@@ -87,7 +87,7 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/accounts/:id/(?:follow|unfollow|remove_from_followers)", NONE, "write:follows"),
   rule("/api/v1/accounts/:id/(?:block|unblock)", NONE, "write:blocks"),
   rule("/api/v1/accounts/:id/(?:mute|unmute)", NONE, "write:mutes"),
-  rule("/api/v1/accounts/:id/(?:endorse|unendorse|note)", NONE, "write:accounts"),
+  rule("/api/v1/accounts/:id/(?:endorse|unendorse|pin|unpin|note)", NONE, "write:accounts"),
   rule("/api/v1/accounts/:id/statuses", "read:statuses", NONE),
   rule("/api/v1/accounts/:id/lists", "read:lists", NONE),
   rule("/api/v1/accounts(?:/.*)?", "read:accounts", NONE),
@@ -114,6 +114,8 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/bookmarks", "read:bookmarks", NONE),
   rule("/api/v1/conversations(?:/.*)?", "read:statuses", "write:conversations"),
   rule("/api/v1/directory", "read:accounts", NONE),
+  // Mastodon reads the preview under the write scopes: it comes before a block.
+  rule("/api/v1/domain_blocks/preview", "write:blocks", "write:blocks"),
   rule("/api/v1/domain_blocks", "read:blocks", "write:blocks"),
   rule("/api/v1/endorsements", "read:accounts", NONE),
   rule("/api/v1/favourites", "read:favourites", NONE),
@@ -155,6 +157,9 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/tags/:name", "read:follows", NONE),
   rule("/api/v1/timelines/list/:id", "read:lists", NONE),
   rule("/api/v1/timelines(?:/.*)?", "read:statuses", NONE),
+  // OpenID Connect's UserInfo takes `profile` alone, as Mastodon's
+  // `doorkeeper_authorize! :profile`.
+  rule("/oauth/userinfo", "profile", "profile"),
   // The web UI's settings blob (not part of Mastodon's public API).
   rule("/api/web/settings", NONE, "write:accounts"),
 ];

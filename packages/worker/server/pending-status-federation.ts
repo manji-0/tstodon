@@ -274,10 +274,14 @@ const federate = async (
   if (LocalAccountModeration.isBarred(moderation.value)) {
     return drop(env, pending);
   }
-  // An `Update` carries the time of the change it stands for, as an edit's
-  // own does, so a receiver takes it as newer than its copy.
+  // An `Update` owed for an edit carries the edit's time, so a receiver takes
+  // it as newer than its copy. One owed for a change that is no edit (a quote
+  // policy) keeps the note's own `updated`, so the receiver records no edit.
   const editedAt = pending.editedAt ?? nowInstant();
-  const note = pending.activity === "Update" ? { ...status.value, editedAt } : status.value;
+  const note =
+    pending.activity === "Update" && pending.editedAt !== undefined
+      ? { ...status.value, editedAt }
+      : status.value;
   const read = await readNoteObject(env, identity, account.value, note);
   if (read.isErr()) {
     return failed(env, pending, read.error.cause);

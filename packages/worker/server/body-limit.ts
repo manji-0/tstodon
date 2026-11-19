@@ -129,7 +129,10 @@ const audienceOf = (path: string): RefusalAudience => {
   if (INBOX_PATH.test(path)) {
     return "Inbox";
   }
-  return path.startsWith("/api/") || path === "/oauth/token" || path === "/oauth/revoke"
+  return path.startsWith("/api/") ||
+    path === "/oauth/token" ||
+    path === "/oauth/revoke" ||
+    path === "/oauth/userinfo"
     ? "Api"
     : "Page";
 };

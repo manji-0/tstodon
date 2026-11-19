@@ -93,12 +93,12 @@ export const publishConversationUpdate = (
   );
 
 /**
- * Tell `accountId`'s `direct` stream that it marked `conversationId` read,
- * with the entity as the list now shows it (`unread: false`). Mastodon does
- * the same when its `read` action updates the account conversation, and sends
- * nothing when a conversation is removed.
+ * Tell `accountId`'s `direct` stream that it marked `conversationId` read or
+ * unread, with the entity as the list now shows it. Mastodon does the same
+ * when its `read` or `unread` action updates the account conversation, and
+ * sends nothing when a conversation is removed.
  */
-export const publishConversationRead = (
+export const publishConversationMarked = (
   env: Env,
   identity: InstanceIdentity,
   accountId: string,

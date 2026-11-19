@@ -102,6 +102,18 @@ describe("request body caps", () => {
     expect(response.status).toBe(413);
   });
 
+  it("answers the OAuth API endpoints' oversized bodies in JSON", async () => {
+    for (const path of ["/oauth/token", "/oauth/revoke", "/oauth/userinfo"]) {
+      const response = await SELF.fetch(`https://example.com${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ padding: "x".repeat(2 * MB) }),
+      });
+      expect(response.status, path).toBe(413);
+      expect(response.headers.get("content-type"), path).toContain("application/json");
+    }
+  });
+
   it("refuses an oversized optional body before acting on the request", async () => {
     const headers = await authHeaders("body-limit-optional@example.com");
     const created = await SELF.fetch("https://example.com/api/v1/statuses", {

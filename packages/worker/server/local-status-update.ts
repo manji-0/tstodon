@@ -27,6 +27,12 @@ import { publishToAccount } from "./stream-publish";
  * attachments and quote with the `Update`'s, so one without them deletes
  * them remotely. A note that still owes an activity (its `Create` not sent
  * yet) sends that one with this version instead, `federate` or not (FED-14).
+ * An `Update` that cannot be stored or queued is retried later the same way,
+ * since the change it announces is already stored.
+ *
+ * An `Unedited` change, such as a new quote policy, sends the note with the
+ * `updated` it had, as Mastodon's `StatusUpdateDistributionWorker` does when
+ * `edited_at` stays: a receiver applies it without recording an edit.
  */
 export const announceNoteUpdate = async (
   env: Env,
@@ -35,12 +41,19 @@ export const announceNoteUpdate = async (
   note: LocalNote,
   updatedAt: string,
   federate: boolean,
+  revision: "Edited" | "Unedited" = "Edited",
 ): Promise<Result<ApiStatusJSON | undefined, EnqueueLocalActivityError>> => {
-  // Stamped with this change, so a receiver takes it as newer than its copy.
-  const stamped = { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) };
+  // An edit is stamped with this change, so a receiver takes it as newer than its copy.
+  const stamped =
+    revision === "Edited"
+      ? { ...note, editedAt: IsoInstant.parse(updatedAt).unwrapOr(note.editedAt) }
+      : note;
+  // An owed `Update` carries an edit's time; a change that is no edit leaves
+  // the note's own.
+  const editedAt = revision === "Edited" ? updatedAt : undefined;
   // Whether or not this change federates, an activity the note still owes
   // goes out with this version.
-  const owed = await deferToOwedActivity(env, note.id, updatedAt);
+  const owed = await deferToOwedActivity(env, note.id, editedAt);
   const federated =
     federate && owed === "None" ? await readNoteObject(env, identity, account, stamped) : undefined;
   // Unknown whether a `Create` is owed: the `Update` is owed instead, which
@@ -49,7 +62,7 @@ export const announceNoteUpdate = async (
     owed === "Unknown" ? "pending" : federated?.isErr() ? federated.error.cause : undefined;
   if (federate && cause !== undefined) {
     console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id, cause }));
-    await deferStatusActivity(env, note.id, "Update", updatedAt);
+    await deferStatusActivity(env, note.id, "Update", editedAt);
   }
   if (federated?.isOk()) {
     const enqueued = await enqueueLocalActivity(
@@ -58,8 +71,13 @@ export const announceNoteUpdate = async (
       "Update",
       noteUpdateActivity(federated.value.object, newEntityId(), updatedAt),
     );
+    // The change is stored: its `Update` is sent later, as Mastodon's
+    // Sidekiq retries the distribution worker, rather than lost.
     if (enqueued.isErr()) {
-      return enqueued.map(() => undefined);
+      console.error(
+        JSON.stringify({ kind: "StatusUpdateNotFederated", statusId: note.id, cause: "enqueue" }),
+      );
+      await deferStatusActivity(env, note.id, "Update", editedAt);
     }
   }
   const latest = await findStatusById(env.DB, note.id);

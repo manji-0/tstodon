@@ -380,6 +380,7 @@ export const getOauthAuthorizationServerMetadata = (c: Context<{ Bindings: Env }
     authorization_endpoint: `${origin}/oauth/authorize`,
     token_endpoint: `${origin}/oauth/token`,
     revocation_endpoint: `${origin}/oauth/revoke`,
+    userinfo_endpoint: `${origin}/oauth/userinfo`,
     app_registration_endpoint: `${origin}/api/v1/apps`,
     scopes_supported: ["read", "write", "push", "follow", "profile", "admin:read", "admin:write"],
     response_types_supported: ["code"],
