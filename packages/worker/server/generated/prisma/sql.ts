@@ -720,6 +720,8 @@ export * from "./sql/listRemoteActorModerations";
 
 export * from "./sql/listRemoteActorPinnedStatuses";
 
+export * from "./sql/listRemoteActorsDueLinkCheck";
+
 export * from "./sql/listRemoteFeaturedTags";
 
 export * from "./sql/listRemoteNoteReplies";
@@ -800,11 +802,17 @@ export * from "./sql/markAvatarMetadataStripped";
 
 export * from "./sql/markHeaderMetadataStripped";
 
+export * from "./sql/markLocalProfileFieldVerified";
+
 export * from "./sql/markMediaMetadataStripped";
 
 export * from "./sql/markPollExpiryNotified";
 
+export * from "./sql/markRemoteActorLinksChecked";
+
 export * from "./sql/markRemotePollFetched";
+
+export * from "./sql/markRemoteProfileFieldVerified";
 
 export * from "./sql/markRemoteStatusTagsIndexed";
 

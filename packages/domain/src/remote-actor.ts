@@ -3,6 +3,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
+import { ProfileFieldSchema } from "./profile-field";
 import { RemoteEmojiSchema } from "./remote-status";
 
 /**
@@ -27,7 +28,7 @@ const RemoteActorProfileSchema = z.object({
    * is the actor's HTML as sent: sanitise it before it is rendered. None on a
    * profile stored before they were kept.
    */
-  fields: z.array(z.object({ name: z.string(), value: z.string() })).default([]),
+  fields: z.array(ProfileFieldSchema).default([]),
 });
 
 export type RemoteActorProfile = z.infer<typeof RemoteActorProfileSchema>;

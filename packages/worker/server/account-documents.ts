@@ -32,7 +32,7 @@ import {
   listAccountProfiles,
 } from "./account-profile-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
-import { escapeHtml, textToHtml } from "./html";
+import { formatFieldValue, textToHtml } from "./html";
 import { mediaUrl } from "./media-document";
 import { quotePolicyName } from "./quote-policy-name";
 
@@ -333,8 +333,8 @@ export const mastodonAccount = (
     // value would be stored XSS. `source.fields` keeps the plain text.
     fields: profile.fields.map((field) => ({
       name: field.name,
-      value: escapeHtml(field.value),
-      verified_at: null,
+      value: formatFieldValue(field.value, identity),
+      verified_at: field.verifiedAt ?? null,
     })),
   };
 };
@@ -355,7 +355,7 @@ export const accountSource = (
   fields: profile.fields.map((field) => ({
     name: field.name,
     value: field.value,
-    verified_at: null,
+    verified_at: field.verifiedAt ?? null,
   })),
   follow_requests_count: 0,
   quote_policy: quotePolicyName(account.defaultQuotePolicy),
@@ -478,11 +478,11 @@ export const mastodonRemoteAccount = (
     statuses_count: 0,
     last_status_at: null,
     emojis: remoteEmojisJson(profile.emojis),
-    // Mastodon also fetches a field's link to verify it (`rel="me"`); that is not done here.
+    // `verified_at` is set by the link check (`profile-link-verification.ts`).
     fields: profile.fields.map((field) => ({
       name: field.name,
       value: sanitizeRemoteHtml(field.value),
-      verified_at: null,
+      verified_at: field.verifiedAt ?? null,
     })),
   };
 };

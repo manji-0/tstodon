@@ -394,6 +394,21 @@ const RefreshQuoteSchema = z.object({
 });
 
 /**
+ * Check the links of an account's profile fields, as Mastodon's
+ * `VerifyAccountLinksWorker`: each field from `fromIndex` on whose link waits
+ * for a check is marked verified when the linked page links back with
+ * `rel="me"`. A job checks a few fields and queues the rest from the next index.
+ */
+const VerifyProfileLinksSchema = z.object({
+  kind: z.literal("VerifyProfileLinks"),
+  account: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("LocalAccount"), accountId: z.string().min(1) }),
+    z.object({ kind: z.literal("RemoteActor"), actorUri: z.url() }),
+  ]),
+  fromIndex: z.number().int().min(0).default(0),
+});
+
+/**
  * Send the activities local statuses still owe remote servers, those whose
  * retry is due (`PendingStatusFederation`), a page at a time.
  */
@@ -439,6 +454,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
   FederatePendingStatusesSchema,
+  VerifyProfileLinksSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;
