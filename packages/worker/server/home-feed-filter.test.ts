@@ -1,0 +1,293 @@
+import { SELF, env } from "cloudflare:test";
+import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
+import { schemaResult } from "@tstodon/core";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { parseRows } from "./d1";
+import { RemoteAccountId } from "./remote-account-id";
+
+// Mastodon v4.7.5's `FeedManager#filter_from_home` (home and, through
+// `filter(:list)`, lists) and `#filter_from_tags?` (a followed hashtag's
+// posts), for the rules tstodon's home queries did not apply: a status that
+// mentions an account the viewer blocks or mutes, a boost of one, and a reply
+// to an account the viewer does not follow.
+
+const ORIGIN = "https://example.com";
+const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+const HOST = "home-filter.example";
+
+const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
+  const parsed = schemaResult(schema)(body);
+  if (parsed.isErr()) {
+    throw new Error(`schema rejected: ${JSON.stringify(body)}`);
+  }
+  return parsed.value;
+};
+
+const call = async (email: string, path: string, init: RequestInit = {}): Promise<unknown> => {
+  const response = await SELF.fetch(`${ORIGIN}${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+  });
+  expect(response.status, path).toBe(200);
+  return response.json();
+};
+
+const Entry = z.object({ id: z.string(), reblog: z.object({ id: z.string() }).nullable() });
+
+const idsIn = async (email: string, path: string): Promise<string[]> =>
+  read(z.array(Entry), await call(email, path)).map((entry) => entry.id);
+
+const homeIds = (email: string): Promise<string[]> =>
+  idsIn(email, "/api/v1/timelines/home?limit=40");
+
+const post = async (
+  email: string,
+  status: string,
+  options: Readonly<{ inReplyToId?: string }> = {},
+): Promise<string> =>
+  read(
+    Entry,
+    await call(email, "/api/v1/statuses", {
+      method: "POST",
+      body: JSON.stringify({
+        status,
+        visibility: "public",
+        ...(options.inReplyToId === undefined ? {} : { in_reply_to_id: options.inReplyToId }),
+      }),
+    }),
+  ).id;
+
+const boost = async (email: string, statusId: string): Promise<string> =>
+  read(Entry, await call(email, `/api/v1/statuses/${statusId}/reblog`, { method: "POST" })).id;
+
+const act = async (
+  email: string,
+  targetId: string,
+  action: "follow" | "block" | "mute" | "unblock" | "unmute",
+  body: Record<string, unknown> = {},
+): Promise<void> => {
+  await call(email, `/api/v1/accounts/${targetId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+};
+
+const rowId = async (sql: string, bind: string): Promise<string> => {
+  const [row] = parseRows(
+    z.object({ id: z.string() }),
+    (await env.DB.prepare(sql).bind(bind).all()).results,
+  );
+  if (!row) {
+    throw new Error(`no row for ${bind}`);
+  }
+  return row.id;
+};
+
+/** Follow `remote` as `email`, and have it accept. */
+const followRemote = async (email: string, remote: Remote): Promise<void> => {
+  await act(email, RemoteAccountId.encode(remote.actorUri), "follow");
+  const viewer = await signedInAccount(email);
+  const [row] = parseRows(
+    z.object({ follow_activity_id: z.string() }),
+    (
+      await env.DB.prepare(
+        "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",
+      )
+        .bind(viewer.id, remote.actorUri)
+        .all()
+    ).results,
+  );
+  expect(
+    await remote.send({
+      id: `${remote.actorUri}/accepts/${viewer.id}`,
+      type: "Accept",
+      object: row?.follow_activity_id,
+    }),
+  ).toBe(202);
+};
+
+const noteUri = (remote: Remote, slug: string): string =>
+  `${new URL(remote.actorUri).origin}/notes/${slug}`;
+
+/** A public note `remote` sends; its stored id. */
+const sendNote = async (
+  remote: Remote,
+  slug: string,
+  options: Readonly<{ mentions?: string[]; inReplyTo?: string; hashtag?: string }> = {},
+): Promise<string> => {
+  const id = noteUri(remote, slug);
+  const hashtag = options.hashtag;
+  expect(
+    await remote.send({
+      id: `${id}/create`,
+      type: "Create",
+      to: [PUBLIC],
+      object: {
+        id,
+        type: "Note",
+        attributedTo: remote.actorUri,
+        content: `<p>${slug}${hashtag === undefined ? "" : ` #${hashtag}`}</p>`,
+        published: new Date().toISOString(),
+        to: [PUBLIC],
+        cc: [`${remote.actorUri}/followers`, ...(options.mentions ?? [])],
+        ...(options.inReplyTo === undefined ? {} : { inReplyTo: options.inReplyTo }),
+        tag: [
+          ...(options.mentions ?? []).map((href) => ({ type: "Mention", href })),
+          ...(hashtag === undefined
+            ? []
+            : [{ type: "Hashtag", name: `#${hashtag}`, href: `https://${HOST}/tags/${hashtag}` }]),
+        ],
+      },
+    }),
+  ).toBe(202);
+  return rowId("SELECT id FROM remote_statuses WHERE object_uri = ?", id);
+};
+
+/** The account signed in as `email`, with that email to act as it. */
+const user = async (email: string) => {
+  const account = await signedInAccount(email);
+  return { email, id: account.id, username: account.username };
+};
+
+const localActor = (username: string): string => `${ORIGIN}/users/${username}`;
+
+describe("home leaves out a status that mentions an account the viewer blocks or mutes", () => {
+  it("for a followed local author's post, a block, a mute and a mute without notifications", async () => {
+    const viewer = "hff-mention-viewer@example.com";
+    const author = await user("hff-mention-author@example.com");
+    const blocked = await user("hff-mention-blocked@example.com");
+    const muted = await user("hff-mention-muted@example.com");
+    const quiet = await user("hff-mention-quiet@example.com");
+    await user(viewer);
+    await act(viewer, author.id, "follow");
+    const toBlocked = await post(author.email, `@${blocked.username} hello`);
+    const toMuted = await post(author.email, `@${muted.username} hello`);
+    const toQuiet = await post(author.email, `@${quiet.username} hello`);
+    const plain = await post(author.email, "no mentions");
+    expect(await homeIds(viewer)).toEqual(expect.arrayContaining([toBlocked, toMuted, toQuiet]));
+
+    await act(viewer, blocked.id, "block");
+    await act(viewer, muted.id, "mute");
+    await act(viewer, quiet.id, "mute", { notifications: false });
+
+    const home = await homeIds(viewer);
+    expect(home).toContain(plain);
+    for (const hidden of [toBlocked, toMuted, toQuiet]) {
+      expect(home).not.toContain(hidden);
+    }
+  });
+
+  it("keeps the viewer's own post that mentions an account it blocks", async () => {
+    const viewer = await user("hff-own-viewer@example.com");
+    const blocked = await user("hff-own-blocked@example.com");
+    const own = await post(viewer.email, `@${blocked.username} before the block`);
+    await act(viewer.email, blocked.id, "block");
+
+    expect(await homeIds(viewer.email)).toContain(own);
+  });
+
+  it("for a local boost of a post that mentions a muted account", async () => {
+    const viewer = "hff-boost-viewer@example.com";
+    const booster = await user("hff-boost-booster@example.com");
+    const author = await user("hff-boost-author@example.com");
+    const muted = await user("hff-boost-muted@example.com");
+    await user(viewer);
+    await act(viewer, booster.id, "follow");
+    const original = await post(author.email, `@${muted.username} boost this`);
+    const reblog = await boost(booster.email, original);
+    expect(await homeIds(viewer)).toContain(reblog);
+
+    await act(viewer, muted.id, "mute");
+
+    expect(await homeIds(viewer)).not.toContain(reblog);
+  });
+
+  it("on a list as well", async () => {
+    const viewer = "hff-list-viewer@example.com";
+    const member = await user("hff-list-member@example.com");
+    const blocked = await user("hff-list-blocked@example.com");
+    await user(viewer);
+    await act(viewer, member.id, "follow");
+    const list = read(
+      z.object({ id: z.string() }),
+      await call(viewer, "/api/v1/lists", { method: "POST", body: JSON.stringify({ title: "m" }) }),
+    ).id;
+    await call(viewer, `/api/v1/lists/${list}/accounts`, {
+      method: "POST",
+      body: JSON.stringify({ account_ids: [member.id] }),
+    });
+    const mention = await post(member.email, `@${blocked.username} on the list`);
+    const plain = await post(member.email, "plain on the list");
+    await act(viewer, blocked.id, "block");
+
+    const shown = await idsIn(viewer, `/api/v1/timelines/list/${list}`);
+    expect(shown).toContain(plain);
+    expect(shown).not.toContain(mention);
+  });
+
+  it("for a followed hashtag's post", async () => {
+    const viewer = "hff-tag-viewer@example.com";
+    const author = await user("hff-tag-author@example.com");
+    const muted = await user("hff-tag-muted@example.com");
+    await user(viewer);
+    await call(viewer, "/api/v1/tags/hfftagged/follow", { method: "POST", body: "{}" });
+    await act(viewer, muted.id, "mute");
+    const mention = await post(author.email, `@${muted.username} #hfftagged`);
+    const plain = await post(author.email, "plain #hfftagged");
+
+    const home = await homeIds(viewer);
+    expect(home).toContain(plain);
+    expect(home).not.toContain(mention);
+  });
+
+  it("for a followed remote actor's note, a remote boost, and a followed hashtag's remote note", async () => {
+    const viewer = "hff-remote-viewer@example.com";
+    const blocked = await user("hff-remote-blocked@example.com");
+    const followed = await remoteActor("hffremotefollowed", HOST);
+    const mutedActor = await remoteActor("hffremotemuted", HOST);
+    const stranger = await remoteActor("hffremotestranger", HOST);
+    await user(viewer);
+    await followRemote(viewer, followed);
+    await call(viewer, "/api/v1/tags/hffremotetag/follow", { method: "POST", body: "{}" });
+
+    const toLocal = await sendNote(followed, "hff-to-local", {
+      mentions: [localActor(blocked.username)],
+    });
+    const toRemote = await sendNote(followed, "hff-to-remote", {
+      mentions: [mutedActor.actorUri],
+    });
+    const plain = await sendNote(followed, "hff-plain");
+    const tagged = await sendNote(stranger, "hff-tagged", {
+      mentions: [mutedActor.actorUri],
+      hashtag: "hffremotetag",
+    });
+    const taggedPlain = await sendNote(stranger, "hff-tagged-plain", { hashtag: "hffremotetag" });
+    await sendNote(stranger, "hff-boosted", { mentions: [localActor(blocked.username)] });
+    const announceId = `${followed.actorUri}/announces/hff-boost`;
+    expect(
+      await followed.send({
+        id: announceId,
+        type: "Announce",
+        object: noteUri(stranger, "hff-boosted"),
+        published: new Date().toISOString(),
+        to: [PUBLIC],
+        cc: [`${followed.actorUri}/followers`],
+      }),
+    ).toBe(202);
+    const boostId = await rowId("SELECT id FROM remote_boosts WHERE activity_id = ?", announceId);
+    expect(await homeIds(viewer)).toEqual(
+      expect.arrayContaining([toLocal, toRemote, tagged, boostId]),
+    );
+
+    await act(viewer, blocked.id, "block");
+    await act(viewer, RemoteAccountId.encode(mutedActor.actorUri), "mute");
+
+    const home = await homeIds(viewer);
+    expect(home).toEqual(expect.arrayContaining([plain, taggedPlain]));
+    for (const hidden of [toLocal, toRemote, tagged, boostId]) {
+      expect(home).not.toContain(hidden);
+    }
+  });
+});

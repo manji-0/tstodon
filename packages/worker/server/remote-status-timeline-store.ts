@@ -12,6 +12,7 @@ import {
   feedRepliesSql,
   type FollowedFeed,
   followedTagNoteIdsSql,
+  mentionsBlockedOrMutedSql,
 } from "./followed-feed";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
@@ -89,6 +90,8 @@ export const listFollowedRemoteStatuses = async (
     const { where, order, binds } = idCursorFragment(cursor);
     const follows = feedFollowSql(feed);
     const replies = feedRepliesSql(feed, accountId);
+    const now = nowIso();
+    const mentions = mentionsBlockedOrMutedSql(accountId, now, { remote: "s.id" });
     const addressed =
       feed.kind === "Home"
         ? `OR (s.visibility IN ('limited', 'direct') AND EXISTS (
@@ -112,6 +115,7 @@ export const listFollowedRemoteStatuses = async (
              )
              AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND s.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
+             AND NOT ${mentions.sql}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -121,8 +125,9 @@ export const listFollowedRemoteStatuses = async (
         accountId,
         accountId,
         accountId,
-        nowIso(),
+        now,
         accountId,
+        ...mentions.binds,
         ...binds,
         limit,
       )
@@ -151,7 +156,9 @@ export const listFollowedTagRemoteStatuses = async (
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
-    const tagged = followedTagNoteIdsSql("Remote", accountId, nowIso(), cursor, horizon);
+    const now = nowIso();
+    const tagged = followedTagNoteIdsSql("Remote", accountId, now, cursor, horizon);
+    const mentions = mentionsBlockedOrMutedSql(accountId, now, { remote: "s.id" });
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM (
@@ -162,6 +169,7 @@ export const listFollowedTagRemoteStatuses = async (
              )
              AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
+             AND NOT ${mentions.sql}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -170,8 +178,9 @@ export const listFollowedTagRemoteStatuses = async (
         accountId,
         accountId,
         accountId,
-        nowIso(),
+        now,
         accountId,
+        ...mentions.binds,
         ...binds,
         limit,
       )

@@ -8,6 +8,7 @@ import {
   EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL,
   FEED_LANGUAGES_SQL,
   FEED_SUSPENDED_AUTHORS_SQL,
+  feedLocalMentionsSql,
   feedLocalReblogsSql,
   followedTagHorizonSql,
   followedTagNoteIdsSql,
@@ -105,6 +106,7 @@ export const listHomeStatuses = async (
     const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(accountId, now);
+    const mentions = feedLocalMentionsSql(accountId, now);
     const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
     // A followed author's direct note only when it mentions the viewer, as
     // Mastodon's `deliver_to_mentioned_followers!`; the viewer's own always
@@ -117,6 +119,7 @@ export const listHomeStatuses = async (
          ))) OR id IN ${tagged.sql})
          ${suppressed}
          ${reblogs.sql}
+         ${mentions.sql}
          ${FEED_LANGUAGES_SQL}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
@@ -134,6 +137,7 @@ export const listHomeStatuses = async (
         // Exclusive lists: the viewer.
         accountId,
         ...reblogs.binds,
+        ...mentions.binds,
         // `FEED_LANGUAGES_SQL`: the viewer.
         accountId,
         ...binds,

@@ -58,15 +58,90 @@ export const reblogOfShownAuthorSql = (viewerId: string, now: string): SqlFragme
   };
 };
 
+/** The local accounts the viewer blocks or mutes. Takes the viewer twice and the clock. */
+const BLOCKED_OR_MUTED_ACCOUNTS_SQL = `(
+  SELECT target_account_id FROM blocks WHERE blocker_account_id = ? AND target_account_id IS NOT NULL
+  UNION ALL
+  SELECT target_account_id FROM mutes
+    WHERE account_id = ? AND target_account_id IS NOT NULL AND (expires_at IS NULL OR expires_at > ?)
+)`;
+
+/** The actors the viewer blocks or mutes. Takes the viewer twice and the clock. */
+const BLOCKED_OR_MUTED_ACTORS_SQL = `(
+  SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?
+  UNION ALL
+  SELECT target_actor_uri FROM mutes WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+)`;
+
+/**
+ * Holds when a status actively mentions an account or actor the viewer
+ * blocks or mutes (a mute that keeps notifications too), as Mastodon's
+ * `FeedManager` checks `crutches[:active_mentions]` against `blocking` and
+ * `muting`. `local` and `remote` are expressions yielding the id of a local
+ * `statuses` row and of a `remote_statuses` row; either may yield NULL. Each
+ * test probes a mention table's primary key with the viewer's blocks and
+ * mutes, so no blocks or mutes cost no reads.
+ */
+export const mentionsBlockedOrMutedSql = (
+  viewerId: string,
+  now: string,
+  status: Readonly<{ local?: string; remote?: string }>,
+): SqlFragment => {
+  const binds = [viewerId, viewerId, now];
+  const probe = (table: string, id: string, target: string): SqlFragment => ({
+    sql: `EXISTS (SELECT 1 FROM ${table} m WHERE m.status_id = ${id} AND ${target})`,
+    binds,
+  });
+  const accounts = `m.account_id IN ${BLOCKED_OR_MUTED_ACCOUNTS_SQL}`;
+  const actors = `m.actor_uri IN ${BLOCKED_OR_MUTED_ACTORS_SQL}`;
+  const probes = [
+    ...(status.local === undefined
+      ? []
+      : [
+          probe("status_mentions", status.local, accounts),
+          probe("status_remote_mentions", status.local, actors),
+        ]),
+    ...(status.remote === undefined
+      ? []
+      : [
+          // A silent mention is not an active one (`Mention.active`).
+          probe("remote_status_mentions", status.remote, `m.silent = 0 AND ${accounts}`),
+          probe("remote_status_remote_mentions", status.remote, actors),
+        ]),
+  ];
+  return {
+    sql: `(${probes.map((part) => part.sql).join(" OR ")})`,
+    binds: probes.flatMap((part) => part.binds),
+  };
+};
+
+/**
+ * Leaves out of a feed the local `statuses` rows that mention an account the
+ * viewer blocks or mutes ({@link mentionsBlockedOrMutedSql}), except the
+ * viewer's own, which Mastodon's `filter_from_home` keeps whatever they hold.
+ */
+export const feedLocalMentionsSql = (viewerId: string, now: string): SqlFragment => {
+  const hidden = mentionsBlockedOrMutedSql(viewerId, now, { local: "statuses.id" });
+  return {
+    sql: `AND (statuses.account_id = ? OR NOT ${hidden.sql})`,
+    binds: [viewerId, ...hidden.binds],
+  };
+};
+
 /**
  * The local boosts (`LocalReblog` rows of `statuses`) a feed of the viewer
  * keeps, by Mastodon's `FeedManager`: the viewer's own always; another's
- * unless the viewer's follow of the booster hides its reblogs, or the viewer
- * does not see the boosted status's author ({@link reblogOfShownAuthorSql}).
+ * unless the viewer's follow of the booster hides its reblogs, the viewer
+ * does not see the boosted status's author ({@link reblogOfShownAuthorSql}),
+ * or the boosted status mentions an account the viewer blocks or mutes.
  * Notes pass.
  */
 export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment => {
   const shown = reblogOfShownAuthorSql(viewerId, now);
+  const mentions = mentionsBlockedOrMutedSql(viewerId, now, {
+    local: "statuses.reblog_of_id",
+    remote: "statuses.reblog_of_remote_id",
+  });
   return {
     sql: `AND (
       statuses.kind <> 'LocalReblog' OR statuses.account_id = ? OR (
@@ -75,9 +150,10 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
           WHERE follower_account_id = ? AND kind = 'Accepted' AND reblogs = 0
         )
         AND ${shown.sql}
+        AND NOT ${mentions.sql}
       )
     )`,
-    binds: [viewerId, viewerId, ...shown.binds],
+    binds: [viewerId, viewerId, ...shown.binds, ...mentions.binds],
   };
 };
 
