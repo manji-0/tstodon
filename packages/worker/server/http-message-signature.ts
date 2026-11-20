@@ -41,11 +41,25 @@ export type MessageSignatureParseError = Readonly<{
     | "MalformedSignature";
 }>;
 
+/**
+ * The longest `Signature-Input`, `Signature` or `Content-Digest` read, in
+ * characters: 8 KiB, the header line nginx (`large_client_header_buffers`,
+ * 8k by default) lets through to Mastodon. Mastodon's own are about 200, and
+ * a 4096-bit RSA signature is 690 in base64. A longer one is refused unread.
+ */
+export const MAX_SIGNATURE_FIELD_LENGTH = 8192;
+
 /** The signature a request's `Signature-Input` and `Signature` carry. */
 export const parseMessageSignature = (
   signatureInput: string,
   signature: string,
 ): Result<MessageSignature, MessageSignatureParseError> => {
+  if (signatureInput.length > MAX_SIGNATURE_FIELD_LENGTH) {
+    return err({ kind: "MalformedSignatureInput" });
+  }
+  if (signature.length > MAX_SIGNATURE_FIELD_LENGTH) {
+    return err({ kind: "MalformedSignature" });
+  }
   const inputs = parseSfDictionary(signatureInput);
   if (inputs.isOk() && inputs.value.length > 1) {
     return err({ kind: "MultipleSignatures" });
@@ -192,8 +206,8 @@ const componentValue = (request: Request, item: SfItem): string | undefined => {
   if (!FIELD_NAME.test(name)) {
     return undefined;
   }
-  const value = request.headers.get(name);
-  return value === null ? undefined : value.replace(/^[ \t]+|[ \t]+$/g, "");
+  // `Headers` already strips a value's leading and trailing whitespace.
+  return request.headers.get(name) ?? undefined;
 };
 
 /**
@@ -281,6 +295,9 @@ export const checkContentDigest = async (
 ): Promise<ContentDigestVerdict> => {
   if (header === null) {
     return { kind: "Missing" };
+  }
+  if (header.length > MAX_SIGNATURE_FIELD_LENGTH) {
+    return { kind: "Malformed" };
   }
   const digests = parseSfDictionary(header);
   if (digests.isErr()) {

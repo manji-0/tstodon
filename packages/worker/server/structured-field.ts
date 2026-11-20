@@ -294,9 +294,18 @@ class Parser {
  * gives.
  */
 export const parseSfDictionary = (field: string): Result<SfDictionary, SfParseError> => {
-  const input = field.replace(/^ +| +$/g, "");
+  // Index-based: a regex trim (`/^ +| +$/`) is quadratic on a long run of
+  // interior spaces, and this field comes from an unauthenticated request.
+  let start = 0;
+  let end = field.length;
+  while (start < end && field[start] === " ") {
+    start += 1;
+  }
+  while (end > start && field[end - 1] === " ") {
+    end -= 1;
+  }
   try {
-    return ok(new Parser(input).dictionary());
+    return ok(new Parser(field.slice(start, end)).dictionary());
   } catch (error) {
     if (error instanceof Failure) {
       return err({ kind: "InvalidStructuredField", at: error.at });

@@ -76,6 +76,14 @@ describe("parseSfDictionary", () => {
     ]);
   });
 
+  it("reads a field with a long run of spaces in linear time", () => {
+    const spaces = " ".repeat(100_000);
+    const started = Date.now();
+    expect(parseSfDictionary(`a${spaces}b`).isErr()).toBe(true);
+    expect(parseSfDictionary(`${spaces}a=1${spaces}`).isOk()).toBe(true);
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+
   it("reads an empty field as an empty dictionary", () => {
     expect(parsed("")).toEqual([]);
   });

@@ -4,11 +4,13 @@ import {
   checkContentDigest,
   checkMessageSignatureStrength,
   contentDigestHeader,
+  MAX_SIGNATURE_FIELD_LENGTH,
   type MessageSignature,
   messageSignatureBase,
   parseMessageSignature,
   verifyMessageSignature,
 } from "./http-message-signature";
+import type { SfInnerList } from "./structured-field";
 import {
   checkSignatureStrength,
   parseRequestSignature,
@@ -549,6 +551,42 @@ describe("parseMessageSignature", () => {
     ],
   ])("refuses %s", (_, signatureInput, signature, kind) => {
     expect(parseMessageSignature(signatureInput, signature)._unsafeUnwrapErr()).toEqual({ kind });
+  });
+
+  const withAccept: SfInnerList = {
+    kind: "InnerList",
+    items: [{ kind: "Item", value: { kind: "String", value: "accept" }, params: [] }],
+    params: [],
+  };
+
+  it("refuses a field over 8 KiB before reading it, and reads a long one in linear time", async () => {
+    const padded = `sig1=${input};nonce="${"x".repeat(MAX_SIGNATURE_FIELD_LENGTH)}"`;
+    expect(parseMessageSignature(padded, "sig1=:AA==:")._unsafeUnwrapErr()).toEqual({
+      kind: "MalformedSignatureInput",
+    });
+    expect(
+      parseMessageSignature(
+        `sig1=${input}`,
+        `sig1=:${"A".repeat(MAX_SIGNATURE_FIELD_LENGTH)}:`,
+      )._unsafeUnwrapErr(),
+    ).toEqual({ kind: "MalformedSignature" });
+    const spaces = " ".repeat(100_000);
+    const started = Date.now();
+    const request = new Request("https://tstodon.example/inbox", {
+      method: "POST",
+      headers: {
+        "Signature-Input": `sig1=(${spaces}"@method"${spaces})`,
+        Signature: `sig1=:AA==:${spaces},`,
+        "Content-Digest": `sha-256=:AA==:${spaces}x`,
+        Accept: `a${spaces}b`,
+      },
+    });
+    expect(parseRequestSignature(request.headers).isErr()).toBe(true);
+    expect(messageSignatureBase(request, withAccept)).toContain(`"accept": a${spaces}b`);
+    expect(await checkContentDigest(request.headers.get("Content-Digest"), "")).toEqual({
+      kind: "Malformed",
+    });
+    expect(Date.now() - started).toBeLessThan(200);
   });
 });
 
