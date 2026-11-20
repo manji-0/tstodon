@@ -1,12 +1,18 @@
 import { SELF, env } from "cloudflare:test";
 import { FollowersSynchronization } from "@tstodon/domain";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliverTarget } from "../test/delivery-fixture";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { listOutboundActivities } from "./outbox-store";
+import { prepareInboxDelivery } from "./delivery";
+import { meter, meterWork, patchD1, resetMeter } from "../test/meter";
+
+beforeAll(() => {
+  patchD1();
+});
 
 const StatusIdSchema = z.object({ id: z.string().min(1) });
 
@@ -101,6 +107,36 @@ describe("Collection-Synchronization on deliveries", () => {
     expect(delivered.headers.get("collection-synchronization")).toBe(
       await expectedHeader([bob.actorUri, carol.actorUri]),
     );
+  });
+
+  it("reads the followers of a host once for all its inboxes in one delivery step", async () => {
+    const { email, id, host, bob, carol, expectedHeader } = await scenario("memo");
+    await post(email, "/api/v1/statuses", { status: "for followers", visibility: "private" });
+    const activityId = await queued(id, "Create");
+    const sent: Request[] = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      sent.push(new Request(input, init));
+      return new Response(null, { status: 202 });
+    });
+    resetMeter();
+    try {
+      await meterWork(async () => {
+        const postTo = await prepareInboxDelivery(env, activityId);
+        await postTo(`${bob.actorUri}/inbox`);
+        await postTo(`${carol.actorUri}/inbox`);
+        await postTo(`https://${host}/inbox`);
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+    const expected = await expectedHeader([bob.actorUri, carol.actorUri]);
+    const posted = sent.filter((request) => request.url.startsWith(`https://${host}/`));
+    expect(posted.map((request) => request.headers.get("collection-synchronization"))).toEqual([
+      expected,
+      expected,
+      expected,
+    ]);
+    expect(meter.tally.sql.filter((sql) => sql.includes("FROM remote_follows"))).toHaveLength(1);
   });
 
   it("does not go with a public status", async () => {

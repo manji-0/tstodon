@@ -2,6 +2,7 @@ import type { ApActivityDocumentJSON } from "@tstodon/api/activitypub";
 import {
   ActivityId,
   DeliveryAttemptOutcome,
+  FollowersSynchronization,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
   InstanceIdentity,
   type LocalAccount,
@@ -519,6 +520,24 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
     !followersSynchronizationDisabled(env)
       ? { id: signerId, username: signerUsername }
       : undefined;
+  // The header depends on the inbox's scheme and authority only: inboxes on
+  // one host posted in this step share one read of the followers there.
+  const headersByPrefix = new Map<string, ReturnType<typeof collectionSynchronizationHeader>>();
+  const synchronizationFor = (
+    account: Readonly<{ id: string; username: string }>,
+    inboxUrl: string,
+  ): ReturnType<typeof collectionSynchronizationHeader> => {
+    const prefix = FollowersSynchronization.uriPrefix(inboxUrl) ?? "";
+    const known = headersByPrefix.get(prefix);
+    if (known !== undefined) {
+      return known;
+    }
+    const header = collectionSynchronizationHeader(env.DB, identity.value, account, inboxUrl);
+    headersByPrefix.set(prefix, header);
+    // A failed read is tried again for the next inbox.
+    void header.then((read) => read.isErr() && headersByPrefix.delete(prefix));
+    return header;
+  };
   return async (inboxUrl) => {
     const inbox = URL.parse(inboxUrl);
     if (inbox === null || (inbox.protocol !== "https:" && inbox.protocol !== "http:")) {
@@ -543,7 +562,7 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
     const synchronization =
       synchronizing === undefined
         ? ok(undefined)
-        : await collectionSynchronizationHeader(env.DB, identity.value, synchronizing, inboxUrl);
+        : await synchronizationFor(synchronizing, inboxUrl);
     if (synchronization.isErr()) {
       return local(DeliveryAttemptOutcome.Local);
     }
