@@ -394,7 +394,7 @@ export const homeTimelineDocuments = async (
       env,
       identity,
       viewerId,
-      { kind: "Home" },
+      { kind: "Home", localActorPrefix: InstanceIdentity.actorUrl(identity, "") },
       listHomeStatuses(env.DB, viewerId, limit, page, horizon.value),
       limit,
       page,

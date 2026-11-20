@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { openStream } from "../test/stream-fixture";
 import { parseRows } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -288,6 +289,102 @@ describe("home leaves out a status that mentions an account the viewer blocks or
     expect(home).toEqual(expect.arrayContaining([plain, taggedPlain]));
     for (const hidden of [toLocal, toRemote, tagged, boostId]) {
       expect(home).not.toContain(hidden);
+    }
+  });
+});
+
+describe("home leaves out a reply to an account the viewer does not follow", () => {
+  it("for a followed local author, unless it answers the viewer, itself or a followed account", async () => {
+    const viewer = await user("hff-reply-viewer@example.com");
+    const author = await user("hff-reply-author@example.com");
+    const stranger = await user("hff-reply-stranger@example.com");
+    const friend = await user("hff-reply-friend@example.com");
+    await act(viewer.email, author.id, "follow");
+    await act(viewer.email, friend.id, "follow");
+    const strangerPost = await post(stranger.email, "a stranger speaks");
+    const viewerPost = await post(viewer.email, "the viewer speaks");
+    const friendPost = await post(friend.email, "a friend speaks");
+    const authorPost = await post(author.email, "the author speaks");
+
+    const toStranger = await post(author.email, "to the stranger", { inReplyToId: strangerPost });
+    const toViewer = await post(author.email, "to the viewer", { inReplyToId: viewerPost });
+    const toFriend = await post(author.email, "to the friend", { inReplyToId: friendPost });
+    const toSelf = await post(author.email, "to itself", { inReplyToId: authorPost });
+    const ownToStranger = await post(viewer.email, "mine", { inReplyToId: strangerPost });
+
+    const home = await homeIds(viewer.email);
+    expect(home).toEqual(expect.arrayContaining([toViewer, toFriend, toSelf, ownToStranger]));
+    expect(home).not.toContain(toStranger);
+
+    await act(viewer.email, stranger.id, "follow");
+    expect(await homeIds(viewer.email)).toContain(toStranger);
+  });
+
+  it("but a followed hashtag still brings such a reply", async () => {
+    const viewer = "hff-tagreply-viewer@example.com";
+    const author = await user("hff-tagreply-author@example.com");
+    const stranger = await user("hff-tagreply-stranger@example.com");
+    await user(viewer);
+    await call(viewer, "/api/v1/tags/hfftagreply/follow", { method: "POST", body: "{}" });
+    const strangerPost = await post(stranger.email, "a stranger speaks");
+    const reply = await post(author.email, "#hfftagreply answer", { inReplyToId: strangerPost });
+
+    expect(await homeIds(viewer)).toContain(reply);
+  });
+
+  it("for a followed remote actor, unless it answers the viewer, itself or a followed actor", async () => {
+    const viewer = await user("hff-rreply-viewer@example.com");
+    const followed = await remoteActor("hffrreplyfollowed", HOST);
+    const friend = await remoteActor("hffrreplyfriend", HOST);
+    const stranger = await remoteActor("hffrreplystranger", HOST);
+    const localStranger = await user("hff-rreply-localstranger@example.com");
+    await followRemote(viewer.email, followed);
+    await followRemote(viewer.email, friend);
+    await sendNote(stranger, "hff-r-stranger");
+    await sendNote(friend, "hff-r-friend");
+    await sendNote(followed, "hff-r-own");
+    const viewerPost = await post(viewer.email, "the viewer speaks");
+    const localStrangerPost = await post(localStranger.email, "a local stranger speaks");
+
+    const toStranger = await sendNote(followed, "hff-r-to-stranger", {
+      inReplyTo: noteUri(stranger, "hff-r-stranger"),
+    });
+    const toLocalStranger = await sendNote(followed, "hff-r-to-local-stranger", {
+      inReplyTo: `${localActor(localStranger.username)}/statuses/${localStrangerPost}`,
+    });
+    const toFriend = await sendNote(followed, "hff-r-to-friend", {
+      inReplyTo: noteUri(friend, "hff-r-friend"),
+    });
+    const toSelf = await sendNote(followed, "hff-r-to-self", {
+      inReplyTo: noteUri(followed, "hff-r-own"),
+    });
+    const toViewer = await sendNote(followed, "hff-r-to-viewer", {
+      inReplyTo: `${localActor(viewer.username)}/statuses/${viewerPost}`,
+    });
+
+    const home = await homeIds(viewer.email);
+    expect(home).toEqual(expect.arrayContaining([toFriend, toSelf, toViewer]));
+    expect(home).not.toContain(toStranger);
+    expect(home).not.toContain(toLocalStranger);
+  });
+
+  it("and the home stream does not hear it", async () => {
+    const viewer = "hff-stream-viewer@example.com";
+    const author = await user("hff-stream-author@example.com");
+    const stranger = await user("hff-stream-stranger@example.com");
+    await user(viewer);
+    await act(viewer, author.id, "follow");
+    const strangerPost = await post(stranger.email, "a stranger speaks");
+    const stream = await openStream({ email: viewer, query: "?stream=user" });
+    try {
+      await post(author.email, "to the stranger", { inReplyToId: strangerPost });
+      const plain = await post(author.email, "to everyone");
+
+      const heard = await stream.next();
+      expect(heard.event).toBe("update");
+      expect(read(z.object({ id: z.string() }), JSON.parse(heard.payload)).id).toBe(plain);
+    } finally {
+      stream.close();
     }
   });
 });

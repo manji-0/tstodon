@@ -77,7 +77,9 @@ export const listRemoteDirectStatusesForAccount = async (
  * whether or not a notification request holds the mention. A follow with `languages[]` keeps statuses in
  * those languages only (and ones without a language). Actors the account
  * blocks or mutes, domains it blocks, and suspended domains stay out; silenced
- * ones are still shown to followers, as in Mastodon.
+ * ones are still shown to followers, as in Mastodon. So do notes that mention
+ * an account or actor it blocks or mutes, and replies the feed does not keep
+ * ({@link feedRepliesSql}): on home, those to an account it does not follow.
  */
 export const listFollowedRemoteStatuses = async (
   db: D1Database,

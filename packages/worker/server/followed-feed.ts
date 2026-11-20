@@ -7,10 +7,10 @@ import type { ListRepliesPolicy } from "./list-store";
 /**
  * A timeline fed by the viewer's accepted follows of remote actors: home, or
  * one of the viewer's lists, which holds the followed actors put on it.
- * `localActorPrefix` (`InstanceIdentity.actorUrl(identity, "")`) lets a list
+ * `localActorPrefix` (`InstanceIdentity.actorUrl(identity, "")`) lets a feed
  * recognise a remote reply to one of this instance's posts by its URI.
  */
-export type FollowedFeed = Readonly<{ kind: "Home" }> | ListFeed;
+export type FollowedFeed = Readonly<{ kind: "Home"; localActorPrefix: string }> | ListFeed;
 
 export type ListFeed = Readonly<{
   kind: "List";
@@ -395,13 +395,20 @@ const LIST_ACTORS_SQL = `(SELECT f.actor_uri FROM outbound_follows f
   JOIN account_list_remote_members m ON m.outbound_follow_id = f.id
   WHERE m.list_id = ? AND f.state = 'Accepted')`;
 
+/** Whose replies a feed keeps; home's are the ones a list with `followed` keeps. */
+type RepliesFeed = Readonly<{ kind: "Home" }> | ListFeed;
+
 /**
- * The replies a list keeps, by Mastodon's `FeedManager`: a reply to its own
- * author or to the list's owner always passes; otherwise `none` drops it,
- * `followed` keeps replies to accounts the owner follows, and `list` keeps
- * replies to the list's members. Non-replies are never touched.
+ * The replies a feed keeps, by Mastodon's `FeedManager`: a reply to its own
+ * author or to the viewer always passes. Otherwise home keeps replies to
+ * accounts the viewer follows (`filter_from_home`), and a list as its policy
+ * says (`filter_from_list?`): `none` drops them, `followed` keeps replies to
+ * accounts the owner follows, and `list` keeps replies to the list's members.
+ * A reply whose parent this instance does not hold is dropped, as Mastodon
+ * drops one without an `in_reply_to_account_id`. Non-replies are never
+ * touched.
  */
-const listRepliesSql = (feed: ListFeed, viewerId: string, parent: ReplyParent): SqlFragment => {
+const repliesSql = (feed: RepliesFeed, viewerId: string, parent: ReplyParent): SqlFragment => {
   const account = (test: string, bind: string): SqlFragment => ({
     sql: `${parent.account.sql} ${test}`,
     binds: [...parent.account.binds, bind],
@@ -410,21 +417,27 @@ const listRepliesSql = (feed: ListFeed, viewerId: string, parent: ReplyParent): 
     sql: `${parent.actor.sql} ${test}`,
     binds: [...parent.actor.binds, bind],
   });
+  const followed = [
+    account(`IN ${FOLLOWED_ACCOUNTS_SQL}`, viewerId),
+    actor(`IN ${FOLLOWED_ACTORS_SQL}`, viewerId),
+  ];
+  const byPolicy = (list: ListFeed): SqlFragment[] => {
+    switch (list.repliesPolicy) {
+      case "followed":
+        return followed;
+      case "list":
+        return [
+          account(`IN ${LIST_ACCOUNTS_SQL}`, list.listId),
+          actor(`IN ${LIST_ACTORS_SQL}`, list.listId),
+        ];
+      case "none":
+        return [];
+    }
+  };
   const kept: SqlFragment[] = [
     account("= ?", viewerId),
     { sql: parent.self, binds: [] },
-    ...(feed.repliesPolicy === "followed"
-      ? [
-          account(`IN ${FOLLOWED_ACCOUNTS_SQL}`, viewerId),
-          actor(`IN ${FOLLOWED_ACTORS_SQL}`, viewerId),
-        ]
-      : []),
-    ...(feed.repliesPolicy === "list"
-      ? [
-          account(`IN ${LIST_ACCOUNTS_SQL}`, feed.listId),
-          actor(`IN ${LIST_ACTORS_SQL}`, feed.listId),
-        ]
-      : []),
+    ...(feed.kind === "Home" ? followed : byPolicy(feed)),
   ];
   return {
     sql: `AND (NOT ${parent.isReply} OR ${kept.map((part) => `(${part.sql})`).join(" OR ")})`,
@@ -432,39 +445,35 @@ const listRepliesSql = (feed: ListFeed, viewerId: string, parent: ReplyParent): 
   };
 };
 
-/** Which replies of the remote status `s` the feed keeps; home keeps them all. */
+/** Which replies of the remote status `s` the feed keeps. */
 export const feedRepliesSql = (feed: FollowedFeed, viewerId: string): SqlFragment =>
-  feed.kind === "Home"
-    ? { sql: "", binds: [] }
-    : listRepliesSql(feed, viewerId, {
-        isReply: "(s.in_reply_to_uri IS NOT NULL)",
-        account: {
-          // A local status URI ends in `/statuses/<id>` under its author's actor URL.
-          sql: `(SELECT l.account_id FROM statuses l JOIN accounts a ON a.id = l.account_id
+  repliesSql(feed, viewerId, {
+    isReply: "(s.in_reply_to_uri IS NOT NULL)",
+    account: {
+      // A local status URI ends in `/statuses/<id>` under its author's actor URL.
+      sql: `(SELECT l.account_id FROM statuses l JOIN accounts a ON a.id = l.account_id
             WHERE l.id = substr(s.in_reply_to_uri, -${ENTITY_ID_DIGITS})
               AND s.in_reply_to_uri = ? || a.username || '/statuses/' || l.id)`,
-          binds: [feed.localActorPrefix],
-        },
-        actor: {
-          sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
-          binds: [],
-        },
-        self: "s.actor_uri = (SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
-      });
+      binds: [feed.localActorPrefix],
+    },
+    actor: {
+      sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
+      binds: [],
+    },
+    self: "s.actor_uri = (SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
+  });
 
-/** Which replies of the local `statuses` row a list keeps; home keeps them all. */
-export const feedLocalRepliesSql = (feed: FollowedFeed, viewerId: string): SqlFragment =>
-  feed.kind === "Home"
-    ? { sql: "", binds: [] }
-    : listRepliesSql(feed, viewerId, {
-        isReply: "(statuses.in_reply_to_id IS NOT NULL OR statuses.in_reply_to_uri IS NOT NULL)",
-        account: {
-          sql: "(SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
-          binds: [],
-        },
-        actor: {
-          sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = statuses.in_reply_to_uri)",
-          binds: [],
-        },
-        self: "statuses.account_id = (SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
-      });
+/** Which replies of the local `statuses` row the feed keeps. */
+export const feedLocalRepliesSql = (feed: RepliesFeed, viewerId: string): SqlFragment =>
+  repliesSql(feed, viewerId, {
+    isReply: "(statuses.in_reply_to_id IS NOT NULL OR statuses.in_reply_to_uri IS NOT NULL)",
+    account: {
+      sql: "(SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
+      binds: [],
+    },
+    actor: {
+      sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = statuses.in_reply_to_uri)",
+      binds: [],
+    },
+    self: "statuses.account_id = (SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
+  });

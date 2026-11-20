@@ -10,6 +10,7 @@ import {
   FEED_SUSPENDED_AUTHORS_SQL,
   feedLocalMentionsSql,
   feedLocalReblogsSql,
+  feedLocalRepliesSql,
   followedTagHorizonSql,
   followedTagNoteIdsSql,
   reblogOfShownAuthorSql,
@@ -108,15 +109,18 @@ export const listHomeStatuses = async (
     const reblogs = feedLocalReblogsSql(accountId, now);
     const mentions = feedLocalMentionsSql(accountId, now);
     const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
+    const replies = feedLocalRepliesSql({ kind: "Home" }, accountId);
     // A followed author's direct note only when it mentions the viewer, as
     // Mastodon's `deliver_to_mentioned_followers!`; the viewer's own always
-    // (`deliver_to_self!`). Followed hashtags bring public notes only.
+    // (`deliver_to_self!`). A followed author's reply only to whom
+    // `filter_from_home` keeps it; a followed hashtag brings any reply, as
+    // `filter_from_tags?` has no reply rule, but public notes only.
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE (account_id = ? OR (account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
          ) AND (visibility != 'direct' OR EXISTS (
            SELECT 1 FROM status_mentions m WHERE m.status_id = statuses.id AND m.account_id = ?
-         ))) OR id IN ${tagged.sql})
+         )) ${replies.sql}) OR id IN ${tagged.sql})
          ${suppressed}
          ${reblogs.sql}
          ${mentions.sql}
@@ -128,6 +132,7 @@ export const listHomeStatuses = async (
         accountId,
         accountId,
         accountId,
+        ...replies.binds,
         ...tagged.binds,
         // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
         accountId,
