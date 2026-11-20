@@ -336,6 +336,8 @@ export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findNotificationPolicy";
 
+export * from "./sql/findNotifyingRemoteFollow";
+
 export * from "./sql/findOauthApplicationByClientId";
 
 export * from "./sql/findOauthApplicationById";

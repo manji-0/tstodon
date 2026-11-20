@@ -254,13 +254,17 @@ export const listFollowers = async (
     return followEdges(results);
   });
 
-/** Local followers who asked for a notification on every new status. */
+/** Local followers who asked for a notification on every new status and do not mute the account. */
 export const notifyingFollowers = async (
   db: D1Database,
   accountId: string,
 ): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listNotifyingFollowersSql(accountId), NotifyingFollowerRow);
+    const rows = await queryTyped(
+      db,
+      listNotifyingFollowersSql(accountId, nowIso()),
+      NotifyingFollowerRow,
+    );
     return rows.map((row) => ({
       accountId: row.follower_account_id,
       languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),

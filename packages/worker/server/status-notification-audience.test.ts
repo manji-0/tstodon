@@ -91,6 +91,18 @@ describe("the status notification of a followed account's post", () => {
     expect(await statusNotifications("sna-reply-follower@example.com", selfReply)).toBe(1);
   });
 
+  it("goes to no follower who mutes the author, even with its notifications left on", async () => {
+    const author = await signedInAccount("sna-mute-author@example.com");
+    await notifyingFollower("sna-mute-follower@example.com", author.id);
+    await call("sna-mute-follower@example.com", `/api/v1/accounts/${author.id}/mute`, {
+      notifications: false,
+    });
+
+    const id = await post("sna-mute-author@example.com", { status: "while muted" });
+
+    expect(await statusNotifications("sna-mute-follower@example.com", id)).toBe(0);
+  });
+
   it("goes to no follower whose follow keeps other languages", async () => {
     const author = await signedInAccount("sna-language-author@example.com");
     await call("sna-language-ja@example.com", `/api/v1/accounts/${author.id}/follow`, {

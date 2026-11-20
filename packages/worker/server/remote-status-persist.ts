@@ -59,7 +59,7 @@ import {
   recordRemoteStatusMentions,
 } from "./mention-store";
 import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
-import { notifyingRemoteFollowers } from "./outbound-follow-store";
+import { isNotifyingRemoteFollower, notifyingRemoteFollowers } from "./outbound-follow-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
@@ -370,7 +370,14 @@ const statusNotified = async (
   late: LateSteps,
   addressed: ReadonlySet<string>,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
-  if (!deliveredNew(late)) {
+  // A `QuoteRequest`'s instrument is fetched in Mastodon
+  // (`FetchRemoteStatusService`), whose `Create` distributes only a status
+  // within the real-time window; an inbox `Create` distributes any.
+  if (
+    !deliveredNew(late) ||
+    (late.options.delivery === "QuoteRequest" &&
+      !RealtimeWindow.contains(late.status.publishedAt, nowInstant()))
+  ) {
     return ok([]);
   }
   const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri);
@@ -579,8 +586,18 @@ export const processFinishRemoteNoteRecipientJob = async (
   if (status === undefined) {
     return "ok";
   }
+  // As `FeedInsertWorker#notify?` reads the follow when it runs, a follower
+  // that unfollowed, turned notifications off or muted the actor since the
+  // job was queued gets no `status` notification.
+  const notifying = job.steps.includes("Status")
+    ? await isNotifyingRemoteFollower(env.DB, job.accountId, job.actorUri)
+    : ok(true);
+  if (notifying.isErr()) {
+    return "retry";
+  }
+  const steps = notifying.value ? job.steps : job.steps.filter((step) => step !== "Status");
   const served = await serveRecipients(env, identity.value, job.actorUri, status, [
-    [job.accountId, job.steps],
+    [job.accountId, steps],
   ]);
   return served.isOk() ? "ok" : "retry";
 };

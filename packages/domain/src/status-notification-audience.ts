@@ -20,7 +20,7 @@ export type NotifiedNote = Readonly<{
   addressed: ReadonlySet<string>;
 }>;
 
-/** A local follower of the note's author who asked to be notified of its posts. */
+/** A local follower of the note's author who asked to be notified of its posts and does not mute it. */
 export type NotifyingFollower = Readonly<{
   accountId: string;
   /** The follow's `languages`; empty keeps every language. */
@@ -51,8 +51,10 @@ export const StatusNotificationAudience = {
    * followers the home fan-out reaches (every one for a public, unlisted or
    * followers-only note, the named ones for a limited or direct note) whose
    * follow keeps the note's language (`FeedManager#filter_from_home`), and
-   * none for a reply to someone else. The sender's blocks, mutes and the
-   * notification policy are screened when the notification is delivered.
+   * none for a reply to someone else. `followers` leaves out the ones who
+   * mute the author, whether or not the mute hides notifications, as
+   * `filter_from_home` filters a muted author's status; blocks and muted
+   * conversations are screened when the notification is delivered.
    */
   recipients: (
     note: NotifiedNote,

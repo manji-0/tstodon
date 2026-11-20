@@ -15,6 +15,7 @@ import {
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
+import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
 
 // Mastodon sends the `status` notification ("notify me when this account
 // posts") for a remote note as for a local one: `FeedInsertWorker#notify?`,
@@ -250,6 +251,58 @@ describe("the status notification of a followed remote actor's note", () => {
     expect(await statusNotifications("rsn-edit-notify@example.com", id)).toBe(1);
   });
 
+  it("goes to no follower who mutes the actor, even with its notifications left on", async () => {
+    const author = await remoteActor("rsnmute", "rsn-mute.example");
+    await followRemote("rsn-mute-follower@example.com", author, { notify: true });
+    await call(
+      "rsn-mute-follower@example.com",
+      `/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}/mute`,
+      { notifications: false },
+    );
+
+    const id = await create(author, "https://rsn-mute.example/notes/1", {});
+
+    expect(await statusNotifications("rsn-mute-follower@example.com", id)).toBe(0);
+  });
+
+  it("goes to each notifying follower for a quote request's recent note, not for an old one", async () => {
+    const author = await remoteActor("rsnquote", "rsn-quote.example");
+    await followRemote("rsn-quote-notify@example.com", author, { notify: true });
+    const quoted = z
+      .object({ uri: z.string() })
+      .parse(
+        await call("rsn-quote-quoted@example.com", "/api/v1/statuses", { status: "quote me" }),
+      );
+    const request = async (slug: string, published: string): Promise<string> => {
+      const uri = `https://rsn-quote.example/notes/${slug}`;
+      expect(
+        await author.send({
+          id: `https://rsn-quote.example/quote_requests/${slug}`,
+          type: "QuoteRequest",
+          object: quoted.uri,
+          instrument: {
+            id: uri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: `<p>${slug}</p>`,
+            published,
+            to: [PUBLIC],
+            cc: [`${author.actorUri}/followers`],
+            quote: quoted.uri,
+          },
+        }),
+      ).toBe(202);
+      await settle();
+      return storedId(uri);
+    };
+
+    const recent = await request("recent", new Date().toISOString());
+    const old = await request("old", new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString());
+
+    expect(await statusNotifications("rsn-quote-notify@example.com", recent)).toBe(1);
+    expect(await statusNotifications("rsn-quote-notify@example.com", old)).toBe(0);
+  });
+
   it("goes to no follower for a boost", async () => {
     const author = await remoteActor("rsnboost", "rsn-boost.example");
     const other = await remoteActor("rsnboostother", "rsn-boost-other.example");
@@ -325,6 +378,35 @@ describe("a remote note of an actor many local accounts follow with notification
       for (const email of followers) {
         expect(await statusNotifications(email, id), email).toBe(1);
       }
+    },
+  );
+
+  it(
+    "notifies a queued follower only if it still follows with notifications when its job runs",
+    { timeout: 120_000 },
+    async () => {
+      const author = await remoteActor("rsnlate", "rsn-late.example");
+      const followers = Array.from(
+        { length: INLINE_NOTE_RECIPIENTS + 4 },
+        (_, n) => `rsn-late-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const id = await create(author, "https://rsn-late.example/notes/1", {});
+      for (const email of followers) {
+        await call(email, `/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}/follow`, {
+          notify: false,
+        });
+      }
+      await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
+
+      let notified = 0;
+      for (const email of followers) {
+        notified += await statusNotifications(email, id);
+      }
+      expect(notified).toBe(INLINE_NOTE_RECIPIENTS);
     },
   );
 });
