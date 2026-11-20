@@ -5,7 +5,7 @@ import { z } from "zod";
 import { findAccountByUsername } from "./account-store";
 import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
-import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
+import { fetchActivityResource, type FederatedFetchOptions } from "./federated-fetch";
 import { type FoundStatus, showsFoundStatus } from "./found-status";
 import { cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { findRemoteActorByUri } from "./remote-actor-store";
@@ -152,7 +152,9 @@ const storeDocument = async (
  * is used as it is, else the URL is fetched once. A document that names
  * another id (a page URL such as `https://host/@user/123` serves the note
  * whose id is its URI) is not trusted for that id: the id is looked up in
- * turn, stored or fetched once, and must then name itself.
+ * turn, stored or fetched once, and must then name itself. A page that names
+ * its document instead (a `Link` header or `<link rel="alternate">`) leads to
+ * that document the same way.
  */
 const resolveRemoteUrl = async (
   env: Env,
@@ -169,19 +171,31 @@ const resolveRemoteUrl = async (
     if (stored.value) {
       return ok(stored.value.resource);
     }
-    const raw = await fetchActivityJson(identity, uri, options);
-    const identified = raw.isOk() ? parseIdentified(raw.value) : undefined;
-    if (raw.isErr() || !identified?.isOk()) {
+    const fetched = await fetchActivityResource(identity, uri, options);
+    if (fetched.isErr() || fetched.value.kind === "None") {
       return ok(undefined);
     }
-    const id = identified.value.id;
-    if (id === uri) {
-      return storeDocument(env, identity, uri, raw.value, options);
+    const resource = fetched.value;
+    // A document names where it lives by its id; a page by its alternate link.
+    const next =
+      resource.kind === "Alternate"
+        ? resource.href
+        : parseIdentified(resource.document).match(
+            (identified) => identified.id,
+            () => undefined,
+          );
+    if (resource.kind === "Document" && next === uri) {
+      return storeDocument(env, identity, uri, resource.document, options);
     }
-    if (terminal || !isUrlQuery(id) || URL.parse(id)?.origin === originOf(identity)) {
+    if (
+      next === undefined ||
+      terminal ||
+      !isUrlQuery(next) ||
+      URL.parse(next)?.origin === originOf(identity)
+    ) {
       return ok(undefined);
     }
-    uri = id;
+    uri = next;
   }
   return ok(undefined);
 };

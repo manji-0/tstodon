@@ -34,6 +34,10 @@ const recording = (
         events.push(`hold ${notificationId}`);
         return ok(undefined);
       },
+      keepOutOfConversations: async (notification: NewNotification) => {
+        events.push(`keep out ${notification.statusId ?? ""}`);
+        return ok(undefined);
+      },
       publishNotification: async (accountId: string, notificationId: string) => {
         events.push(`publish ${accountId} ${notificationId}`);
       },
@@ -64,16 +68,16 @@ describe("deliverNotification", () => {
     },
   );
 
-  it("records nothing the policy drops", async () => {
+  it("records nothing the policy drops, and keeps a dropped mention out of conversations", async () => {
     const store = recording("drop");
     await deliverNotification(store.contracts, mention);
-    expect(store.events).toEqual(["disposition"]);
+    expect(store.events).toEqual(["disposition", "keep out 300"]);
   });
 
   it("records nothing about a status in a muted conversation", async () => {
     const store = recording("accept", ["300"]);
     await deliverNotification(store.contracts, mention);
-    expect(store.events).toEqual(["disposition"]);
+    expect(store.events).toEqual(["disposition", "keep out 300"]);
   });
 
   it("delivers moderation notifications past a dropping policy", async () => {

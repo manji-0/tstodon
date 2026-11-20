@@ -25,9 +25,16 @@ export type WebfingerConfirmation =
    */
   | Readonly<{ kind: "Unavailable" }>
   /** The account domain WebFinger claims is one this instance does not federate with. */
-  | Readonly<{ kind: "Refused"; host: Hostname }>;
+  | Readonly<{ kind: "Refused"; host: Hostname }>
+  /**
+   * WebFinger names a username Mastodon's `Account::USERNAME_ONLY_RE` does
+   * not match: `check_webfinger!` raises, and the actor is not stored.
+   */
+  | Readonly<{ kind: "UnsupportedUsername" }>;
 
-export type WebfingerRefusal = Readonly<{ kind: "DomainRefused"; host: Hostname }>;
+export type WebfingerRefusal =
+  | Readonly<{ kind: "DomainRefused"; host: Hostname }>
+  | Readonly<{ kind: "UnsupportedUsername" }>;
 
 /**
  * How actor fetch writes an actor's handle (`username@domain` and
@@ -66,6 +73,8 @@ const handleWrite = (
       return ok({ kind: "Keep" });
     case "Refused":
       return err({ kind: "DomainRefused", host: confirmation.host });
+    case "UnsupportedUsername":
+      return err({ kind: "UnsupportedUsername" });
   }
 };
 

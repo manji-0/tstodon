@@ -270,7 +270,7 @@ const applyActorUpdate = async (
     kind: "KeepStored",
   });
   if (stored.isErr()) {
-    return stored.error.kind === "DomainRefused" ? ok(undefined) : err(stored.error);
+    return stored.error.kind === "RepositoryError" ? err(stored.error) : ok(undefined);
   }
   const movedTo = actorMovedTo(target.raw);
   if (movedTo === signer.movedTo) {

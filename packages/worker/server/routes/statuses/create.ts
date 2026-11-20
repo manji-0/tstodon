@@ -272,7 +272,10 @@ const postStatus = async (
       visibility: quoted.value.visibility,
       ...(quote ? { quote: { kind: "Quoted", target: quote.quoted } } : {}),
       spoilerText: body.spoiler_text ?? "",
-      sensitive: body.sensitive ?? composeDefaults.sensitive,
+      // Mastodon's `PostStatusService`: a content warning makes the status sensitive.
+      sensitive:
+        (body.sensitive ?? composeDefaults.sensitive) ||
+        (body.spoiler_text ?? "").trim().length > 0,
       language:
         body.language && body.language.length > 0
           ? { kind: "Present", value: body.language }

@@ -23,6 +23,14 @@ export type StatusRevisionContent = Readonly<{
   language: StatusLanguage;
 }>;
 
+/** What `StatusRevision.changesNote` compares of a note before and after a revision. */
+type NoteAttributes = StatusRevisionContent & Readonly<{ mediaIds: ReadonlyArray<string> }>;
+
+const sameLanguage = (left: StatusLanguage, right: StatusLanguage): boolean =>
+  left.kind === "None"
+    ? right.kind === "None"
+    : right.kind === "Present" && left.value === right.value;
+
 const blank = (value: string | undefined): value is undefined => (value ?? "").trim().length === 0;
 
 export const StatusRevision = {
@@ -55,4 +63,18 @@ export const StatusRevision = {
       language,
     };
   },
+  /**
+   * Whether a revision changes the note's own attributes, as Mastodon's
+   * `@status.changed?` in `UpdateStatusService#significant_changes?`: its
+   * text, content warning, sensitive flag, language, or the media it
+   * attaches and their order. The poll, the media descriptions and focus
+   * and the quote policy are compared by the caller, which holds them.
+   */
+  changesNote: (before: NoteAttributes, after: NoteAttributes): boolean =>
+    before.text !== after.text ||
+    before.spoilerText !== after.spoilerText ||
+    before.sensitive !== after.sensitive ||
+    !sameLanguage(before.language, after.language) ||
+    before.mediaIds.length !== after.mediaIds.length ||
+    before.mediaIds.some((id, index) => after.mediaIds[index] !== id),
 } as const;

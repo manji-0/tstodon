@@ -184,6 +184,7 @@ export type { ResolveNotificationDisposition } from "./notification-resolver";
 export type {
   HoldNotification,
   InsertNotification,
+  KeepOutOfConversations,
   MentionedPost,
   NewNotification,
   PublishNotification,

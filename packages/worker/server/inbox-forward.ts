@@ -86,6 +86,7 @@ const keyOwnerVouching = async (
       case "DomainRefused":
         return { kind: "Unverified", reason: "DomainRefused" };
       case "InvalidSignature":
+      case "UnsupportedUsername":
         return { kind: "Unverified", reason: "KeyRejected" };
     }
   }

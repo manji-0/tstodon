@@ -31,4 +31,10 @@ describe("WebfingerConfirmation.handleWrite", () => {
       WebfingerConfirmation.handleWrite({ kind: "Refused", host }, now)._unsafeUnwrapErr(),
     ).toEqual({ kind: "DomainRefused", host });
   });
+
+  it("refuses an actor whose WebFinger names a username Mastodon would not store", () => {
+    expect(
+      WebfingerConfirmation.handleWrite({ kind: "UnsupportedUsername" }, now)._unsafeUnwrapErr(),
+    ).toEqual({ kind: "UnsupportedUsername" });
+  });
 });

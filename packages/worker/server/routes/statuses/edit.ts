@@ -63,11 +63,16 @@ import { findShownStatusAnywhere } from "../../found-status";
 import { remoteStatusHistory } from "../../remote-status-edit";
 import {
   findQuoteByQuoting,
+  findStatusQuotePolicy,
   isQuotePolicy,
   listAcceptedQuoteEdges,
   setStatusQuotePolicy,
 } from "../../quote-store";
-import { applyMediaAttributes, type PublishPoll } from "../../local-status-publish";
+import {
+  mediaAttributeChanges,
+  type PublishPoll,
+  writeMediaAttributes,
+} from "../../local-status-publish";
 import { checkAttachableMedia, parsePollRequest } from "./create";
 import { startLinkCard } from "../../link-card";
 import { draftRefusal } from "./status-limits";
@@ -297,9 +302,10 @@ const replaceMentions = async (
  * content warning, sensitive flag, media or poll it leaves out is removed
  * (`StatusRevision.content`, `PollRevision`). The language and the quote
  * policy stay when the request names none, and the visibility always stays:
- * an edit cannot change who a note reaches. There is no idempotency key: a
- * retry with the same body leaves the note reading the same, with one more
- * history entry.
+ * an edit cannot change who a note reaches. A request that changes nothing
+ * stores no revision and sends no `Update` (Mastodon's
+ * `NoChangesSubmittedError`), so a retry with the same body is no edit,
+ * unless it names a poll, whose end every edit moves.
  */
 const editNote = async (
   env: Env,
@@ -371,6 +377,46 @@ const editNote = async (
       mentions: mentionLinks(identity, mentioned.value),
     }),
   );
+  const mediaChanges = await mediaAttributeChanges(
+    env.DB,
+    author.id,
+    revised.mediaIds,
+    mediaAttributes,
+  );
+  if (mediaChanges.isErr()) {
+    return err(ApiRefusal.repository(mediaChanges.error.message));
+  }
+  const policy =
+    policyEdit === undefined
+      ? undefined
+      : visibilityIsPublic(revised.visibility)
+        ? policyEdit
+        : "nobody";
+  const storedPolicy =
+    policy === undefined ? ok(undefined) : await findStatusQuotePolicy(env.DB, existing.id);
+  if (storedPolicy.isErr()) {
+    return err(ApiRefusal.repository(storedPolicy.error.message));
+  }
+  // Mastodon's `significant_changes?`: an edit that changes nothing raises
+  // `NoChangesSubmittedError`, which stores nothing and answers the status.
+  // It compares the text and warning as sent, before `prepare_contents`
+  // strips them, so a change of surrounding whitespace is an edit.
+  const changed =
+    StatusRevision.changesNote(existing, {
+      ...revised,
+      text: content.text,
+      spoilerText: content.spoilerText,
+    }) ||
+    pollRevision.value.kind !== "Unchanged" ||
+    mediaChanges.value.length > 0 ||
+    (policy !== undefined && policy !== storedPolicy.value);
+  if (!changed) {
+    const current = await mastodonStatus(env, identity, existing, author.id);
+    if (current.isErr()) {
+      return err(ApiRefusal.repository(current.error.message));
+    }
+    return current.value ? ok(current.value) : err(ApiRefusal.notFound);
+  }
 
   const snapshotted = await snapshotPreviousRevision(env, identity, existing, author.id);
   if (snapshotted.isErr()) {
@@ -402,12 +448,8 @@ const editNote = async (
   if (pollApplied.isErr()) {
     return err(pollApplied.error);
   }
-  if (policyEdit !== undefined) {
-    const stored = await setStatusQuotePolicy(
-      env.DB,
-      existing.id,
-      visibilityIsPublic(revised.visibility) ? policyEdit : "nobody",
-    );
+  if (policy !== undefined) {
+    const stored = await setStatusQuotePolicy(env.DB, existing.id, policy);
     if (stored.isErr()) {
       return err(ApiRefusal.repository(stored.error.message));
     }
@@ -416,9 +458,9 @@ const editNote = async (
   if (replaced.isErr()) {
     return err(ApiRefusal.repository(replaced.error.message));
   }
-  const attributeError = await applyMediaAttributes(env, author.id, existing.id, mediaAttributes);
-  if (attributeError) {
-    return err(ApiRefusal.repository(attributeError));
+  const attributesWritten = await writeMediaAttributes(env.DB, mediaChanges.value);
+  if (attributesWritten.isErr()) {
+    return err(ApiRefusal.repository(attributesWritten.error.message));
   }
   const mentionsReplaced = await replaceMentions(env, revised, mentioned.value);
   if (mentionsReplaced.isErr()) {

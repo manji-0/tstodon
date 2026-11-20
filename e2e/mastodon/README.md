@@ -94,7 +94,9 @@ The sweep reads which mode each server is in from an unsigned fetch of an actor.
 
 A scenario that changes an account for good makes its own Mastodon users for the run (`mastodonUsers` in `sweep.ts`, which runs `provision.rb` again): the profile area locks one and deletes one, the moderation area blocks one, and the move area moves one. Mastodon has no client API for an account migration, an alias, an account deletion or a poll shorter than five minutes, so those steps run a few lines of Ruby in Mastodon's Rails environment (`mastodonRails`, about ten seconds each). The threads area dates Mastodon's copy of a tstodon post ten minutes back the same way, because Mastodon fetches a reply tree only for a post older than five minutes. Both need Docker on the machine that runs the sweep.
 
-On tstodon, a step that needs an admin gives its user the admin role in the local D1 database and a token with the admin scopes (`tstodonAdmin`).
+On tstodon, a step that needs an admin signs its user in again with an Access login in the admin group, which `CF_ACCESS_ADMIN_GROUPS` names, and gets a token with the admin scopes (`tstodonAdmin`). A step that checks what tstodon stored reads the local D1 database's SQLite file with a read-only connection (`tstodonSql`).
+
+The sweep does not use `wrangler d1 execute --local` while the Worker runs. That command starts a second workerd on the Worker's SQLite file, and neither workerd waits for the other's write lock. Wrangler then fails with `database is locked: SQLITE_BUSY` or `Failed to get session commit token`, even for a `SELECT`, and the Worker answers 500 with the same errors.
 
 To start over, remove both sides' state. Mastodon generates new actor keys, and tstodon would keep the old ones cached.
 

@@ -133,6 +133,11 @@ describe("an edit replaces the whole revision", () => {
     expect(edited).toMatchObject({ spoiler_text: "warning", sensitive: true });
   });
 
+  it("marks a new status with a content warning sensitive, as the revision", async () => {
+    const created = await create("new-cw@example.com", { status: "first", spoiler_text: "cw" });
+    expect(created).toMatchObject({ spoiler_text: "cw", sensitive: true });
+  });
+
   it("keeps the visibility, which an edit cannot change", async () => {
     const email = "rev-visibility@example.com";
     const original = await create(email, { status: "first", visibility: "unlisted" });

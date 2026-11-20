@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -25,11 +26,14 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
-const me = async (email: string) =>
-  read(
+/** A recipient that takes the remote strangers' direct messages these tests send. */
+const me = async (email: string) => {
+  await acceptPrivateMentions(email);
+  return read(
     z.object({ id: z.string(), username: z.string() }),
     (await json("/api/v1/accounts/verify_credentials", { headers: await authHeaders(email) })).body,
   );
+};
 
 const ConversationSchema = z.object({
   id: z.string(),

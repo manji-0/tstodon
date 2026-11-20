@@ -206,6 +206,97 @@ describe("notification policy", () => {
     expect(await notifications(recipientEmail)).toHaveLength(3);
   });
 
+  it("keeps a held direct message out of the conversations until the request is accepted", async () => {
+    const recipientEmail = "policy-dm-held@example.com";
+    const senderEmail = "policy-dm-sender@example.com";
+    const recipient = await credentials(recipientEmail);
+    const sender = await credentials(senderEmail);
+    const conversationIds = async (email: string): Promise<ReadonlyArray<string>> =>
+      read(
+        z.array(z.object({ last_status: z.object({ id: z.string() }).nullable() })),
+        (await json("/api/v1/conversations", { headers: await auth(email) })).body,
+      ).map((conversation) => conversation.last_status?.id ?? "");
+
+    await postStatus(senderEmail, {
+      status: `@${recipient.username} a secret`,
+      visibility: "direct",
+    });
+    const [request] = read(
+      z.array(RequestSchema),
+      (await json("/api/v1/notifications/requests", { headers: await auth(recipientEmail) })).body,
+    );
+    const heldId = request?.last_status?.id ?? "";
+    expect(heldId).not.toBe("");
+
+    // Mastodon's `NotifyService` adds the status to the conversation only when
+    // the notification is not filtered; the author's own list has it at once.
+    expect(await conversationIds(recipientEmail)).toEqual([]);
+    expect(await conversationIds(senderEmail)).toEqual([heldId]);
+
+    const accepted = await json(`/api/v1/notifications/requests/${sender.id}/accept`, {
+      method: "POST",
+      headers: await auth(recipientEmail),
+    });
+    expect(accepted.status).toBe(200);
+    expect(await conversationIds(recipientEmail)).toEqual([heldId]);
+  });
+
+  it("never lists a dismissed direct message in the conversations", async () => {
+    const recipientEmail = "policy-dm-dismissed@example.com";
+    const senderEmail = "policy-dm-dismissing@example.com";
+    const recipient = await credentials(recipientEmail);
+    const sender = await credentials(senderEmail);
+
+    await postStatus(senderEmail, {
+      status: `@${recipient.username} unwanted`,
+      visibility: "direct",
+    });
+    const dismissed = await json(`/api/v1/notifications/requests/${sender.id}/dismiss`, {
+      method: "POST",
+      headers: await auth(recipientEmail),
+    });
+    expect(dismissed.status).toBe(200);
+
+    const listed = await json("/api/v1/conversations", { headers: await auth(recipientEmail) });
+    expect(listed.body).toEqual([]);
+
+    // Mastodon's dismissal deletes the filtered notifications, so a later
+    // accept joins only the messages still held.
+    await postStatus(senderEmail, {
+      status: `@${recipient.username} wanted`,
+      visibility: "direct",
+    });
+    const accepted = await json(`/api/v1/notifications/requests/${sender.id}/accept`, {
+      method: "POST",
+      headers: await auth(recipientEmail),
+    });
+    expect(accepted.status).toBe(200);
+    const after = read(
+      z.array(z.object({ last_status: z.object({ content: z.string() }).nullable() })),
+      (await json("/api/v1/conversations", { headers: await auth(recipientEmail) })).body,
+    );
+    expect(after.map((conversation) => conversation.last_status?.content)).toEqual([
+      expect.stringContaining("wanted"),
+    ]);
+  });
+
+  it("never lists a direct message the policy drops in the conversations", async () => {
+    const recipientEmail = "policy-dm-dropped@example.com";
+    const senderEmail = "policy-dm-dropping@example.com";
+    const recipient = await credentials(recipientEmail);
+    await credentials(senderEmail);
+    expect((await patchPolicy(recipientEmail, { for_private_mentions: "drop" })).status).toBe(200);
+
+    await postStatus(senderEmail, {
+      status: `@${recipient.username} dropped`,
+      visibility: "direct",
+    });
+
+    // Mastodon's `NotifyService` returns on `drop?` before `push_to_conversation!`.
+    const listed = await json("/api/v1/conversations", { headers: await auth(recipientEmail) });
+    expect(listed.body).toEqual([]);
+  });
+
   it("discards held notifications on dismiss", async () => {
     const recipientEmail = "policy-dismiss-recipient@example.com";
     const senderEmail = "policy-dismiss-sender@example.com";

@@ -18,7 +18,8 @@ import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store
 /**
  * Remote direct notes that address the account, newest first, leaving out
  * actors the account blocks or mutes or that block it, and domains it blocks
- * or the instance limits or suspends — the same ones remote timelines drop.
+ * or the instance limits or suspends — the same ones remote timelines drop —
+ * and notes whose mention a notification request holds.
  */
 export const listRemoteDirectStatusesForAccount = async (
   db: D1Database,
@@ -50,6 +51,10 @@ export const listRemoteDirectStatusesForAccount = async (
            AND s.visibility = 'direct'
            AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
+           AND NOT EXISTS (
+             SELECT 1 FROM withheld_conversation_statuses w
+             WHERE w.account_id = m.account_id AND w.status_id = m.status_id
+           )
            ${before}
          ORDER BY m.status_id DESC LIMIT ?`,
       )

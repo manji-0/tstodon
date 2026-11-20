@@ -36,9 +36,20 @@ const post = async (email: string, status: string, visibility: string = "public"
   return read(ApiStatus, await response.json());
 };
 
+/** A response other than an ActivityPub document, built in the request that fetches it. */
+class RemotePage {
+  readonly body: string;
+  readonly headers: Readonly<Record<string, string>>;
+  constructor(body: string, headers: Readonly<Record<string, string>>) {
+    this.body = body;
+    this.headers = headers;
+  }
+}
+
 /**
  * Serve `documents` by URL to the Worker's outbound fetches for the duration
- * of `run`. A `null` document is a URL that answers 404.
+ * of `run`. A `null` document is a URL that answers 404; a `RemotePage` is
+ * served as it is.
  */
 const withRemoteDocuments = async (
   documents: Readonly<Record<string, unknown>>,
@@ -53,6 +64,9 @@ const withRemoteDocuments = async (
       return original(input, init);
     }
     fetched.push(href);
+    if (document instanceof RemotePage) {
+      return new Response(document.body, { headers: document.headers });
+    }
     if (document === null) {
       return new Response("{}", { status: 404 });
     }
@@ -555,5 +569,110 @@ describe("GET /api/v1/search", () => {
         (await search(author, { q: "v1aliasword", type: "statuses", resolve: "false" })).body,
       ),
     );
+  });
+});
+
+/**
+ * As Mastodon's `FetchResourceService`: a URL that serves HTML or names the
+ * ActivityPub document in a `Link` header leads to that document, one hop.
+ */
+describe("a URL that serves a page linking to its ActivityPub document", () => {
+  const VIEWER = "search-url-alternate-viewer@example.com";
+  const html = (head: string, headers: Record<string, string> = {}) =>
+    new RemotePage(`<!doctype html><html><head>${head}</head><body>a page</body></html>`, {
+      "content-type": "text/html; charset=utf-8",
+      ...headers,
+    });
+  const alternate = (href: string) =>
+    html(`<link rel="alternate" type="application/activity+json" href="${href}">`);
+  const note = (id: string, attributedTo: string) => ({
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id,
+    type: "Note",
+    attributedTo,
+    content: "<p>behind a page</p>",
+    published: "2026-11-14T00:00:00.000Z",
+    to: [PUBLIC],
+    cc: [],
+  });
+  const statusUris = async (q: string) =>
+    read(
+      ApiSearchResults,
+      (await search(VIEWER, { q, resolve: "true", type: "statuses" })).body,
+    ).statuses.map((status) => status.uri);
+
+  it("follows a <link rel=alternate> to the document", async () => {
+    const author = await remoteActor("alternatehtml", "alternate-html.example");
+    const page = "https://alternate-html.example/@alternatehtml/1";
+    const noteUri = "https://alternate-html.example/notes/1";
+    await withRemoteDocuments(
+      {
+        [page]: html(
+          `<link rel="stylesheet" href="/s.css"><link rel="me alternate" type="application/activity+json" href="${noteUri}">`,
+        ),
+        [noteUri]: note(noteUri, author.actorUri),
+      },
+      async (fetched) => {
+        expect(await statusUris(page)).toEqual([noteUri]);
+        expect(fetched).toEqual([page, noteUri]);
+      },
+    );
+  });
+
+  it("follows a Link header to the document before reading the page", async () => {
+    const author = await remoteActor("alternatelink", "alternate-link.example");
+    const page = "https://alternate-link.example/@alternatelink/2";
+    const noteUri = "https://alternate-link.example/notes/2";
+    const decoy = "https://alternate-link.example/notes/decoy";
+    await withRemoteDocuments(
+      {
+        [page]: html(`<link rel="alternate" type="application/activity+json" href="${decoy}">`, {
+          link: `<${noteUri}>; rel="alternate"; type="application/activity+json"`,
+        }),
+        [noteUri]: note(noteUri, author.actorUri),
+        [decoy]: null,
+      },
+      async (fetched) => {
+        expect(await statusUris(page)).toEqual([noteUri]);
+        expect(fetched).toEqual([page, noteUri]);
+      },
+    );
+  });
+
+  it("follows one hop only, and takes a document only under its own id", async () => {
+    const author = await remoteActor("alternatehop", "alternate-hop.example");
+    const page = "https://alternate-hop.example/@alternatehop/3";
+    const second = "https://alternate-hop.example/@alternatehop/3/again";
+    const third = "https://alternate-hop.example/notes/3";
+    await withRemoteDocuments(
+      {
+        [page]: alternate(second),
+        [second]: alternate(third),
+        [third]: note(third, author.actorUri),
+      },
+      async (fetched) => {
+        expect(await statusUris(page)).toEqual([]);
+        expect(fetched).toEqual([page, second]);
+      },
+    );
+    const misnamed = "https://alternate-hop.example/@alternatehop/4";
+    const served = "https://alternate-hop.example/notes/4";
+    const elsewhere = "https://alternate-hop.example/notes/elsewhere";
+    await withRemoteDocuments(
+      { [misnamed]: alternate(served), [served]: note(elsewhere, author.actorUri) },
+      async (fetched) => {
+        expect(await statusUris(misnamed)).toEqual([]);
+        expect(fetched).toEqual([misnamed, served]);
+      },
+    );
+  });
+
+  it("does not follow a link to a host it would not fetch", async () => {
+    const page = "https://alternate-guard.example/@someone/5";
+    const internal = "https://localhost/notes/5";
+    await withRemoteDocuments({ [page]: alternate(internal), [internal]: {} }, async (fetched) => {
+      expect(await statusUris(page)).toEqual([]);
+      expect(fetched).toEqual([page]);
+    });
   });
 });

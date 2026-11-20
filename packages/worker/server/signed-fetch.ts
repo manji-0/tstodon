@@ -64,6 +64,7 @@ const verify = async (
       case "DomainRefused":
         return { kind: "Refused" };
       case "InvalidSignature":
+      case "UnsupportedUsername":
         return { kind: "Invalid" };
     }
   }

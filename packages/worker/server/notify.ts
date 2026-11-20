@@ -7,6 +7,7 @@ import {
   type FindMutedThreadStatusIds,
   type HoldNotification,
   type InsertNotification,
+  type KeepOutOfConversations,
   AccountPresentation,
   LocalFollow,
   type MentionedPost,
@@ -23,7 +24,7 @@ import { err, ok } from "neverthrow";
 import { listAdminAccountIds } from "./account-admin-store";
 import type { RepositoryError } from "./d1";
 import type { FollowWrite } from "./follow-store";
-import { holdNotification } from "./notification-policy-store";
+import { holdNotification, keepOutOfConversations } from "./notification-policy-store";
 import { findOutboundFollow } from "./outbound-follow-store";
 import { notificationDisposition } from "./notification-policy";
 import { isActorDomainBlocked } from "./domain-block-store";
@@ -81,6 +82,7 @@ export type NotifyContracts = Readonly<{
   findMutedThreadStatusIds: FindMutedThreadStatusIds;
   insertNotification: InsertNotification;
   holdNotification: HoldNotification;
+  keepOutOfConversations: KeepOutOfConversations;
   publishNotification: PublishNotification;
 }>;
 
@@ -130,7 +132,7 @@ const deliverScreened = async (
     return err(disposition.error);
   }
   if (disposition.value === "drop") {
-    return ok(undefined);
+    return dropped(contracts, input);
   }
   // As Mastodon's NotifyService: nothing about a status in a conversation the
   // recipient muted, so the list, groups, unread count, and push all agree.
@@ -140,11 +142,24 @@ const deliverScreened = async (
       return err(muted.error);
     }
     if (muted.value.has(input.statusId)) {
-      return ok(undefined);
+      return dropped(contracts, input);
     }
   }
   return recordNotification(contracts, input, disposition.value);
 };
+
+/**
+ * A notification the policy or a muted conversation drops: as Mastodon's
+ * `NotifyService` returns on `drop?`, a dropped mention's direct status never
+ * joins the recipient's conversations.
+ */
+const dropped = (
+  contracts: NotifyContracts,
+  input: NewNotification,
+): Promise<Result<void, RepositoryError>> =>
+  input.kind === "mention" && input.statusId !== undefined
+    ? contracts.keepOutOfConversations(input)
+    : Promise.resolve(ok(undefined));
 
 const recordNotification = async (
   contracts: NotifyContracts,
@@ -191,7 +206,17 @@ const notifyContracts = (env: Env): NotifyContracts => {
         notification.accountId,
         notification.fromAccountId,
         notification.statusId,
+        notification.kind === "mention",
       ),
+    keepOutOfConversations: (notification) =>
+      notification.statusId === undefined
+        ? Promise.resolve(ok(undefined))
+        : keepOutOfConversations(
+            env.DB,
+            notification.accountId,
+            notification.fromAccountId,
+            notification.statusId,
+          ),
     // The stream render and push fan-out read about forty statements; the
     // notification row is already written, so they run after the response.
     publishNotification: (accountId, notificationId) => {

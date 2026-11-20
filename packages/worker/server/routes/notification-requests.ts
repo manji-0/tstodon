@@ -40,6 +40,8 @@ import {
 } from "../notification-policy-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import { publishToAccount } from "../stream-publish";
+import { afterResponse } from "../after-response";
+import { publishConversationsJoined } from "../conversation-stream";
 import { paramsCursor, readParams, readQueryParams } from "../request-params";
 
 /**
@@ -382,17 +384,23 @@ const closeRequests = async (
   fromAccountIds: ReadonlyArray<string>,
   accept: boolean,
 ): Promise<Response> => {
-  const closed = await (accept ? acceptNotificationRequests : dismissNotificationRequests)(
-    c.env.DB,
-    accountId,
-    fromAccountIds,
-  );
-  if (closed.isErr()) {
-    return jsonRepositoryError(c, closed.error.message);
+  if (!accept) {
+    const dismissed = await dismissNotificationRequests(c.env.DB, accountId, fromAccountIds);
+    return dismissed.isErr() ? jsonRepositoryError(c, dismissed.error.message) : c.json({});
   }
-  if (accept && fromAccountIds.length > 0) {
+  const released = await acceptNotificationRequests(c.env.DB, accountId, fromAccountIds);
+  if (released.isErr()) {
+    return jsonRepositoryError(c, released.error.message);
+  }
+  if (fromAccountIds.length > 0) {
     // Clients refresh the notification list when the merge lands.
     await publishToAccount(c.env, accountId, { kind: "notifications_merged" });
+  }
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isOk() && released.value.length > 0) {
+    afterResponse("ConversationNotPublished", () =>
+      publishConversationsJoined(c.env, identity.value, accountId, released.value),
+    );
   }
   return c.json({});
 };

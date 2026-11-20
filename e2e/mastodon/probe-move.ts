@@ -5,9 +5,9 @@ import {
   call,
   type Cast,
   follow,
+  followsAfterAccept,
   mastodonRails,
   mastodonUsers,
-  relationshipBecomes,
   resolveAccount,
   step,
   StepFailure,
@@ -40,12 +40,7 @@ const followsTheMove = async (
   target: E2eUser,
 ): Promise<void> => {
   const targetId = (await resolveAccount(follower, target)).id;
-  await relationshipBecomes(
-    follower,
-    targetId,
-    `${follower.acct} follows ${target.acct}`,
-    (state) => state.following,
-  );
+  await followsAfterAccept(follower, targetId, `${follower.acct} follows ${target.acct}`);
   const sourceId = (await resolveAccount(follower, source)).id;
   const moved = (await call(follower, `/api/v1/accounts/${sourceId}`, Account)).moved;
   if (moved?.uri !== target.uri) {

@@ -65,6 +65,15 @@ export type HoldNotification = (
 ) => Promise<Result<void, RepositoryError>>;
 
 /**
+ * Keep the direct status a dropped mention names out of the recipient's
+ * conversations for good, as Mastodon's `NotifyService` returns on `drop?`
+ * before `push_to_conversation!`.
+ */
+export type KeepOutOfConversations = (
+  notification: NewNotification,
+) => Promise<Result<void, RepositoryError>>;
+
+/**
  * What a remote actor's undone activity or deleted note had notified: its
  * notifications of `kinds` about one status.
  */

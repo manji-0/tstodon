@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 import { schemaResult, type ValidationError } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import { signAccessJwt } from "../packages/worker/test/access-jwt-fixture.js";
+import {
+  LOCAL_ACCESS_ADMIN_GROUP,
+  signAccessJwt,
+} from "../packages/worker/test/access-jwt-fixture.js";
 import {
   ApPerson,
   MastodonAccount,
@@ -145,12 +148,22 @@ const signUpBrowser = async (
     .toLowerCase()
     .replaceAll("-", "_")
     .replace(/[^a-z0-9_]/g, "");
-  const browser = browserFor(origin, await signAccessJwt({ email }));
+  const browser = await signIn(origin, email, []);
+  return { headers: await appToken(origin, browser, USER_SCOPES, username), browser };
+};
+
+/** A browser signed in on `origin` by an Access login with these groups. */
+const signIn = async (
+  origin: string,
+  email: string,
+  groups: readonly string[],
+): Promise<E2eBrowser> => {
+  const browser = browserFor(origin, await signAccessJwt({ email, groups }));
   const signedIn = await browser("/auth/sign_in");
   if (!signedIn.ok) {
-    return fail(`Access sign-in for ${username} on ${origin}`, await signedIn.text());
+    return fail(`Access sign-in for ${email} on ${origin}`, await signedIn.text());
   }
-  return { headers: await appToken(origin, browser, USER_SCOPES, username), browser };
+  return browser;
 };
 
 const USER_SCOPES = "read write follow push";
@@ -373,6 +386,13 @@ export type E2eUser = Readonly<{
   headers: Record<string, string>;
   /** The browser the user signed up with, for the server-rendered settings pages. */
   browser: E2eBrowser;
+  /**
+   * The user signed in again by an Access login in the admin group. An
+   * instance whose `CF_ACCESS_ADMIN_GROUPS` names that group makes the user
+   * an admin on this login, and takes the role back on a later login without
+   * the group, such as one from {@link browser}.
+   */
+  adminBrowser: () => Promise<E2eBrowser>;
   id: string;
   username: string;
   acct: string;
@@ -383,7 +403,8 @@ const runSuffix = Date.now().toString(36).slice(-6);
 
 /** Sign up a fresh user on `origin`; the name gets a per-run suffix so reruns need no reset. */
 export const signUp = async (origin: string, name: string): Promise<E2eUser> => {
-  const { headers, browser } = await signUpBrowser(origin, `${name}-${runSuffix}@e2e.example`);
+  const email = `${name}-${runSuffix}@e2e.example`;
+  const { headers, browser } = await signUpBrowser(origin, email);
   const account = await api(
     origin,
     headers,
@@ -397,6 +418,7 @@ export const signUp = async (origin: string, name: string): Promise<E2eUser> => 
     origin,
     headers,
     browser,
+    adminBrowser: () => signIn(origin, email, [LOCAL_ACCESS_ADMIN_GROUP]),
     id,
     username: account.username,
     acct: `@${account.username}@${domain}`,

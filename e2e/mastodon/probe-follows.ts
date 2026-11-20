@@ -12,6 +12,7 @@ import {
   type Cast,
   eventually,
   follow,
+  followsAfterAccept,
   mastodonUsers,
   onHome,
   post,
@@ -94,12 +95,7 @@ const lockedAccount = async (
     await step(`a locked account authorizes a follow request: ${direction}`, async () => {
       const { targetId, requesterId } = await requestFollow(accepted, target);
       await answerRequest(target, requesterId, "authorize");
-      await relationshipBecomes(
-        accepted,
-        targetId,
-        "the requester follows after the Accept",
-        (state) => state.following && !state.requested,
-      );
+      await followsAfterAccept(accepted, targetId, "the requester follows after the Accept");
       const sent = await post(target, {
         status: `for my followers ${stamp}`,
         visibility: "private",
@@ -119,12 +115,7 @@ const lockedAccount = async (
     await step(`a follow again after a reject is a new request: ${direction}`, async () => {
       const { targetId, requesterId } = await requestFollow(rejected, target);
       await answerRequest(target, requesterId, "authorize");
-      await relationshipBecomes(
-        rejected,
-        targetId,
-        "the requester follows after the Accept",
-        (state) => state.following && !state.requested,
-      );
+      await followsAfterAccept(rejected, targetId, "the requester follows after the Accept");
     });
   } finally {
     await setLocked(target, false);
@@ -167,11 +158,10 @@ export const followScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
         account_indexable: "1",
         account_show_collections: "1",
       });
-      await relationshipBecomes(
+      await followsAfterAccept(
         requester,
         targetId,
         "the request is accepted once the account is unlocked",
-        (state) => state.following && !state.requested,
       );
     } finally {
       await setLocked(locked, false);

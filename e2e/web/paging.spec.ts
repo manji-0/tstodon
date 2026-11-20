@@ -54,6 +54,11 @@ test.describe("paging in the web UI", () => {
     await signUp(page, recipient);
     const senderPage = await newPerson();
     await signUp(senderPage, sender);
+    // A private mention from someone the recipient does not follow is held as
+    // a notification request, out of the conversations until accepted.
+    await page.goto(`/@${sender}`);
+    await page.getByRole("button", { name: "Follow", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Unfollow" })).toBeVisible();
     // 25 conversations: one more page after the first 20.
     await postStatuses(senderPage, 25, (n) => ({
       status: `@${recipient} ${marker("paged", n)}`,

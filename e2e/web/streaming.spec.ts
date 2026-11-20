@@ -57,6 +57,11 @@ test.describe("live streams in the web UI", () => {
     const senderPage = await newPerson();
     collectConsoleErrors(senderPage, problems, "sender");
     await signUp(senderPage, sender);
+    // A private mention from someone the recipient does not follow is held as
+    // a notification request, and joins the conversations only once accepted.
+    await page.goto(`/@${sender}`);
+    await page.getByRole("button", { name: "Follow", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Unfollow" })).toBeVisible();
 
     await page.goto("/conversations");
     await expect(page.getByText("You don't have any private mentions yet.")).toBeVisible();
