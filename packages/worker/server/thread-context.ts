@@ -104,7 +104,7 @@ export const listThreadAncestors = async (
   db: D1Database,
   identity: InstanceIdentity,
   start: ThreadStatus,
-  depth: number,
+  limit: number,
 ): Promise<Result<ThreadStatus[], RepositoryError>> => {
   const locals = new Map<string, LocalStatus>();
   const localReplyUris = new Map<string, string | undefined>();
@@ -237,8 +237,8 @@ export const listThreadAncestors = async (
   const chain: ThreadStatus[] = [];
   const seen = new Set<string>([start.status.id]);
   let current = start;
-  for (let step = 0; step < depth; step += 1) {
-    const parent = await parentOf(current, depth - step);
+  for (let step = 0; step < limit; step += 1) {
+    const parent = await parentOf(current, limit - step);
     if (parent.isErr()) {
       return err(parent.error);
     }
@@ -255,20 +255,25 @@ export const listThreadAncestors = async (
 const DescendantIdRow = z.object({
   kind: z.literal(["Local", "Remote"]),
   id: z.string(),
-  depth: z.number(),
+  parent_kind: z.literal(["Local", "Remote"]),
+  parent_id: z.string(),
 });
 
-/**
- * Rows the reply-tree query may produce before it stops, however many
- * replies the response keeps: a bound on one thread's cost.
- */
-const MAX_THREAD_TREE_ROWS = 2_000;
+/** A reply below the opened status, and whether it answers its own author's status. */
+export type ThreadReply = Readonly<{ node: ThreadStatus; selfReply: boolean }>;
+
+const nodeKey = (kind: ThreadStatus["kind"], id: string): string => `${kind}:${id}`;
+
+const authorOf = (node: ThreadStatus): string =>
+  node.kind === "Local" ? `Local:${node.status.accountId}` : `Remote:${node.status.actorUri}`;
 
 /**
- * Replies below a status, breadth-first and ordered by id within each level:
- * local replies by `in_reply_to_id`, and replies naming a status by URI —
- * remote ones to anything, local ones to a remote status. One recursive
- * query walks the tree; the statuses then load in one concurrent round.
+ * Replies below a status in Mastodon's `descendant_ids` order: depth first,
+ * siblings by id, each reply's subtree before its next sibling, and `limit`
+ * taken in that order. Local replies follow `in_reply_to_id`; replies naming
+ * a status by URI follow it, remote ones to anything and local ones to a
+ * remote status. One recursive query walks the tree; the statuses then load
+ * in one concurrent round.
  */
 export const listThreadDescendants = async (
   db: D1Database,
@@ -276,7 +281,7 @@ export const listThreadDescendants = async (
   start: ThreadStatus,
   limit: number,
   depth: number,
-): Promise<Result<ThreadStatus[], RepositoryError>> => {
+): Promise<Result<ThreadReply[], RepositoryError>> => {
   if (limit <= 0 || depth <= 0) {
     return ok([]);
   }
@@ -288,7 +293,8 @@ export const listThreadDescendants = async (
         start.status.id,
         `${InstanceIdentity.actorUrl(identity, "")}`,
         depth,
-        Math.max(MAX_THREAD_TREE_ROWS, limit),
+        // The opened status is the tree's first row, as in Mastodon's `limit + 1`.
+        limit + 1,
       ),
       DescendantIdRow,
     ),
@@ -296,7 +302,7 @@ export const listThreadDescendants = async (
   if (rows.isErr()) {
     return err(rows.error);
   }
-  const picked = rows.value.slice(0, limit);
+  const picked = rows.value;
   const [locals, remotes] = await Promise.all([
     findStatusesByIds(
       db,
@@ -313,16 +319,38 @@ export const listThreadDescendants = async (
   if (remotes.isErr()) {
     return err(remotes.error);
   }
-  const collected = picked.flatMap((row): ThreadStatus[] => {
+  const authors = new Map([[nodeKey(start.kind, start.status.id), authorOf(start)]]);
+  const nodeOf = (row: z.infer<typeof DescendantIdRow>): ThreadStatus | undefined => {
     if (row.kind === "Local") {
       const status = locals.value.get(row.id);
-      return status ? [{ kind: "Local", status }] : [];
+      return status ? { kind: "Local", status } : undefined;
     }
     const status = remotes.value.get(row.id);
-    return status ? [{ kind: "Remote", status }] : [];
-  });
-  return ok(collected.toSorted((left, right) => left.status.id.localeCompare(right.status.id)));
+    return status ? { kind: "Remote", status } : undefined;
+  };
+  return ok(
+    picked.flatMap((row): ThreadReply[] => {
+      const node = nodeOf(row);
+      if (!node) {
+        return [];
+      }
+      const author = authorOf(node);
+      authors.set(nodeKey(row.kind, row.id), author);
+      // Rows come in path order, so a reply's parent is read before it.
+      const selfReply = authors.get(nodeKey(row.parent_kind, row.parent_id)) === author;
+      return [{ node, selfReply }];
+    }),
+  );
 };
+
+/**
+ * Mastodon's `promote_by!` in `find_statuses_from_tree_path`: replies to the
+ * replier's own status move to the top, each group keeping its order.
+ */
+export const promoteSelfReplies = (replies: ReadonlyArray<ThreadReply>): ThreadReply[] => [
+  ...replies.filter((reply) => reply.selfReply),
+  ...replies.filter((reply) => !reply.selfReply),
+];
 
 /**
  * The ids of the thread statuses the viewer may see, without authors they

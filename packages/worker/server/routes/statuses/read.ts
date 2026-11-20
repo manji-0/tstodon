@@ -10,6 +10,7 @@ import { statusDocumentsByIds } from "../../status-documents";
 import {
   listThreadAncestors,
   listThreadDescendants,
+  promoteSelfReplies,
   visibleThreadStatusIds,
 } from "../../thread-context";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
@@ -190,7 +191,7 @@ export const getV1StatusesByIdContext = async (
     start.kind === "Remote" ? await requestRemoteThreadBackfill(c.env, start.status) : undefined;
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
   const [ancestors, descendants] = await Promise.all([
-    listThreadAncestors(c.env.DB, identity.value, start, limits.depth),
+    listThreadAncestors(c.env.DB, identity.value, start, limits.ancestors),
     listThreadDescendants(c.env.DB, identity.value, start, limits.descendants, limits.depth),
   ]);
   if (ancestors.isErr()) {
@@ -199,13 +200,16 @@ export const getV1StatusesByIdContext = async (
   if (descendants.isErr()) {
     return jsonRepositoryError(c, descendants.error.message);
   }
+  // As Mastodon, each level is limited first, then filtered for the viewer.
   const visible = await visibleThreadStatusIds(
     c.env.DB,
-    [...ancestors.value, ...descendants.value],
+    [...ancestors.value, ...descendants.value.map((reply) => reply.node)],
     viewerId,
   );
   const visibleAncestors = ancestors.value.filter((node) => visible.has(node.status.id));
-  const visibleDescendants = descendants.value.filter((node) => visible.has(node.status.id));
+  const visibleDescendants = promoteSelfReplies(
+    descendants.value.filter((reply) => visible.has(reply.node.status.id)),
+  ).map((reply) => reply.node);
   const documents = await statusDocumentsByIds(
     c.env,
     identity.value,
