@@ -13,6 +13,7 @@ import {
   ApiHashtag,
   ApiInstance,
   ApiInstanceActivity,
+  ApiPeerSearch,
   ApiList,
   ApiMarkers,
   ApiMediaAttachment,
@@ -361,6 +362,7 @@ describe("REST API contract (@tstodon/api)", () => {
     expect(v1.urls.streaming_api).toBe("wss://example.com");
     await get(z.array(ApiInstanceActivity), undefined, "/api/v1/instance/activity");
     await get(z.array(z.string()), undefined, "/api/v1/instance/peers");
+    await get(ApiPeerSearch, undefined, "/api/v1/peers/search?q=example");
     await get(z.array(ApiDomainBlock), undefined, "/api/v1/instance/domain_blocks");
 
     const profile = await get(ApiProfileDocument, author, "/api/v1/profile");

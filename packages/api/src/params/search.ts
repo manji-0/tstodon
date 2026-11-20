@@ -29,3 +29,12 @@ export const ApiSearchAccountsParamsSchema = z.object({
   offset: z.number().optional(),
 });
 export type ApiSearchAccountsParams = z.input<typeof ApiSearchAccountsParamsSchema>;
+
+/**
+ * `GET /api/v1/peers/search` (query): the start of a domain. Blank, Mastodon
+ * answers `null`.
+ */
+export const ApiPeerSearchParamsSchema = z.object({
+  q: z.string().optional(),
+});
+export type ApiPeerSearchParams = z.input<typeof ApiPeerSearchParamsSchema>;

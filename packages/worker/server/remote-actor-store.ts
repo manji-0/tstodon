@@ -46,6 +46,7 @@ import {
   listAcceptedRemoteFollowerUris as listAcceptedRemoteFollowerUrisSql,
   listAcceptedRemoteFollowerActors as listAcceptedRemoteFollowerActorsSql,
   listPeerDomains as listPeerDomainsSql,
+  searchPeerDomains as searchPeerDomainsSql,
   listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
   cancelRemoteActorDeliveries as cancelRemoteActorDeliveriesSql,
   listHomeFanOutAccounts as listHomeFanOutAccountsSql,
@@ -821,6 +822,20 @@ export const remoteFollowerActorUris = async (
 export const listPeerDomains = async (db: D1Database): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
     const results = await queryTyped(db, listPeerDomainsSql(), DomainRow);
+    return results.map((row) => row.domain);
+  });
+
+/**
+ * Known peer hostnames that start with `prefix`, leaving out domains the
+ * instance blocks: Mastodon's `Instance.searchable.domain_starts_with`.
+ */
+export const searchPeerDomains = async (
+  db: D1Database,
+  prefix: string,
+  limit: number,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const results = await queryTyped(db, searchPeerDomainsSql(prefix, limit), DomainRow);
     return results.map((row) => row.domain);
   });
 
