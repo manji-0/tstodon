@@ -399,6 +399,40 @@ describe("home leaves out a reply to an account the viewer does not follow", () 
   });
 });
 
+describe("a muted conversation", () => {
+  // Mastodon's `ConversationMute` silences notifications only (`NotifyService`);
+  // `FeedManager` never reads it, so home and lists keep the thread.
+  it("stays on home and on a list, local and remote replies alike", async () => {
+    const viewer = await user("hff-cmute-viewer@example.com");
+    const author = await user("hff-cmute-author@example.com");
+    const followed = await remoteActor("hffcmutefollowed", HOST);
+    await act(viewer.email, author.id, "follow");
+    await followRemote(viewer.email, followed);
+    const list = read(
+      z.object({ id: z.string() }),
+      await call(viewer.email, "/api/v1/lists", {
+        method: "POST",
+        body: JSON.stringify({ title: "cmute" }),
+      }),
+    ).id;
+    await call(viewer.email, `/api/v1/lists/${list}/accounts`, {
+      method: "POST",
+      body: JSON.stringify({ account_ids: [author.id] }),
+    });
+    const root = await post(viewer.email, "a thread I will mute");
+    const localReply = await post(author.email, "a reply", { inReplyToId: root });
+    const remoteReply = await sendNote(followed, "hff-cmute-reply", {
+      inReplyTo: `${localActor(viewer.username)}/statuses/${root}`,
+    });
+    await call(viewer.email, `/api/v1/statuses/${root}/mute`, { method: "POST" });
+
+    expect(await homeIds(viewer.email)).toEqual(
+      expect.arrayContaining([root, localReply, remoteReply]),
+    );
+    expect(await idsIn(viewer.email, `/api/v1/timelines/list/${list}`)).toContain(localReply);
+  });
+});
+
 describe("home's filter edges", () => {
   it("does not count an expired mute or a silent mention", async () => {
     const viewer = "hff-edge-viewer@example.com";
