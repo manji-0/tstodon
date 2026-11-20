@@ -452,7 +452,8 @@ export type CacheFetchedActorError = RepositoryError | WebfingerRefusal;
  * Cache an actor read from its own document, and the keys it publishes, under
  * the handle the round trip settles (`WebfingerConfirmation.handleWrite`). A
  * confirmed handle is taken from any other row that held it. An actor whose
- * claimed account domain is refused is not cached.
+ * claimed account domain is refused is not cached, nor is one not cached yet
+ * that WebFinger does not vouch for.
  */
 export const cacheFetchedActor = async (
   db: D1Database,
@@ -481,7 +482,11 @@ export const cacheFetchedActor = async (
     check.answered,
     stored.value && { username: stored.value.username, domain: stored.value.domain },
   );
-  const write = WebfingerConfirmation.handleWrite(confirmation, now.value);
+  const write = WebfingerConfirmation.handleWrite(
+    confirmation,
+    now.value,
+    stored.value === undefined ? "FirstSeen" : "Cached",
+  );
   if (write.isErr()) {
     return err(write.error);
   }

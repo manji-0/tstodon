@@ -96,7 +96,7 @@ A remote actor has two hosts. Its account domain (`remote_actors.domain`, hostna
 Actor fetch (`cacheFetchedActor` in `packages/worker/server/remote-actor-fetch.ts`) records the round trip as a `WebfingerConfirmation` (`packages/domain/src/webfinger-confirmation.ts`) and writes the handle as `WebfingerConfirmation.handleWrite` says:
 
 - `Confirmed` stores the confirmed handle with `last_webfingered_at` set to now, and moves every other confirmed row cached under that handle back to its own URI authority, so a handle names the actor WebFinger confirmed last.
-- `Mismatch` stores the URI authority. It is any answer that does not confirm the handle: an answer for another actor, a subject that does not loop back, a 404 or 410, and, when the stored handle is on another domain than the URI's, anything but that domain's own confirmation once the lookups from the URI authority failed.
+- `Mismatch` stores the URI authority for a cached actor, and refuses an actor not cached yet (`WebfingerMismatch`), which is not stored and whose signed requests fail, as Mastodon's `check_webfinger!` raises. It is any answer that does not confirm the handle: an answer for another actor, a subject that does not loop back, a 404 or 410, and, when the stored handle is on another domain than the URI's, anything but that domain's own confirmation once the lookups from the URI authority failed.
 - `Unavailable` keeps the handle and its `last_webfingered_at` as the row holds them when it is written (`upsertRemoteActorKeepingHandle`), not as they were read before the round trip, so a confirmation another actor made meanwhile stands. An actor not cached yet takes the URI authority.
 - `Refused` refuses the actor when its claimed account domain is suspended or not on the allow list.
 

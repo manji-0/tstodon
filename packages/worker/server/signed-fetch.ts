@@ -65,6 +65,7 @@ const verify = async (
         return { kind: "Refused" };
       case "InvalidSignature":
       case "UnsupportedUsername":
+      case "WebfingerMismatch":
         return { kind: "Invalid" };
     }
   }

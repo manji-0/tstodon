@@ -193,23 +193,55 @@ describe("a remote actor whose WebFinger domain differs from its URI host", () =
     }).toEqual({ acct: "alice@wf-split.example", viewer: ["alice@wf-split.example"], blocker: [] });
   });
 
-  it("keeps the URI host when the claimed domain's WebFinger names another actor", async () => {
-    const remote = await remoteActor("mallory", "social.wf-claimer.example", { cache: false });
-    serveRemote(remote, "mallory", {
-      "social.wf-claimer.example": {
-        subject: "acct:mallory@wf-victim.example",
-        self: remote.actorUri,
-      },
-      "wf-victim.example": {
-        subject: "acct:mallory@wf-victim.example",
-        self: "https://wf-victim.example/users/mallory",
-      },
-    });
-    const viewer = "wf-claimer-viewer@example.com";
-    expect(await like(remote, "wf-claimer", viewer)).toBe(202);
+  it.each([
+    [
+      "the claimed domain's WebFinger names another actor",
+      "claimer",
+      (actorUri: string): WebfingerAnswers => ({
+        "social.wf-claimer.example": { subject: "acct:mallory@wf-victim.example", self: actorUri },
+        "wf-victim.example": {
+          subject: "acct:mallory@wf-victim.example",
+          self: "https://wf-victim.example/users/mallory",
+        },
+      }),
+    ],
+    [
+      "its URI host's WebFinger links another actor",
+      "elsewhere",
+      (): WebfingerAnswers => ({
+        "social.wf-elsewhere.example": {
+          subject: "acct:mallory@social.wf-elsewhere.example",
+          self: "https://social.wf-elsewhere.example/users/someone-else",
+        },
+      }),
+    ],
+    [
+      "its URI host's WebFinger answers 404",
+      "unknown",
+      (): WebfingerAnswers => ({ "social.wf-unknown.example": { status: 404 } }),
+    ],
+    [
+      "its URI host's WebFinger answers 410",
+      "gone",
+      (): WebfingerAnswers => ({ "social.wf-gone.example": { status: 410 } }),
+    ],
+  ])(
+    "does not cache a first-seen actor when %s, and refuses its signed requests",
+    async (_case, slug, answers) => {
+      const remote = await remoteActor("mallory", `social.wf-${slug}.example`, { cache: false });
+      serveRemote(remote, "mallory", answers(remote.actorUri));
+      const viewer = `wf-${slug}-viewer@example.com`;
 
-    expect(await acctOf(remote.actorUri)).toBe("mallory@social.wf-claimer.example");
-  });
+      // As Mastodon's `check_webfinger!`, which raises: no account, so the
+      // signature names an unknown key.
+      expect(await like(remote, `wf-${slug}`, viewer)).toBe(401);
+      expect(await favouritedBy(viewer)).toEqual([]);
+      const cached = await env.DB.prepare("SELECT 1 FROM remote_actors WHERE actor_uri = ?")
+        .bind(remote.actorUri)
+        .first();
+      expect(cached).toBeNull();
+    },
+  );
 
   it("refuses its deliveries once its URI host is suspended, whatever its account domain", async () => {
     const remote = await remoteActor("bob", "social.wf-suspended.example", {

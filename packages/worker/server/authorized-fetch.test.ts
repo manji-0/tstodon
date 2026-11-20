@@ -291,6 +291,13 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
     const keys = await generateAccountKeys();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = new Request(input, init).url;
+      // Mastodon's WebFinger answers for its instance actor too (`Account.representative`).
+      if (new URL(url).pathname === "/.well-known/webfinger") {
+        return Response.json({
+          subject: `acct:${host}@${host}`,
+          links: [{ rel: "self", type: "application/activity+json", href: actorUri }],
+        });
+      }
       return url.split("#")[0] === actorUri
         ? Response.json({
             "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
@@ -315,6 +322,35 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
       new Request(url, { headers: { ...signed._unsafeUnwrap(), Host: url.host, Accept: accept } }),
     );
     expect(response.status).toBe(200);
+  });
+
+  it("refuses a first-seen signer whose WebFinger does not vouch for it", async () => {
+    // Mastodon's `check_webfinger!` raises, so the key names no account.
+    const stranger = await remoteActor("secure-unvouched", "secure-unvouched.example", {
+      cache: false,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new Request(input, init).url;
+      return url.split("#")[0] === stranger.actorUri
+        ? Response.json({
+            id: stranger.actorUri,
+            type: "Person",
+            preferredUsername: "secure-unvouched",
+            inbox: `${stranger.actorUri}/inbox`,
+            publicKey: {
+              id: `${stranger.actorUri}#main-key`,
+              owner: stranger.actorUri,
+              publicKeyPem: stranger.publicKeyPem,
+            },
+          })
+        : new Response(null, { status: 404 });
+    });
+    const response = await secure(await stranger.signedGet(notePath));
+    expect(response.status).toBe(401);
+    const cached = await env.DB.prepare("SELECT 1 FROM remote_actors WHERE actor_uri = ?")
+      .bind(stranger.actorUri)
+      .first();
+    expect(cached).toBeNull();
   });
 
   it("answers 503 when the signer's key server does not answer", async () => {
