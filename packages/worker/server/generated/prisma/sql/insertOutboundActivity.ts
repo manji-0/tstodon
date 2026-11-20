@@ -10,15 +10,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param kind
  * @param payloadJson
  * @param createdAt
+ * @param synchronizeFollowers
  */
 export const insertOutboundActivity = $runtime.makeTypedQueryFactory(
-  "INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at)\nVALUES ($1, $2, $3, $4, $5)",
+  "INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at, synchronize_followers)\nVALUES ($1, $2, $3, $4, $5, $6)",
 ) as (
   id: string,
   accountId: string | null,
   kind: string,
   payloadJson: string,
   createdAt: string,
+  synchronizeFollowers: number,
 ) => $runtime.TypedSql<insertOutboundActivity.Parameters, insertOutboundActivity.Result>;
 
 export namespace insertOutboundActivity {
@@ -28,6 +30,7 @@ export namespace insertOutboundActivity {
     kind: string,
     payloadJson: string,
     createdAt: string,
+    synchronizeFollowers: number,
   ];
   export type Result = {};
 }

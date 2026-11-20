@@ -8,6 +8,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { noteUpdateActivity } from "./activitypub";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
+import { synchronizesFollowers } from "./followers-synchronization";
 import { startHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
@@ -70,6 +71,7 @@ export const announceNoteUpdate = async (
       account,
       "Update",
       noteUpdateActivity(federated.value.object, newEntityId(), updatedAt),
+      { synchronizeFollowers: await synchronizesFollowers(env.DB, account.id, note.visibility) },
     );
     // The change is stored: its `Update` is sent later, as Mastodon's
     // Sidekiq retries the distribution worker, rather than lost.

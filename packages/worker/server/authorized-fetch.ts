@@ -2,7 +2,7 @@ import type { ApActorDocumentJSON } from "@tstodon/api/activitypub";
 import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import type { Context } from "hono";
 import { optionalEnvString } from "./runtime-config";
-import { signedFetchVerdict } from "./signed-fetch";
+import { type SignedFetchVerdict, signedFetchVerdict } from "./signed-fetch";
 
 /**
  * Secure mode (OPS-11), Mastodon's `AUTHORIZED_FETCH`: with
@@ -54,6 +54,31 @@ export const authorizeObjectFetch = async (
   }
   markPrivate(c);
   const verdict = await signedFetchVerdict(c.env, identity, c.req.raw);
+  if (object === "actor" && verdict.kind !== "Signed" && verdict.kind !== "Refused") {
+    return { kind: "Restricted" };
+  }
+  return signedAccess(c, verdict);
+};
+
+/**
+ * The remote actor that signed this GET, or the refusal Mastodon's
+ * `require_account_signature!` answers, secure mode or not: 401 unsigned or
+ * not verified, 403 for a domain that does not federate here, 503 when the
+ * key could not be read. The response is marked private.
+ */
+export const requireSignedFetch = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+): Promise<SignedAccess> => {
+  markPrivate(c);
+  return signedAccess(c, await signedFetchVerdict(c.env, identity, c.req.raw));
+};
+
+type SignedAccess =
+  | Readonly<{ kind: "Signed"; actor: RemoteActor }>
+  | Readonly<{ kind: "Denied"; response: Response }>;
+
+const signedAccess = (c: Context<{ Bindings: Env }>, verdict: SignedFetchVerdict): SignedAccess => {
   switch (verdict.kind) {
     case "Signed":
       return { kind: "Signed", actor: verdict.actor };
@@ -66,16 +91,10 @@ export const authorizeObjectFetch = async (
         ),
       };
     case "Unavailable":
-      if (object === "actor") {
-        return { kind: "Restricted" };
-      }
       c.header("Retry-After", "5");
       return { kind: "Denied", response: c.json({ kind: "VerificationUnavailable" }, 503) };
     case "Unsigned":
     case "Invalid":
-      if (object === "actor") {
-        return { kind: "Restricted" };
-      }
       return {
         kind: "Denied",
         response: c.json(

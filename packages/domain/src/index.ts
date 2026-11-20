@@ -426,3 +426,11 @@ export {
   type RateLimitVerdict,
 } from "./rate-limit";
 export type { HitRateLimitCounters } from "./rate-limit-counter";
+export {
+  FollowersSynchronization,
+  MAX_FOLLOWERS_FOR_SYNCHRONIZATION,
+  SYNCHRONIZATION_MAX_PAGES,
+  type CollectionSynchronizationHeader,
+  type CollectionSynchronizationParseError,
+  type ListedFollowAction,
+} from "./followers-synchronization";

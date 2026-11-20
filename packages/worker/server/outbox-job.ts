@@ -55,6 +55,7 @@ import {
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 import { processFederatePendingStatusesJob } from "./pending-status-federation";
 import { processVerifyProfileLinksJob } from "./profile-link-verification";
+import { processSynchronizeFollowersJob } from "./remote-followers-synchronization";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -387,6 +388,8 @@ export const processOutboxJob = async (
       return processFederatePendingStatusesJob(env);
     case "VerifyProfileLinks":
       return processVerifyProfileLinksJob(env, job);
+    case "SynchronizeFollowers":
+      return processSynchronizeFollowersJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);

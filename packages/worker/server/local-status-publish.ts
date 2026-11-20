@@ -14,6 +14,7 @@ import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
 import { enqueueLocalActivity } from "./delivery";
+import { synchronizesFollowers } from "./followers-synchronization";
 import { formatPostText } from "./html";
 import { newEntityId } from "./ids";
 import { findMediaById, parseMediaFocus, updateMediaMetadata } from "./media-store";
@@ -344,6 +345,7 @@ export const publishLocalNote = async (
           user,
           "Create",
           noteCreateActivity(identity, user, federated.value.object),
+          { synchronizeFollowers: await synchronizesFollowers(env.DB, user.id, note.visibility) },
         );
   if (enqueued.isErr()) {
     return err(

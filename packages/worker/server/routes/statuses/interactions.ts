@@ -26,6 +26,7 @@ import {
 } from "../../activitypub";
 import type { RepositoryError } from "../../d1";
 import { enqueueLocalActivity } from "../../delivery";
+import { synchronizesFollowers } from "../../followers-synchronization";
 import {
   type FoundStatus,
   findShownStatusAnywhere,
@@ -519,6 +520,7 @@ const publishBoost = async (
     booster,
     "Announce",
     announceActivity(identity, booster, reblog, objectRef.value),
+    { synchronizeFollowers: await synchronizesFollowers(env.DB, booster.id, reblog.visibility) },
   );
   if (enqueued.isErr()) {
     return err(

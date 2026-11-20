@@ -168,14 +168,16 @@ export const storeOwedActivity = async (
   accountId: string,
   payload: unknown,
   quoteRequest: OwedQuoteRequest | undefined,
+  synchronizeFollowers: boolean,
 ): Promise<Result<StoredOwedActivity | undefined, RepositoryError>> => {
   const createdAt = nowIso();
   const owes = "SELECT 1 FROM pending_status_federations WHERE status_id = ? AND revision = ?";
-  const insertActivity = (id: string, kind: string, body: unknown) =>
+  const insertActivity = (id: string, kind: string, body: unknown, synchronizes = false) =>
     db
       .prepare(
-        `INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at)
-         SELECT ?, ?, ?, ?, ? WHERE EXISTS (${owes})`,
+        `INSERT INTO outbound_activities
+           (id, account_id, kind, payload_json, created_at, synchronize_followers)
+         SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (${owes})`,
       )
       .bind(
         id,
@@ -183,6 +185,7 @@ export const storeOwedActivity = async (
         kind,
         JSON.stringify(body),
         createdAt,
+        synchronizes ? 1 : 0,
         pending.statusId,
         pending.revision,
       );
@@ -229,7 +232,7 @@ export const storeOwedActivity = async (
         ]
       : [];
   const batched = await runD1Batch(db, [
-    insertActivity(activityId, pending.activity, payload),
+    insertActivity(activityId, pending.activity, payload, synchronizeFollowers),
     insertFanout(activityId, queued.kind),
     ...quoteStatements,
     db

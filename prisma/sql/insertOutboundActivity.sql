@@ -3,6 +3,7 @@
 -- @param {String} $3:kind
 -- @param {String} $4:payloadJson
 -- @param {String} $5:createdAt
+-- @param {Int} $6:synchronizeFollowers
 -- A NULL account marks an activity the instance actor signs.
-INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at, synchronize_followers)
+VALUES ($1, $2, $3, $4, $5, $6)
