@@ -15,7 +15,7 @@ import {
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
-import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
+import { INLINE_NOTE_RECIPIENTS, NOTIFYING_FOLLOWER_PAGE_SIZE } from "./remote-status-persist";
 import { OutboxJob } from "@tstodon/domain";
 import { processOutboxJob } from "./outbox-job";
 
@@ -428,6 +428,36 @@ describe("the status notification of a followed remote actor's note", () => {
 });
 
 describe("a remote note of an actor many local accounts follow with notifications", () => {
+  // As Mastodon's `find_in_batches`, the followers are read a page at a
+  // time: the inbox request reads the first and queues the next, so what it
+  // sends the queue stays flat with the number of followers.
+  it(
+    "reads its notifying followers a page at a time through the queue",
+    { timeout: 300_000 },
+    async () => {
+      const author = await remoteActor("rsnpages", "rsn-pages.example");
+      const followers = Array.from(
+        { length: NOTIFYING_FOLLOWER_PAGE_SIZE + 5 },
+        (_, n) => `rsn-pages-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const id = await create(author, "https://rsn-pages.example/notes/1", {});
+      const recipientJobs = queued.bodies.filter(
+        (body) => z.object({ kind: z.string() }).parse(body).kind === "FinishRemoteNoteRecipient",
+      );
+      expect(recipientJobs.length).toBe(NOTIFYING_FOLLOWER_PAGE_SIZE - INLINE_NOTE_RECIPIENTS);
+
+      await drainHeld(queued, ["FinishRemoteNoteRecipient", "NotifyRemoteNoteFollowers"]);
+
+      for (const email of followers) {
+        expect(await statusNotifications(email, id), email).toBe(1);
+      }
+    },
+  );
+
   it(
     "notifies each one, past what the inbox request serves, within the D1 budgets",
     { timeout: 120_000 },

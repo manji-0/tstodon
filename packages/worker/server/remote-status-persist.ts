@@ -55,11 +55,13 @@ import {
 import { publishConversationUpdate } from "./conversation-stream";
 import {
   listActiveRemoteStatusMentionAccountIds,
+  listRemoteStatusMentions,
   listShownRemoteStatusMentions,
   recordRemoteStatusMentions,
 } from "./mention-store";
+import { measureJobPage } from "./metrics";
 import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
-import { isNotifyingRemoteFollower, notifyingRemoteFollowers } from "./outbound-follow-store";
+import { isNotifyingRemoteFollower, notifyingRemoteFollowersPage } from "./outbound-follow-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
@@ -83,6 +85,14 @@ const MentionTagsSchema = z.object({
  * written for all of them, in one batch.
  */
 export const INLINE_NOTE_RECIPIENTS = 8;
+
+/**
+ * Notifying followers of a note's author read at a time, as Mastodon's
+ * `find_in_batches` reads them: the inbox request reads the first page, and
+ * a `NotifyRemoteNoteFollowers` job each later one, so what one invocation
+ * reads and queues stays flat with the number of followers.
+ */
+export const NOTIFYING_FOLLOWER_PAGE_SIZE = 50;
 
 /** The `href` of each `Mention` tag of a note document, each once. */
 const mentionHrefs = (raw: unknown): string[] => {
@@ -388,43 +398,136 @@ const remoteNoteThread = async (
 };
 
 /**
- * The local followers a new note sends its `status` notification to
- * ({@link StatusNotificationAudience}). Only a note that is distributed
- * ({@link distributed}) notifies; `addressed` are the local accounts it
- * names. The thread is read only when someone asked.
+ * The followers of a page of the author's notifying followers that a note
+ * sends its `status` notification to, and the follow id the next page
+ * starts after, if there is one.
  */
-const statusNotified = async (
+type NotifiedPage = Readonly<{ recipients: ReadonlyArray<string>; next: string | undefined }>;
+
+const NOTHING_NOTIFIED: NotifiedPage = { recipients: [], next: undefined };
+
+/**
+ * The page after the follow `afterFollowId` (empty for the first) of the
+ * local followers the stored note `status` sends its `status` notification
+ * to ({@link StatusNotificationAudience}); `addressed` are the local
+ * accounts it names. The thread is read only when someone asked, and a
+ * reply to someone else, which notifies nobody, reads no further page.
+ */
+const notifiedPage = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  addressed: ReadonlySet<string>,
+  afterFollowId: string,
+): Promise<Result<NotifiedPage, RepositoryError>> => {
+  const page = await notifyingRemoteFollowersPage(
+    env.DB,
+    status.actorUri,
+    status.id,
+    afterFollowId,
+    NOTIFYING_FOLLOWER_PAGE_SIZE,
+  );
+  if (page.isErr()) {
+    return err(page.error);
+  }
+  if (page.value.followers.length === 0) {
+    return ok(NOTHING_NOTIFIED);
+  }
+  const thread = await remoteNoteThread(env.DB, identity, status);
+  if (thread.isErr()) {
+    return err(thread.error);
+  }
+  if (thread.value.kind === "ReplyToOther") {
+    return ok(NOTHING_NOTIFIED);
+  }
+  return ok({
+    recipients: StatusNotificationAudience.recipients(
+      { visibility: status.visibility, thread: thread.value, language: status.language, addressed },
+      page.value.followers,
+    ),
+    next: page.value.next,
+  });
+};
+
+/**
+ * The first page of the local followers a new note sends its `status`
+ * notification to ({@link notifiedPage}). Only a note that is distributed
+ * ({@link distributed}) notifies.
+ */
+const statusNotified = (
   env: Env,
   identity: InstanceIdentity,
   late: LateSteps,
   addressed: ReadonlySet<string>,
-): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
-  if (!distributed(late)) {
-    return ok([]);
-  }
-  const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri, late.status.id);
-  if (followers.isErr()) {
-    return err(followers.error);
-  }
-  if (followers.value.length === 0) {
-    return ok([]);
-  }
-  const thread = await remoteNoteThread(env.DB, identity, late.status);
-  if (thread.isErr()) {
-    return err(thread.error);
-  }
-  return ok(
-    StatusNotificationAudience.recipients(
-      {
-        visibility: late.status.visibility,
-        thread: thread.value,
-        language: late.status.language,
-        addressed,
-      },
-      followers.value,
-    ),
-  );
-};
+): Promise<Result<NotifiedPage, RepositoryError>> =>
+  distributed(late)
+    ? notifiedPage(env, identity, late.status, addressed, "")
+    : Promise.resolve(ok(NOTHING_NOTIFIED));
+
+/** The job that reads the page of `status`'s notifying followers after `afterFollowId`. */
+const followerPageJob = (status: RemoteStatusValue, afterFollowId: string): OutboxJob => ({
+  kind: "NotifyRemoteNoteFollowers",
+  statusId: status.id,
+  actorUri: status.actorUri,
+  afterFollowId,
+});
+
+/**
+ * `NotifyRemoteNoteFollowers`: a page of a stored note's notifying
+ * followers, each the note reaches given a `FinishRemoteNoteRecipient` job
+ * with its `Status` step, and the next page. A note that is gone notifies
+ * nobody.
+ */
+export const processNotifyRemoteNoteFollowersJob = async (
+  env: Env,
+  job: Extract<OutboxJob, { kind: "NotifyRemoteNoteFollowers" }>,
+): Promise<"ok" | "retry"> =>
+  measureJobPage(env, job.kind, async () => {
+    const retry = { outcome: "retry", size: -1, chained: false } as const;
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      return retry;
+    }
+    const found = await findRemoteStatusesByIds(env.DB, [job.statusId]);
+    if (found.isErr()) {
+      return retry;
+    }
+    const status = found.value.get(job.statusId);
+    if (status === undefined) {
+      return { outcome: "ok", size: 0, chained: false };
+    }
+    // A limited or direct note reaches the followers it names, silently or not.
+    const named =
+      status.visibility.kind === "Limited" || status.visibility.kind === "Direct"
+        ? (await listRemoteStatusMentions(env.DB, [status.id])).map(
+            (mentions) => new Set(mentions.get(status.id)?.accountIds ?? []),
+          )
+        : ok(new Set<string>());
+    if (named.isErr()) {
+      return retry;
+    }
+    const page = await notifiedPage(env, identity.value, status, named.value, job.afterFollowId);
+    if (page.isErr()) {
+      return retry;
+    }
+    const queued = await queueOutboxJobs(env, [
+      ...page.value.recipients.map((accountId): OutboxJob => ({
+        kind: "FinishRemoteNoteRecipient",
+        statusId: status.id,
+        actorUri: status.actorUri,
+        accountId,
+        steps: ["Status"],
+      })),
+      ...(page.value.next === undefined ? [] : [followerPageJob(status, page.value.next)]),
+    ]);
+    return queued.isOk()
+      ? {
+          outcome: "ok",
+          size: page.value.recipients.length,
+          chained: page.value.next !== undefined,
+        }
+      : retry;
+  });
 
 /**
  * The steps of storing or updating a remote note that run after the batch
@@ -498,7 +601,8 @@ type RecipientStep = "Mention" | "Conversation" | "Status";
  * tell `recipients.conversation` their conversation changed, and send
  * `recipients.status` the note's `status` notification. The first
  * {@link INLINE_NOTE_RECIPIENTS} accounts are served here; each of the rest
- * gets a `FinishRemoteNoteRecipient` job, which does the same for it. A
+ * gets a `FinishRemoteNoteRecipient` job, which does the same for it, and
+ * `recipients.nextFollowers` starts the next page of notifying followers. A
  * notification is stored once (`notifyFromRemoteOnce`), so a redelivery that
  * queues an account again notifies it once.
  */
@@ -511,6 +615,7 @@ const reachRecipients = async (
     mention: ReadonlyArray<string>;
     conversation: ReadonlyArray<string>;
     status: ReadonlyArray<string>;
+    nextFollowers: string | undefined;
   }>,
 ): Promise<Result<void, RepositoryError>> => {
   const steps = new Map<string, RecipientStep[]>();
@@ -528,16 +633,18 @@ const reachRecipients = async (
     return err(served.error);
   }
   // Unqueued: the delivery fails and its redelivery queues them again.
-  return queueOutboxJobs(
-    env,
-    queued.map(([accountId, accountSteps]): OutboxJob => ({
+  return queueOutboxJobs(env, [
+    ...queued.map(([accountId, accountSteps]): OutboxJob => ({
       kind: "FinishRemoteNoteRecipient",
       statusId: status.id,
       actorUri: actor.actorUri,
       accountId,
       steps: accountSteps,
     })),
-  );
+    ...(recipients.nextFollowers === undefined
+      ? []
+      : [followerPageJob(status, recipients.nextFollowers)]),
+  ]);
 };
 
 /** What {@link reachRecipients} does for each account it serves itself, and the job for each one it queues. */
@@ -656,7 +763,8 @@ const writeLateSteps = async (
   // sent before the later writes: an `Update` that edits nothing owes no
   // marker, so its redelivery finds the rows and would notify nobody.
   const reached = await reachRecipients(env, identity, actor, status, {
-    status: notified.value,
+    status: notified.value.recipients,
+    nextFollowers: notified.value.next,
     mention: mentionsToNotify(late, mentioned),
     // Everyone a new direct note reaches here: the conversation lists it for
     // each. A limited note joins no conversation (`FanOutOnWriteService`).

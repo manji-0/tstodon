@@ -24,7 +24,11 @@ import {
 
 const FollowActivityIdRow = z.object({ follow_activity_id: z.string() });
 const ActorUriRow = z.object({ actor_uri: z.string() });
-const NotifyingFollowerRow = z.object({ account_id: z.string(), languages_json: z.string() });
+const NotifyingFollowerRow = z.object({
+  id: z.string(),
+  account_id: z.string(),
+  languages_json: z.string(),
+});
 const FoundRow = z.object({ found: z.number() });
 
 const OutboundFollowRowSchema = z.object({
@@ -217,26 +221,47 @@ export const deleteOutboundFollow = async (
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([OutboundFollowRowSchema]);
 
+/** A page of {@link notifyingRemoteFollowersPage}. */
+export type NotifyingFollowerPage = Readonly<{
+  followers: ReadonlyArray<NotifyingFollower>;
+  /** The follow id the next page starts after; absent on the last page. */
+  next: string | undefined;
+}>;
+
 /**
- * The local accounts following `actorUri` (accepted) that signed in
- * recently, asked for a notification on each new note, do not mute it, and do not block or mute an
- * account or actor its note `statusId` actively mentions.
+ * A page of the local accounts following `actorUri` (accepted) that signed
+ * in recently, asked for a notification on each new note, do not mute it,
+ * and do not block or mute an account or actor its note `statusId` actively
+ * mentions: up to `limit` of them, after the follow `afterFollowId` (empty
+ * for the first page), in follow id order.
  */
-export const notifyingRemoteFollowers = async (
+export const notifyingRemoteFollowersPage = async (
   db: D1Database,
   actorUri: string,
   statusId: string,
-): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
+  afterFollowId: string,
+  limit: number,
+): Promise<Result<NotifyingFollowerPage, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingRemoteFollowersSql(actorUri, nowIso(), statusId, signedInRecentlySinceDay()),
+      listNotifyingRemoteFollowersSql(
+        actorUri,
+        nowIso(),
+        statusId,
+        signedInRecentlySinceDay(),
+        afterFollowId,
+        limit,
+      ),
       NotifyingFollowerRow,
     );
-    return rows.map((row) => ({
-      accountId: row.account_id,
-      languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
-    }));
+    return {
+      followers: rows.map((row) => ({
+        accountId: row.account_id,
+        languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
+      })),
+      next: rows.length === limit ? rows.at(-1)?.id : undefined,
+    };
   });
 
 /**
