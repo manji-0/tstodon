@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const searchPeerDomains = $runtime.makeTypedQueryFactory(
-  "SELECT DISTINCT host AS domain FROM remote_actors\nWHERE host != '' AND substr(host, 1, length($1)) = $1\nAND host NOT IN (SELECT lower(domain) FROM domain_blocks)\nORDER BY domain ASC\nLIMIT $2",
+  "SELECT DISTINCT host AS domain FROM remote_actors\nWHERE host != '' AND host >= $1 AND host < $1 || char(1114111)\nAND host NOT IN (SELECT lower(domain) FROM domain_blocks)\nORDER BY domain ASC\nLIMIT $2",
 ) as (
   prefix: string,
   limit: number,

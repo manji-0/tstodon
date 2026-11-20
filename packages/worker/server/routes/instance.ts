@@ -223,13 +223,17 @@ const PEER_SEARCH_LIMIT = 10;
 /** Characters Addressable refuses in a host (`Addressable::URI#validate`). */
 const INVALID_HOST_CHARACTER = /[<>{}/\\?#@"\s]/u;
 
+/** Ruby's `String#strip`: only NUL and ASCII whitespace, unlike `trim()`. */
+const rubyStrip = (value: string): string =>
+  value.replace(/^[\0\t\n\v\f\r ]+|[\0\t\n\v\f\r ]+$/gu, "");
+
 /**
- * `q` as Mastodon's `TagManager#normalize_domain` gives it: trimmed, one
+ * `q` as Mastodon's `TagManager#normalize_domain` gives it: stripped, one
  * trailing `/` dropped, lower-cased, percent-decoded, in IDNA ASCII and
  * without a single trailing dot. `undefined` where Addressable raises.
  */
 const normalizeDomainQuery = (q: string): string | undefined => {
-  const host = q.trim().replace(/\/$/u, "");
+  const host = rubyStrip(q).replace(/\/$/u, "");
   if (INVALID_HOST_CHARACTER.test(host)) {
     return undefined;
   }

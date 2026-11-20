@@ -4,6 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { z } from "zod";
+import { searchPeerDomains as searchPeerDomainsSql } from "./generated/prisma/sql";
+import { d1PrepareTyped } from "./typed-sql";
 
 const search = async (q: string | undefined, headers: Record<string, string> = {}) => {
   const query = q === undefined ? "" : `?q=${encodeURIComponent(q)}`;
@@ -35,6 +38,30 @@ describe("GET /api/v1/peers/search", () => {
       "peersearch-normal.example",
     ]);
     expect(await domainsFor("peersearch-normal.example.")).toEqual(["peersearch-normal.example"]);
+    expect(await domainsFor("\tpeersearch-normal\n\0")).toEqual(["peersearch-normal.example"]);
+  });
+
+  it("keeps a non-ASCII space, which Ruby's strip does not remove", async () => {
+    await remoteActor("peer", "peersearch-nbsp.example");
+
+    expect(await domainsFor(" peersearch-nbsp")).toEqual([]);
+  });
+
+  it("seeks remote actors by host instead of scanning them", async () => {
+    const typed = searchPeerDomainsSql("peersearch", 10);
+    const { results } = await d1PrepareTyped(env.DB, {
+      sql: `EXPLAIN QUERY PLAN ${typed.sql}`,
+      values: typed.values,
+    }).all();
+    const details = z
+      .array(z.object({ detail: z.string() }))
+      .parse(results)
+      .map((row) => row.detail);
+
+    expect(details.filter((detail) => /^SCAN remote_actors\b/.test(detail))).toEqual([]);
+    expect(
+      details.some((detail) => /^SEARCH remote_actors .*\(host>\? AND host<\?\)/.test(detail)),
+    ).toBe(true);
   });
 
   it("answers null when q is blank and no domains for a q that is not a host", async () => {
