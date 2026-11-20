@@ -17,6 +17,7 @@ describe("parseSignatureHeader", () => {
       'keyId="https://example.com/users/alice#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="abc123"',
     );
     expect(parsed).toEqual({
+      kind: "Cavage",
       keyId: "https://example.com/users/alice#main-key",
       algorithm: "rsa-sha256",
       headers: ["(request-target)", "host", "date", "digest"],

@@ -19,8 +19,10 @@ export type InboxRefusalReason =
   | "MissingSignature"
   /** 401: the signature does not cover `date` (SIG-1). */
   | "DateNotSigned"
-  /** 401: the signature does not cover `digest` (SIG-1). */
+  /** 401: the signature does not cover `digest`, or an RFC 9421 one `content-digest` (SIG-1). */
   | "DigestNotSigned"
+  /** 401: an RFC 9421 signature does not cover `@method` and `@target-uri`. */
+  | "TargetNotSigned"
   /** 401: the signed `Date` is unparseable, over 65 minutes old or over 1 hour ahead (SIG-1). */
   | "SignatureExpired"
   /** 401: `Digest` is missing or does not match the body. */
