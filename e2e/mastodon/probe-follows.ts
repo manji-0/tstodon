@@ -15,6 +15,7 @@ import {
   followsAfterAccept,
   mastodonRails,
   mastodonUsers,
+  notified,
   onHome,
   post,
   relationship,
@@ -293,5 +294,28 @@ export const followScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
     await eventually("the last unfollow lands", async () =>
       (await followersCount(target)) === before ? true : undefined,
     );
+  });
+
+  // FED-15: Mastodon's `FeedInsertWorker#notify?` sends a `status`
+  // notification for each post a notifying follow brings to home.
+  await bothWays("notify me when this account posts", alice, mona, async (author, follower) => {
+    const account = await resolveAccount(follower, author);
+    await call(follower, `/api/v1/accounts/${account.id}/follow`, Anything, {
+      method: "POST",
+      body: { notify: true },
+    });
+    await followsAfterAccept(follower, account.id, `${author.acct} accepts`);
+    try {
+      if (!(await relationship(follower, account.id)).notifying) {
+        throw new StepFailure("the follow does not notify");
+      }
+      const sent = await post(author, { status: `a post to notify of ${stamp}` });
+      await notified(follower, "status", author, sent.uri);
+    } finally {
+      await call(follower, `/api/v1/accounts/${account.id}/unfollow`, Anything, {
+        method: "POST",
+        body: {},
+      });
+    }
   });
 };

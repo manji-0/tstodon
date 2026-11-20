@@ -4,12 +4,19 @@ import { afterResponse } from "./after-response";
 import type {
   LocalAccount,
   LocalNote,
+  NoteThread,
   RemoteActor,
   StatusTargetValue,
   ThreadStatus,
   ValidatedStatusDraft,
 } from "@tstodon/domain";
-import { InstanceIdentity, LocalStatus, StatusId, StatusTarget } from "@tstodon/domain";
+import {
+  InstanceIdentity,
+  LocalStatus,
+  StatusId,
+  StatusNotificationAudience,
+  StatusTarget,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
@@ -27,7 +34,7 @@ import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll } from "./poll-store";
 import { startLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
-import { notifyingFollowerIds } from "./follow-store";
+import { notifyingFollowers } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, setStatusReplyUri } from "./status-store";
@@ -131,6 +138,15 @@ export const writeMediaAttributes = async (
  * ActivityPub `Create`, and the streaming event. Shared by `POST
  * /api/v1/statuses` and the scheduled-status publisher so both behave the same.
  */
+const noteThread = (replyTo: ThreadStatus | null, authorId: string): NoteThread => {
+  if (replyTo === null) {
+    return { kind: "Root" };
+  }
+  return replyTo.kind === "Local" && replyTo.status.accountId === authorId
+    ? { kind: "SelfReply" }
+    : { kind: "ReplyToOther" };
+};
+
 /** A published note and its author's view of it (as `GET /api/v1/statuses/:id` renders it). */
 export type PublishedNote = Readonly<{
   note: LocalNote;
@@ -289,26 +305,22 @@ export const publishLocalNote = async (
     );
   }
   // Followers who asked for notifications on this account's posts get a
-  // `status` notification when the note reaches their home, as Mastodon's
-  // `FeedInsertWorker#notify?`: not for a reply to someone else, and for a
-  // direct note only when it mentions them. The notification policy still
-  // decides delivery.
-  const notifying = await notifyingFollowerIds(env.DB, user.id);
+  // `status` notification when the note reaches their home. The
+  // notification policy still decides delivery.
+  const notifying = await notifyingFollowers(env.DB, user.id);
   if (notifying.isErr()) {
     return err(notifying.error);
   }
-  const repliesToOther =
-    input.replyTo !== null &&
-    (input.replyTo.kind === "Remote" || input.replyTo.status.accountId !== user.id);
-  const mentionedIds = new Set<string>(mentionedAccounts.map((account) => account.id));
-  for (const followerId of notifying.value) {
-    if (
-      followerId === user.id ||
-      repliesToOther ||
-      (note.visibility.kind === "Direct" && !mentionedIds.has(followerId))
-    ) {
-      continue;
-    }
+  const notified = StatusNotificationAudience.recipients(
+    {
+      visibility: note.visibility,
+      thread: noteThread(input.replyTo, user.id),
+      language: note.language,
+      addressed: new Set(mentionedAccounts.map((account) => account.id)),
+    },
+    notifying.value,
+  );
+  for (const followerId of notified) {
     await notifyAccount(env, {
       accountId: followerId,
       fromAccountId: user.id,

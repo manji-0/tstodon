@@ -1,4 +1,4 @@
-import { OutboundFollow, type OutboundFollowAnswer } from "@tstodon/domain";
+import { type NotifyingFollower, OutboundFollow, type OutboundFollowAnswer } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
@@ -10,9 +10,11 @@ import { CountedRow, queryTyped, runTyped } from "./typed-sql";
 import {
   acceptOutboundFollow as acceptOutboundFollowSql,
   deleteOutboundFollow as deleteOutboundFollowSql,
+  findNotifyingRemoteFollow as findNotifyingRemoteFollowSql,
   findOutboundFollow as findOutboundFollowSql,
   insertOutboundFollow as insertOutboundFollowSql,
   listAcceptedOutboundFollowActors as listAcceptedOutboundFollowActorsSql,
+  listNotifyingRemoteFollowers as listNotifyingRemoteFollowersSql,
   listOutboundFollowsByActor as listOutboundFollowsByActorSql,
   rejectOutboundFollow as rejectOutboundFollowSql,
   revokeOutboundFollow as revokeOutboundFollowSql,
@@ -21,6 +23,8 @@ import {
 
 const FollowActivityIdRow = z.object({ follow_activity_id: z.string() });
 const ActorUriRow = z.object({ actor_uri: z.string() });
+const NotifyingFollowerRow = z.object({ account_id: z.string(), languages_json: z.string() });
+const FoundRow = z.object({ found: z.number() });
 
 const OutboundFollowRowSchema = z.object({
   id: z.string(),
@@ -211,3 +215,35 @@ export const deleteOutboundFollow = async (
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([OutboundFollowRowSchema]);
+
+/** The local accounts following `actorUri` (accepted) that asked for a notification on each new note and do not mute it. */
+export const notifyingRemoteFollowers = async (
+  db: D1Database,
+  actorUri: string,
+): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      listNotifyingRemoteFollowersSql(actorUri, nowIso()),
+      NotifyingFollowerRow,
+    );
+    return rows.map((row) => ({
+      accountId: row.account_id,
+      languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
+    }));
+  });
+
+/** Whether `accountId` still follows `actorUri` (accepted) with notifications on, and does not mute it. */
+export const isNotifyingRemoteFollower = async (
+  db: D1Database,
+  accountId: string,
+  actorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      findNotifyingRemoteFollowSql(accountId, actorUri, nowIso()),
+      FoundRow,
+    );
+    return rows.length > 0;
+  });

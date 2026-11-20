@@ -73,6 +73,12 @@ export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
 export { RealtimeWindow } from "./realtime-window";
 export {
+  type NoteThread,
+  type NotifiedNote,
+  type NotifyingFollower,
+  StatusNotificationAudience,
+} from "./status-notification-audience";
+export {
   ImportMode,
   type ImportMode as ImportModeValue,
   ImportRow,
