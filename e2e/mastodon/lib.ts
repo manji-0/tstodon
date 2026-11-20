@@ -32,6 +32,7 @@ export const mastodonUser = async (name: string): Promise<E2eUser> => {
     origin: MASTODON,
     headers,
     browser: () => fail("no browser session for a Mastodon user"),
+    adminBrowser: () => fail("no Access login for a Mastodon user"),
     id: account.id,
     username: account.username,
     acct: `@${account.username}@${MASTODON_DOMAIN}`,

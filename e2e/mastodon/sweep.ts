@@ -3,7 +3,9 @@
  * client API call, the step recorder and the lookups both servers answer.
  */
 import { execFileSync } from "node:child_process";
-import { dirname } from "node:path";
+import { readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { appToken, sleep, type E2eUser } from "../lib.js";
@@ -476,58 +478,45 @@ export const mastodonUsers = async (names: readonly string[]): Promise<E2eUser[]
   return users;
 };
 
-const D1Results = z.array(z.looseObject({ results: z.array(z.unknown()) }));
+const d1Directory = join(repositoryRoot, ".wrangler/e2e-mastodon/v3/d1/miniflare-D1DatabaseObject");
 
 /**
- * Run one SQL statement on the tstodon Worker's local D1 database, as an
- * operator does with Wrangler; Wrangler's output.
+ * The rows one query answers on the tstodon Worker's local D1 database, read
+ * from its SQLite file with a read-only connection. Not `wrangler d1 execute
+ * --local`: that runs a second workerd on the file, which does not wait for
+ * the Worker's write lock and makes the Worker's own queries fail with
+ * `SQLITE_BUSY` while it writes.
  */
-const tstodonD1 = (sql: string): string =>
-  run(
-    "pnpm",
-    [
-      "exec",
-      "wrangler",
-      "d1",
-      "execute",
-      "tstodon-e2e-mastodon",
-      "--local",
-      "--config",
-      "e2e/mastodon/tstodon.wrangler.jsonc",
-      "--persist-to",
-      ".wrangler/e2e-mastodon",
-      "--json",
-      "--command",
-      sql,
-    ],
-    repositoryRoot,
-  );
-
-/** {@link tstodonD1}, for the rows a query answers. */
 export const tstodonSql = (sql: string): unknown[] => {
-  const out = tstodonD1(sql);
-  const parsed = D1Results.safeParse(JSON.parse(out.slice(out.indexOf("["))));
-  if (!parsed.success) {
-    throw new StepFailure(`wrangler d1 execute answered ${out.slice(0, 300)}`);
+  const files = readdirSync(d1Directory).filter(
+    (name) => name.endsWith(".sqlite") && name !== "metadata.sqlite",
+  );
+  const [file] = files;
+  if (file === undefined || files.length > 1) {
+    throw new StepFailure(`expected one D1 database in ${d1Directory}: ${files.join(", ")}`);
   }
-  return parsed.data.flatMap((statement) => statement.results);
+  const database = new DatabaseSync(join(d1Directory, file), { readOnly: true, timeout: 10_000 });
+  try {
+    return database.prepare(sql).all();
+  } finally {
+    database.close();
+  }
 };
 
 /**
- * Give a tstodon user the admin role, as an operator does in the database;
- * the same user with a token for the admin API.
+ * Give a tstodon user the admin role, as an operator does with an Access
+ * group (`CF_ACCESS_ADMIN_GROUPS` in `tstodon.wrangler.jsonc`); the same
+ * user with a browser in that group and a token for the admin API.
  */
 export const tstodonAdmin = async (user: E2eUser): Promise<E2eUser> => {
-  tstodonD1(
-    `UPDATE "user" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE id = '${user.id}')`,
-  );
+  const browser = await user.adminBrowser();
   const headers = await appToken(
     user.origin,
-    user.browser,
+    browser,
     "read write follow push admin:read admin:write",
     user.username,
   );
-  return { ...user, headers };
+  return { ...user, headers, browser };
 };
 
 /**
