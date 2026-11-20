@@ -1,4 +1,10 @@
-import { type Hostname, InstanceIdentity, type OutboxJob, ProfileField } from "@tstodon/domain";
+import {
+  type Hostname,
+  InstanceIdentity,
+  type OutboxJob,
+  ProfileField,
+  RemoteActor,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findAccountProfile } from "./account-profile-store";
@@ -258,8 +264,8 @@ const remoteProfile = async (
   }
   return ok({
     fields: actor.value.profile.fields,
-    // Mastodon's `url_for` of a remote account: its `url`, else its URI.
-    linkBack: actor.value.profile.profileUrl ?? actor.value.actorUri,
+    // Mastodon's `url_for` of a remote account: its `url` on its own host, else its URI.
+    linkBack: RemoteActor.profileUrl(actor.value),
     linkOf: (field) => remoteFieldLink(field.value),
     markVerified: async (index, value, at) => {
       await runTyped(db, markRemoteProfileFieldVerifiedSql(at, actorUri, index, value));

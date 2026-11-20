@@ -95,13 +95,29 @@ const hostnames = (actor: RemoteActor): ReadonlyArray<Hostname> => {
   return [Hostname.ofAuthority(actor.domain), ...(uriHost ? [uriHost] : [])];
 };
 
+/** Whether `url` is on the host of `actorUri`, ignoring case (Mastodon's `mismatching_origin?`). */
+const sameHost = (url: string, actorUri: string): boolean => {
+  const host = Hostname.ofUri(url);
+  return host !== undefined && host === Hostname.ofUri(actorUri);
+};
+
 export const RemoteActor = {
   schema: RemoteActorSchema,
   profileSchema: RemoteActorProfileSchema,
+  sameHost,
   emptyProfile: EMPTY_PROFILE,
   parse: parseRemoteActor,
-  /** The actor's `url`, its profile page, or its id when it names none. */
-  profileUrl: (actor: RemoteActor): string => actor.profile.profileUrl ?? actor.actorUri,
+  /**
+   * The actor's `url`, its profile page, or its id when it names none or one
+   * on another host, as Mastodon's `ProcessAccountService#url` drops it
+   * (`mismatching_origin?`): an actor cannot claim another's profile.
+   */
+  profileUrl: (actor: RemoteActor): string => {
+    const { profileUrl } = actor.profile;
+    return profileUrl !== null && sameHost(profileUrl, actor.actorUri)
+      ? profileUrl
+      : actor.actorUri;
+  },
   fromFetched: (input: {
     actorUri: string;
     username: string;

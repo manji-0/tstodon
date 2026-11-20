@@ -20,6 +20,18 @@ const document = (fields: Record<string, unknown> = {}): Record<string, unknown>
 });
 
 describe("remoteActorFromDocument", () => {
+  it.each([
+    ["https://remote.example/@bob", "https://remote.example/@bob"],
+    ["https://victim.example/@alice", null],
+    [[{ type: "Link", href: "https://victim.example/@alice" }], null],
+  ])(
+    "keeps the url %j only on the actor's own host, as Mastodon's mismatching_origin?",
+    (url, kept) => {
+      const actor = remoteActorFromDocument(document({ url }), ACTOR);
+      expect(actor.isOk() && actor.value.actor.profile.profileUrl).toBe(kept);
+    },
+  );
+
   it.each(["bob", "Bob_2", "a.b", "a-b", "a..b", "a.-_b", "_", "x"])(
     "takes the remote username %j, as Mastodon's Account does",
     (username) => {
