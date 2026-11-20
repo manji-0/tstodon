@@ -337,6 +337,19 @@ describe("remote media as Mastodon's REST MediaAttachment", () => {
     expect(shown.edited_at).not.toBeNull();
   });
 
+  it("keeps a thumbnail URL normalized, as Mastodon's Addressable normalize", async () => {
+    const [video] = await persistNote("media-thumb-norm.example", [
+      {
+        type: "Document",
+        mediaType: "video/mp4",
+        url: "https://media-thumb-norm.example/clip.mp4",
+        icon: "HTTPS://Media-Thumb-Norm.example/a b.jpg",
+      },
+    ]);
+    expect(video?.preview_url).toBe("https://media-thumb-norm.example/a%20b.jpg");
+    expect(video?.preview_remote_url).toBe("https://media-thumb-norm.example/a%20b.jpg");
+  });
+
   it("ignores a thumbnail that is not an http(s) URL", async () => {
     const [video] = await persistNote("media-bad-icon.example", [
       {

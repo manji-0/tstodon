@@ -11,14 +11,14 @@ const parseIconObject = schemaResult(z.looseObject({ url: z.string() }));
 /**
  * The thumbnail an attachment's `icon` names, as Mastodon's
  * `MediaAttachmentParser#thumbnail_remote_url`: a URL, or the `url` of an
- * object; one that is not http(s) is left out.
+ * object, normalized; one that is not http(s) is left out.
  */
 const thumbnailOf = (icon: unknown): string | undefined => {
-  if (typeof icon === "string") {
-    return httpUrl(icon);
-  }
   const object = parseIconObject(icon);
-  return object.isOk() ? httpUrl(object.value.url) : undefined;
+  const url = httpUrl(
+    typeof icon === "string" ? icon : object.isOk() ? object.value.url : undefined,
+  );
+  return url === undefined ? undefined : new URL(url).href;
 };
 
 const pixels = (value: unknown): number | undefined =>
