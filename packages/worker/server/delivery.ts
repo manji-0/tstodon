@@ -30,7 +30,10 @@ import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { checkFederatedHost } from "./federated-fetch";
-import { collectionSynchronizationHeader } from "./followers-synchronization";
+import {
+  collectionSynchronizationHeader,
+  followersSynchronizationDisabled,
+} from "./followers-synchronization";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
@@ -510,7 +513,10 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
   const instanceDomain = identity.value.domain;
   const { account_id: signerId, signer_username: signerUsername } = activity.value;
   const synchronizing =
-    activity.value.synchronize_followers === 1 && signerId !== null && signerUsername !== null
+    activity.value.synchronize_followers === 1 &&
+    signerId !== null &&
+    signerUsername !== null &&
+    !followersSynchronizationDisabled(env)
       ? { id: signerId, username: signerUsername }
       : undefined;
   return async (inboxUrl) => {

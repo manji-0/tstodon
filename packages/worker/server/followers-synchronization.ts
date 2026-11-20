@@ -3,6 +3,11 @@ import { err, ok, type Result } from "neverthrow";
 import { accountCounts } from "./account-count-store";
 import type { RepositoryError } from "./d1";
 import { remoteFollowerUrisUnder } from "./followers-synchronization-store";
+import { optionalEnvString } from "./runtime-config";
+
+/** Mastodon's `DISABLE_FOLLOWERS_SYNCHRONIZATION`: neither send the header nor act on one. */
+export const followersSynchronizationDisabled = (env: Env): boolean =>
+  optionalEnvString(env, "DISABLE_FOLLOWERS_SYNCHRONIZATION") === "true";
 
 /**
  * Whether a status's `Create`, `Update` or `Announce` goes out with a

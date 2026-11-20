@@ -400,6 +400,19 @@ const RefreshQuoteSchema = z.object({
 });
 
 /**
+ * Read the remote actor's partial followers collection at `url` and drop the
+ * local follows of it that it no longer lists (FEP-8fcf), as Mastodon's
+ * `FollowersSynchronizationWorker`. `digest` is the one its
+ * `Collection-Synchronization` header named, if any.
+ */
+const SynchronizeFollowersSchema = z.object({
+  kind: z.literal("SynchronizeFollowers"),
+  actorUri: z.url(),
+  url: z.string().min(1),
+  digest: z.string().optional(),
+});
+
+/**
  * Check the links of an account's profile fields, as Mastodon's
  * `VerifyAccountLinksWorker`: each field from `fromIndex` on whose link waits
  * for a check is marked verified when the linked page links back with
@@ -461,6 +474,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   RefreshQuoteSchema,
   FederatePendingStatusesSchema,
   VerifyProfileLinksSchema,
+  SynchronizeFollowersSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

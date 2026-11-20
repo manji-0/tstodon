@@ -66,6 +66,7 @@ import {
   restrictedActorDocument,
 } from "../authorized-fetch";
 import { remoteFollowerUrisUnder } from "../followers-synchronization-store";
+import { prepareFollowersSynchronization } from "../remote-followers-synchronization";
 import {
   claimInboxActivity,
   completeInboxActivity,
@@ -1178,6 +1179,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
     if (senderHost !== undefined) {
       await recordDeliveryReachability(c.env, senderHost, "Reachable", "inbound");
     }
+    // Before the activity is read, as Mastodon's `InboxesController#create`.
+    await prepareFollowersSynchronization(
+      c.env,
+      identity.value,
+      requestSigner.actor,
+      c.req.header("Collection-Synchronization"),
+    );
   }
   let author: InboxSigner = requestSigner;
   // What the handlers read: the body as received, or for a forward its
