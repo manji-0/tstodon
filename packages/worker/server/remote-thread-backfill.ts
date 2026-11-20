@@ -185,8 +185,9 @@ export const requestRemoteThreadBackfill = async (
   if (status.visibility.kind !== "Public" && status.visibility.kind !== "Unlisted") {
     return undefined;
   }
+  // Mastodon reports a running fetch before it asks whether to start one.
   if (Date.parse(status.publishedAt) > Date.now() - THREAD_BACKFILL_INITIAL_WAIT_MS) {
-    return undefined;
+    return (await findThreadRefresh(env.DB, status.id)).unwrapOr(undefined);
   }
   const claimed = await claimRemoteThreadBackfill(env.DB, status.id, THREAD_BACKFILL_TTL_MS);
   if (claimed.isErr()) {

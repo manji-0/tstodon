@@ -1067,6 +1067,25 @@ describe("Mastodon async refresh of a remote thread", () => {
     expect(recording.sent).toEqual([]);
   });
 
+  it("reports a running fetch of a status published in the last five minutes", async () => {
+    const author = await remoteActor("refresh-recent-running", "thread.example");
+    const opened = {
+      ...noteDocument(author, "refresh-recent-running-opened"),
+      published: new Date(Date.now() - 60 * 1000).toISOString(),
+    };
+    await deliver(author, opened);
+    const openedId = await statusIdOf(opened.id);
+    await env.DB.prepare("UPDATE remote_statuses SET context_fetched_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), openedId)
+      .run();
+
+    const response = await contextResponse(openedId, await authHeaders(READER));
+
+    expect(response.headers.get("Mastodon-Async-Refresh")).toBe(
+      `id="context:${openedId}:refresh", retry=3, result_count=0`,
+    );
+  });
+
   it("reports the fetch running, then finished with the statuses it stored", async () => {
     const author = await remoteActor("refresh-lifecycle", "thread.example");
     const opened = noteDocument(author, "refresh-opened", {
