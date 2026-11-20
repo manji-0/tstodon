@@ -13,6 +13,7 @@ import {
   eventually,
   follow,
   followsAfterAccept,
+  mastodonRails,
   mastodonUsers,
   onHome,
   post,
@@ -135,7 +136,79 @@ const postSettings = async (user: E2eUser, path: string, fields: Record<string, 
   }
 };
 
+/** Whether `viewer` follows `accountId`, read from its following list (see `followsAfterAccept`). */
+const follows = async (viewer: E2eUser, accountId: string): Promise<boolean> => {
+  const following = await call(
+    viewer,
+    `/api/v1/accounts/${viewer.id}/following?limit=80`,
+    Accounts,
+  );
+  return following.some((account) => account.id === accountId);
+};
+
+/**
+ * FEP-8fcf. A follow only the receiving server still holds is dropped once
+ * the followed account posts for its followers: the delivery carries a
+ * `Collection-Synchronization` digest, the receiver reads the sender's
+ * `followers_synchronization` list, signed, and unfollows. Mastodon's
+ * database is changed with `rails runner`, without federating, to make the
+ * two servers disagree.
+ */
+const followersSynchronization = async (stamp: string): Promise<void> => {
+  await step("followers synchronization drops a stale follow: tstodon → Mastodon", async () => {
+    const author = await signUp(A, "syn");
+    const [kept, stale] = await mastodonUsers([`syk_${stamp}`, `sys_${stamp}`]);
+    if (!kept || !stale) {
+      throw new StepFailure("no Mastodon users");
+    }
+    const authorId = await follow(kept, author);
+    const staleAuthorId = (await resolveAccount(stale, author)).id;
+    const made = mastodonRails(
+      `Follow.create!(account: Account.find_local!("${stale.username}"), target_account: Account.find_by!(uri: "${author.uri}")); puts "STALE"`,
+    );
+    if (!made.includes("STALE") || !(await follows(stale, staleAuthorId))) {
+      throw new StepFailure(`the stale follow was not made: ${made.slice(-300)}`);
+    }
+    await post(author, { status: `for my followers ${stamp}`, visibility: "private" });
+    await eventually("Mastodon drops the follow tstodon does not list", async () =>
+      (await follows(stale, staleAuthorId)) ? undefined : true,
+    );
+    if (!(await follows(kept, authorId))) {
+      throw new StepFailure("Mastodon dropped a follow tstodon lists");
+    }
+  });
+
+  await step("followers synchronization drops a stale follow: Mastodon → tstodon", async () => {
+    const [author] = await mastodonUsers([`sya_${stamp}`]);
+    if (!author) {
+      throw new StepFailure("no Mastodon user");
+    }
+    const kept = await signUp(A, "syk");
+    const stale = await signUp(A, "sys");
+    const authorId = await follow(kept, author);
+    const staleAuthorId = await follow(stale, author);
+    const dropped = mastodonRails(
+      `Follow.find_by!(account: Account.find_by!(uri: "${stale.uri}"), target_account: Account.find_local!("${author.username}")).destroy!; puts "DROPPED"`,
+    );
+    if (!dropped.includes("DROPPED")) {
+      throw new StepFailure(`Mastodon's follow was not dropped: ${dropped.slice(-300)}`);
+    }
+    await post(author, { status: `for my followers ${stamp}`, visibility: "private" });
+    await relationshipBecomes(
+      stale,
+      staleAuthorId,
+      "tstodon drops the follow Mastodon does not list",
+      (state) => !state.following && !state.requested,
+    );
+    if (!(await relationship(kept, authorId)).following) {
+      throw new StepFailure("tstodon dropped a follow Mastodon lists");
+    }
+  });
+};
+
 export const followScenarios = async ({ stamp, mona, carol, dana }: Cast): Promise<void> => {
+  await followersSynchronization(stamp);
+
   const alice = await signUp(A, "faye");
   const bob = await signUp(A, "finn");
   const locked = await signUp(A, "lock");
