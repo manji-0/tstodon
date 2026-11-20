@@ -16,6 +16,8 @@ import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
 import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
+import { OutboxJob } from "@tstodon/domain";
+import { processOutboxJob } from "./outbox-job";
 
 // Mastodon sends the `status` notification ("notify me when this account
 // posts") for a remote note as for a local one: `FeedInsertWorker#notify?`,
@@ -92,6 +94,36 @@ const statusNotifications = async (email: string, statusId: string): Promise<num
   );
   return row?.n ?? 0;
 };
+
+/** The notifications of `kind` stored for `email`'s account about `statusId`. */
+const notificationsOf = async (email: string, statusId: string, kind: string): Promise<number> => {
+  const account = await signedInAccount(email);
+  const [row] = parseRows(
+    z.object({ n: z.number() }),
+    (
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM notifications WHERE account_id = ? AND status_id = ? AND kind = ?",
+      )
+        .bind(account.id, statusId, kind)
+        .all()
+    ).results,
+  );
+  return row?.n ?? 0;
+};
+
+/** Serve each of `documents` by URL to the worker's fetches, and 404 anything else. */
+const serve = (documents: ReadonlyMap<string, unknown>): void => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const document = documents.get(new Request(input, init).url);
+    return document === undefined
+      ? new Response("not found", { status: 404 })
+      : new Response(JSON.stringify(document), {
+          headers: { "content-type": "application/activity+json" },
+        });
+  });
+};
+
+const HOUR_MS = 60 * 60 * 1000;
 
 const actorOf = async (email: string): Promise<string> =>
   `https://example.com/users/${(await signedInAccount(email)).username}`;
@@ -498,4 +530,139 @@ describe("a remote note of an actor many local accounts follow with notification
       expect(notified).toBe(INLINE_NOTE_RECIPIENTS);
     },
   );
+});
+
+// Mastodon's `Create#distribute` fans out a status it fetched (a boosted
+// one, a reply's parent, a quoted one, a search result) when it was
+// published within `Status::REAL_TIME_WINDOW` (6 hours), so its notifying
+// followers and the local accounts it mentions are notified as for one an
+// inbox `Create` delivered.
+describe("a followed remote actor's note this server fetches", () => {
+  const boostedNote = async (slug: string, published: string) => {
+    const author = await remoteActor(`rsnfetch${slug}`, `rsn-fetch-${slug}.example`);
+    const booster = await remoteActor(
+      `rsnfetchbooster${slug}`,
+      `rsn-fetch-booster-${slug}.example`,
+    );
+    const follower = `rsn-fetch-${slug}-follower@example.com`;
+    const mentioned = `rsn-fetch-${slug}-mentioned@example.com`;
+    await followRemote(follower, author, { notify: true });
+    await followRemote(follower, booster, {});
+    const mentionedActor = await actorOf(mentioned);
+    const uri = `https://rsn-fetch-${slug}.example/notes/1`;
+    serve(
+      new Map([
+        [
+          uri,
+          {
+            id: uri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: "<p>boost me</p>",
+            published,
+            to: [PUBLIC],
+            cc: [`${author.actorUri}/followers`, mentionedActor],
+            tag: [{ type: "Mention", href: mentionedActor }],
+          },
+        ],
+      ]),
+    );
+    expect(
+      await booster.send({
+        id: `https://rsn-fetch-booster-${slug}.example/announces/1`,
+        type: "Announce",
+        actor: booster.actorUri,
+        object: uri,
+        published: new Date().toISOString(),
+        to: [PUBLIC],
+        cc: [`${booster.actorUri}/followers`],
+      }),
+    ).toBe(202);
+    await settle();
+    return { id: await storedId(uri), follower, mentioned };
+  };
+
+  it("notifies when it was published within the real-time window", async () => {
+    const { id, follower, mentioned } = await boostedNote(
+      "recent",
+      new Date(Date.now() - HOUR_MS).toISOString(),
+    );
+
+    expect(await statusNotifications(follower, id)).toBe(1);
+    expect(await notificationsOf(mentioned, id, "mention")).toBe(1);
+  });
+
+  it("notifies nobody when it was published before the real-time window", async () => {
+    const { id, follower, mentioned } = await boostedNote(
+      "old",
+      new Date(Date.now() - 7 * HOUR_MS).toISOString(),
+    );
+
+    expect(await statusNotifications(follower, id)).toBe(0);
+    expect(await notificationsOf(mentioned, id, "mention")).toBe(0);
+  });
+
+  // Mastodon reads no outbox: the notes a profile view backfills from one
+  // are never distributed there.
+  it("notifies nobody when an outbox backfill stored it", async () => {
+    const author = await remoteActor("rsnoutbox", "rsn-outbox.example");
+    await followRemote("rsn-outbox-follower@example.com", author, { notify: true });
+    const uri = "https://rsn-outbox.example/notes/1";
+    const outbox = `${author.actorUri}/outbox`;
+    serve(
+      new Map<string, unknown>([
+        [
+          author.actorUri,
+          {
+            id: author.actorUri,
+            type: "Person",
+            preferredUsername: "rsnoutbox",
+            inbox: `${author.actorUri}/inbox`,
+            outbox,
+            publicKey: {
+              id: `${author.actorUri}#main-key`,
+              owner: author.actorUri,
+              publicKeyPem: author.publicKeyPem,
+            },
+          },
+        ],
+        [outbox, { id: outbox, type: "OrderedCollection", first: `${outbox}?page=true` }],
+        [
+          `${outbox}?page=true`,
+          {
+            id: `${outbox}?page=true`,
+            type: "OrderedCollectionPage",
+            orderedItems: [
+              {
+                id: `${uri}/activity`,
+                type: "Create",
+                actor: author.actorUri,
+                to: [PUBLIC],
+                cc: [`${author.actorUri}/followers`],
+                object: {
+                  id: uri,
+                  type: "Note",
+                  attributedTo: author.actorUri,
+                  content: "<p>from the outbox</p>",
+                  published: new Date(Date.now() - HOUR_MS).toISOString(),
+                  to: [PUBLIC],
+                  cc: [`${author.actorUri}/followers`],
+                },
+              },
+            ],
+          },
+        ],
+      ]),
+    );
+    const job = OutboxJob.parse({ kind: "BackfillRemoteOutbox", actorUri: author.actorUri });
+    if (job.isErr()) {
+      throw new Error("backfill job rejected");
+    }
+    expect(await processOutboxJob(env, job.value)).toBe("ok");
+    await settle();
+
+    expect(await statusNotifications("rsn-outbox-follower@example.com", await storedId(uri))).toBe(
+      0,
+    );
+  });
 });

@@ -113,7 +113,7 @@ const backfillOutboxItem = async (
           },
     audience: { to: stringList(item.value.to), cc: stringList(item.value.cc) },
   });
-  const persist = { ...options, idClock: "Published" } as const;
+  const persist = { ...options, idClock: "Published", delivery: "Backfilled" } as const;
   if (decision.kind === "Ignore") {
     return;
   }

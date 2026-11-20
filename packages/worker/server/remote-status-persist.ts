@@ -257,7 +257,8 @@ const storedMentions = async (
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, or one another delivery wrote whose steps this one finishes; this
  * delivery holds its lease. Absent for a note that owes nothing (one that
- * was fetched, or one whose row existed).
+ * was fetched, or one whose row existed). `firstStored` holds when this
+ * call wrote the note's row where there was none.
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
@@ -278,7 +279,7 @@ export type LateSteps = Readonly<{
   addressees?: LocalAddressees;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined }>
+    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined; firstStored: boolean }>
     | Readonly<{
         kind: "Updated";
         added: ReadonlyArray<string>;
@@ -311,24 +312,52 @@ export const newlyMentionedAccountIds = async (
 };
 
 /**
- * The accounts among `mentioned` to notify of their mention. A note an inbox
- * activity stored notifies all of them. An `Update` notifies the ones it
- * newly mentions, and the ones the edit it finishes did.
+ * The accounts among `mentioned` to notify of their mention. A note that is
+ * distributed ({@link distributed}) notifies all of them. An `Update`
+ * notifies the ones it newly mentions, and the ones the edit it finishes did.
  */
 const mentionsToNotify = (
   late: LateSteps,
   mentioned: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
   if (late.kind === "Created") {
-    return deliveredNew(late) ? mentioned : [];
+    return distributed(late) ? mentioned : [];
   }
   const added = new Set([...late.added, ...(late.edit?.mentions ?? [])]);
   return mentioned.filter((accountId) => added.has(accountId));
 };
 
-/** Whether `late` finishes a new note an inbox activity, not a fetch, stored. */
-const deliveredNew = (late: LateSteps): boolean =>
-  late.kind === "Created" && (late.options.delivery ?? "Fetched") !== "Fetched";
+/** Whether `options` store a note an inbox activity its author signed brought. */
+const inboxDelivery = (options: PersistOptions): boolean =>
+  options.delivery === "Create" || options.delivery === "QuoteRequest";
+
+/**
+ * Whether `late` finishes a new note that Mastodon's `Create#distribute`
+ * fans out, notifying the local accounts it mentions and its notifying
+ * followers. An inbox `Create` is distributed whenever it was published
+ * (`override_timestamps`). A status Mastodon fetches is distributed when it
+ * was published within the real-time window (`within_realtime_window?`): a
+ * `QuoteRequest`'s instrument (`FetchRemoteStatusService`) and a note this
+ * server fetched and stored first, as a boosted, quoted, replied-to, pinned
+ * or searched one. A note an outbox backfill stored is not: Mastodon reads
+ * no outbox.
+ */
+const distributed = (late: LateSteps): boolean => {
+  if (late.kind !== "Created") {
+    return false;
+  }
+  const recent = () => RealtimeWindow.contains(late.status.publishedAt, nowInstant());
+  switch (late.options.delivery ?? "Fetched") {
+    case "Create":
+      return true;
+    case "QuoteRequest":
+      return recent();
+    case "Fetched":
+      return late.firstStored && recent();
+    case "Backfilled":
+      return false;
+  }
+};
 
 /**
  * Where the stored note `status` sits in its thread: a reply to a parent
@@ -360,9 +389,9 @@ const remoteNoteThread = async (
 
 /**
  * The local followers a new note sends its `status` notification to
- * ({@link StatusNotificationAudience}). Only a note an inbox activity stored
- * notifies, as Mastodon fans out the `Create` it receives; `addressed` are
- * the local accounts it names. The thread is read only when someone asked.
+ * ({@link StatusNotificationAudience}). Only a note that is distributed
+ * ({@link distributed}) notifies; `addressed` are the local accounts it
+ * names. The thread is read only when someone asked.
  */
 const statusNotified = async (
   env: Env,
@@ -370,14 +399,7 @@ const statusNotified = async (
   late: LateSteps,
   addressed: ReadonlySet<string>,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
-  // A `QuoteRequest`'s instrument is fetched in Mastodon
-  // (`FetchRemoteStatusService`), whose `Create` distributes only a status
-  // within the real-time window; an inbox `Create` distributes any.
-  if (
-    !deliveredNew(late) ||
-    (late.options.delivery === "QuoteRequest" &&
-      !RealtimeWindow.contains(late.status.publishedAt, nowInstant()))
-  ) {
+  if (!distributed(late)) {
     return ok([]);
   }
   const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri, late.status.id);
@@ -697,12 +719,12 @@ type PersistOptions = FederatedFetchOptions &
     /**
      * How the note arrives; `Fetched` by default. `Create` and `QuoteRequest`
      * are inbox activities its author signed, which the sender delivers again
-     * after a 5xx: the local accounts a note stored from one mentions are
-     * notified, and its late steps stay owed (`remote_status_owed`) until
-     * they finish, so the redelivery resumes them. Either streams the note
-     * as a new status.
+     * after a 5xx: a new note's late steps stay owed (`remote_status_owed`)
+     * until they finish, so the redelivery resumes them. `Backfilled` is a
+     * note an outbox backfill fetched. Which new notes notify is
+     * {@link distributed}.
      */
-    delivery?: "Create" | "QuoteRequest" | "Fetched";
+    delivery?: "Create" | "QuoteRequest" | "Fetched" | "Backfilled";
     /** Which instant a newly stored note's id sorts at; `Received` by default. */
     idClock?: IdClock;
     /**
@@ -1059,7 +1081,11 @@ export const remoteQuoteContext = (
   const depth = options.quoteDepth ?? 0;
   const mayFetch = depth < MAX_QUOTE_DEPTH;
   const { forward: _forward, deliveredTo: _deliveredTo, ...fetchOnly } = options;
-  const nested: PersistOptions = { ...fetchOnly, delivery: "Fetched", quoteDepth: depth + 1 };
+  const nested: PersistOptions = {
+    ...fetchOnly,
+    delivery: options.delivery === "Backfilled" ? "Backfilled" : "Fetched",
+    quoteDepth: depth + 1,
+  };
   return {
     fetchOptions: options,
     mayFetch,
@@ -1151,9 +1177,7 @@ const storeRemoteNote = async (
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.
   const marker =
-    existing.row === undefined && (options.delivery ?? "Fetched") !== "Fetched"
-      ? newOwedMarker("Created")
-      : undefined;
+    existing.row === undefined && inboxDelivery(options) ? newOwedMarker("Created") : undefined;
   const stored = await upsertRemoteStatus(
     env.DB,
     status,
@@ -1178,6 +1202,7 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
+    firstStored: existing.row === undefined,
     addressees: addressees.value,
   });
   return finished.map(() => stored.value);
@@ -1252,7 +1277,7 @@ const resumeCreated = async (
   status: RemoteStatusValue,
   options: PersistOptions,
 ): Promise<Result<void, RepositoryError>> => {
-  if ((options.delivery ?? "Fetched") === "Fetched" || status.actorUri !== actor.actorUri) {
+  if (!inboxDelivery(options) || status.actorUri !== actor.actorUri) {
     return ok(undefined);
   }
   const owed = await listOwed(env.DB, status.id);
@@ -1297,5 +1322,6 @@ const resumeCreated = async (
     status,
     options,
     marker: held.value,
+    firstStored: false,
   });
 };
