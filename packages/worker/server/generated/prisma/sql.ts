@@ -382,6 +382,8 @@ export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteFollowsJson";
 
+export * from "./sql/findRemotePollFetchedAt";
+
 export * from "./sql/findRemoteStatusById";
 
 export * from "./sql/findRemoteStatusByObjectUri";
@@ -899,6 +901,8 @@ export * from "./sql/releaseInboxActivity";
 export * from "./sql/releasePollUpdate";
 
 export * from "./sql/releaseRemoteOutboxBackfill";
+
+export * from "./sql/releaseRemotePollRefresh";
 
 export * from "./sql/releaseRemoteStatusThreadBackfill";
 

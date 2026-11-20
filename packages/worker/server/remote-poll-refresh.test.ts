@@ -44,8 +44,11 @@ const create = async (author: Remote, object: Readonly<{ id: string }>): Promise
 };
 
 /** Serve `document` at its id while the test runs; the count of fetches of it. */
-const serve = (document: Readonly<{ id: string }>): { fetches: () => number } => {
+const serve = (
+  document: Readonly<{ id: string }>,
+): { fetches: () => number; failWith: (status: number | undefined) => void } => {
   let fetches = 0;
+  let failing: number | undefined;
   const original = globalThis.fetch;
   const spy = vi
     .spyOn(globalThis, "fetch")
@@ -56,12 +59,20 @@ const serve = (document: Readonly<{ id: string }>): { fetches: () => number } =>
         return original(input, init);
       }
       fetches += 1;
+      if (failing !== undefined) {
+        return new Response("unavailable", { status: failing });
+      }
       return new Response(JSON.stringify(document), {
         headers: { "content-type": "application/activity+json" },
       });
     });
   onTestFinished(() => spy.mockRestore());
-  return { fetches: () => fetches };
+  return {
+    fetches: () => fetches,
+    failWith: (status) => {
+      failing = status;
+    },
+  };
 };
 
 const readPoll = async (id: string, headers: Record<string, string>) => {
@@ -127,6 +138,28 @@ describe("refreshing a remote poll a client reads", () => {
     await setFetchedAt(id, "2026-11-02T00:00:00.000Z");
     await readPoll(id, reader);
     expect(origin.fetches()).toBe(1);
+  });
+
+  it("keeps an ended poll stale when its fetch fails, as Mastodon records only a fetch that updated it", async () => {
+    const author = await remoteActor("poll-refresh-failed", "poll-refresh-failed.example");
+    const ended = "2026-11-01T00:00:00.000Z";
+    const id = await create(author, question(author, "failed", [1, 0], ended));
+    const origin = serve(question(author, "failed", [3, 1], ended));
+    const reader = await authHeaders("poll-refresh-failed@example.com");
+    await setFetchedAt(id, "2026-10-31T00:00:00.000Z");
+
+    origin.failWith(503);
+    expect(tallies(await readPoll(id, reader))).toEqual([1, 0]);
+    expect(origin.fetches()).toBe(1);
+
+    // The failed fetch left the poll as it was, so the next read fetches it.
+    const stored = await env.DB.prepare("SELECT poll_fetched_at FROM remote_statuses WHERE id = ?")
+      .bind(id)
+      .first();
+    expect(stored?.["poll_fetched_at"]).toBe("2026-10-31T00:00:00.000Z");
+    origin.failWith(undefined);
+    expect(tallies(await readPoll(id, reader))).toEqual([3, 1]);
+    expect(origin.fetches()).toBe(2);
   });
 
   it("records an inbox Update of the poll as a fetch", async () => {
