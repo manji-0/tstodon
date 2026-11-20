@@ -206,7 +206,10 @@ describe("opening a remote status", () => {
     ]);
     const recording = recordingEnv();
 
-    expect(await contextOf(openedId)).toEqual({ ancestors: [], descendants: [] });
+    const view = await SELF.fetch(`https://example.com/api/v1/statuses/${openedId}/context`, {
+      headers: await authHeaders("thread-opener@example.com"),
+    });
+    expect(read(ContextSchema, await view.json())).toEqual({ ancestors: [], descendants: [] });
     const queuedByView = await env.DB.prepare(
       "SELECT context_fetched_at FROM remote_statuses WHERE id = ?",
     )
@@ -1017,15 +1020,51 @@ describe("Mastodon async refresh of a remote thread", () => {
     );
   });
 
-  it("sends no header to an anonymous reader", async () => {
+  it("queues no fetch for an anonymous reader", async () => {
     const author = await remoteActor("refresh-anonymous", "thread.example");
     const opened = noteDocument(author, "refresh-anonymous-opened");
     await deliver(author, opened);
+    const openedId = await statusIdOf(opened.id);
 
-    const anonymous = await contextResponse(await statusIdOf(opened.id));
+    const anonymous = await contextResponse(openedId);
 
     expect(anonymous.status).toBe(200);
     expect(anonymous.headers.get("Mastodon-Async-Refresh")).toBeNull();
+    const row = await env.DB.prepare("SELECT context_fetched_at FROM remote_statuses WHERE id = ?")
+      .bind(openedId)
+      .first<{ context_fetched_at: string | null }>();
+    expect(row?.context_fetched_at).toBeNull();
+  });
+
+  it("tells an anonymous reader of a fetch already running", async () => {
+    const author = await remoteActor("refresh-anonymous-running", "thread.example");
+    const opened = noteDocument(author, "refresh-anonymous-running-opened");
+    await deliver(author, opened);
+    const openedId = await statusIdOf(opened.id);
+    await requested(openedId, recordingEnv().env);
+
+    const anonymous = await contextResponse(openedId);
+
+    expect(anonymous.headers.get("Mastodon-Async-Refresh")).toBe(
+      `id="context:${openedId}:refresh", retry=3, result_count=0`,
+    );
+  });
+
+  it("queues no fetch for a status published in the last five minutes", async () => {
+    const author = await remoteActor("refresh-recent", "thread.example");
+    const opened = {
+      ...noteDocument(author, "refresh-recent-opened"),
+      published: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+    };
+    await deliver(author, opened);
+    const openedId = await statusIdOf(opened.id);
+
+    const response = await contextResponse(openedId, await authHeaders(READER));
+
+    expect(response.headers.get("Mastodon-Async-Refresh")).toBeNull();
+    const recording = recordingEnv();
+    await requested(openedId, recording.env);
+    expect(recording.sent).toEqual([]);
   });
 
   it("reports the fetch running, then finished with the statuses it stored", async () => {
