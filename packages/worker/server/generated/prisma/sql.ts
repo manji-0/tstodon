@@ -336,6 +336,8 @@ export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findNotificationPolicy";
 
+export * from "./sql/findNotifyingRemoteFollow";
+
 export * from "./sql/findOauthApplicationByClientId";
 
 export * from "./sql/findOauthApplicationById";
@@ -692,7 +694,9 @@ export * from "./sql/listNotifications";
 
 export * from "./sql/listNotificationsAscending";
 
-export * from "./sql/listNotifyingFollowerIds";
+export * from "./sql/listNotifyingFollowers";
+
+export * from "./sql/listNotifyingRemoteFollowers";
 
 export * from "./sql/listOutboundActivities";
 

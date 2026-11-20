@@ -1,4 +1,4 @@
-import { LocalFollow } from "@tstodon/domain";
+import { LocalFollow, type NotifyingFollower } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
@@ -16,7 +16,7 @@ import {
   listAcceptedFollowerIds as listAcceptedFollowerIdsSql,
   listFamiliarFollowerIdsJson as listFamiliarFollowerIdsJsonSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
-  listNotifyingFollowerIds as listNotifyingFollowerIdsSql,
+  listNotifyingFollowers as listNotifyingFollowersSql,
   rejectFollowRequest as rejectFollowRequestSql,
   upsertFollowOptions as upsertFollowOptionsSql,
 } from "./generated/prisma/sql";
@@ -28,6 +28,10 @@ const OptionsRow = z.object({
   languages_json: z.string(),
 });
 const FollowerAccountIdRow = z.object({ follower_account_id: z.string() });
+const NotifyingFollowerRow = z.object({
+  follower_account_id: z.string(),
+  languages_json: z.string(),
+});
 const KindRow = z.object({ kind: z.string() });
 const TargetAccountIdRow = z.object({ target_account_id: z.string() });
 
@@ -250,14 +254,21 @@ export const listFollowers = async (
     return followEdges(results);
   });
 
-/** Local followers who asked for a notification on every new status. */
-export const notifyingFollowerIds = async (
+/** Local followers who asked for a notification on every new status and do not mute the account. */
+export const notifyingFollowers = async (
   db: D1Database,
   accountId: string,
-): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
   runD1(async () => {
-    const rows = await queryTyped(db, listNotifyingFollowerIdsSql(accountId), FollowerAccountIdRow);
-    return rows.map((row) => row.follower_account_id);
+    const rows = await queryTyped(
+      db,
+      listNotifyingFollowersSql(accountId, nowIso()),
+      NotifyingFollowerRow,
+    );
+    return rows.map((row) => ({
+      accountId: row.follower_account_id,
+      languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
+    }));
   });
 
 /** Every local account the viewer follows, for `following=true` searches. */
