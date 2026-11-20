@@ -219,18 +219,27 @@ const signMessage = async (
 /**
  * Send a signed request as Mastodon's `Request#perform` does: signed with
  * draft-cavage first, and again with an RFC 9421 message signature when
- * that is answered 400 or 401 ("double-knocking"). `send` signs and sends
- * the request with the scheme it is given.
+ * that is answered 400 or 401 ("double-knocking"). `sign` makes the
+ * headers for a scheme and `send` sends them; the answer is the last one.
  */
-export const fetchDoubleKnocking = async (
-  send: (scheme: SignatureScheme) => Promise<Response>,
-): Promise<Response> => {
-  const response = await send("Cavage");
+export const fetchDoubleKnocking = async <H>(
+  sign: (scheme: SignatureScheme) => Promise<Result<H, SignatureError>>,
+  send: (headers: H) => Promise<Response>,
+): Promise<Result<Response, SignatureError>> => {
+  const cavage = await sign("Cavage");
+  if (cavage.isErr()) {
+    return err(cavage.error);
+  }
+  const response = await send(cavage.value);
   if (response.status !== 400 && response.status !== 401) {
-    return response;
+    return ok(response);
+  }
+  const message = await sign("MessageSignature");
+  if (message.isErr()) {
+    return ok(response);
   }
   await response.body?.cancel();
-  return send("MessageSignature");
+  return ok(await send(message.value));
 };
 
 /** A draft-cavage `Signature` header. */

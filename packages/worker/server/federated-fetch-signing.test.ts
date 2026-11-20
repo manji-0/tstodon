@@ -11,7 +11,7 @@ import {
   unsignedFetch,
   type FederatedFetchOptions,
 } from "./federated-fetch";
-import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
+import { parseRequestSignature, parseSignatureHeader, verifySignedFetch } from "./http-signature";
 import { instanceActorFetchSigner, instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { firstCollectionPage } from "./remote-collection";
 import { resolveKeyOwner, resolveRemoteActorByHandle } from "./remote-actor-fetch";
@@ -150,6 +150,35 @@ describe("signed ActivityPub GETs", () => {
     expect(parsed?.headers).toEqual(["(request-target)", "host", "date", "accept"]);
     expect(sent?.accept).toBe(ACTIVITY_JSON_ACCEPT);
     expect(new Date(sent?.date ?? "").toUTCString()).toBe(sent?.date);
+  });
+
+  it("signs again with RFC 9421 when draft-cavage is answered 401, as Mastodon double-knocks (FED-9)", async () => {
+    const uri = `${ORIGIN}/objects/knock?page=1`;
+    const seen: Array<Readonly<{ scheme: string; verified: boolean }>> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      const parsed = parseRequestSignature(request.headers);
+      if (parsed.isErr()) {
+        return new Response(null, { status: 401 });
+      }
+      const verified = await verifySignedFetch(request, parsed.value, {
+        kind: "Rsa",
+        publicKeyPem: await instancePublicKey(),
+      });
+      seen.push({ scheme: parsed.value.kind, verified });
+      // A server that takes only RFC 9421 message signatures.
+      return verified && parsed.value.kind === "MessageSignature"
+        ? json({ id: uri, type: "Note" })
+        : new Response(null, { status: 401 });
+    });
+
+    const fetched = await fetchActivityJson(identity(), uri, signed());
+
+    expect(fetched.isOk()).toBe(true);
+    expect(seen).toEqual([
+      { scheme: "Cavage", verified: true },
+      { scheme: "MessageSignature", verified: true },
+    ]);
   });
 
   it("is refused by a secure-mode server when unsigned", async () => {
