@@ -80,14 +80,21 @@ export const THREAD_COLLECTION_REPLY_LIMIT = 500;
 export const THREAD_COLLECTION_PAGE_LIMIT = 10;
 
 /**
- * Replies not cached yet that one job fetches. A stored note costs its
- * document and, for an author not cached, that actor's at most thirteen
- * requests (`remote-actor-refresh.ts`), so 20 are at most 280; the 5
- * ancestors of the first job at most 70 more, and the documents and pages
- * of the replies a job expands ({@link THREAD_TREE_NODES_PER_JOB}) at most
- * 55. That is inside the Workers Paid limit this server is sized for, not
- * the Free plan's 50. A list with more goes on in the next job, where the
- * job stopped in it.
+ * Replies not cached yet that one job fetches. A list with more goes on in
+ * the next job, where the job stopped in it.
+ *
+ * What bounds a job's subrequests. Each ActivityPub GET is up to four
+ * requests, one plus three same-origin redirects, and may cost a DNS lookup
+ * for the SSRF guard. A stored note costs its document and, for an author not
+ * cached, that actor's at most thirteen requests (`remote-actor-refresh.ts`):
+ * 20 notes are at most 20 × (4 + 13) = 340, and the first job's 5 ancestors
+ * 85 more. Each status a job expands ({@link THREAD_TREE_NODES_PER_JOB}) costs
+ * up to 12 GETs: its document, its `replies` collection when that is a link,
+ * and up to {@link THREAD_COLLECTION_PAGE_LIMIT} pages, its `first` among
+ * them, all read again when a job resumes inside its list; 5 of them are at
+ * most 240 requests. About 670 requests and their DNS lookups stay inside the 10,000
+ * subrequests of a Workers Paid invocation this server is sized for, not the
+ * Free plan's 50.
  */
 export const THREAD_BACKFILL_REPLY_LIMIT = 20;
 
