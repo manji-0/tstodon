@@ -116,7 +116,13 @@ const noteUri = (remote: Remote, slug: string): string =>
 const sendNote = async (
   remote: Remote,
   slug: string,
-  options: Readonly<{ mentions?: string[]; inReplyTo?: string; hashtag?: string }> = {},
+  options: Readonly<{
+    mentions?: string[];
+    /** Addressed in `cc` without a `Mention` tag: a silent mention. */
+    addressed?: string[];
+    inReplyTo?: string;
+    hashtag?: string;
+  }> = {},
 ): Promise<string> => {
   const id = noteUri(remote, slug);
   const hashtag = options.hashtag;
@@ -132,7 +138,11 @@ const sendNote = async (
         content: `<p>${slug}${hashtag === undefined ? "" : ` #${hashtag}`}</p>`,
         published: new Date().toISOString(),
         to: [PUBLIC],
-        cc: [`${remote.actorUri}/followers`, ...(options.mentions ?? [])],
+        cc: [
+          `${remote.actorUri}/followers`,
+          ...(options.mentions ?? []),
+          ...(options.addressed ?? []),
+        ],
         ...(options.inReplyTo === undefined ? {} : { inReplyTo: options.inReplyTo }),
         tag: [
           ...(options.mentions ?? []).map((href) => ({ type: "Mention", href })),
@@ -386,5 +396,63 @@ describe("home leaves out a reply to an account the viewer does not follow", () 
     } finally {
       stream.close();
     }
+  });
+});
+
+describe("home's filter edges", () => {
+  it("does not count an expired mute or a silent mention", async () => {
+    const viewer = "hff-edge-viewer@example.com";
+    const author = await user("hff-edge-author@example.com");
+    const lapsed = await user("hff-edge-lapsed@example.com");
+    const silent = await user("hff-edge-silent@example.com");
+    const followed = await remoteActor("hffedgefollowed", HOST);
+    const me = await user(viewer);
+    await act(viewer, author.id, "follow");
+    await followRemote(viewer, followed);
+    const toLapsed = await post(author.email, `@${lapsed.username} hello`);
+    const addressed = await sendNote(followed, "hff-edge-silent", {
+      addressed: [localActor(silent.username)],
+    });
+    const [mention] = parseRows(
+      z.object({ silent: z.number() }),
+      (
+        await env.DB.prepare(
+          "SELECT silent FROM remote_status_mentions WHERE status_id = ? AND account_id = ?",
+        )
+          .bind(addressed, silent.id)
+          .all()
+      ).results,
+    );
+    expect(mention?.silent).toBe(1);
+
+    await act(viewer, lapsed.id, "mute");
+    await act(viewer, silent.id, "mute");
+    await env.DB.prepare(
+      "UPDATE mutes SET expires_at = '2000-01-01T00:00:00.000Z' WHERE account_id = ? AND target_account_id = ?",
+    )
+      .bind(me.id, lapsed.id)
+      .run();
+
+    expect(await homeIds(viewer)).toEqual(expect.arrayContaining([toLapsed, addressed]));
+  });
+
+  it("keeps a local reply to a followed actor's note, and drops a remote reply to a note it does not hold", async () => {
+    const viewer = "hff-held-viewer@example.com";
+    const author = await user("hff-held-author@example.com");
+    const followed = await remoteActor("hffheldfollowed", HOST);
+    await user(viewer);
+    await act(viewer, author.id, "follow");
+    await followRemote(viewer, followed);
+    const parent = await sendNote(followed, "hff-held-parent");
+    const localReply = await post(author.email, "answering a followed actor", {
+      inReplyToId: parent,
+    });
+    const orphan = await sendNote(followed, "hff-held-orphan", {
+      inReplyTo: `https://unheld.example/notes/nowhere`,
+    });
+
+    const home = await homeIds(viewer);
+    expect(home).toContain(localReply);
+    expect(home).not.toContain(orphan);
   });
 });
