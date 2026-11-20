@@ -153,15 +153,18 @@ const ProcessLinkCardSchema = z.object({
 /**
  * Finish a stored remote note for one local account its inbox request left
  * to the queue: notify it of the mention (`Mention`), and tell its `direct`
- * stream the conversation changed (`Conversation`). A note may name any
- * number of local accounts; the request serves a fixed number of them.
+ * stream the conversation changed (`Conversation`), and send it the note's
+ * `status` notification (`Status`). A note may reach any number of local
+ * accounts; the request serves a fixed number of them.
  */
 const FinishRemoteNoteRecipientSchema = z.object({
   kind: z.literal("FinishRemoteNoteRecipient"),
   statusId: z.string().min(1),
   actorUri: z.string().min(1),
   accountId: z.string().min(1),
-  steps: z.array(z.union([z.literal("Mention"), z.literal("Conversation")])).min(1),
+  steps: z
+    .array(z.union([z.literal("Mention"), z.literal("Conversation"), z.literal("Status")]))
+    .min(1),
 });
 
 /**

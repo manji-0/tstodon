@@ -694,6 +694,8 @@ export * from "./sql/listNotificationsAscending";
 
 export * from "./sql/listNotifyingFollowers";
 
+export * from "./sql/listNotifyingRemoteFollowers";
+
 export * from "./sql/listOutboundActivities";
 
 export * from "./sql/listOutboundFollowInboxes";

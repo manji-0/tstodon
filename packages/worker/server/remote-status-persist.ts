@@ -5,7 +5,9 @@ import {
   type RemoteStatus as RemoteStatusValue,
   RemoteVisibility,
   type MentionedPost,
+  type NoteThread,
   type OutboxJob,
+  StatusNotificationAudience,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { CreateDocumentSchema, refId } from "./activitypub-wire";
@@ -57,6 +59,8 @@ import {
   recordRemoteStatusMentions,
 } from "./mention-store";
 import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
+import { notifyingRemoteFollowers } from "./outbound-follow-store";
+import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
 import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
@@ -316,10 +320,81 @@ const mentionsToNotify = (
   mentioned: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
   if (late.kind === "Created") {
-    return (late.options.delivery ?? "Fetched") === "Fetched" ? [] : mentioned;
+    return deliveredNew(late) ? mentioned : [];
   }
   const added = new Set([...late.added, ...(late.edit?.mentions ?? [])]);
   return mentioned.filter((accountId) => added.has(accountId));
+};
+
+/** Whether `late` finishes a new note an inbox activity, not a fetch, stored. */
+const deliveredNew = (late: LateSteps): boolean =>
+  late.kind === "Created" && (late.options.delivery ?? "Fetched") !== "Fetched";
+
+/**
+ * Where the stored note `status` sits in its thread: a reply to a parent
+ * that is not stored, or does not read, replies to someone else, as Mastodon
+ * leaves its `in_reply_to_account_id` unset.
+ */
+const remoteNoteThread = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+): Promise<Result<NoteThread, RepositoryError>> => {
+  const targets = await findRemoteStatusReplyTargets(db, [status.id]);
+  if (targets.isErr()) {
+    return err(targets.error);
+  }
+  if (targets.value.get(status.id)?.inReplyToUri === undefined) {
+    return ok({ kind: "Root" });
+  }
+  const parent = await findThreadParent(db, identity, { kind: "Remote", status });
+  if (parent.isErr()) {
+    return err(parent.error);
+  }
+  return ok(
+    parent.value?.kind === "Remote" && parent.value.status.actorUri === status.actorUri
+      ? { kind: "SelfReply" }
+      : { kind: "ReplyToOther" },
+  );
+};
+
+/**
+ * The local followers a new note sends its `status` notification to
+ * ({@link StatusNotificationAudience}). Only a note an inbox activity stored
+ * notifies, as Mastodon fans out the `Create` it receives; `addressed` are
+ * the local accounts it names. The thread is read only when someone asked.
+ */
+const statusNotified = async (
+  env: Env,
+  identity: InstanceIdentity,
+  late: LateSteps,
+  addressed: ReadonlySet<string>,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  if (!deliveredNew(late)) {
+    return ok([]);
+  }
+  const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri);
+  if (followers.isErr()) {
+    return err(followers.error);
+  }
+  if (followers.value.length === 0) {
+    return ok([]);
+  }
+  const thread = await remoteNoteThread(env.DB, identity, late.status);
+  if (thread.isErr()) {
+    return err(thread.error);
+  }
+  return ok(
+    StatusNotificationAudience.recipients(
+      {
+        visibility: late.status.visibility,
+        thread: thread.value,
+        language: late.status.language,
+        addressed,
+      },
+      followers.value,
+    ),
+  );
 };
 
 /**
@@ -387,11 +462,12 @@ const runLateSteps = async (
   return clearOwed(env.DB, status.id, held ? [held] : []);
 };
 
-type RecipientStep = "Mention" | "Conversation";
+type RecipientStep = "Mention" | "Conversation" | "Status";
 
 /**
  * Notify `recipients.mention` of their mention of the stored note `status`,
- * and tell `recipients.conversation` their conversation changed. The first
+ * tell `recipients.conversation` their conversation changed, and send
+ * `recipients.status` the note's `status` notification. The first
  * {@link INLINE_NOTE_RECIPIENTS} accounts are served here; each of the rest
  * gets a `FinishRemoteNoteRecipient` job, which does the same for it. A
  * notification is stored once (`notifyFromRemoteOnce`), so a redelivery that
@@ -405,6 +481,7 @@ const reachRecipients = async (
   recipients: Readonly<{
     mention: ReadonlyArray<string>;
     conversation: ReadonlyArray<string>;
+    status: ReadonlyArray<string>;
   }>,
 ): Promise<Result<void, RepositoryError>> => {
   const steps = new Map<string, RecipientStep[]>();
@@ -413,6 +490,7 @@ const reachRecipients = async (
   };
   recipients.mention.forEach(add("Mention"));
   recipients.conversation.forEach(add("Conversation"));
+  recipients.status.forEach(add("Status"));
   const ordered = [...steps];
   const inline = ordered.slice(0, INLINE_NOTE_RECIPIENTS);
   const queued = ordered.slice(INLINE_NOTE_RECIPIENTS);
@@ -465,6 +543,17 @@ const serveRecipients = async (
   const conversation = taking("Conversation");
   if (conversation.length > 0) {
     await publishConversationUpdate(env, identity, conversation, status.id);
+  }
+  for (const accountId of taking("Status")) {
+    const sent = await notifyFromRemoteOnce(env, {
+      accountId,
+      actorUri,
+      kind: "status",
+      statusId: status.id,
+    });
+    if (sent.isErr()) {
+      return err(sent.error);
+    }
   }
   return ok(undefined);
 };
@@ -519,10 +608,15 @@ const writeLateSteps = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
+  const notified = await statusNotified(env, identity, late, new Set([...mentioned, ...addressed]));
+  if (notified.isErr()) {
+    return err(notified.error);
+  }
   // Mention rows exist before the notifications that point at them. They are
   // sent before the later writes: an `Update` that edits nothing owes no
   // marker, so its redelivery finds the rows and would notify nobody.
   const reached = await reachRecipients(env, identity, actor, status, {
+    status: notified.value,
     mention: mentionsToNotify(late, mentioned),
     // Everyone a new direct note reaches here: the conversation lists it for
     // each. A limited note joins no conversation (`FanOutOnWriteService`).
