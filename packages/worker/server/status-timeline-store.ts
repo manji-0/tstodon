@@ -100,9 +100,7 @@ export const listHomeStatuses = async (
   horizon: string | undefined = undefined,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    // Members of the viewer's exclusive lists show on those lists only.
     const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-         AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
          ${FEED_SUSPENDED_AUTHORS_SQL}`;
     const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
@@ -110,21 +108,23 @@ export const listHomeStatuses = async (
     const mentions = feedLocalMentionsSql(accountId, now);
     const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
     const replies = feedLocalRepliesSql({ kind: "Home" }, accountId);
-    // A followed author's direct note only when it mentions the viewer, as
-    // Mastodon's `deliver_to_mentioned_followers!`; the viewer's own always
-    // (`deliver_to_self!`). A followed author's reply only to whom
-    // `filter_from_home` keeps it; a followed hashtag brings any reply, as
-    // `filter_from_tags?` has no reply rule, but public notes only.
+    // The viewer's own statuses always (`deliver_to_self!`). A followed
+    // author's as `filter_from_home` keeps them: a direct note only when it
+    // mentions the viewer (`deliver_to_mentioned_followers!`), a reply only to
+    // whom it keeps one, none from a member of an exclusive list, and the
+    // follow's languages. A followed hashtag's public notes as
+    // `filter_from_tags?`, which has none of those rules.
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE (account_id = ? OR (account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
          ) AND (visibility != 'direct' OR EXISTS (
            SELECT 1 FROM status_mentions m WHERE m.status_id = statuses.id AND m.account_id = ?
-         )) ${replies.sql}) OR id IN ${tagged.sql})
+         )) ${replies.sql}
+           AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
+           ${FEED_LANGUAGES_SQL}) OR id IN ${tagged.sql})
          ${suppressed}
          ${reblogs.sql}
          ${mentions.sql}
-         ${FEED_LANGUAGES_SQL}
          ${where} ${order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
@@ -133,18 +133,18 @@ export const listHomeStatuses = async (
         accountId,
         accountId,
         ...replies.binds,
+        // Exclusive lists: the viewer.
+        accountId,
+        // `FEED_LANGUAGES_SQL`: the viewer.
+        accountId,
         ...tagged.binds,
         // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
         accountId,
         accountId,
         accountId,
         now,
-        // Exclusive lists: the viewer.
-        accountId,
         ...reblogs.binds,
         ...mentions.binds,
-        // `FEED_LANGUAGES_SQL`: the viewer.
-        accountId,
         ...binds,
         limit,
       )

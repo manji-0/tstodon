@@ -146,8 +146,9 @@ export const listFollowedRemoteStatuses = async (
  * ({@link followedTagNoteIdsSql}), newest first, as Mastodon's
  * `FeedManager#filter_from_tags?` keeps them: not from an actor it blocks or
  * mutes or that blocks it, nor from a domain it blocks or the instance limits
- * or suspends. An actor it follows is left out, as
- * {@link listFollowedRemoteStatuses} lists its notes already.
+ * or suspends, nor one that mentions an account it blocks or mutes. An actor
+ * it follows is kept, so a note {@link listFollowedRemoteStatuses} lists too
+ * comes from both, and home keeps it once.
  */
 export const listFollowedTagRemoteStatuses = async (
   db: D1Database,
@@ -166,9 +167,6 @@ export const listFollowedTagRemoteStatuses = async (
         `SELECT ${REMOTE_STATUS_SELECT} FROM (
            SELECT s.* FROM remote_statuses s
            WHERE s.id IN ${tagged.sql}
-             AND s.actor_uri NOT IN (
-               SELECT actor_uri FROM outbound_follows WHERE account_id = ? AND state = 'Accepted'
-             )
              AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
              AND NOT ${mentions.sql}
@@ -176,7 +174,6 @@ export const listFollowedTagRemoteStatuses = async (
       )
       .bind(
         ...tagged.binds,
-        accountId,
         accountId,
         accountId,
         accountId,

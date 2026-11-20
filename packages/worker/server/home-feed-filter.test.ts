@@ -46,7 +46,7 @@ const homeIds = (email: string): Promise<string[]> =>
 const post = async (
   email: string,
   status: string,
-  options: Readonly<{ inReplyToId?: string }> = {},
+  options: Readonly<{ inReplyToId?: string; language?: string }> = {},
 ): Promise<string> =>
   read(
     Entry,
@@ -56,6 +56,7 @@ const post = async (
         status,
         visibility: "public",
         ...(options.inReplyToId === undefined ? {} : { in_reply_to_id: options.inReplyToId }),
+        ...(options.language === undefined ? {} : { language: options.language }),
       }),
     }),
   ).id;
@@ -396,6 +397,91 @@ describe("home leaves out a reply to an account the viewer does not follow", () 
     } finally {
       stream.close();
     }
+  });
+});
+
+describe("a followed hashtag brings what the follow path leaves out", () => {
+  // `filter_from_tags?` has no exclusive-list and no reply rule, and
+  // `FeedInsertWorker` pushes to home when either path passes.
+  const exclusiveList = async (email: string, body: Record<string, unknown>): Promise<void> => {
+    const list = read(
+      z.object({ id: z.string() }),
+      await call(email, "/api/v1/lists", {
+        method: "POST",
+        body: JSON.stringify({ title: "exclusive", exclusive: true }),
+      }),
+    ).id;
+    await call(email, `/api/v1/lists/${list}/accounts`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  };
+
+  it("a local member of an exclusive list posting under it", async () => {
+    const viewer = "hff-excl-viewer@example.com";
+    const member = await user("hff-excl-member@example.com");
+    await user(viewer);
+    await act(viewer, member.id, "follow");
+    await exclusiveList(viewer, { account_ids: [member.id] });
+    await call(viewer, "/api/v1/tags/hffexcltag/follow", { method: "POST", body: "{}" });
+    const tagged = await post(member.email, "#hffexcltag on home");
+    const untagged = await post(member.email, "list only");
+
+    const home = await homeIds(viewer);
+    expect(home).toContain(tagged);
+    expect(home).not.toContain(untagged);
+  });
+
+  it("a local reply to a stranger and a post outside the follow's languages", async () => {
+    const viewer = "hff-taglang-viewer@example.com";
+    const author = await user("hff-taglang-author@example.com");
+    const stranger = await user("hff-taglang-stranger@example.com");
+    await user(viewer);
+    await act(viewer, author.id, "follow", { languages: ["en"] });
+    await call(viewer, "/api/v1/tags/hfftaglang/follow", { method: "POST", body: "{}" });
+    const strangerPost = await post(stranger.email, "a stranger speaks");
+    const taggedJa = await post(author.email, "#hfftaglang こんにちは", { language: "ja" });
+    const plainJa = await post(author.email, "こんにちは", { language: "ja" });
+    const taggedReply = await post(author.email, "#hfftaglang answer", {
+      inReplyToId: strangerPost,
+    });
+
+    const home = await homeIds(viewer);
+    expect(home).toEqual(expect.arrayContaining([taggedJa, taggedReply]));
+    expect(home).not.toContain(plainJa);
+  });
+
+  it("a remote member of an exclusive list, and a followed actor's reply to a stranger", async () => {
+    const viewer = "hff-rexcl-viewer@example.com";
+    const member = await remoteActor("hffrexclmember", HOST);
+    const followed = await remoteActor("hffrexclfollowed", HOST);
+    const stranger = await remoteActor("hffrexclstranger", HOST);
+    await user(viewer);
+    await followRemote(viewer, member);
+    await followRemote(viewer, followed);
+    await exclusiveList(viewer, { account_ids: [RemoteAccountId.encode(member.actorUri)] });
+    await call(viewer, "/api/v1/tags/hffrexcltag/follow", { method: "POST", body: "{}" });
+    await sendNote(stranger, "hff-rexcl-stranger");
+    const memberTagged = await sendNote(member, "hff-rexcl-member-tagged", {
+      hashtag: "hffrexcltag",
+    });
+    const memberPlain = await sendNote(member, "hff-rexcl-member-plain");
+    const replyTagged = await sendNote(followed, "hff-rexcl-reply-tagged", {
+      inReplyTo: noteUri(stranger, "hff-rexcl-stranger"),
+      hashtag: "hffrexcltag",
+    });
+    const replyPlain = await sendNote(followed, "hff-rexcl-reply-plain", {
+      inReplyTo: noteUri(stranger, "hff-rexcl-stranger"),
+    });
+    const followedTagged = await sendNote(followed, "hff-rexcl-followed-tagged", {
+      hashtag: "hffrexcltag",
+    });
+
+    const home = await homeIds(viewer);
+    expect(home).toEqual(expect.arrayContaining([memberTagged, replyTagged, followedTagged]));
+    expect(home).not.toContain(memberPlain);
+    expect(home).not.toContain(replyPlain);
+    expect(home.filter((id) => id === followedTagged)).toHaveLength(1);
   });
 });
 

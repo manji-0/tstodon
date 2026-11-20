@@ -298,10 +298,18 @@ const feedDocuments = async (
       : Promise.resolve(ok([])),
     listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
   ]);
-  // Disjoint: the hashtag query leaves out the followed actors. Nothing past
-  // the horizon, where the followed hashtags were not read.
+  // A followed actor's note under a followed hashtag comes from both queries,
+  // as Mastodon's two fan-out paths push it to the same home once. Nothing
+  // past the horizon, where the followed hashtags were not read.
   const remote = followed.andThen((notes) =>
-    tagged.map((more) => withinHorizon([...notes, ...more], cursor, horizon)),
+    tagged.map((more) => {
+      const listed = new Set(notes.map((note) => note.id));
+      return withinHorizon(
+        [...notes, ...more.filter((note) => !listed.has(note.id))],
+        cursor,
+        horizon,
+      );
+    }),
   );
   if (statuses.isErr()) {
     return err(statuses.error);

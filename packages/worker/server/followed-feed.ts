@@ -179,14 +179,14 @@ const FOLLOWED_TAG_SIDES = {
     notes: "statuses",
     shown: "+n.kind = 'LocalNote' AND +n.visibility = 'public' AND n.account_id NOT IN hidden",
     /**
-     * The authors home leaves out ({@link SUPPRESSED_ACCOUNT_IDS_SQL}, the
-     * members of the viewer's exclusive lists) and those the instance limits.
+     * The authors home leaves out ({@link SUPPRESSED_ACCOUNT_IDS_SQL}) and
+     * those the instance limits. Members of the viewer's exclusive lists
+     * stay, as `filter_from_tags?` does not read those lists.
      */
     hidden: (viewerId: string, now: string): SqlFragment => ({
       sql: `SELECT * FROM ${SUPPRESSED_ACCOUNT_IDS_SQL}
-        UNION SELECT * FROM ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
         UNION SELECT account_id FROM account_moderation WHERE moderation IN ('Silenced', 'Suspended')`,
-      binds: [viewerId, viewerId, viewerId, now, viewerId],
+      binds: [viewerId, viewerId, viewerId, now],
     }),
   },
   Remote: {
@@ -194,15 +194,16 @@ const FOLLOWED_TAG_SIDES = {
     notes: "remote_statuses",
     shown: "+n.visibility = 'public' AND n.actor_uri NOT IN hidden",
     /**
-     * The actors the viewer blocks or mutes or that block it, those on a
-     * domain it blocks or the instance limits, and those it follows, whose
-     * notes the followed-actor query lists.
+     * The actors the viewer blocks or mutes or that block it, and those on a
+     * domain it blocks or the instance limits. Followed actors stay: the
+     * hashtag brings their notes the followed-actor query leaves out (an
+     * exclusive list's, a reply to a stranger's, another language's), and
+     * home drops the notes both queries list once.
      */
     hidden: (viewerId: string, now: string): SqlFragment => ({
       sql: `SELECT * FROM ${SUPPRESSED_ACTOR_URIS_SQL}
-        UNION SELECT * FROM ${DOMAIN_RESTRICTED_ACTORS_SQL}
-        UNION SELECT actor_uri FROM outbound_follows WHERE account_id = ? AND state = 'Accepted'`,
-      binds: [viewerId, viewerId, viewerId, now, viewerId, viewerId],
+        UNION SELECT * FROM ${DOMAIN_RESTRICTED_ACTORS_SQL}`,
+      binds: [viewerId, viewerId, viewerId, now, viewerId],
     }),
   },
 } as const;
