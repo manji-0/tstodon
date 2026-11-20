@@ -7,6 +7,7 @@ import {
   type LocalReblog,
   LocalStatus,
   reblogVisibility,
+  type RemoteVisibility,
   StatusId,
   Visibility,
 } from "@tstodon/domain";
@@ -51,7 +52,7 @@ import { mastodonStatus } from "../../local-status-documents";
 import { mastodonRemoteStatuses } from "../../remote-status-documents";
 import { statusDocumentsByIds } from "../../status-documents";
 
-import { InstanceLimits, warmSchemas } from "@tstodon/core";
+import { assertNever, InstanceLimits, warmSchemas } from "@tstodon/core";
 import { parseInstanceIdentity } from "../../runtime-config";
 import {
   bookmarkStatus,
@@ -440,23 +441,46 @@ const boostedStatus = async (
 };
 
 /**
- * Mastodon's `StatusPolicy#reblog?`: never a direct status, never someone
- * else's followers-only post, and never one the viewer may not be shown.
+ * The visibility a boost of a status with `visibility` starts from, as
+ * Mastodon's `StatusPolicy#reblog?`: none for a direct or limited status
+ * (`requires_mention?`), or for someone else's followers-only one.
+ */
+const reblogOrigin = (visibility: RemoteVisibility, own: boolean): Visibility | undefined => {
+  switch (visibility.kind) {
+    case "Public":
+    case "Unlisted":
+      return visibility;
+    case "FollowersOnly":
+      return own ? visibility : undefined;
+    case "Direct":
+    case "Limited":
+      return undefined;
+    default:
+      return assertNever(visibility);
+  }
+};
+
+/**
+ * Mastodon's `StatusPolicy#reblog?`: the visibility the boost starts from
+ * ({@link reblogOrigin}), or `undefined` when the status cannot be boosted,
+ * which includes one the viewer may not be shown.
  */
 const rebloggable = async (
   env: Env,
   target: FoundStatus,
   viewerId: string,
-): Promise<Result<boolean, RepositoryError>> => {
+): Promise<Result<Visibility | undefined, RepositoryError>> => {
   if (target.kind === "LocalStatus" && target.status.kind !== "LocalNote") {
-    return ok(false);
+    return ok(undefined);
   }
-  const visibility = target.status.visibility.kind;
   const own = target.kind === "LocalStatus" && target.status.accountId === viewerId;
-  if (visibility === "Direct" || (visibility === "FollowersOnly" && !own)) {
-    return ok(false);
+  const origin = reblogOrigin(target.status.visibility, own);
+  if (origin === undefined) {
+    return ok(undefined);
   }
-  return showsFoundStatus(env, target, viewerId);
+  return (await showsFoundStatus(env, target, viewerId)).map((shown) =>
+    shown ? origin : undefined,
+  );
 };
 
 /**
@@ -546,11 +570,12 @@ export const postV1StatusesByIdReblog = async (
     return jsonRepositoryError(c, boosted.error.message);
   }
   const target = boosted.value;
-  const allowed = target ? await rebloggable(c.env, target, user.value.id) : ok(false);
+  const allowed = target ? await rebloggable(c.env, target, user.value.id) : ok(undefined);
   if (allowed.isErr()) {
     return jsonRepositoryError(c, allowed.error.message);
   }
-  if (!target || !allowed.value) {
+  const origin = allowed.value;
+  if (!target || origin === undefined) {
     return notFound(c);
   }
   const boostTarget = foundStatusTarget(target);
@@ -590,11 +615,7 @@ export const postV1StatusesByIdReblog = async (
     user.value.id,
     boostTarget,
     nowInstant(),
-    reblogVisibility(
-      target.status.visibility,
-      requestedVisibility,
-      user.value.defaultPostVisibility,
-    ),
+    reblogVisibility(origin, requestedVisibility, user.value.defaultPostVisibility),
   );
   const published = await publishBoost(c.env, identity.value, user.value, target, reblog);
   return published.isErr() ? ApiRefusal.respond(c, published.error) : c.json(published.value);

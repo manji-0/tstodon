@@ -67,6 +67,64 @@ export const Visibility = {
     visibility.kind === "FollowersOnly" || visibility.kind === "Direct",
 } as const;
 
+const LimitedSchema = unitKind("Limited");
+
+/**
+ * A remote status's visibility: a local one's, or `Limited`, Mastodon's
+ * `limited`. That is a note that would be direct but reaches an account
+ * Mastodon knows only through its audience (`Create#process_audience`). A
+ * local status is never limited, so `Visibility` has no such variant.
+ */
+export const RemoteVisibilitySchema = z.discriminatedUnion("kind", [
+  ...VisibilitySchema.options,
+  LimitedSchema,
+]);
+
+export type RemoteVisibility = z.infer<typeof RemoteVisibilitySchema>;
+export type LimitedVisibility = z.infer<typeof LimitedSchema>;
+
+/** A remote visibility as `remote_statuses.visibility` keeps it. */
+export type StoredRemoteVisibility = StatusVisibility | "limited";
+
+export const RemoteVisibility = {
+  schema: RemoteVisibilitySchema,
+  parse: schemaResult(RemoteVisibilitySchema),
+  Limited: { kind: "Limited" } as const satisfies LimitedVisibility,
+  fromStored: (raw: string): Result<RemoteVisibility, VisibilityParseError> =>
+    raw === "limited" ? ok(RemoteVisibility.Limited) : Visibility.fromMastodon(raw),
+  toStored: (visibility: RemoteVisibility): StoredRemoteVisibility =>
+    visibility.kind === "Limited" ? "limited" : Visibility.toMastodon(visibility),
+  /** As the REST API renders it: `limited` shows as `private` (`REST::StatusSerializer#visibility`). */
+  toMastodon: (visibility: RemoteVisibility): StatusVisibility =>
+    visibility.kind === "Limited" ? "private" : Visibility.toMastodon(visibility),
+  /** `StatusPolicy#requires_mention?`: only the accounts a direct or limited note names may see it. */
+  requiresMention: (visibility: RemoteVisibility): boolean => {
+    switch (visibility.kind) {
+      case "Direct":
+      case "Limited":
+        return true;
+      case "Public":
+      case "Unlisted":
+      case "FollowersOnly":
+        return false;
+      default:
+        return assertNever(visibility);
+    }
+  },
+  isRestricted: (visibility: RemoteVisibility): boolean =>
+    visibility.kind === "FollowersOnly" || RemoteVisibility.requiresMention(visibility),
+  /**
+   * `Create#process_audience`: a note its audience makes direct is limited
+   * when an account Mastodon knows is in its `to`/`cc` without a `Mention`
+   * tag, or owns the personal inbox it was delivered to without one.
+   */
+  ofAudience: (
+    visibility: RemoteVisibility,
+    audience: Readonly<{ audienceOnly: boolean }>,
+  ): RemoteVisibility =>
+    visibility.kind === "Direct" && audience.audienceOnly ? RemoteVisibility.Limited : visibility,
+} as const;
+
 /**
  * Mastodon's reblog visibility: a restricted original (private or direct)
  * keeps its own visibility, so a boost is never more visible than the status

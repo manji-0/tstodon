@@ -6,7 +6,7 @@ import { IsoInstant } from "./iso-instant";
 import { RemoteStatus } from "./remote-status";
 import { StatusId } from "./status-id";
 import { type StatusTarget, StatusTargetSchema } from "./status-target";
-import type { Visibility } from "./visibility";
+import type { RemoteVisibility } from "./visibility";
 
 /** An `Announce` reaches the public, unlisted, or the booster's followers; a direct one is not kept. */
 const RemoteBoostVisibilitySchema = z.discriminatedUnion("kind", [
@@ -49,7 +49,7 @@ export const RemoteBoost = {
     actorUri: string;
     activityId: ActivityId;
     target: StatusTarget;
-    targetVisibility: Visibility;
+    targetVisibility: RemoteVisibility;
     /** The remote actor that wrote the target; `undefined` for a local status. */
     targetAuthorUri: string | undefined;
     to: ReadonlyArray<string>;
