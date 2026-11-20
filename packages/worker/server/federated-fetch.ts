@@ -208,13 +208,14 @@ const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]
  * path, query and host are in the signature) when the signer has a key,
  * draft-cavage first and RFC 9421 when that is answered 400 or 401, as
  * Mastodon's `Request#perform`; unsigned when it has no key or signing
- * fails (a server outside secure mode still answers).
+ * fails (a server outside secure mode still answers). `signal` gives the
+ * signal of each request sent: its own deadline, or one a caller shares.
  */
 const getActivityOnce = async (
   identity: InstanceIdentity,
   url: URL,
   key: FetchSigningKey | undefined,
-  signal: AbortSignal,
+  signal: () => AbortSignal,
   accept: string = ACTIVITY_JSON_ACCEPT,
 ): Promise<Response> => {
   const headers: Record<string, string> = {
@@ -222,7 +223,12 @@ const getActivityOnce = async (
     "User-Agent": `tstodon (${identity.publicOrigin})`,
   };
   const send = (signed: Readonly<Record<string, string>>): Promise<Response> =>
-    fetch(url, { method: "GET", headers: { ...headers, ...signed }, redirect: "manual", signal });
+    fetch(url, {
+      method: "GET",
+      headers: { ...headers, ...signed },
+      redirect: "manual",
+      signal: signal(),
+    });
   if (key === undefined) {
     return send({});
   }
@@ -257,7 +263,9 @@ export const answersGone = async (
       return false;
     }
     const key = await options.fetchSigner();
-    const response = await getActivityOnce(identity, url.value, key, AbortSignal.timeout(5000));
+    const response = await getActivityOnce(identity, url.value, key, () =>
+      AbortSignal.timeout(5000),
+    );
     await response.body?.cancel();
     return response.status === 404 || response.status === 410;
   } catch {
@@ -300,7 +308,7 @@ const getActivity = async (
       // Workers' fetch would follow redirects unsigned and past the host
       // guard, and rejects `redirect: "error"` outright, so each hop is
       // followed here.
-      const response = await getActivityOnce(identity, url, key, signal, accept);
+      const response = await getActivityOnce(identity, url, key, () => signal, accept);
       const location = response.headers.get("location");
       if (REDIRECT_STATUSES.has(response.status) && location !== null) {
         await response.body?.cancel();

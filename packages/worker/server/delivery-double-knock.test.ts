@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { withHostAddresses } from "../test/host-resolver-fixture";
-import { prepareInboxDelivery } from "./delivery";
+import { POST_TIMEOUT_MS, prepareInboxDelivery } from "./delivery";
 import { parseRequestSignature, verifyInboxRequest } from "./http-signature";
 import { instanceActorKeys } from "./instance-actor";
 import { insertOutboundActivity } from "./outbox-store";
@@ -73,6 +73,26 @@ describe("delivery double-knocking (FED-9)", () => {
       { scheme: "MessageSignature", verified: true },
     ]);
     expect(outcome).toBe("Success");
+  });
+
+  it("gives the second knock its own timeout, as Mastodon times each request", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let calls = 0;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+        calls += 1;
+        // The first answer comes a second before its timeout; the second takes two.
+        await vi.advanceTimersByTimeAsync(calls === 1 ? POST_TIMEOUT_MS - 1000 : 2000);
+        if (init?.signal?.aborted) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
+        return new Response(null, { status: calls === 1 ? 401 : 202 });
+      });
+      expect(await deliver()).toBe("Success");
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("knocks again on 400 too, and only once", async () => {
