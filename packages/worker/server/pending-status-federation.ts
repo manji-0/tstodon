@@ -17,6 +17,7 @@ import {
   partitionByDomainAvailability,
   startOutboxDeliveryWorkflow,
 } from "./delivery";
+import { synchronizesFollowers } from "./followers-synchronization";
 import { noteCreateActivity, noteUpdateActivity } from "./activitypub";
 import { newEntityId } from "./ids";
 import { type NoteObject, noteQuoteRequest, readNoteObject } from "./local-note-object";
@@ -307,7 +308,7 @@ const federate = async (
     account.value.id,
     payload,
     quoteRequest,
-    false,
+    await synchronizesFollowers(env.DB, account.value.id, note.visibility),
   );
   if (stored.isErr()) {
     return failed(env, pending, "store");

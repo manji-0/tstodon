@@ -30,6 +30,7 @@ import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { allowListAdmits, federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { checkFederatedHost } from "./federated-fetch";
+import { collectionSynchronizationHeader } from "./followers-synchronization";
 
 type DeliverTargetJob = Extract<OutboxJobValue, { kind: "DeliverTarget" }>;
 
@@ -41,13 +42,15 @@ export type EnqueueLocalActivityError =
 /**
  * Store `account`'s activity for its followers, Linked-Data-signed when
  * Mastodon would sign it ({@link deliveredActivity}), and queue the job that
- * lists their inboxes.
+ * lists their inboxes. With `synchronizeFollowers`, each POST carries a
+ * `Collection-Synchronization` header (`synchronizesFollowers`).
  */
 export const enqueueLocalActivity = async (
   env: Env,
   account: LocalAccount,
   kind: string,
   payload: ApActivityDocumentJSON,
+  options: Readonly<{ synchronizeFollowers?: boolean }> = {},
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   const accountId = account.id;
   const inserted = await insertOutboundActivity(env.DB, {
@@ -55,6 +58,7 @@ export const enqueueLocalActivity = async (
     kind,
     payload: await deliveredActivity(env, account, payload),
     audience: "Followers",
+    synchronizeFollowers: options.synchronizeFollowers === true,
   });
   if (inserted.isErr()) {
     console.error(
@@ -504,6 +508,11 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
   const body = activity.value.payload_json;
   const allowHosts = await federationAllowHosts(env);
   const instanceDomain = identity.value.domain;
+  const { account_id: signerId, signer_username: signerUsername } = activity.value;
+  const synchronizing =
+    activity.value.synchronize_followers === 1 && signerId !== null && signerUsername !== null
+      ? { id: signerId, username: signerUsername }
+      : undefined;
   return async (inboxUrl) => {
     const inbox = URL.parse(inboxUrl);
     if (inbox === null || (inbox.protocol !== "https:" && inbox.protocol !== "http:")) {
@@ -525,8 +534,19 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
       console.warn(JSON.stringify({ kind: "OutboxInboxRefused", activityId, host: inbox.host }));
       return local(DeliveryAttemptOutcome.forHttpStatus(400));
     }
+    const synchronization =
+      synchronizing === undefined
+        ? ok(undefined)
+        : await collectionSynchronizationHeader(env.DB, identity.value, synchronizing, inboxUrl);
+    if (synchronization.isErr()) {
+      return local(DeliveryAttemptOutcome.Local);
+    }
+    const synchronizationHeader = synchronization.value;
     // Each POST has its own timeout, as Mastodon's `Request` times each one.
     const post = async (headers: Headers): Promise<Response> => {
+      if (synchronizationHeader !== undefined) {
+        headers.set("Collection-Synchronization", synchronizationHeader);
+      }
       const timeout = new AbortController();
       const timer = setTimeout(() => timeout.abort(), POST_TIMEOUT_MS);
       try {
