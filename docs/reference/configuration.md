@@ -256,6 +256,10 @@ Every response of the guarded paths in secure mode carries `Cache-Control: priva
 
 Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERATION_ALLOW_HOSTS` does not, set `AUTHORIZED_FETCH` as well if you want both. As on the inbox, a signature must cover `date` (and `digest` on a request with a body), and its `Date` must be at most 65 minutes old and at most 1 hour ahead of this server's clock (Mastodon's `SignedRequest#matches_time_window?`: 5 minutes of validity plus the 1 hour `CLOCK_SKEW_MARGIN`), so a captured signed GET cannot be replayed later; a stale signature is `401` (an actor GET gets the restricted document).
 
+## Followers synchronization
+
+`DISABLE_FOLLOWERS_SYNCHRONIZATION` (off unless set to exactly `true`; not in `wrangler.jsonc` by default) is Mastodon's switch of the same name for FEP-8fcf. With it on, deliveries of followers-only statuses carry no `Collection-Synchronization` header, and a header received on the inbox is ignored. The `followers_synchronization` endpoint still answers, as in Mastodon.
+
 ## IP blocks
 
 IP blocks are managed at runtime (`/api/v1/admin/ip_blocks`, stored in `ip_blocks`); there is nothing to configure. What operators need to know:
