@@ -35,12 +35,14 @@ type WebfingerAnswers = Readonly<
   Record<string, Readonly<{ subject: string; self: string }> | Readonly<{ status: number }>>
 >;
 
-type Served = Readonly<{ remote: Remote; username: string; name?: string }>;
+/** An actor document as served: `webfinger` is its FEP-2c59 handle, when it declares one. */
+type Served = Readonly<{ remote: Remote; username: string; name?: string; webfinger?: string }>;
 
-const actorDocument = ({ remote, username, name }: Served) => ({
+const actorDocument = ({ remote, username, name, webfinger }: Served) => ({
   id: remote.actorUri,
   type: "Person",
   preferredUsername: username,
+  ...(webfinger === undefined ? {} : { webfinger }),
   ...(name === undefined ? {} : { name }),
   inbox: `${remote.actorUri}/inbox`,
   publicKey: {
@@ -168,6 +170,31 @@ describe("an inbox delivery from an actor not yet cached", () => {
 });
 
 describe("a remote actor whose WebFinger domain differs from its URI host", () => {
+  it("starts the round trip from the FEP-2c59 handle its document declares", async () => {
+    const remote = await remoteActor("alice", "social.wf-fep.example", { cache: false });
+    // Only the declared account domain answers WebFinger, as Mastodon's
+    // `extract_username_and_domain!` asks it first.
+    serveRemotes([{ remote, username: "alice", webfinger: "alice@wf-fep.example" }], {
+      "wf-fep.example": { subject: "acct:alice@wf-fep.example", self: remote.actorUri },
+    });
+    expect(await like(remote, "wf-fep", "wf-fep-viewer@example.com")).toBe(202);
+
+    expect(await acctOf(remote.actorUri)).toBe("alice@wf-fep.example");
+  });
+
+  it("falls back to preferredUsername at the URI host when the declared handle is malformed", async () => {
+    const remote = await remoteActor("bob", "social.wf-fep-bad.example", { cache: false });
+    serveRemotes([{ remote, username: "bob", webfinger: "not a handle" }], {
+      "social.wf-fep-bad.example": {
+        subject: "acct:bob@social.wf-fep-bad.example",
+        self: remote.actorUri,
+      },
+    });
+    expect(await like(remote, "wf-fep-bad", "wf-fep-bad-viewer@example.com")).toBe(202);
+
+    expect(await acctOf(remote.actorUri)).toBe("bob@social.wf-fep-bad.example");
+  });
+
   it("stores the domain WebFinger confirms, and a block on that domain screens it", async () => {
     const remote = await remoteActor("alice", "social.wf-split.example", { cache: false });
     serveRemote(remote, "alice", {
