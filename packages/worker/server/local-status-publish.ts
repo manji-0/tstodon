@@ -288,13 +288,24 @@ export const publishLocalNote = async (
     );
   }
   // Followers who asked for notifications on this account's posts get a
-  // `status` notification; the notification policy still decides delivery.
+  // `status` notification when the note reaches their home, as Mastodon's
+  // `FeedInsertWorker#notify?`: not for a reply to someone else, and for a
+  // direct note only when it mentions them. The notification policy still
+  // decides delivery.
   const notifying = await notifyingFollowerIds(env.DB, user.id);
   if (notifying.isErr()) {
     return err(notifying.error);
   }
+  const repliesToOther =
+    input.replyTo !== null &&
+    (input.replyTo.kind === "Remote" || input.replyTo.status.accountId !== user.id);
+  const mentionedIds = new Set<string>(mentionedAccounts.map((account) => account.id));
   for (const followerId of notifying.value) {
-    if (followerId === user.id) {
+    if (
+      followerId === user.id ||
+      repliesToOther ||
+      (note.visibility.kind === "Direct" && !mentionedIds.has(followerId))
+    ) {
       continue;
     }
     await notifyAccount(env, {
