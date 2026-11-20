@@ -79,8 +79,8 @@ const BLOCKED_OR_MUTED_ACTORS_SQL = `(
  * `FeedManager` checks `crutches[:active_mentions]` against `blocking` and
  * `muting`. `local` and `remote` are expressions yielding the id of a local
  * `statuses` row and of a `remote_statuses` row; either may yield NULL. Each
- * test probes a mention table's primary key with the viewer's blocks and
- * mutes, so no blocks or mutes cost no reads.
+ * test probes a mention table's primary key once per account the viewer
+ * blocks or mutes, so a viewer with none reads no mention rows.
  */
 export const mentionsBlockedOrMutedSql = (
   viewerId: string,
