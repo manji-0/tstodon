@@ -226,6 +226,7 @@ const AttachmentDocumentSchema = z.looseObject({
   width: z.unknown().optional(),
   height: z.unknown().optional(),
   focalPoint: z.unknown().optional(),
+  icon: z.unknown().optional(),
 });
 
 const parseAttachmentDocument = schemaResult(AttachmentDocumentSchema);
