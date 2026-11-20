@@ -70,7 +70,9 @@ export const listRemoteDirectStatusesForAccount = async (
 /**
  * Remote statuses on one of the account's followed feeds (home or a list): the
  * public, unlisted, and followers-only notes of actors it follows (accepted)
- * on that feed, newest first. A follow with `languages[]` keeps statuses in
+ * on that feed, newest first. Home also has their limited notes that address
+ * the account, as Mastodon's `FanOutOnWriteService#deliver_to_mentioned_followers!`
+ * (a list has none). A follow with `languages[]` keeps statuses in
  * those languages only (and ones without a language). Actors the account
  * blocks or mutes, domains it blocks, and suspended domains stay out; silenced
  * ones are still shown to followers, as in Mastodon.
@@ -86,6 +88,13 @@ export const listFollowedRemoteStatuses = async (
     const { where, order, binds } = idCursorFragment(cursor);
     const follows = feedFollowSql(feed);
     const replies = feedRepliesSql(feed, accountId);
+    const addressedLimited =
+      feed.kind === "Home"
+        ? `OR (s.visibility = 'limited' AND EXISTS (
+             SELECT 1 FROM remote_status_mentions m
+             WHERE m.status_id = s.id AND m.account_id = f.account_id
+           ))`
+        : "";
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM (
@@ -93,7 +102,7 @@ export const listFollowedRemoteStatuses = async (
            JOIN outbound_follows f
              ON f.actor_uri = s.actor_uri AND f.account_id = ? AND f.state = 'Accepted'
                 ${follows.sql}
-           WHERE s.visibility <> 'direct'
+           WHERE (s.visibility IN ('public', 'unlisted', 'private') ${addressedLimited})
              ${replies.sql}
              AND NOT (
                f.languages_json <> '[]'

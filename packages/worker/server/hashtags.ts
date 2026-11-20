@@ -1,5 +1,5 @@
 import { extractHashtags } from "@tstodon/core";
-import { Visibility } from "@tstodon/domain";
+import { RemoteVisibility } from "@tstodon/domain";
 import { jsonStringArray } from "./d1";
 import { decodeHtmlEntities } from "./html";
 import {
@@ -37,13 +37,14 @@ export const hashtagUses = (texts: ReadonlyArray<string>): Map<string, number> =
 
 /**
  * The tag names a note with this visibility lets hashtag search find: those
- * of a public or unlisted note, whose text anyone can read already. A direct
- * or followers-only note's names stay out, since search shows them to anyone.
+ * of a public or unlisted note, whose text anyone can read already. A direct,
+ * limited or followers-only note's names stay out, since search shows them
+ * to anyone.
  */
 export const searchableTagNames = (
-  visibility: Visibility,
+  visibility: RemoteVisibility,
   names: ReadonlyArray<string>,
-): ReadonlyArray<string> => (Visibility.isRestricted(visibility) ? [] : names);
+): ReadonlyArray<string> => (RemoteVisibility.isRestricted(visibility) ? [] : names);
 
 /**
  * The statement that stores these tag names in `tags`, the names hashtag

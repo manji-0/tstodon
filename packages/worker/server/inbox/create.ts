@@ -1,5 +1,7 @@
+import { assertNever } from "@tstodon/core";
 import { Hostname, type InstanceIdentity, type RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { findAccountByUsername } from "../account-store";
 import type { RepositoryError } from "../d1";
 import type { ReceivedActivity } from "../activity-forward";
 import type { FederatedFetchOptions } from "../federated-fetch";
@@ -7,7 +9,7 @@ import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
 import { persistRemoteObject } from "../remote-status-persist";
 import { findDeliveredRemoteStatus, type KnownRemoteStatus } from "../remote-status-store";
-import type { InboxHandler, RemoteDelivery } from "./handler";
+import type { InboxHandler, InboxTarget, RemoteDelivery } from "./handler";
 
 /**
  * Apply the object of a `Create` that `signer` sent: a vote on a local poll,
@@ -19,7 +21,7 @@ export const applyRemoteCreate = async (
   identity: InstanceIdentity,
   signer: RemoteActor,
   object: string | Readonly<{ id: string } & Record<string, unknown>>,
-  options: FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>,
+  options: FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity; deliveredTo?: string }>,
   known?: KnownRemoteStatus,
 ): Promise<Result<void, RepositoryError>> => {
   const objectUri = typeof object === "string" ? object : object.id;
@@ -61,19 +63,45 @@ export const applyRemoteCreate = async (
   return created.map(() => undefined);
 };
 
+/**
+ * The local account whose personal inbox a delivery came to, as Mastodon's
+ * `delivered_to_account_id`; none for the shared inbox, or a username no
+ * account holds.
+ */
+const inboxOwner = async (
+  db: D1Database,
+  inbox: InboxTarget,
+): Promise<Result<string | undefined, RepositoryError>> => {
+  switch (inbox.kind) {
+    case "Shared":
+      return ok(undefined);
+    case "Personal":
+      return (await findAccountByUsername(db, inbox.username)).map((account) => account?.id);
+    default:
+      return assertNever(inbox);
+  }
+};
+
 export const receiveRemoteCreate: InboxHandler<RemoteDelivery<"Create">> = async ({
   env,
   identity,
   signer,
+  inbox,
   received,
   body,
   allowHosts,
   blockedHosts,
   fetchSigner,
-}) =>
-  applyRemoteCreate(env, identity, signer, received.object, {
+}) => {
+  const owner = await inboxOwner(env.DB, inbox);
+  if (owner.isErr()) {
+    return err(owner.error);
+  }
+  return applyRemoteCreate(env, identity, signer, received.object, {
     allowHosts,
     blockedHosts,
     fetchSigner,
     forward: { kind: "Create", body },
+    ...(owner.value === undefined ? {} : { deliveredTo: owner.value }),
   });
+};

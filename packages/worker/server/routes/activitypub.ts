@@ -69,7 +69,7 @@ import {
 } from "../inbox-store";
 import { limitInboxDelivery } from "../rate-limit";
 import { dispatchInbox } from "../inbox/dispatch";
-import type { InboxSigner } from "../inbox/handler";
+import type { InboxSigner, InboxTarget } from "../inbox/handler";
 import { listOutboxStatusIds, type OutboxReader } from "../actor-outbox-store";
 import { loadLocalNoteDocument, loadLocalNoteDocuments } from "../local-note-document";
 import type { CustomEmoji } from "../emoji";
@@ -905,7 +905,7 @@ const FORBIDDEN_DOMAIN = {
   kind: "Forbidden",
 } as const;
 
-const handleInbox = async (c: Context<{ Bindings: Env }>) => {
+const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
     return c.json(identity.error, 500);
@@ -1222,6 +1222,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   const applied = await dispatchInbox(
     {
       route: forwarder === undefined ? { kind: "Direct" } : { kind: "Forwarded", forwarder },
+      inbox,
       env: c.env,
       identity: identity.value,
       activity: received.activity,
@@ -1244,9 +1245,11 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
 };
 
 export const postUsersByUsernameInbox = (c: Context<{ Bindings: Env }, "/users/:username/inbox">) =>
-  handleInbox(c);
-export const postInbox = (c: Context<{ Bindings: Env }, "/inbox">) => handleInbox(c);
-export const postActorInbox = (c: Context<{ Bindings: Env }, "/actor/inbox">) => handleInbox(c);
+  handleInbox(c, { kind: "Personal", username: c.req.param("username") });
+export const postInbox = (c: Context<{ Bindings: Env }, "/inbox">) =>
+  handleInbox(c, { kind: "Shared" });
+export const postActorInbox = (c: Context<{ Bindings: Env }, "/actor/inbox">) =>
+  handleInbox(c, { kind: "Shared" });
 
 /** Mastodon's instance actor document (`GET /actor`). */
 export const getActor = async (c: Context<{ Bindings: Env }, "/actor">) => {

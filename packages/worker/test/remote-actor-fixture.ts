@@ -10,6 +10,8 @@ export type Remote = Readonly<{
   actorUri: string;
   publicKeyPem: string;
   send: (activity: Record<string, unknown>) => Promise<number>;
+  /** `send` to the personal inbox of the local account `username` instead of the shared one. */
+  sendTo: (username: string, activity: Record<string, unknown>) => Promise<number>;
   /**
    * The signed shared-inbox delivery `send` posts, unsent; signed at `date`,
    * now by default, with draft-cavage unless `scheme` says otherwise.
@@ -120,10 +122,11 @@ export const remoteActor = async (
     document: Record<string, unknown>,
     date: Date = new Date(),
     scheme: SignatureScheme = "Cavage",
+    inbox: string = "https://example.com/inbox",
   ): Promise<Request> => {
     const body = JSON.stringify(document);
     const headers = await signInboxRequest(
-      new URL("https://example.com/inbox"),
+      new URL(inbox),
       keys.privateKeyJwk,
       `${actorUri}#main-key`,
       body,
@@ -133,7 +136,7 @@ export const remoteActor = async (
     if (headers.isErr()) {
       throw new Error(headers.error.message);
     }
-    return new Request("https://example.com/inbox", {
+    return new Request(inbox, {
       method: "POST",
       headers: headers.value,
       body,
@@ -187,5 +190,16 @@ export const remoteActor = async (
     ldSigned,
     forward,
     send: async (activity) => (await SELF.fetch(await delivery(activity))).status,
+    sendTo: async (username, activity) =>
+      (
+        await SELF.fetch(
+          await forward(
+            asDelivered(activity),
+            new Date(),
+            "Cavage",
+            `https://example.com/users/${username}/inbox`,
+          ),
+        )
+      ).status,
   };
 };

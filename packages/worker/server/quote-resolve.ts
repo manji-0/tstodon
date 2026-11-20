@@ -3,6 +3,7 @@ import {
   type LocalStatus,
   QuoteInteractionPolicy,
   type RemoteStatusValue,
+  type RemoteVisibility,
   StatusId,
   StatusTarget,
   type StatusTargetValue,
@@ -24,7 +25,7 @@ import { defaultQuotePolicy, findStatusQuotePolicy, type QuotePolicy } from "./q
 import { ApiRefusal } from "./routes/api-refusal";
 
 /** Public and unlisted statuses can be quoted by anyone their policy allows. */
-export const visibilityIsPublic = (visibility: Visibility): boolean =>
+export const visibilityIsPublic = (visibility: RemoteVisibility): boolean =>
   visibility.kind === "Public" || visibility.kind === "Unlisted";
 
 /** Mastodon's `statuses.errors.quoted_status_not_found`. */

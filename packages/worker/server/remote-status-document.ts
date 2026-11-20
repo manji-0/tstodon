@@ -10,8 +10,8 @@ import {
   ImageDimensions,
   type QuoteApprovalForViewer,
   type RemoteAttachment,
+  RemoteVisibility,
   type RemoteStatus as RemoteStatusValue,
-  Visibility,
 } from "@tstodon/domain";
 import { remotePollJson } from "./poll-document";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
@@ -50,7 +50,7 @@ export const mastodonRemoteStatus = (
     in_reply_to_account_id: null,
     sensitive: status.sensitive,
     spoiler_text: status.spoilerText,
-    visibility: Visibility.toMastodon(status.visibility),
+    visibility: RemoteVisibility.toMastodon(status.visibility),
     language: status.language.kind === "Present" ? status.language.value : null,
     uri: status.objectUri,
     url,

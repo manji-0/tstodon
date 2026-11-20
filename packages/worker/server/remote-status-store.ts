@@ -9,6 +9,7 @@ import {
   RemoteStatus,
   type RemovedRemoteStatus,
   StatusId,
+  RemoteVisibility,
   Visibility,
 } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
@@ -29,7 +30,6 @@ import {
 } from "./d1";
 import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonColumn, parseJsonText } from "./json-column";
-import { visibilitySql } from "./sql-enums";
 import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
 import {
   claimRemoteStatusThreadBackfill as claimRemoteStatusThreadBackfillSql,
@@ -134,7 +134,7 @@ export const remoteStatusFromRow = (
   const id = StatusId.parse(row.id);
   const publishedAt = IsoInstant.parse(row.published_at);
   const editedAt = IsoInstant.parse(row.edited_at ?? "").unwrapOr(undefined);
-  const visibility = Visibility.fromMastodon(row.visibility);
+  const visibility = RemoteVisibility.fromStored(row.visibility);
   if (id.isErr() || publishedAt.isErr() || (row.edited_at && !editedAt) || visibility.isErr()) {
     return err(invalid);
   }
@@ -402,7 +402,7 @@ export const listRemoteStatusTags = async (
 const remoteStatusTagStatements = (
   db: D1Database,
   statusId: string,
-  visibility: Visibility,
+  visibility: RemoteVisibility,
   tags: ReadonlyArray<string>,
 ): D1PreparedStatement[] => [
   db.prepare("DELETE FROM remote_status_tags WHERE status_id = ?").bind(statusId),
@@ -428,7 +428,7 @@ const remoteStatusRowOf = (status: RemoteStatus): RemoteStatusRow => ({
   url: status.url ?? null,
   content_html: status.contentHtml,
   spoiler_text: status.spoilerText,
-  visibility: visibilitySql(status.visibility),
+  visibility: RemoteVisibility.toStored(status.visibility),
   sensitive: status.sensitive ? 1 : 0,
   language: status.language.kind === "Present" ? status.language.value : null,
   published_at: status.publishedAt,
@@ -509,7 +509,7 @@ const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> =>
       .catch(fill.url),
     content_html: column.content_html.catch(fill.content_html),
     spoiler_text: column.spoiler_text.catch(fill.spoiler_text),
-    visibility: z.string().refine(reads(Visibility.fromMastodon)).catch(fill.visibility),
+    visibility: z.string().refine(reads(RemoteVisibility.fromStored)).catch(fill.visibility),
     sensitive: column.sensitive.catch(fill.sensitive),
     language: column.language.catch(fill.language),
     published_at: z.string().refine(reads(IsoInstant.parse)).catch(fill.published_at),
@@ -914,8 +914,8 @@ export const indexMissingRemoteTags = async (
           entries.filter(
             ({ row }) =>
               // An unreadable visibility keeps the names out of search, as a direct note's.
-              !Visibility.isRestricted(
-                Visibility.fromMastodon(row.visibility).unwrapOr(Visibility.Direct),
+              !RemoteVisibility.isRestricted(
+                RemoteVisibility.fromStored(row.visibility).unwrapOr(Visibility.Direct),
               ),
           ),
         ),

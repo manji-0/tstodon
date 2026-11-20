@@ -26,9 +26,19 @@ export type InboxRoute =
   | Readonly<{ kind: "Direct" }>
   | Readonly<{ kind: "Forwarded"; forwarder: RemoteActor }>;
 
+/**
+ * The inbox a request came to: the shared one (`/inbox`, `/actor/inbox`), or
+ * a local account's own (`/users/:username/inbox`), whose owner Mastodon
+ * passes on as `delivered_to_account_id`.
+ */
+export type InboxTarget =
+  | Readonly<{ kind: "Shared" }>
+  | Readonly<{ kind: "Personal"; username: string }>;
+
 /** A verified, first-seen inbox activity, before the signer picks its handlers. */
 export type InboxReceipt = Readonly<{
   route: InboxRoute;
+  inbox: InboxTarget;
   env: Env;
   identity: InstanceIdentity;
   activity: ActivityValue;
