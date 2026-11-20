@@ -255,17 +255,12 @@ export const listThreadAncestors = async (
 const DescendantIdRow = z.object({
   kind: z.literal(["Local", "Remote"]),
   id: z.string(),
-  parent_kind: z.literal(["Local", "Remote"]),
-  parent_id: z.string(),
+  /** 1 when the reply's author wrote the status it answers, Mastodon's `in_reply_to_account_id == account_id`. */
+  self_reply: z.number(),
 });
 
 /** A reply below the opened status, and whether it answers its own author's status. */
 export type ThreadReply = Readonly<{ node: ThreadStatus; selfReply: boolean }>;
-
-const nodeKey = (kind: ThreadStatus["kind"], id: string): string => `${kind}:${id}`;
-
-const authorOf = (node: ThreadStatus): string =>
-  node.kind === "Local" ? `Local:${node.status.accountId}` : `Remote:${node.status.actorUri}`;
 
 /**
  * Replies below a status in Mastodon's `descendant_ids` order: depth first,
@@ -319,7 +314,6 @@ export const listThreadDescendants = async (
   if (remotes.isErr()) {
     return err(remotes.error);
   }
-  const authors = new Map([[nodeKey(start.kind, start.status.id), authorOf(start)]]);
   const nodeOf = (row: z.infer<typeof DescendantIdRow>): ThreadStatus | undefined => {
     if (row.kind === "Local") {
       const status = locals.value.get(row.id);
@@ -328,17 +322,14 @@ export const listThreadDescendants = async (
     const status = remotes.value.get(row.id);
     return status ? { kind: "Remote", status } : undefined;
   };
+  // A local status that names a parent both by id and by URI is walked twice.
+  const seen = new Set<string>();
   return ok(
     picked.flatMap((row): ThreadReply[] => {
-      const node = nodeOf(row);
-      if (!node) {
-        return [];
-      }
-      const author = authorOf(node);
-      authors.set(nodeKey(row.kind, row.id), author);
-      // Rows come in path order, so a reply's parent is read before it.
-      const selfReply = authors.get(nodeKey(row.parent_kind, row.parent_id)) === author;
-      return [{ node, selfReply }];
+      const key = `${row.kind}:${row.id}`;
+      const node = seen.has(key) ? undefined : nodeOf(row);
+      seen.add(key);
+      return node ? [{ node, selfReply: row.self_reply === 1 }] : [];
     }),
   );
 };

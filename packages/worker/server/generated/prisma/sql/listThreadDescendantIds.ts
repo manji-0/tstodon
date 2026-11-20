@@ -12,7 +12,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param maxRows
  */
 export const listThreadDescendantIds = $runtime.makeTypedQueryFactory(
-  "WITH RECURSIVE tree(kind, id, uri, depth, path, parent_kind, parent_id) AS (\nSELECT 'Local', s.id, $3 || a.username || '/statuses/' || s.id, 0, s.id, NULL, NULL\nFROM statuses s LEFT JOIN accounts a ON a.id = s.account_id\nWHERE $1 = 'Local' AND s.id = $2\nUNION ALL\nSELECT 'Remote', rs.id, rs.object_uri, 0, rs.id, NULL, NULL\nFROM remote_statuses rs\nWHERE $1 = 'Remote' AND rs.id = $2\nUNION\nSELECT 'Local', s.id, $3 || a.username || '/statuses/' || s.id, t.depth + 1,\nt.path || '/' || s.id, t.kind, t.id\nFROM tree t\nJOIN statuses s ON s.in_reply_to_id = t.id AND s.kind = 'LocalNote'\nLEFT JOIN accounts a ON a.id = s.account_id\nWHERE t.kind = 'Local' AND t.depth < $4 AND instr('/' || t.path || '/', '/' || s.id || '/') = 0\nUNION\nSELECT 'Local', s.id, $3 || a.username || '/statuses/' || s.id, t.depth + 1,\nt.path || '/' || s.id, t.kind, t.id\nFROM tree t\nJOIN statuses s ON s.in_reply_to_uri = t.uri AND s.kind = 'LocalNote'\nLEFT JOIN accounts a ON a.id = s.account_id\nWHERE t.kind = 'Remote' AND t.depth < $4 AND instr('/' || t.path || '/', '/' || s.id || '/') = 0\nUNION\nSELECT 'Remote', rs.id, rs.object_uri, t.depth + 1, t.path || '/' || rs.id, t.kind, t.id\nFROM tree t\nJOIN remote_statuses rs ON rs.in_reply_to_uri = t.uri\nWHERE t.depth < $4 AND instr('/' || t.path || '/', '/' || rs.id || '/') = 0\nORDER BY 5\nLIMIT $5\n)\nSELECT kind, id, parent_kind, parent_id\nFROM tree\nWHERE depth > 0\nORDER BY path",
+  "WITH RECURSIVE tree(kind, id, uri, depth, author, self_reply) AS (\nSELECT 'Local', s.id, $3 || a.username || '/statuses/' || s.id, 0, 'Local:' || s.account_id, 0\nFROM statuses s LEFT JOIN accounts a ON a.id = s.account_id\nWHERE $1 = 'Local' AND s.id = $2\nUNION ALL\nSELECT 'Remote', rs.id, rs.object_uri, 0, 'Remote:' || rs.actor_uri, 0\nFROM remote_statuses rs\nWHERE $1 = 'Remote' AND rs.id = $2\nUNION ALL\nSELECT 'Local', s.id, $3 || a.username || '/statuses/' || s.id, t.depth + 1,\n'Local:' || s.account_id, t.author = 'Local:' || s.account_id\nFROM tree t\nJOIN statuses s ON s.in_reply_to_id = t.id AND s.kind = 'LocalNote'\nLEFT JOIN accounts a ON a.id = s.account_id\nWHERE t.kind = 'Local' AND t.depth < $4 AND s.id != $2\nUNION ALL\nSELECT 'Local', s.id, $3 || a.username || '/statuses/' || s.id, t.depth + 1,\n'Local:' || s.account_id, t.author = 'Local:' || s.account_id\nFROM tree t\nJOIN statuses s ON s.in_reply_to_uri = t.uri AND s.kind = 'LocalNote'\nLEFT JOIN accounts a ON a.id = s.account_id\nWHERE t.kind = 'Remote' AND t.depth < $4 AND s.id != $2\nUNION ALL\nSELECT 'Remote', rs.id, rs.object_uri, t.depth + 1,\n'Remote:' || rs.actor_uri, t.author = 'Remote:' || rs.actor_uri\nFROM tree t\nJOIN remote_statuses rs ON rs.in_reply_to_uri = t.uri\nWHERE t.depth < $4 AND rs.id != $2\nORDER BY 4 DESC, 2 ASC\nLIMIT $5\n)\nSELECT kind, id, self_reply\nFROM tree\nWHERE depth > 0",
 ) as (
   startKind: string,
   startId: string,
@@ -32,7 +32,6 @@ export namespace listThreadDescendantIds {
   export type Result = {
     kind: null | null;
     id: string | null;
-    parent_kind: null | null;
-    parent_id: string | null;
+    self_reply: null | null;
   };
 }
