@@ -390,9 +390,13 @@ describe("a remote direct note on the home timeline", () => {
 
   it("leaves the user stream of a mentioned follower when its author's account is deleted", async () => {
     const email = "dmh-remote-purge@example.com";
+    const bystanderEmail = "dmh-remote-purge-bystander@example.com";
+    // Opened first, so a fan-out reaches it before the mentioned follower.
+    const bystander = await openStream({ email: bystanderEmail, query: "?stream=user" });
     const stream = await openStream({ email, query: "?stream=user" });
     const username = (await signedInAccount(email)).username;
     const author = await remoteActor("dmhpurge", HOST);
+    await followRemote(bystanderEmail, author);
     await followRemote(email, author);
     const id = await sendDirect(author, "dmh-remote-purge", [username]);
     expect(await heardUpdate(stream, id)).toBe(true);
@@ -411,6 +415,9 @@ describe("a remote direct note on the home timeline", () => {
     }
     expect(heard).toEqual({ stream: ["user"], event: "delete", payload: id });
     expect(await homeIds(email)).not.toContain(id);
+    // The note was never on its home, so it hears no delete of it.
+    expect(await bystander.heardNothing()).toBe(true);
     stream.close();
+    bystander.close();
   });
 });

@@ -50,6 +50,7 @@ import {
   cancelRemoteActorDeliveries as cancelRemoteActorDeliveriesSql,
   listHomeFanOutAccounts as listHomeFanOutAccountsSql,
   listLocalBoostsOfRemoteActor as listLocalBoostsOfRemoteActorSql,
+  listRemoteActorAddressedHomeEntries as listRemoteActorAddressedHomeEntriesSql,
   listRemoteActorHomeEntryIds as listRemoteActorHomeEntryIdsSql,
   purgeRemoteActorConversationHides as purgeRemoteActorConversationHidesSql,
   purgeRemoteActorConversationReads as purgeRemoteActorConversationReadsSql,
@@ -97,6 +98,7 @@ const HandleRow = z.object({
 });
 const IdRow = z.object({ id: z.string() });
 const AccountIdRow = z.object({ account_id: z.string() });
+const AddressedEntryRow = z.object({ status_id: z.string(), account_id: z.string() });
 
 export const RemoteActorRowSchema = z.object({
   actor_uri: z.string().min(1),
@@ -905,7 +907,12 @@ export const purgeRemoteActor = async (
   return ok({ boosts: removedBoostsFromRows(batched.value[0]?.results) });
 };
 
-/** Home timeline entries a purge of the actor takes away, newest first, up to `limit`. */
+/**
+ * Home timeline entries a purge of the actor takes away from every follower,
+ * newest first, up to `limit`: its public, unlisted and followers-only notes
+ * and its boosts. Its limited and direct notes are on the home of the
+ * followers they address only ({@link listRemoteActorAddressedHomeEntries}).
+ */
 export const listRemoteActorHomeEntryIds = async (
   db: D1Database,
   actorUri: string,
@@ -914,6 +921,31 @@ export const listRemoteActorHomeEntryIds = async (
   runD1(async () => {
     const rows = await queryTyped(db, listRemoteActorHomeEntryIdsSql(actorUri, limit), IdRow);
     return rows.map((row) => row.id);
+  });
+
+/**
+ * The actor's `limit` newest limited and direct notes, each with the accepted
+ * local followers it addresses: the homes that hold it, as
+ * `listFollowedRemoteStatuses` puts it there.
+ */
+export const listRemoteActorAddressedHomeEntries = async (
+  db: D1Database,
+  actorUri: string,
+  limit: number,
+): Promise<
+  Result<ReadonlyArray<Readonly<{ statusId: string; accountIds: string[] }>>, RepositoryError>
+> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      listRemoteActorAddressedHomeEntriesSql(actorUri, limit),
+      AddressedEntryRow,
+    );
+    const entries = new Map<string, string[]>();
+    for (const row of rows) {
+      entries.set(row.status_id, [...(entries.get(row.status_id) ?? []), row.account_id]);
+    }
+    return [...entries].map(([statusId, accountIds]) => ({ statusId, accountIds }));
   });
 
 /** Ids of the local accounts that follow the actor, in order, up to `limit`. */

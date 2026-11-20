@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listRemoteActorHomeEntryIds = $runtime.makeTypedQueryFactory(
-  "SELECT id FROM (\nSELECT id FROM remote_statuses WHERE actor_uri = $1\nUNION ALL\nSELECT id FROM remote_boosts WHERE actor_uri = $1\n) ORDER BY id DESC LIMIT $2",
+  "SELECT id FROM (\nSELECT id FROM remote_statuses\nWHERE actor_uri = $1 AND visibility IN ('public', 'unlisted', 'private')\nUNION ALL\nSELECT id FROM remote_boosts WHERE actor_uri = $1\n) ORDER BY id DESC LIMIT $2",
 ) as (
   actorUri: string,
   limit: number,
