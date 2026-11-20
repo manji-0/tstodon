@@ -191,6 +191,53 @@ describe("a local direct note on the home timeline", () => {
     }
   });
 
+  it("stays out of the home of a hashtag follower it does not mention", async () => {
+    await signedInAccount("dmh-tag-author@example.com");
+    const mentioned = await signedInAccount("dmh-tag-mentioned@example.com");
+    await call("dmh-tag-follower@example.com", "/api/v1/tags/dmhfollowedtag/follow", {
+      method: "POST",
+      body: "{}",
+    });
+    // A public note under the hashtag reaches the hashtag follower's home.
+    const open = await postStatus("dmh-tag-author@example.com", "open #dmhfollowedtag", "public");
+
+    const id = await postStatus(
+      "dmh-tag-author@example.com",
+      `@${mentioned.username} closed #dmhfollowedtag`,
+      "direct",
+    );
+
+    const home = await homeIds("dmh-tag-follower@example.com");
+    expect(home).toContain(open);
+    expect(home).not.toContain(id);
+  });
+
+  it("stays out of the home of a mentioned account whose follow is pending", async () => {
+    const author = await signedInAccount("dmh-pending-author@example.com");
+    const requester = await signedInAccount("dmh-pending-requester@example.com");
+    const locked = await request(
+      "dmh-pending-author@example.com",
+      "/api/v1/accounts/update_credentials",
+      { method: "PATCH", body: JSON.stringify({ locked: true }) },
+    );
+    expect(locked.status).toBe(200);
+    const relationship = z.object({ following: z.boolean(), requested: z.boolean() }).parse(
+      await call("dmh-pending-requester@example.com", `/api/v1/accounts/${author.id}/follow`, {
+        method: "POST",
+        body: "{}",
+      }),
+    );
+    expect(relationship).toMatchObject({ following: false, requested: true });
+
+    const id = await postStatus(
+      "dmh-pending-author@example.com",
+      `@${requester.username} not yet`,
+      "direct",
+    );
+
+    expect(await homeIds("dmh-pending-requester@example.com")).not.toContain(id);
+  });
+
   it("pages with the rest of home, and leaves it when deleted", async () => {
     const author = await signedInAccount("dmh-page-author@example.com");
     const follower = await signedInAccount("dmh-page-follower@example.com");
@@ -286,6 +333,21 @@ describe("a remote direct note on the home timeline", () => {
     expect(
       await idsIn("dmh-remote-follower@example.com", `/api/v1/timelines/list/${list}`),
     ).not.toContain(id);
+  });
+
+  it("stays out of the home of a mentioned account whose follow is pending", async () => {
+    const email = "dmh-remote-pending@example.com";
+    const requester = await signedInAccount(email);
+    const author = await remoteActor("dmhpending", HOST);
+    // Never accepted.
+    await call(email, `/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}/follow`, {
+      method: "POST",
+      body: "{}",
+    });
+
+    const id = await sendDirect(author, "dmh-remote-pending", [requester.username]);
+
+    expect(await homeIds(email)).not.toContain(id);
   });
 
   it("is in a follower's home while its notification policy holds the mention", async () => {
