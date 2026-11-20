@@ -22,6 +22,7 @@ import {
 import { parseJsonColumn } from "./json-column";
 import { fetchGuarded } from "./link-card";
 import { measureJobPage } from "./metrics";
+import { decodeEntities } from "./remote-actor-fetch";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
@@ -62,6 +63,23 @@ const VOID_ELEMENTS: ReadonlySet<string> = new Set([
   "wbr",
 ]);
 
+/**
+ * Call `onEnd` when the element closes; false for one without an end tag: a
+ * void element, or a self-closing one (`<path/>` in SVG), on which lol-html's
+ * `onEndTag` throws.
+ */
+const onEndOf = (element: Element, onEnd: () => void): boolean => {
+  if (VOID_ELEMENTS.has(element.tagName)) {
+    return false;
+  }
+  try {
+    element.onEndTag(onEnd);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const htmlResponse = (body: string): Response =>
   new Response(body, { headers: { "content-type": "text/html" } });
 
@@ -76,37 +94,43 @@ export const remoteFieldLink = async (html: string): Promise<string | undefined>
   let tag = "";
   let href: string | null = null;
   let text = "";
-  await new HTMLRewriter()
-    .on("*", {
-      element: (element) => {
-        if (depth === 0) {
-          children += 1;
-          tag = element.tagName;
-          href = element.getAttribute("href");
-        }
-        if (!VOID_ELEMENTS.has(element.tagName)) {
-          depth += 1;
-          element.onEndTag(() => {
-            depth -= 1;
-          });
-        }
-      },
-    })
-    .onDocument({
-      text: (chunk) => {
-        if (chunk.text.length === 0) {
-          return;
-        }
-        if (depth === 0) {
-          children += 1;
-        } else {
-          text += chunk.text;
-        }
-      },
-    })
-    .transform(htmlResponse(html))
-    .text();
-  return children === 1 && tag === "a" && href !== null && href === text ? href : undefined;
+  try {
+    await new HTMLRewriter()
+      .on("*", {
+        element: (element) => {
+          if (depth === 0) {
+            children += 1;
+            tag = element.tagName;
+            href = element.getAttribute("href");
+          }
+          if (
+            onEndOf(element, () => {
+              depth -= 1;
+            })
+          ) {
+            depth += 1;
+          }
+        },
+      })
+      .onDocument({
+        text: (chunk) => {
+          if (chunk.text.length === 0) {
+            return;
+          }
+          if (depth === 0) {
+            children += 1;
+          } else {
+            text += chunk.text;
+          }
+        },
+      })
+      .transform(htmlResponse(html))
+      .text();
+  } catch {
+    return undefined;
+  }
+  const link = href === null ? undefined : decodeEntities(href);
+  return children === 1 && tag === "a" && link === decodeEntities(text) ? link : undefined;
 };
 
 /** The `href` of each `<a>` and `<link>` whose `rel` includes `me`, in document order. */
@@ -117,7 +141,7 @@ const relMeLinks = async (page: Response): Promise<ReadonlyArray<string>> => {
       const rel = (element.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
       const href = element.getAttribute("href");
       if (rel.includes("me") && href !== null) {
-        links.push(href);
+        links.push(decodeEntities(href));
       }
     },
   };
@@ -216,7 +240,11 @@ type CheckedProfile = Readonly<{
   fields: ReadonlyArray<ProfileField>;
   linkBack: string;
   linkOf: (field: ProfileField) => Promise<string | undefined>;
-  markVerified: (index: number, value: string, at: string) => Promise<void>;
+  markVerified: (
+    index: number,
+    value: string,
+    at: string,
+  ) => Promise<Result<void, RepositoryError>>;
 }>;
 
 const localProfile = async (
@@ -238,9 +266,12 @@ const localProfile = async (
     // Mastodon's `short_account_url`.
     linkBack: InstanceIdentity.profileUrl(identity, username),
     linkOf: async (field) => field.value,
-    markVerified: async (index, value, at) => {
-      await runTyped(db, markLocalProfileFieldVerifiedSql(at, accountId, index, value));
-    },
+    markVerified: async (index, value, at) =>
+      (
+        await runD1(() =>
+          runTyped(db, markLocalProfileFieldVerifiedSql(at, accountId, index, value)),
+        )
+      ).map(() => undefined),
   }));
 };
 
@@ -267,9 +298,12 @@ const remoteProfile = async (
     // Mastodon's `url_for` of a remote account: its `url` on its own host, else its URI.
     linkBack: RemoteActor.profileUrl(actor.value),
     linkOf: (field) => remoteFieldLink(field.value),
-    markVerified: async (index, value, at) => {
-      await runTyped(db, markRemoteProfileFieldVerifiedSql(at, actorUri, index, value));
-    },
+    markVerified: async (index, value, at) =>
+      (
+        await runD1(() =>
+          runTyped(db, markRemoteProfileFieldVerifiedSql(at, actorUri, index, value)),
+        )
+      ).map(() => undefined),
   });
 };
 
@@ -333,12 +367,20 @@ export const processVerifyProfileLinksJob = (
         continue;
       }
       if (checked === CHECKS_PER_JOB) {
-        await env.OUTBOX_PROCESS_QUEUE.send({ ...job, fromIndex: index });
+        // A job that cannot queue the rest runs again from where it stopped.
+        try {
+          await env.OUTBOX_PROCESS_QUEUE.send({ ...job, fromIndex: index });
+        } catch {
+          return { outcome: "retry", size: checked, chained: false };
+        }
         return { outcome: "ok", size: checked, chained: true };
       }
       checked += 1;
-      if (await linksBack(url, linkBack, identity.value, options)) {
-        await markVerified(index, field.value, nowIso());
+      if (
+        (await linksBack(url, linkBack, identity.value, options)) &&
+        (await markVerified(index, field.value, nowIso())).isErr()
+      ) {
+        return { outcome: "retry", size: checked, chained: false };
       }
     }
     return { outcome: "ok", size: checked, chained: false };

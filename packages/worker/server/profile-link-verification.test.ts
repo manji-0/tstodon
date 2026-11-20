@@ -4,7 +4,8 @@ import { ApiAccount, ApiCredentialAccount } from "@tstodon/api";
 import type { OutboxJob } from "@tstodon/domain";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
-import { queueCapturingEnv } from "../test/queue-capture";
+import { failingStatements } from "../test/d1-fault";
+import { queueCapturingEnv, queueFailingEnv } from "../test/queue-capture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { processOutboxJob } from "./outbox-job";
 import {
@@ -178,6 +179,91 @@ describe("a remote account's profile field links", () => {
     expect(pages.fetched.some((entry) => entry.includes("carol-http"))).toBe(false);
   });
 
+  it("does not take a url on another host as the profile to link back to", async () => {
+    const victim = "https://victim.example/@alice";
+    const author = await remoteActor("mallory", "links-spoof.example", {
+      profileUrl: victim,
+      fields: [{ name: "site", value: mastodonLink("https://alice-site.example") }],
+    });
+    servePages({ "https://alice-site.example/": { html: linkingTo(victim) } });
+
+    expect(await verifyJob({ kind: "RemoteActor", actorUri: author.actorUri })).toBe("ok");
+
+    const shown = await SELF.fetch(
+      `https://example.com/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}`,
+    );
+    expect(expectContract(ApiAccount, await shown.json()).fields[0]?.verified_at).toBeNull();
+  });
+
+  it("reads the entities of the field's link and of the page's rel=me links", async () => {
+    const pageUrl = "https://dan-site.example/?a=1&b=2";
+    // It names no url: the profile it links back to is its id.
+    const author = await remoteActor("dan", "links-amp.example", {
+      fields: [
+        {
+          name: "site",
+          value:
+            '<a href="https://dan-site.example/?a=1&amp;b=2">https://dan-site.example/?a=1&amp;b=2</a>',
+        },
+      ],
+    });
+    const pages = servePages({
+      [pageUrl]: { html: '<a rel="me" href="https://links-amp.example/users/d&#97;n">me</a>' },
+    });
+
+    expect(await verifyJob({ kind: "RemoteActor", actorUri: author.actorUri })).toBe("ok");
+
+    expect(pages.fetched).toEqual([`GET ${pageUrl}`]);
+    const shown = await SELF.fetch(
+      `https://example.com/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}`,
+    );
+    expect(expectContract(ApiAccount, await shown.json()).fields[0]?.verified_at).not.toBeNull();
+  });
+
+  it("finishes a job whose field holds an element without an end tag", async () => {
+    servePages({ "https://svg.example/": { html: "<p>no links</p>" } });
+    const author = await remoteActor("svg", "links-svg.example", {
+      fields: [
+        {
+          name: "art",
+          value: '<a href="https://svg.example/">https://svg.example/<svg><path d="M0"/></svg></a>',
+        },
+      ],
+    });
+    expect(await verifyJob({ kind: "RemoteActor", actorUri: author.actorUri })).toBe("ok");
+  });
+
+  it("answers retry, not a throw, when a verified field cannot be stored or the rest not queued", async () => {
+    const profileUrl = "https://links-retry.example/@fay";
+    const author = await remoteActor("fay", "links-retry.example", {
+      profileUrl,
+      fields: Array.from({ length: 5 }, (_, index) => ({
+        name: `site ${index}`,
+        value: mastodonLink(`https://fay-${index}.example`),
+      })),
+    });
+    servePages(
+      Object.fromEntries(
+        Array.from({ length: 5 }, (_, index) => [
+          `https://fay-${index}.example/`,
+          { html: linkingTo(profileUrl) },
+        ]),
+      ),
+    );
+    const job = {
+      kind: "VerifyProfileLinks",
+      account: { kind: "RemoteActor", actorUri: author.actorUri },
+      fromIndex: 0,
+    } as const;
+    expect(
+      await failingStatements(
+        (sql) => sql.includes("json_set(profile_json"),
+        () => processOutboxJob(env, job),
+      ),
+    ).toBe("retry");
+    expect(await processOutboxJob(queueFailingEnv(), job)).toBe("retry");
+  });
+
   it("queues a check for each actor fetched since its links were looked at", async () => {
     const author = await remoteActor("dora", "links-due.example", {
       fields: [{ name: "site", value: mastodonLink("https://dora.example") }],
@@ -216,6 +302,16 @@ describe("remoteFieldLink", () => {
     ['see <a href="https://a.example">https://a.example</a>', undefined],
     ['<p><a href="https://a.example">https://a.example</a></p>', undefined],
     ["https://a.example", undefined],
+    [
+      '<a href="https://a.example/?x=1&amp;y">https://a.example/?x=1&amp;y</a>',
+      "https://a.example/?x=1&y",
+    ],
+    // Nokogiri's text of the link holds no element, so these read as Mastodon reads them.
+    [
+      '<a href="https://a.example/">https://a.example/<svg><path d="M0"/></svg></a>',
+      "https://a.example/",
+    ],
+    ['<a href="https://a.example/">https://a.example/<br></a>', "https://a.example/"],
   ])("reads %s as %s", async (html, expected) => {
     expect(await remoteFieldLink(html)).toBe(expected);
   });
