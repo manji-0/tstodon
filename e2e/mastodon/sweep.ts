@@ -411,6 +411,12 @@ export const contextOf = (viewer: E2eUser, statusId: string) =>
 const composeDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = dirname(dirname(composeDirectory));
 
+const ChildFailure = z.object({
+  status: z.number().nullable(),
+  stdout: z.string(),
+  stderr: z.string(),
+});
+
 const run = (command: string, args: readonly string[], cwd: string, input?: string): string => {
   try {
     return execFileSync(command, args, {
@@ -420,8 +426,13 @@ const run = (command: string, args: readonly string[], cwd: string, input?: stri
       stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new StepFailure(`${command} ${args.slice(0, 6).join(" ")}: ${detail.slice(-800)}`);
+    // A tool can print its error on standard output (`wrangler --json`
+    // does), and `error.message` carries only standard error.
+    const child = ChildFailure.safeParse(error);
+    const detail = child.success
+      ? `exit ${child.data.status}; stdout: ${child.data.stdout.slice(-600)}; stderr: ${child.data.stderr.slice(-600)}`
+      : String(error);
+    throw new StepFailure(`${command} ${args.slice(0, 6).join(" ")}: ${detail}`);
   }
 };
 
