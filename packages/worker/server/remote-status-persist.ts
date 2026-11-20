@@ -89,17 +89,28 @@ const mentionHrefs = (raw: unknown): string[] => {
   return [...new Set(hrefs)];
 };
 
-/** The usernames of the exact local actor URLs among `uris`, each once. */
-const localUsernames = (identity: InstanceIdentity, uris: ReadonlyArray<string>): string[] => [
-  ...new Set(
-    uris.flatMap((uri) => {
-      const username = parseLocalActorUsername(identity, uri);
-      return username && InstanceIdentity.actorUrl(identity, username) === uri
-        ? [username.toLowerCase()]
-        : [];
-    }),
-  ),
-];
+/**
+ * The usernames of the local accounts among `uris`, each once: an exact
+ * actor URL (`/users/name`) or profile URL (`/@name`), as Mastodon's
+ * `uris_to_local_accounts` reads both.
+ */
+const localUsernames = (identity: InstanceIdentity, uris: ReadonlyArray<string>): string[] => {
+  const profilePrefix = InstanceIdentity.profileUrl(identity, "");
+  return [
+    ...new Set(
+      uris.flatMap((uri) => {
+        const username = uri.startsWith(profilePrefix)
+          ? uri.slice(profilePrefix.length)
+          : parseLocalActorUsername(identity, uri);
+        return username &&
+          (InstanceIdentity.actorUrl(identity, username) === uri ||
+            InstanceIdentity.profileUrl(identity, username) === uri)
+          ? [username.toLowerCase()]
+          : [];
+      }),
+    ),
+  ];
+};
 
 /**
  * The remote actors a remote note's `Mention` tags name: http(s) URIs off

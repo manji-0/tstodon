@@ -161,6 +161,21 @@ describe("a remote direct note with an audience-only account", () => {
     expect((await statusAs("lim-direct-only@example.com", row.id)).body?.visibility).toBe("direct");
   });
 
+  it("stays direct when its tag names an account by its profile URL", async () => {
+    // Mastodon's `uris_to_local_accounts` reads `/@name` as the account, as `/users/name`.
+    const email = "lim-profile-url@example.com";
+    const mentioned = await signedInAccount(email);
+    const author = await remoteActor("limprofileurl", HOST);
+    const objectUri = await sendNote(author, "lim-profile-url", {
+      to: [actorUrl(mentioned.username)],
+      tag: [`https://example.com/@${mentioned.username}`],
+    });
+    const row = await stored(objectUri);
+    expect(row.visibility).toBe("direct");
+    const seen = await statusAs(email, row.id);
+    expect(seen.body?.mentions.map((mention) => mention.username)).toEqual([mentioned.username]);
+  });
+
   it("is limited when a cached remote actor is in its audience without a tag", async () => {
     const mentioned = await signedInAccount("lim-remote-cc@example.com");
     const author = await remoteActor("limremotecc", HOST);
