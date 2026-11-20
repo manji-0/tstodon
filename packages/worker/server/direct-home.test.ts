@@ -325,4 +325,30 @@ describe("a remote direct note on the home timeline", () => {
     expect(await heardUpdate(stream, id)).toBe(true);
     stream.close();
   });
+
+  it("leaves the user stream of a mentioned follower when its author's account is deleted", async () => {
+    const email = "dmh-remote-purge@example.com";
+    const stream = await openStream({ email, query: "?stream=user" });
+    const username = (await signedInAccount(email)).username;
+    const author = await remoteActor("dmhpurge", HOST);
+    await followRemote(email, author);
+    const id = await sendDirect(author, "dmh-remote-purge", [username]);
+    expect(await heardUpdate(stream, id)).toBe(true);
+
+    expect(
+      await author.send({
+        id: `${author.actorUri}#delete`,
+        type: "Delete",
+        object: author.actorUri,
+      }),
+    ).toBe(202);
+
+    let heard = await stream.next();
+    for (let read = 0; read < 3 && heard.event !== "delete"; read += 1) {
+      heard = await stream.next();
+    }
+    expect(heard).toEqual({ stream: ["user"], event: "delete", payload: id });
+    expect(await homeIds(email)).not.toContain(id);
+    stream.close();
+  });
 });
