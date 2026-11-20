@@ -106,10 +106,15 @@ export const listHomeStatuses = async (
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(accountId, now);
     const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
+    // A followed author's direct note only when it mentions the viewer, as
+    // Mastodon's `deliver_to_mentioned_followers!`; the viewer's own always
+    // (`deliver_to_self!`). Followed hashtags bring public notes only.
     const sql = `SELECT ${statusSelect} FROM statuses
-         WHERE visibility != 'direct' AND (account_id = ? OR account_id IN (
+         WHERE (account_id = ? OR (account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         ) OR id IN ${tagged.sql})
+         ) AND (visibility != 'direct' OR EXISTS (
+           SELECT 1 FROM status_mentions m WHERE m.status_id = statuses.id AND m.account_id = ?
+         ))) OR id IN ${tagged.sql})
          ${suppressed}
          ${reblogs.sql}
          ${FEED_LANGUAGES_SQL}
@@ -117,6 +122,7 @@ export const listHomeStatuses = async (
     const { results } = await db
       .prepare(sql)
       .bind(
+        accountId,
         accountId,
         accountId,
         ...tagged.binds,
