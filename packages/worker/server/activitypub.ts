@@ -24,7 +24,7 @@ import type { z } from "zod";
 import { type AccountProfile, EMPTY_ACCOUNT_PROFILE } from "./account-profile-store";
 import type { ActivityJsonSchema } from "./activitypub-wire";
 import { type CustomEmoji, emojisInTexts } from "./emoji";
-import { escapeHtml, textToHtml } from "./html";
+import { formatFieldValue, textToHtml } from "./html";
 import { mediaPublicUrl } from "./media-keys";
 import { emptyNoteReplies } from "./note-replies";
 import type { PollRecord } from "./poll-store";
@@ -159,7 +159,7 @@ export const actorDocument = (
     attachment: (profile?.fields ?? []).map((field) => ({
       type: "PropertyValue",
       name: field.name,
-      value: escapeHtml(field.value),
+      value: formatFieldValue(field.value, identity),
     })),
     ...(icon ? { icon } : {}),
     ...(image ? { image } : {}),

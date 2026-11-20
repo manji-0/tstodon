@@ -23,6 +23,8 @@ export const RemoteAttachmentSchema = z.object({
   size: z.object({ width: z.int().positive(), height: z.int().positive() }).optional(),
   /** The focal point, each axis from -1 to 1. */
   focus: z.object({ x: z.number().min(-1).max(1), y: z.number().min(-1).max(1) }).optional(),
+  /** The thumbnail the note names in the attachment's `icon` (a video's poster, an audio's cover). */
+  thumbnailUrl: z.url().optional(),
 });
 
 export type RemoteAttachment = z.infer<typeof RemoteAttachmentSchema>;

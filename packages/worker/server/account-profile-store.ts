@@ -1,3 +1,4 @@
+import { ProfileFieldSchema } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -10,12 +11,7 @@ import {
 import { queryTyped, runTyped } from "./typed-sql";
 import { parseJsonColumn } from "./json-column";
 
-export const ProfileFieldSchema = z.object({
-  name: z.string(),
-  value: z.string(),
-});
-
-export type ProfileField = z.infer<typeof ProfileFieldSchema>;
+type ProfileField = z.infer<typeof ProfileFieldSchema>;
 
 export type AccountProfile = Readonly<{
   note: string;

@@ -16,10 +16,12 @@ import { listRemoteStatusEdits, remoteStatusEditStatement } from "./remote-statu
 
 /**
  * Whether the attachments are the same files, in the same order, with the
- * same descriptions. Mastodon's `ProcessStatusUpdateService` compares these
- * (`MediaAttachmentParser#significantly_changes?` and the ordered ids) and no
- * other property of an attachment, so one a later version starts to keep
- * never turns a stored note into an edited one.
+ * same descriptions and thumbnails. Mastodon's `ProcessStatusUpdateService`
+ * compares these (`MediaAttachmentParser#significantly_changes?` and the
+ * ordered ids) and no other property of an attachment, so one a later
+ * version starts to keep never turns a stored note into an edited one. A
+ * thumbnail where the stored attachment has none is not a change either: a
+ * row stored before thumbnails were kept has none.
  */
 const sameMedia = (
   before: RemoteStatusValue["media"],
@@ -28,7 +30,10 @@ const sameMedia = (
   before.length === after.length &&
   before.every(
     (attachment, index) =>
-      attachment.url === after[index]?.url && attachment.description === after[index].description,
+      attachment.url === after[index]?.url &&
+      attachment.description === after[index].description &&
+      (attachment.thumbnailUrl === undefined ||
+        attachment.thumbnailUrl === after[index].thumbnailUrl),
   );
 
 /**

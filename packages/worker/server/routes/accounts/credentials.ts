@@ -1,6 +1,7 @@
 import type { ApiCredentialAccountJSON, ApiProfileDocumentJSON } from "@tstodon/api";
 import {
   FediRole,
+  ProfileField,
   UploadMetadata,
   QuoteApprovalPolicy,
   Visibility,
@@ -18,6 +19,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { type Context } from "hono";
 import { findAccountById, updateAccountProfile } from "../../account-store";
+import { queueProfileLinkCheck } from "../../profile-link-verification";
 import { changeAccountLocked } from "../../follow-request-approval";
 import { findComposeDefaults, updateAccountDefaults } from "../../account-defaults-store";
 import {
@@ -329,12 +331,14 @@ const saveProfile = async (
     return err(ApiRefusal.rejected(422, header.message, "ValidationError"));
   }
   const flag = (value: boolean | undefined, stored: boolean): boolean => value ?? stored;
+  const savedFields =
+    fields === undefined ? existing.fields : ProfileField.keepVerified(existing.fields, fields);
   const saved = await upsertAccountProfile(
     env.DB,
     accountId,
     {
       note: body.note === undefined ? existing.note : body.note,
-      fields: fields === undefined ? existing.fields : fields,
+      fields: savedFields,
       bot: flag(body.bot, existing.bot),
       discoverable: flag(body.discoverable, existing.discoverable),
       indexable: flag(body.indexable, existing.indexable),
@@ -349,6 +353,8 @@ const saveProfile = async (
   if (saved.isErr()) {
     return err(ApiRefusal.repository(saved.error.message));
   }
+  // As Mastodon's `UpdateAccountService#check_links`.
+  await queueProfileLinkCheck(env, { kind: "LocalAccount", accountId }, savedFields);
   const replaced = [
     avatar.objectKey === null ? null : existing.avatarObjectKey,
     header.objectKey === null ? null : existing.headerObjectKey,

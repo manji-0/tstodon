@@ -23,14 +23,42 @@ export type PostMention = Readonly<{ username: string; domain: string | null; ur
 
 const sameText = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
-/** Mastodon's `TextFormatter.shortened_link`: the scheme and what is past 30 characters are hidden. */
-const shortenedLink = (url: string): string => {
+/**
+ * Mastodon's `TextFormatter.shortened_link`: the scheme and what is past 30
+ * characters are hidden. `relMe` adds `me` to `rel`, as on a profile field.
+ */
+const shortenedLink = (url: string, relMe = false): string => {
   const prefix = /^(?:https?:\/\/(?:www\.)?|xmpp:)/.exec(url)?.[0] ?? "";
   const rest = Array.from(url.slice(prefix.length));
   // A one-character suffix is shown: the ellipsis would take as much room.
   const shown = rest.length === 31 ? 31 : 30;
   const hidden = rest.slice(shown).join("");
-  return `<a href="${escapeHtml(url)}" target="_blank" rel="nofollow noopener" translate="no"><span class="invisible">${escapeHtml(prefix)}</span><span class="${hidden.length > 0 ? "ellipsis" : ""}">${escapeHtml(rest.slice(0, shown).join(""))}</span><span class="invisible">${escapeHtml(hidden)}</span></a>`;
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="nofollow noopener${relMe ? " me" : ""}" translate="no"><span class="invisible">${escapeHtml(prefix)}</span><span class="${hidden.length > 0 ? "ellipsis" : ""}">${escapeHtml(rest.slice(0, shown).join(""))}</span><span class="invisible">${escapeHtml(hidden)}</span></a>`;
+};
+
+/** Mastodon's `TextFormatter#link_to_hashtag`, to the normalized name's page. */
+const hashtagLink = (identity: InstanceIdentity, name: string): string =>
+  `<a href="${escapeHtml(tagUrl(identity, normalizeHashtag(name)))}" class="mention hashtag" rel="tag">#<span>${escapeHtml(name)}</span></a>`;
+
+/**
+ * A local profile field's value as Mastodon renders it in the REST account
+ * and the actor document (`account_field_value_format`): one line, its URLs
+ * links with `rel="me"`, so a server that checks the link finds it, and its
+ * hashtags links. A mention stays text.
+ */
+export const formatFieldValue = (text: string, identity: InstanceIdentity): string => {
+  let html = "";
+  let index = 0;
+  for (const entity of extractEntities(text)) {
+    if (entity.kind === "Mention") {
+      continue;
+    }
+    html += escapeHtml(text.slice(index, entity.start));
+    html +=
+      entity.kind === "Url" ? shortenedLink(entity.url, true) : hashtagLink(identity, entity.name);
+    index = entity.end;
+  }
+  return html + escapeHtml(text.slice(index));
 };
 
 /**
@@ -86,7 +114,7 @@ export const formatPostText = (
       entity.kind === "Url"
         ? shortenedLink(entity.url)
         : entity.kind === "Hashtag"
-          ? `<a href="${escapeHtml(tagUrl(options.identity, normalizeHashtag(entity.name)))}" class="mention hashtag" rel="tag">#<span>${escapeHtml(entity.name)}</span></a>`
+          ? hashtagLink(options.identity, entity.name)
           : mentionLink(entity, options.identity, options.mentions);
     index = entity.end;
   }

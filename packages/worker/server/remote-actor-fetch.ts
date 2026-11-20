@@ -90,22 +90,27 @@ const referencedCharacter = (code: number): string =>
 
 /** The text of an actor's HTML `summary`: line breaks kept, every tag dropped. */
 export const summaryText = (html: string): string =>
-  html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
-      if (entity.startsWith("#x") || entity.startsWith("#X")) {
-        return referencedCharacter(Number.parseInt(entity.slice(2), 16));
-      }
-      if (entity.startsWith("#")) {
-        return referencedCharacter(Number.parseInt(entity.slice(1), 10));
-      }
-      return ENTITIES[entity.toLowerCase()] ?? match;
-    })
-    .trim();
+  decodeEntities(
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+      .replace(/<[^>]*>/g, ""),
+  ).trim();
+
+/** HTML text or an attribute value with its character references read: numeric ones and a few names. */
+export const decodeEntities = (text: string): string =>
+  text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+    if (entity.startsWith("#x") || entity.startsWith("#X")) {
+      return referencedCharacter(Number.parseInt(entity.slice(2), 16));
+    }
+    if (entity.startsWith("#")) {
+      return referencedCharacter(Number.parseInt(entity.slice(1), 10));
+    }
+    return ENTITIES[entity.toLowerCase()] ?? match;
+  });
 
 const actorProfile = (
+  actorUri: string,
   document: Readonly<{
     name?: string | undefined;
     attachment?: unknown;
@@ -121,11 +126,14 @@ const actorProfile = (
   const published = IsoInstant.parseRemote(document.published ?? "");
   const note = summaryText(document.summary ?? "");
   const fields = actorFields(document.attachment);
+  // As Mastodon's `ProcessAccountService#url`, a `url` on another host is dropped.
+  const profileUrl = linkUrl(document.url);
   return {
     note,
     avatarUrl: linkUrl(document.icon),
     headerUrl: linkUrl(document.image),
-    profileUrl: linkUrl(document.url),
+    profileUrl:
+      profileUrl !== null && RemoteActor.sameHost(profileUrl, actorUri) ? profileUrl : null,
     locked: document.manuallyApprovesFollowers === true,
     bot: document.type === "Service" || document.type === "Application",
     publishedAt: published.isOk() ? published.value : null,
@@ -278,7 +286,7 @@ export const remoteActorFromDocument = (
     domain,
     inboxUri: document.value.inbox,
     displayName: document.value.name ?? document.value.preferredUsername,
-    profile: actorProfile(document.value),
+    profile: actorProfile(document.value.id, document.value),
     fetchedAt: fetchedAt.value,
     ...(document.value.endpoints?.sharedInbox
       ? { sharedInboxUri: document.value.endpoints.sharedInbox }
