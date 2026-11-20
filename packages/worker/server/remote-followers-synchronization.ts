@@ -7,7 +7,7 @@ import {
 } from "@tstodon/domain";
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { z } from "zod";
-import { findAccountById, findAccountByUsername } from "./account-store";
+import { findAccountById, findAccountsByUsernames } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
@@ -211,37 +211,41 @@ type Reading = Readonly<{
  * a follow stays, a request is accepted as its `Accept` would have, and an
  * account with neither tells the actor to drop the follow it holds. That
  * `Undo` names no `Follow` id this server ever sent, exactly as Mastodon's.
- * Resolves to the ids of the local accounts listed.
+ * Mastodon reads a page's accounts as one relation, so an account listed
+ * twice is one; here each account is acted on once a job (`handled`, by
+ * lowercased username), and a page's accounts are read in one statement.
  */
 const handleListedFollowers = async (
   reading: Reading,
+  handled: Set<string>,
   usernames: ReadonlyArray<string>,
 ): Promise<void> => {
   const { env, identity, actor, follows } = reading;
-  for (const username of usernames) {
-    const follow = follows.get(username.toLowerCase());
+  const fresh = [...new Set(usernames.map((username) => username.toLowerCase()))].filter(
+    (username) => !handled.has(username),
+  );
+  const unheld: string[] = [];
+  for (const username of fresh) {
+    handled.add(username);
+    const follow = follows.get(username);
     const action = FollowersSynchronization.listedFollowAction(follow?.state);
-    switch (action.kind) {
-      case "Keep":
-        break;
-      case "Authorize":
-        if (follow !== undefined) {
-          await acceptOutboundFollow(env.DB, {
-            actorUri: actor.actorUri,
-            followActivityId: follow.followActivityId,
-            accountId: follow.accountId,
-          });
-        }
-        break;
-      case "Undo": {
-        const account = await findAccountByUsername(env.DB, username);
-        if (account.isOk() && account.value !== undefined) {
-          const actorUrl = InstanceIdentity.actorUrl(identity, account.value.username);
-          await sendFollowUndo(env, identity, account.value, actor, `${actorUrl}#follows/`);
-        }
-        break;
-      }
+    if (action.kind === "Authorize" && follow !== undefined) {
+      await acceptOutboundFollow(env.DB, {
+        actorUri: actor.actorUri,
+        followActivityId: follow.followActivityId,
+        accountId: follow.accountId,
+      });
+    } else if (action.kind === "Undo") {
+      unheld.push(username);
     }
+  }
+  if (unheld.length === 0) {
+    return;
+  }
+  const accounts = await findAccountsByUsernames(env.DB, unheld);
+  for (const account of accounts.unwrapOr([])) {
+    const actorUrl = InstanceIdentity.actorUrl(identity, account.username);
+    await sendFollowUndo(env, identity, account, actor, `${actorUrl}#follows/`);
   }
 };
 
@@ -277,6 +281,7 @@ const readCollection = async (
     : root;
   const uris: string[] = [];
   const listedIds = new Set<string>();
+  const handled = new Set<string>();
   for (let pages = 0; current.kind === "Page";) {
     const items = pageItems(current.page);
     const pageUris = items.filter((item): item is string => typeof item === "string");
@@ -286,7 +291,7 @@ const readCollection = async (
     }
     uris.push(...pageUris);
     const usernames = localUsernames(identity, pageUris);
-    await handleListedFollowers(reading, usernames);
+    await handleListedFollowers(reading, handled, usernames);
     for (const username of usernames) {
       const follow = reading.follows.get(username.toLowerCase());
       if (follow !== undefined) {
@@ -339,10 +344,10 @@ const synchronize = async (env: Env, job: SynchronizeFollowersJob): Promise<"ok"
   if (read.kind !== "Complete") {
     return read.kind === "Unavailable" ? "retry" : "ok";
   }
-  if (
-    job.digest !== undefined &&
-    !(await FollowersSynchronization.matchesDigest(read.uris, job.digest))
-  ) {
+  // A blank digest is none (`expected_digest.present?`): the actor could
+  // leave it out as well, so it grants nothing more.
+  const digest = job.digest?.trim() ? job.digest : undefined;
+  if (digest !== undefined && !(await FollowersSynchronization.matchesDigest(read.uris, digest))) {
     return "ok";
   }
   for (const follow of follows.value) {

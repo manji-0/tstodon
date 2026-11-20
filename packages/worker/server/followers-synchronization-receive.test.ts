@@ -232,6 +232,41 @@ describe("the SynchronizeFollowers job", () => {
     expect(await undos(erin.id)).toEqual([]);
   });
 
+  it("acts once for a local account listed many times over several pages", async () => {
+    const { remote, account, url, host } = await scenario("repeated");
+    const dave = await account("dave");
+    const page = (n: number) => `https://${host}/sync?page=${n}`;
+    const repeated = Array.from({ length: 500 }, () => local(dave.username));
+    const documents = new Map<string, unknown>([
+      [url, { id: url, type: "OrderedCollection", first: page(1) }],
+      [page(1), { type: "OrderedCollectionPage", orderedItems: repeated, next: page(2) }],
+      [page(2), { type: "OrderedCollectionPage", orderedItems: repeated }],
+    ]);
+    await serving(documents, () =>
+      processSynchronizeFollowersJob(env, {
+        kind: "SynchronizeFollowers",
+        actorUri: remote.actorUri,
+        url,
+      }),
+    );
+    expect(await undos(dave.id)).toEqual([`${local(dave.username)}#follows//undo`]);
+  });
+
+  it("reads an empty digest as none, as Mastodon's `present?`", async () => {
+    const { remote, account, url } = await scenario("blank");
+    const carol = await account("carol");
+    await follow(carol.id, remote, "Accepted");
+    await serving(new Map([[url, collection(url, [])]]), () =>
+      processSynchronizeFollowersJob(env, {
+        kind: "SynchronizeFollowers",
+        actorUri: remote.actorUri,
+        url,
+        digest: "",
+      }),
+    );
+    expect(await followState(carol.id, remote)).toBeUndefined();
+  });
+
   it("removes nothing when the list does not add up to the digest", async () => {
     const { remote, account, url } = await scenario("mismatch");
     const carol = await account("carol");
