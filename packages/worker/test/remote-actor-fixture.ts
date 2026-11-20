@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { expect } from "vite-plus/test";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
-import { signFetchRequest, signInboxRequest } from "../server/http-signature";
+import { type SignatureScheme, signFetchRequest, signInboxRequest } from "../server/http-signature";
 import { generateAccountKeys } from "../server/keys";
 import { signLdDocument } from "../server/ld-signature";
 import { upsertRemoteActor } from "../server/remote-actor-store";
@@ -10,8 +10,15 @@ export type Remote = Readonly<{
   actorUri: string;
   publicKeyPem: string;
   send: (activity: Record<string, unknown>) => Promise<number>;
-  /** The signed shared-inbox delivery `send` posts, unsent; signed at `date`, now by default. */
-  delivery: (activity: Record<string, unknown>, date?: Date) => Promise<Request>;
+  /**
+   * The signed shared-inbox delivery `send` posts, unsent; signed at `date`,
+   * now by default, with draft-cavage unless `scheme` says otherwise.
+   */
+  delivery: (
+    activity: Record<string, unknown>,
+    date?: Date,
+    scheme?: SignatureScheme,
+  ) => Promise<Request>;
   /**
    * `activity` as `delivery` sends it, with this actor's Linked Data
    * signature (`RsaSignature2017`) made at `date`, now by default.
@@ -21,11 +28,15 @@ export type Remote = Readonly<{
    * A shared-inbox delivery of `body` exactly as given, signed with this
    * actor's key: how a server forwards another actor's activity.
    */
-  forward: (body: Record<string, unknown>, date?: Date) => Promise<Request>;
+  forward: (
+    body: Record<string, unknown>,
+    date?: Date,
+    scheme?: SignatureScheme,
+  ) => Promise<Request>;
   /** A GET signed with this actor's key (authorized fetch). */
   fetch: (path: string) => Promise<Response>;
-  /** The signed GET `fetch` sends, unsent; signed at `date`, now by default. */
-  signedGet: (path: string, date?: Date) => Promise<Request>;
+  /** The signed GET `fetch` sends, unsent; signed at `date`, now by default, as `delivery` is. */
+  signedGet: (path: string, date?: Date, scheme?: SignatureScheme) => Promise<Request>;
 }>;
 
 /**
@@ -108,6 +119,7 @@ export const remoteActor = async (
   const forward = async (
     document: Record<string, unknown>,
     date: Date = new Date(),
+    scheme: SignatureScheme = "Cavage",
   ): Promise<Request> => {
     const body = JSON.stringify(document);
     const headers = await signInboxRequest(
@@ -116,6 +128,7 @@ export const remoteActor = async (
       `${actorUri}#main-key`,
       body,
       date,
+      scheme,
     );
     if (headers.isErr()) {
       throw new Error(headers.error.message);
@@ -126,8 +139,11 @@ export const remoteActor = async (
       body,
     });
   };
-  const delivery = (activity: Record<string, unknown>, date?: Date): Promise<Request> =>
-    forward(asDelivered(activity), date);
+  const delivery = (
+    activity: Record<string, unknown>,
+    date?: Date,
+    scheme?: SignatureScheme,
+  ): Promise<Request> => forward(asDelivered(activity), date, scheme);
   const ldSigned = async (
     activity: Record<string, unknown>,
     date: Date = new Date(),
@@ -142,7 +158,11 @@ export const remoteActor = async (
     }
     return signed.value;
   };
-  const signedGet = async (path: string, date: Date = new Date()): Promise<Request> => {
+  const signedGet = async (
+    path: string,
+    date: Date = new Date(),
+    scheme: SignatureScheme = "Cavage",
+  ): Promise<Request> => {
     const url = new URL(path, "https://example.com");
     const accept = "application/activity+json";
     const headers = await signFetchRequest(
@@ -151,6 +171,7 @@ export const remoteActor = async (
       `${actorUri}#main-key`,
       accept,
       date,
+      scheme,
     );
     if (headers.isErr()) {
       throw new Error(headers.error.message);

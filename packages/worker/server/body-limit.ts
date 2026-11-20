@@ -3,7 +3,7 @@ import type { Context, Next } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { errorPage } from "./auth-pages";
 import { MAX_IMPORT_BYTES } from "./csv-import-file";
-import { parseSignatureHeader } from "./http-signature";
+import { parseRequestSignature } from "./http-signature";
 import { recordInboxRefusal } from "./inbox-refusal";
 import { humanSize } from "./media-limits";
 
@@ -146,12 +146,13 @@ const bodyTooLarge = (c: Context<{ Bindings: Env }>, limitBytes: number): Respon
         413,
       );
     case "Inbox": {
-      const signature = c.req.header("Signature");
       recordInboxRefusal(c.env, {
         reason: "PayloadTooLarge",
         status: 413,
         path: c.req.path,
-        keyId: signature === undefined ? undefined : parseSignatureHeader(signature)?.keyId,
+        keyId: parseRequestSignature(c.req.raw.headers)
+          .map((signature) => signature.keyId)
+          .unwrapOr(undefined),
       });
       return c.body(null, 413);
     }

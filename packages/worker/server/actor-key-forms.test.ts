@@ -7,6 +7,7 @@ import { ed25519Signer } from "../test/integrity-proof-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { webfingerAnswer } from "../test/webfinger-fixture";
 import { unsignedFetch } from "./federated-fetch";
+import { contentDigestHeader, signMessageRequest } from "./http-message-signature";
 import { importRsaPublicKey, signInboxRequest, verifyInboxRequest } from "./http-signature";
 import { readIntegrityProof } from "./integrity-proof";
 import { verifyForwardedActivity } from "./inbox-forward";
@@ -178,6 +179,45 @@ describe("actor key forms (FED-8)", () => {
       await findRemoteActorKey(env.DB, `${carol.actorUri}#ed25519-key`)
     )._unsafeUnwrap();
     expect(stored).toBeUndefined();
+  });
+
+  it("verifies an RFC 9421 message signature made under an Ed25519 Multikey's id, as Mastodon's linzer does", async () => {
+    const erin = await remoteActor("keys-ed-erin", "keys-ed9421.example", { cache: false });
+    const ed = await ed25519Signer();
+    const keyId = `${erin.actorUri}#ed25519-key`;
+    serve({
+      [erin.actorUri]: actorDocument(erin, {
+        assertionMethod: [
+          {
+            id: keyId,
+            type: "Multikey",
+            controller: erin.actorUri,
+            publicKeyMultibase: ed.publicKeyMultibase,
+          },
+        ],
+      }),
+    });
+    const body = JSON.stringify(create(erin, "ed9421"));
+    const headers = new Headers({
+      "Content-Type": "application/activity+json",
+      "Content-Digest": await contentDigestHeader(body),
+    });
+    const url = "https://example.com/inbox";
+    const signature = await signMessageRequest(
+      new Request(url, { method: "POST", headers }),
+      ed.privateKey,
+      keyId,
+    );
+    for (const [name, value] of Object.entries(signature._unsafeUnwrap())) {
+      headers.set(name, value);
+    }
+    const { status, refusals } = await refusalsDuring(() =>
+      post(new Request(url, { method: "POST", headers, body })),
+    );
+    expect(refusals).toEqual([]);
+    expect(status).toBe(202);
+    expect(await storedContent(`${erin.actorUri}/statuses/ed9421`)).toContain("ed9421");
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()?.key.kind).toBe("Ed25519");
   });
 
   it("reads a key served as its own document when its owner lists it", async () => {

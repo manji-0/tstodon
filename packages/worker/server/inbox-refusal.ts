@@ -15,7 +15,10 @@ export type InboxRefusalReason =
   | "InvalidActivityId"
   /** 400: the activity parsed but the inbox rejects it (`detail` says why). */
   | "ActivityRejected"
-  /** 401: no `Signature` header, or one that does not parse. */
+  /**
+   * 401: no `Signature` header, or one that does not parse (`detail` says
+   * why, for an RFC 9421 `Signature-Input`).
+   */
   | "MissingSignature"
   /** 401: the signature does not cover `date` (SIG-1). */
   | "DateNotSigned"
@@ -25,8 +28,10 @@ export type InboxRefusalReason =
   | "TargetNotSigned"
   /** 401: the signed `Date` is unparseable, over 65 minutes old or over 1 hour ahead (SIG-1). */
   | "SignatureExpired"
-  /** 401: `Digest` is missing or does not match the body. */
+  /** 401: `Digest` (RFC 9421: `Content-Digest`'s `sha-256`) is missing or does not match the body. */
   | "DigestMismatch"
+  /** 400: an RFC 9421 delivery's `Content-Digest` is not a structured-field dictionary. */
+  | "MalformedContentDigest"
   /** 401: the activity names a local actor that does not exist. */
   | "UnknownLocalActor"
   /**
@@ -58,7 +63,7 @@ export type InboxRefusal = Readonly<{
   reason: InboxRefusalReason;
   status: 202 | 400 | 401 | 403 | 413 | 429 | 503;
   path: string;
-  /** The `Signature` header's `keyId`, when there is one. Only its host is logged. */
+  /** The signature's `keyId` (RFC 9421: `keyid`), when there is one. Only its host is logged. */
   keyId?: string | undefined;
   /** The activity's `actor`, as the sender claims it. */
   actor?: string | undefined;

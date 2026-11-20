@@ -17,6 +17,8 @@ export const base58btc = (bytes: Uint8Array): string => {
 export type Ed25519Signer = Readonly<{
   /** The public key as a FEP-521a `publicKeyMultibase` (`ed25519-pub`). */
   publicKeyMultibase: string;
+  /** The private key, to sign an RFC 9421 message signature with. */
+  privateKey: CryptoKey;
   /**
    * `document` with an `eddsa-jcs-2022` proof (FEP-8b32) made with this key
    * under `keyId`, as the Data Integrity spec makes one; `extra` adds to the
@@ -45,6 +47,7 @@ export const ed25519Signer = async (): Promise<Ed25519Signer> => {
   const raw = new Uint8Array(exported);
   return {
     publicKeyMultibase: base58btc(Uint8Array.from([0xed, 0x01, ...raw])),
+    privateKey: pair.privateKey,
     prove: async (document, keyId, extra = {}) => {
       const options = {
         type: "DataIntegrityProof",

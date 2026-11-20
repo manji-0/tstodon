@@ -45,9 +45,9 @@ import {
 } from "../activitypub";
 import { jsonRepositoryError } from "../http";
 import {
+  checkBodyDigest,
   checkSignatureStrength,
-  parseSignatureHeader,
-  sha256DigestHeader,
+  parseRequestSignature,
   type VerificationKey,
   verifyInboxRequest,
 } from "../http-signature";
@@ -911,10 +911,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     return c.json(identity.error, 500);
   }
   const path = c.req.path;
-  const keyIdOf = (signatureHeader: string | undefined): string | undefined =>
-    signatureHeader === undefined ? undefined : parseSignatureHeader(signatureHeader)?.keyId;
+  const parsedSignature = parseRequestSignature(c.req.raw.headers);
   const refuse = (refusal: Omit<InboxRefusal, "path">): void =>
-    recordInboxRefusal(c.env, { path, keyId: keyIdOf(c.req.header("Signature")), ...refusal });
+    recordInboxRefusal(c.env, {
+      path,
+      keyId: parsedSignature.map((signature) => signature.keyId).unwrapOr(undefined),
+      ...refusal,
+    });
   const read = await readBodyText(c.req.raw, MAX_JSON_BYTES);
   if (read.isErr()) {
     refuse({ reason: "PayloadTooLarge", status: 413 });
@@ -935,13 +938,20 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
   }
   const payload = activityPayloadFromJson(activityJson.value);
   const actorUri = String(payload.actor);
-  const signature = parseSignatureHeader(c.req.header("Signature") ?? "");
-  if (!signature) {
-    refuse({ reason: "MissingSignature", status: 401, actor: actorUri });
+  if (parsedSignature.isErr()) {
+    const { kind } = parsedSignature.error;
+    refuse({
+      reason: "MissingSignature",
+      status: 401,
+      actor: actorUri,
+      detail: kind === "Unsigned" ? undefined : kind,
+    });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
-  // A signature must cover `date` and `digest`, and its `Date` be recent, so
-  // a captured delivery cannot be replayed (SIG-1): refused before any lookup.
+  const signature = parsedSignature.value;
+  // A signature must cover `date` and `digest` (RFC 9421: `@target-uri` and
+  // `content-digest`), and be recent, so a captured delivery cannot be
+  // replayed (SIG-1): refused before any lookup.
   const weak = checkSignatureStrength(c.req.raw, signature);
   if (weak !== undefined) {
     refuse({
@@ -952,11 +962,17 @@ const handleInbox = async (c: Context<{ Bindings: Env }>) => {
     });
     return c.json({ kind: "InvalidSignature" }, 401);
   }
-  // The signature covers `Digest`, and a body that does not match it never
-  // verifies: refused before any key lookup or fetch.
-  if (c.req.header("Digest") !== (await sha256DigestHeader(bodyText))) {
-    refuse({ reason: "DigestMismatch", status: 401, actor: actorUri });
-    return c.json({ kind: "InvalidSignature" }, 401);
+  // The signature covers `Digest` (`Content-Digest`), and a body that does
+  // not match it never verifies: refused before any key lookup or fetch.
+  switch (await checkBodyDigest(c.req.raw, signature, bodyText)) {
+    case "Match":
+      break;
+    case "Mismatch":
+      refuse({ reason: "DigestMismatch", status: 401, actor: actorUri });
+      return c.json({ kind: "InvalidSignature" }, 401);
+    case "Malformed":
+      refuse({ reason: "MalformedContentDigest", status: 400, actor: actorUri });
+      return c.json({ kind: "InvalidSignature" }, 400);
   }
   const [suspended, allowHosts] = await Promise.all([
     suspendedDomains(c.env.DB),
