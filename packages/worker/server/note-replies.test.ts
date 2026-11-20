@@ -53,6 +53,15 @@ const noteDocument = async (uri: string) => {
   return expectContract(ApStatusDocument, await response.json());
 };
 
+/** A note as its URI serves it, without the JSON-LD context a page item leaves out. */
+const noteDocumentBody = async (uri: string) => {
+  const { "@context": _context, ...note } = await noteDocument(uri);
+  return note;
+};
+
+const itemIds = (items: ReadonlyArray<string | { id: string }>): string[] =>
+  items.map((item) => (typeof item === "string" ? item : item.id));
+
 const repliesPage = async (uri: string) => {
   const response = await SELF.fetch(uri, activityJson);
   expect(response.status, uri).toBe(200);
@@ -119,27 +128,44 @@ describe("a local note's replies collection", () => {
       },
     });
 
+    // As Mastodon's `RepliesController`, the served pages embed a local
+    // reply as its note and list a remote one by its URI; the collection
+    // embeds its first page, `?page=true`.
     const collection = expectContract(
       ApRepliesDocument,
       await (await SELF.fetch(collectionUri, activityJson)).json(),
     );
-    expect(collection.first).toEqual(replies.first);
+    expect(collection).toMatchObject({
+      id: collectionUri,
+      type: "Collection",
+      first: {
+        id: `${collectionUri}?page=true`,
+        type: "CollectionPage",
+        next: `${collectionUri}?only_other_accounts=true&page=true`,
+        partOf: collectionUri,
+      },
+    });
+    expect(collection.first.items).toEqual([
+      await noteDocumentBody(own.uri),
+      await noteDocumentBody(ownUnlisted.uri),
+    ]);
 
     const others = await repliesPage(replies.first.next ?? "");
     expect(others).toMatchObject({
       id: `${collectionUri}?only_other_accounts=true&page=true`,
       type: "CollectionPage",
       partOf: collectionUri,
-      items: [theirs.uri],
       next: `${collectionUri}?only_other_accounts=true&remote=true&page=true`,
     });
+    expect(itemIds(others.items)).toEqual([theirs.uri]);
+    expect(others.items[0]).toMatchObject({ type: "Note", attributedTo: expect.any(String) });
 
     const remotes = await repliesPage(others.next ?? "");
     expect(remotes.items).toEqual([remoteReply]);
     expect(remotes).not.toHaveProperty("next");
 
     const afterFirst = await repliesPage(`${collectionUri}?min_id=${own.id}&page=true`);
-    expect(afterFirst.items).toEqual([ownUnlisted.uri]);
+    expect(itemIds(afterFirst.items)).toEqual([ownUnlisted.uri]);
   });
 
   it("leaves out the replies of a suspended account", async () => {
@@ -148,7 +174,7 @@ describe("a local note's replies collection", () => {
     const root = await post(author, { status: "a root a suspended account answers" });
     const reply = await post(suspended, { status: "soon suspended", in_reply_to_id: root.id });
     const othersUri = `${root.uri}/replies?only_other_accounts=true&page=true`;
-    expect((await repliesPage(othersUri)).items).toEqual([reply.uri]);
+    expect(itemIds((await repliesPage(othersUri)).items)).toEqual([reply.uri]);
 
     const account = await SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, {
       headers: await authHeaders(suspended),
@@ -190,14 +216,57 @@ describe("a local note's replies collection", () => {
     });
   });
 
-  it("is not served for a note that only followers may read, or one that does not exist", async () => {
+  it("is served for a followers-only note to the signers that may read it", async () => {
     const email = "replies-private@example.com";
     const root = await post(email, { status: "followers only", visibility: "private" });
-    await post(email, { status: "a public reply to it", in_reply_to_id: root.id });
+    const publicReply = await post(email, {
+      status: "a public reply to it",
+      in_reply_to_id: root.id,
+    });
+    await post(email, {
+      status: "a followers-only reply to it",
+      in_reply_to_id: root.id,
+      visibility: "private",
+    });
+    const path = `${new URL(root.uri).pathname}/replies`;
 
+    // As Mastodon's `StatusPolicy#show?`: not for an unsigned fetch or a
+    // signer who does not follow the author.
+    for (const uri of [`${root.uri}/replies`, `${root.uri}/replies?page=true`]) {
+      expect((await SELF.fetch(uri, activityJson)).status, uri).toBe(404);
+    }
+    const stranger = await remoteActor("replies-stranger", "replies-stranger.example");
+    expect((await SELF.fetch(await stranger.signedGet(`${path}?page=true`))).status).toBe(404);
+
+    // A follower reads the public and unlisted replies, as `distributable_visibility`.
+    const follower = await remoteActor("replies-follower", "replies-follower.example");
+    const account = await SELF.fetch(`${ORIGIN}/api/v1/accounts/verify_credentials`, {
+      headers: await authHeaders(email),
+    });
+    const { id: accountId } = read(z.object({ id: z.string() }), await account.json());
+    await env.DB.prepare(
+      `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind)
+       VALUES ('replies-private-follow', ?, ?, 'Fulfilled', 'Accepted')`,
+    )
+      .bind(follower.actorUri, accountId)
+      .run();
+    const page = await SELF.fetch(await follower.signedGet(`${path}?page=true`));
+    expect(page.status).toBe(200);
+    expect(page.headers.get("cache-control")).toBe("private");
+    const served = expectContract(ApRepliesPageDocument, await page.json());
+    expect(itemIds(served.items)).toEqual([publicReply.uri]);
+
+    const note = await SELF.fetch(await follower.signedGet(new URL(root.uri).pathname));
+    expect(note.status).toBe(200);
+    expect(expectContract(ApStatusDocument, await note.json()).replies.first.items).toEqual([
+      publicReply.uri,
+    ]);
+  });
+
+  it("is not served for a note that does not exist", async () => {
+    const email = "replies-missing@example.com";
+    const root = await post(email, { status: "a public root" });
     for (const uri of [
-      `${root.uri}/replies`,
-      `${root.uri}/replies?page=true`,
       `${new URL(root.uri).origin}/users/replies-nobody/statuses/${root.id}/replies`,
       `${root.uri.slice(0, root.uri.lastIndexOf("/"))}/0/replies`,
     ]) {
@@ -234,7 +303,9 @@ describe("the replies collection in secure mode", () => {
     const reader = await remoteActor("replies-reader", "replies-reader.example");
     const signed = await secure(await reader.signedGet(`${path}?page=true`));
     expect(signed.status).toBe(200);
-    expect(expectContract(ApRepliesPageDocument, await signed.json()).items).toEqual([reply.uri]);
+    expect(itemIds(expectContract(ApRepliesPageDocument, await signed.json()).items)).toEqual([
+      reply.uri,
+    ]);
 
     const blocked = await remoteActor("replies-blocked", "replies-blocked.example");
     const block = await SELF.fetch(

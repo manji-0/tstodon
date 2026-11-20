@@ -92,7 +92,12 @@ import { ActivityJsonSchema, nameCollectionActivity } from "../activitypub-wire"
 import { parseJsonText } from "../json-column";
 import { assertNever, schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
-import { loadNoteReplies, loadNoteRepliesPage, type RepliedNote } from "../note-replies";
+import {
+  loadNoteReplies,
+  loadNoteRepliesPage,
+  type RepliedNote,
+  repliesCollectionUri,
+} from "../note-replies";
 import { findStatusById, findStatusesByIds } from "../status-store";
 import { listPinnedStatuses } from "../status-pin-store";
 import { listFeaturedTags } from "../tag-store";
@@ -258,11 +263,11 @@ export const getUsersByUsernameStatusesById = async (
     return c.json({ kind: "NotFound" }, 404);
   }
   const visibility = status.value.visibility.kind;
-  // Only a note anyone may read lists its replies; the others carry an empty page.
-  const replies =
-    visibility === "Public" || visibility === "Unlisted"
-      ? await loadNoteReplies(c.env.DB, repliedNote(identity.value, account, status.value))
-      : ok(undefined);
+  // As Mastodon's `NoteSerializer`, whatever the note's own visibility.
+  const replies = await loadNoteReplies(
+    c.env.DB,
+    repliedNote(identity.value, account, status.value),
+  );
   if (replies.isErr()) {
     return jsonRepositoryError(c, replies.error.message);
   }
@@ -275,24 +280,42 @@ export const getUsersByUsernameStatusesById = async (
   }
   const note = document.value;
   if (visibility !== "Public" && visibility !== "Unlisted") {
-    // Followers-only and direct notes go to a signed fetch from an actor they
-    // address (Mastodon's authorized fetch), and never into a shared cache.
-    const signer = await signedFetchActor(c.env, identity.value, c.req.raw);
-    if (!signer || !(await noteAddresses(c.env.DB, note, account, signer.actorUri))) {
+    if (!(await readsPrivateNote(c, identity.value, account, note))) {
       return c.json({ kind: "NotFound" }, 404);
     }
-    c.header("Cache-Control", "private");
-    c.header("Vary", "Signature");
   }
   return c.json(note, 200, jsonLd);
 };
 
 /**
- * The `replies` collection of a public or unlisted note, or one page of it
- * (`?page=true`), as Mastodon's `RepliesController`: public and unlisted
- * replies as URIs, the author's own first, then other local accounts', then
- * the ones cached from other servers. 404 for a note not everyone may read,
- * and for a signed fetcher the author blocks.
+ * Whether the signer of this GET may read a followers-only or direct note,
+ * as Mastodon's `StatusPolicy#show?` under authorized fetch: an actor it
+ * addresses. When it may, the answer is marked for that signer alone, never
+ * for a shared cache.
+ */
+const readsPrivateNote = async (
+  c: Context<{ Bindings: Env }>,
+  identity: InstanceIdentity,
+  author: LocalAccount,
+  note: Pick<ApStatusDocumentJSON, "to" | "cc" | "attributedTo">,
+): Promise<boolean> => {
+  const signer = await signedFetchActor(c.env, identity, c.req.raw);
+  if (!signer || !(await noteAddresses(c.env.DB, note, author, signer.actorUri))) {
+    return false;
+  }
+  c.header("Cache-Control", "private");
+  c.header("Vary", "Signature");
+  return true;
+};
+
+/**
+ * A note's `replies` collection, or one page of it (`?page=true`), as
+ * Mastodon's `RepliesController`: public and unlisted replies, the author's
+ * own first, then other local accounts', then the ones cached from other
+ * servers, a local reply embedded as its note. A followers-only or direct
+ * note's collection is served as the note is ({@link readsPrivateNote}). 404
+ * for a note the fetcher may not read, and for a signed fetcher the author
+ * blocks.
  */
 export const getUsersByUsernameStatusesByIdReplies = async (
   c: Context<{ Bindings: Env }, "/users/:username/statuses/:id/replies">,
@@ -318,14 +341,20 @@ export const getUsersByUsernameStatusesByIdReplies = async (
   if (status.isErr()) {
     return jsonRepositoryError(c, status.error.message);
   }
-  const visibility = status.value?.visibility.kind;
-  if (
-    !status.value ||
-    status.value.kind !== "LocalNote" ||
-    status.value.accountId !== account.id ||
-    (visibility !== "Public" && visibility !== "Unlisted")
-  ) {
+  if (!status.value || status.value.kind !== "LocalNote" || status.value.accountId !== account.id) {
     return c.json({ kind: "NotFound" }, 404);
+  }
+  const visibility = status.value.visibility.kind;
+  if (visibility !== "Public" && visibility !== "Unlisted") {
+    const document = await loadLocalNoteDocument(c.env, identity.value, account, status.value, {
+      emojis: [],
+    });
+    if (document.isErr()) {
+      return jsonRepositoryError(c, document.error.message);
+    }
+    if (!(await readsPrivateNote(c, identity.value, account, document.value))) {
+      return c.json({ kind: "NotFound" }, 404);
+    }
   }
   if (access.kind === "Signed") {
     const blocked = await blocksFetcher(c.env.DB, account, access.actor.actorUri);
@@ -337,17 +366,24 @@ export const getUsersByUsernameStatusesByIdReplies = async (
     }
   }
   const note = repliedNote(identity.value, account, status.value);
-  if (!["1", "true"].includes(query.value.page ?? "")) {
-    const replies = await loadNoteReplies(c.env.DB, note);
-    if (replies.isErr()) {
-      return jsonRepositoryError(c, replies.error.message);
-    }
-    const collection: ApRepliesDocumentJSON = { "@context": ACTIVITY_STREAMS, ...replies.value };
-    return c.json(collection, 200, jsonLd);
-  }
-  const page = await loadNoteRepliesPage(c.env.DB, note, RepliesPage.fromQuery(query.value));
+  const page = await loadNoteRepliesPage(
+    c.env,
+    identity.value,
+    note,
+    RepliesPage.fromQuery(query.value),
+  );
   if (page.isErr()) {
     return jsonRepositoryError(c, page.error.message);
+  }
+  if (!["1", "true"].includes(query.value.page ?? "")) {
+    // Without `page`, the collection with the page its query names as `first`.
+    const collection: ApRepliesDocumentJSON = {
+      "@context": ACTIVITY_STREAMS,
+      id: repliesCollectionUri(note.uri),
+      type: "Collection",
+      first: page.value,
+    };
+    return c.json(collection, 200, jsonLd);
   }
   const document: ApRepliesPageDocumentJSON = { "@context": ACTIVITY_STREAMS, ...page.value };
   return c.json(document, 200, jsonLd);
@@ -640,7 +676,12 @@ const outboxItems = async (
   const notes = statuses.flatMap((status) => (status.kind === "LocalNote" ? [status] : []));
   const boosts = statuses.flatMap((status) => (status.kind === "LocalReblog" ? [status] : []));
   const [documents, boosted] = await Promise.all([
-    loadLocalNoteDocuments(env, identity, account, notes, emojis),
+    loadLocalNoteDocuments(
+      env,
+      identity,
+      notes.map((note) => ({ author: account, note })),
+      emojis,
+    ),
     statusTargetRefs(
       env,
       identity,
