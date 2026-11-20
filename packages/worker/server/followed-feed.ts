@@ -79,8 +79,9 @@ const BLOCKED_OR_MUTED_ACTORS_SQL = `(
  * `FeedManager` checks `crutches[:active_mentions]` against `blocking` and
  * `muting`. `local` and `remote` are expressions yielding the id of a local
  * `statuses` row and of a `remote_statuses` row; either may yield NULL. Each
- * test probes a mention table's primary key once per account the viewer
- * blocks or mutes, so a viewer with none reads no mention rows.
+ * test seeks the status's mentions by its id and checks them against the
+ * viewer's blocks and mutes, gathered once: the unary `+` keeps SQLite from
+ * seeking the mention table once per block or mute instead.
  */
 export const mentionsBlockedOrMutedSql = (
   viewerId: string,
@@ -92,8 +93,8 @@ export const mentionsBlockedOrMutedSql = (
     sql: `EXISTS (SELECT 1 FROM ${table} m WHERE m.status_id = ${id} AND ${target})`,
     binds,
   });
-  const accounts = `m.account_id IN ${BLOCKED_OR_MUTED_ACCOUNTS_SQL}`;
-  const actors = `m.actor_uri IN ${BLOCKED_OR_MUTED_ACTORS_SQL}`;
+  const accounts = `+m.account_id IN ${BLOCKED_OR_MUTED_ACCOUNTS_SQL}`;
+  const actors = `+m.actor_uri IN ${BLOCKED_OR_MUTED_ACTORS_SQL}`;
   const probes = [
     ...(status.local === undefined
       ? []
