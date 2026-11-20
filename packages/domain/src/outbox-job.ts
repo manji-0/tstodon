@@ -304,9 +304,10 @@ const BackfillRemoteOutboxSchema = z.object({
  * `depth` levels below it (0 is the status itself), after the one with id
  * `after`, each expanded by its own `replies` collection. `offset` is how many
  * of the next one's listed replies an earlier job already went through, when
- * it stopped inside that list. `listed` and `pages` count the replies listed
- * and the collection pages read so far, and `stored` the statuses stored, for
- * the whole tree.
+ * it stopped inside that list. `visited` counts the statuses of the tree
+ * the walk reached (expanded or skipped), `listed` and `pages` the replies
+ * listed and the collection pages read so far, and `stored` the statuses
+ * stored, for the whole tree.
  */
 const BackfillRemoteThreadSchema = z.object({
   kind: z.literal("BackfillRemoteThread"),
@@ -319,6 +320,7 @@ const BackfillRemoteThreadSchema = z.object({
         depth: z.number().int().nonnegative(),
         after: z.string(),
         offset: z.number().int().nonnegative().default(0),
+        visited: z.number().int().nonnegative().default(0),
         listed: z.number().int().nonnegative(),
         pages: z.number().int().nonnegative(),
         stored: z.number().int().nonnegative(),

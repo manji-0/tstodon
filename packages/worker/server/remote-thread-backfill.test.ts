@@ -16,6 +16,7 @@ import {
   THREAD_REFRESH_RUNNING_LIMIT_MS,
   THREAD_REPLIES_COOLDOWN_MS,
   THREAD_TREE_NODES_PER_JOB,
+  THREAD_TREE_NODE_LIMIT,
   THREAD_TREE_PAGE_LIMIT,
   THREAD_TREE_REPLY_LIMIT,
   threadRefreshOf,
@@ -641,7 +642,7 @@ describe("the reply tree of an opened remote status", () => {
     expect((await contextOf(rootId)).descendants).toHaveLength(2 * count);
   });
 
-  it(`stops once the tree listed ${THREAD_TREE_REPLY_LIMIT} replies or read ${THREAD_TREE_PAGE_LIMIT} pages`, async () => {
+  it(`stops once the tree listed ${THREAD_TREE_REPLY_LIMIT} replies, read ${THREAD_TREE_PAGE_LIMIT} pages or reached ${THREAD_TREE_NODE_LIMIT} statuses`, async () => {
     const author = await remoteActor("capped-author", "tree.example");
     const reply = noteUri(author, "capped-reply");
     const root = withReplies(author, "capped-root", [reply]);
@@ -664,6 +665,7 @@ describe("the reply tree of an opened remote status", () => {
     for (const counts of [
       { listed: THREAD_TREE_REPLY_LIMIT - 1, pages: 1 },
       { listed: 1, pages: THREAD_TREE_PAGE_LIMIT - 1 },
+      { listed: 1, pages: 1, visited: THREAD_TREE_NODE_LIMIT - 1 },
     ]) {
       // As if the cooldown since the last walk read the reply had passed.
       await env.DB.prepare(
@@ -819,6 +821,50 @@ describe("the reply tree of an opened remote status", () => {
     expect(
       (await contextOf(await statusIdOf(walked.id))).descendants.map((entry) => entry.uri),
     ).toEqual([child.id]);
+  });
+
+  it("does not store a note that replies to itself", async () => {
+    const author = await remoteActor("self-reply", "tree.example");
+    const id = noteUri(author, "self-reply");
+    await deliver(author, noteDocument(author, "self-reply", { inReplyTo: id }));
+
+    const stored = await env.DB.prepare("SELECT 1 FROM remote_statuses WHERE object_uri = ?")
+      .bind(id)
+      .first();
+    expect(stored).toBeNull();
+  });
+
+  it.each([
+    ["a self-reply cached before", 1],
+    ["a two-note reply cycle", 2],
+  ])("ends the walk of %s", async (_case, length) => {
+    const author = await remoteActor(`cycle-${length}`, "tree.example");
+    const notes = Array.from({ length }, (_, index) =>
+      withReplies(author, `cycle-${length}-${index}`, []),
+    );
+    for (const note of notes) {
+      await deliver(author, note);
+    }
+    // Each note answers the next, the last the first: a cycle no fetch makes.
+    for (const [index, note] of notes.entries()) {
+      await env.DB.prepare("UPDATE remote_statuses SET in_reply_to_uri = ? WHERE object_uri = ?")
+        .bind(notes[(index + length - 1) % length]?.id ?? "", note.id)
+        .run();
+    }
+    const rootId = await statusIdOf(notes[0]?.id ?? "");
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+
+    let jobs = 0;
+    await serving(new Map(notes.map((note) => [note.id, note] as const)), async () => {
+      for (; recording.sent.length > 0 && jobs < 20; jobs += 1) {
+        await runQueued(recording);
+      }
+    });
+
+    expect(recording.sent).toEqual([]);
+    expect(jobs).toBeLessThanOrEqual(length + 1);
+    expect(await finishedAt(rootId)).not.toBeNull();
   });
 
   it("stores no note in the root author's name that another host serves", async () => {

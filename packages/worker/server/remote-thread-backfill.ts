@@ -101,6 +101,16 @@ export const THREAD_TREE_REPLY_LIMIT = 1000;
 export const THREAD_TREE_PAGE_LIMIT = 500;
 
 /**
+ * Statuses of a tree the walk reaches, expanded or skipped, as Mastodon's
+ * `fetched_uris` stops `FetchAllRepliesWorker` at `MAX_REPLIES`. With the
+ * depth cap below it bounds the jobs of a walk however the tree is shaped.
+ */
+export const THREAD_TREE_NODE_LIMIT = THREAD_TREE_REPLY_LIMIT;
+
+/** Levels below the opened status the walk goes down. */
+export const THREAD_TREE_DEPTH_LIMIT = 100;
+
+/**
  * Statuses expanded by one job of the tree walk, each by its document and
  * its `replies` pages. A job also stops once it fetched
  * {@link THREAD_BACKFILL_REPLY_LIMIT} replies, and the next job goes on where
@@ -471,12 +481,27 @@ const backfillRemoteThreadPass = async (
       env,
       identity.value,
       job.statusId,
-      { kind: "Level", depth: 0, after: "", offset: 0, listed: 0, pages: 0, stored: ancestors },
+      {
+        kind: "Level",
+        depth: 0,
+        after: "",
+        offset: 0,
+        visited: 0,
+        listed: 0,
+        pages: 0,
+        stored: ancestors,
+      },
       options,
     );
   }
   return expandLevel(env, identity.value, job.statusId, job.from, options);
 };
+
+/** Whether the walk reached one of the per-tree caps. */
+const treeDone = (visited: number, listed: number, pages: number): boolean =>
+  visited >= THREAD_TREE_NODE_LIMIT ||
+  listed >= THREAD_TREE_REPLY_LIMIT ||
+  pages >= THREAD_TREE_PAGE_LIMIT;
 
 /** Whether the walk read a status's `replies` within the cooldown, as Mastodon's `fetched_recently`. */
 const repliesFetchedRecently = (fetchedAt: string | null, now: number): boolean =>
@@ -515,20 +540,21 @@ const expandLevel = async (
   if (nodes.value.length === 0) {
     // A level read to its end in full slices goes on to the next level; an
     // empty level ends the walk.
-    return from.after === ""
+    return from.after === "" || from.depth >= THREAD_TREE_DEPTH_LIMIT
       ? { kind: "Finished", stored: from.stored }
       : { kind: "Continue", from: { ...from, depth: from.depth + 1, after: "", offset: 0 } };
   }
+  const levelDoneAt = (last: string): boolean =>
+    last === nodes.value.at(-1)?.id && nodes.value.length < THREAD_TREE_NODES_PER_JOB;
   const now = Date.now();
-  let { after, offset, listed, pages, stored } = from;
+  let { after, offset, visited, listed, pages, stored } = from;
   let fetched = 0;
   for (const node of nodes.value) {
-    if (
-      listed >= THREAD_TREE_REPLY_LIMIT ||
-      pages >= THREAD_TREE_PAGE_LIMIT ||
-      fetched >= THREAD_BACKFILL_REPLY_LIMIT
-    ) {
+    if (treeDone(visited, listed, pages) || fetched >= THREAD_BACKFILL_REPLY_LIMIT) {
       break;
+    }
+    if (offset === 0) {
+      visited += 1;
     }
     if (offset === 0 && repliesFetchedRecently(node.replies_fetched_at, now)) {
       // An opened status read so is not walked, as `should_fetch_replies?`.
@@ -572,7 +598,7 @@ const expandLevel = async (
       if (slice.value.next < list.items.length) {
         return {
           kind: "Continue",
-          from: { ...from, after, offset: slice.value.next, listed, pages, stored },
+          from: { ...from, after, offset: slice.value.next, visited, listed, pages, stored },
         };
       }
     }
@@ -580,16 +606,27 @@ const expandLevel = async (
     after = node.id;
     offset = 0;
   }
-  if (listed >= THREAD_TREE_REPLY_LIMIT || pages >= THREAD_TREE_PAGE_LIMIT) {
+  if (
+    treeDone(visited, listed, pages) ||
+    (levelDoneAt(after) && from.depth >= THREAD_TREE_DEPTH_LIMIT)
+  ) {
     return { kind: "Finished", stored };
   }
-  const levelDone =
-    after === nodes.value.at(-1)?.id && nodes.value.length < THREAD_TREE_NODES_PER_JOB;
+  const levelDone = levelDoneAt(after);
   return {
     kind: "Continue",
     from: levelDone
-      ? { kind: "Level", depth: from.depth + 1, after: "", offset: 0, listed, pages, stored }
-      : { kind: "Level", depth: from.depth, after, offset: 0, listed, pages, stored },
+      ? {
+          kind: "Level",
+          depth: from.depth + 1,
+          after: "",
+          offset: 0,
+          visited,
+          listed,
+          pages,
+          stored,
+        }
+      : { kind: "Level", depth: from.depth, after, offset: 0, visited, listed, pages, stored },
   };
 };
 
