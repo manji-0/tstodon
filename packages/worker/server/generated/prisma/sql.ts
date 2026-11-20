@@ -692,7 +692,7 @@ export * from "./sql/listNotifications";
 
 export * from "./sql/listNotificationsAscending";
 
-export * from "./sql/listNotifyingFollowerIds";
+export * from "./sql/listNotifyingFollowers";
 
 export * from "./sql/listOutboundActivities";
 

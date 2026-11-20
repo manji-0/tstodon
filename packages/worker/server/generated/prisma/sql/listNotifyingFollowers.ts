@@ -7,15 +7,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param accountId
  */
-export const listNotifyingFollowerIds = $runtime.makeTypedQueryFactory(
-  "SELECT follower_account_id FROM follows\nWHERE target_account_id = $1 AND follower_account_id != $1 AND kind = 'Accepted' AND notify != 0",
+export const listNotifyingFollowers = $runtime.makeTypedQueryFactory(
+  "SELECT follower_account_id, languages_json FROM follows\nWHERE target_account_id = $1 AND follower_account_id != $1 AND kind = 'Accepted' AND notify != 0",
 ) as (
   accountId: string,
-) => $runtime.TypedSql<listNotifyingFollowerIds.Parameters, listNotifyingFollowerIds.Result>;
+) => $runtime.TypedSql<listNotifyingFollowers.Parameters, listNotifyingFollowers.Result>;
 
-export namespace listNotifyingFollowerIds {
+export namespace listNotifyingFollowers {
   export type Parameters = [accountId: string];
   export type Result = {
     follower_account_id: string;
+    languages_json: string;
   };
 }

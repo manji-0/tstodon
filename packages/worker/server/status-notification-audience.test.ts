@@ -90,6 +90,26 @@ describe("the status notification of a followed account's post", () => {
     expect(await statusNotifications("sna-reply-follower@example.com", reply)).toBe(0);
     expect(await statusNotifications("sna-reply-follower@example.com", selfReply)).toBe(1);
   });
+
+  it("goes to no follower whose follow keeps other languages", async () => {
+    const author = await signedInAccount("sna-language-author@example.com");
+    await call("sna-language-ja@example.com", `/api/v1/accounts/${author.id}/follow`, {
+      notify: true,
+      languages: ["ja"],
+    });
+    await call("sna-language-en@example.com", `/api/v1/accounts/${author.id}/follow`, {
+      notify: true,
+      languages: ["en"],
+    });
+
+    const id = await post("sna-language-author@example.com", {
+      status: "in English",
+      language: "en",
+    });
+
+    expect(await statusNotifications("sna-language-ja@example.com", id)).toBe(0);
+    expect(await statusNotifications("sna-language-en@example.com", id)).toBe(1);
+  });
 });
 
 describe("migration 0159", () => {
