@@ -7,7 +7,10 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
+import { unsignedFetch } from "./federated-fetch";
 import { RemoteAccountId } from "./remote-account-id";
+import { storeNoteDocument } from "./remote-status-persist";
+import { parseInstanceIdentity } from "./runtime-config";
 
 // Mastodon's `limited`: a note its audience makes direct, which reaches an
 // account Mastodon knows other than through a `Mention` tag
@@ -319,6 +322,35 @@ describe("a remote direct note with an audience-only account", () => {
         })
       ).status,
     ).toBe(404);
+  });
+
+  it("keeps the visibility it was stored with when its document is stored again", async () => {
+    // Mastodon sets a status's visibility once, in `Create#process_status`.
+    const mentioned = await signedInAccount("lim-restore@example.com");
+    const addressed = await signedInAccount("lim-restore-cc@example.com");
+    const author = await remoteActor("limrestore", HOST);
+    const objectUri = await sendNote(author, "lim-restore", {
+      to: [actorUrl(mentioned.username)],
+      tag: [actorUrl(mentioned.username)],
+    });
+    expect((await stored(objectUri)).visibility).toBe("direct");
+    const restored = await storeNoteDocument(
+      env,
+      parseInstanceIdentity(env)._unsafeUnwrap(),
+      objectUri,
+      {
+        id: objectUri,
+        type: "Note",
+        attributedTo: author.actorUri,
+        content: "<p>lim-restore</p>",
+        published: new Date().toISOString(),
+        to: [actorUrl(mentioned.username), actorUrl(addressed.username)],
+        tag: [{ type: "Mention", href: actorUrl(mentioned.username) }],
+      },
+      { fetchSigner: unsignedFetch },
+    );
+    expect(restored.isOk()).toBe(true);
+    expect((await stored(objectUri)).visibility).toBe("direct");
   });
 
   it("stays limited after an Update", async () => {

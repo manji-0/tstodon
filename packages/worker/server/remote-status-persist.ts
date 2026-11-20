@@ -1014,21 +1014,20 @@ const storeRemoteNote = async (
   if (read.value && read.value.kind !== "RemoteNote") {
     return ok(undefined);
   }
+  // Mastodon sets a note's visibility once, when it stores it
+  // (`Create#process_status`): a note stored again keeps the one it has.
   const audienceOnly =
-    media.visibility.kind === "Direct"
+    read.value === undefined && media.visibility.kind === "Direct"
       ? await reachesAudienceOnlyAccount(env.DB, identity, raw, options.deliveredTo)
       : ok(false);
   if (audienceOnly.isErr()) {
     return err(audienceOnly.error);
   }
-  // Mastodon sets a note's visibility once, when it stores it: a stored
-  // limited note stays limited.
   const status: RemoteStatusValue = {
     ...media,
     visibility:
-      read.value?.visibility.kind === "Limited"
-        ? RemoteVisibility.Limited
-        : RemoteVisibility.ofAudience(media.visibility, { audienceOnly: audienceOnly.value }),
+      read.value?.visibility ??
+      RemoteVisibility.ofAudience(media.visibility, { audienceOnly: audienceOnly.value }),
   };
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.
