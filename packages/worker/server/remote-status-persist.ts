@@ -193,13 +193,9 @@ const reachesAudienceOnlyAccount = async (
   db: D1Database,
   identity: InstanceIdentity,
   raw: unknown,
-  deliveredTo: string | undefined,
+  local: LocalAddressees,
 ): Promise<Result<boolean, RepositoryError>> => {
-  const local = await localAddressees(db, identity, raw, deliveredTo);
-  if (local.isErr()) {
-    return err(local.error);
-  }
-  if (local.value.addressed.length > 0) {
+  if (local.addressed.length > 0) {
     return ok(true);
   }
   const note = parseNoteDocument(raw);
@@ -266,12 +262,16 @@ const storedMentions = async (
  * this delivery finishes although the content it carries is already stored.
  * Absent for an `Update` that edits nothing, or whose pending edit another
  * delivery is finishing.
+ *
+ * `addressees` are the local accounts `raw` names, when the caller read them
+ * already; the steps read them otherwise.
  */
 export type LateSteps = Readonly<{
   actor: RemoteActor;
   raw: unknown;
   status: RemoteStatusValue;
   options: PersistOptions;
+  addressees?: LocalAddressees;
 }> &
   (
     | Readonly<{ kind: "Created"; marker: HeldOwed | undefined }>
@@ -503,7 +503,10 @@ const writeLateSteps = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const addressees = await localAddressees(env.DB, identity, raw, options.deliveredTo);
+  const addressees =
+    late.addressees === undefined
+      ? await localAddressees(env.DB, identity, raw, options.deliveredTo)
+      : ok(late.addressees);
   if (addressees.isErr()) {
     return err(addressees.error);
   }
@@ -1016,9 +1019,13 @@ const storeRemoteNote = async (
   }
   // Mastodon sets a note's visibility once, when it stores it
   // (`Create#process_status`): a note stored again keeps the one it has.
+  const addressees = await localAddressees(env.DB, identity, raw, options.deliveredTo);
+  if (addressees.isErr()) {
+    return err(addressees.error);
+  }
   const audienceOnly =
     read.value === undefined && media.visibility.kind === "Direct"
-      ? await reachesAudienceOnlyAccount(env.DB, identity, raw, options.deliveredTo)
+      ? await reachesAudienceOnlyAccount(env.DB, identity, raw, addressees.value)
       : ok(false);
   if (audienceOnly.isErr()) {
     return err(audienceOnly.error);
@@ -1059,6 +1066,7 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
+    addressees: addressees.value,
   });
   return finished.map(() => stored.value);
 };
