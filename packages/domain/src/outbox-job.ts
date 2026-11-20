@@ -299,12 +299,16 @@ const BackfillRemoteOutboxSchema = z.object({
 });
 
 /**
- * Store the notes above a cached remote status in its thread and the replies
- * it lists (`Root`), then the replies of those, one level of the reply tree at
- * a time (`Level`): the cached replies `depth` levels below the status, after
- * the one with id `after`, each expanded by its own `replies` collection.
- * `listed` and `pages` count the replies listed and the collection pages read
- * so far, and `stored` the replies stored, for the whole tree.
+ * Store the notes above a cached remote status in its thread (`Root`), then
+ * walk its reply tree one level at a time (`Level`): the cached statuses
+ * `depth` levels below it (0 is the status itself), after the one with id
+ * `after`, each expanded by its own `replies` collection. `resume` names the
+ * status whose list an earlier job stopped in, and how many of its listed
+ * replies that job already went through; a job queued before it existed
+ * reads as starting the status afresh. `visited` counts the statuses of the tree
+ * the walk reached (expanded or skipped), `listed` and `pages` the replies
+ * listed and the collection pages read so far, and `stored` the statuses
+ * stored, for the whole tree.
  */
 const BackfillRemoteThreadSchema = z.object({
   kind: z.literal("BackfillRemoteThread"),
@@ -314,8 +318,10 @@ const BackfillRemoteThreadSchema = z.object({
       z.object({ kind: z.literal("Root") }),
       z.object({
         kind: z.literal("Level"),
-        depth: z.number().int().min(1),
+        depth: z.number().int().nonnegative(),
         after: z.string(),
+        resume: z.object({ id: StatusId.schema, offset: z.number().int().positive() }).optional(),
+        visited: z.number().int().nonnegative().default(0),
         listed: z.number().int().nonnegative(),
         pages: z.number().int().nonnegative(),
         stored: z.number().int().nonnegative(),

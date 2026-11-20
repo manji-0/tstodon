@@ -11,7 +11,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listRemoteThreadLevel = $runtime.makeTypedQueryFactory(
-  "WITH RECURSIVE tree(id, object_uri, depth) AS (\nSELECT id, object_uri, 0 FROM remote_statuses WHERE id = $1\nUNION ALL\nSELECT r.id, r.object_uri, tree.depth + 1 FROM tree\nJOIN remote_statuses r ON r.in_reply_to_uri = tree.object_uri\nWHERE tree.depth < $2 AND r.visibility IN ('public', 'unlisted')\n)\nSELECT id, object_uri FROM tree WHERE depth = $2 AND id > $3 ORDER BY id LIMIT $4",
+  "WITH RECURSIVE tree(id, object_uri, depth, path) AS (\nSELECT id, object_uri, 0, ',' || id || ',' FROM remote_statuses WHERE id = $1\nUNION ALL\nSELECT r.id, r.object_uri, tree.depth + 1, tree.path || r.id || ',' FROM tree\nJOIN remote_statuses r ON r.in_reply_to_uri = tree.object_uri\nWHERE tree.depth < $2 AND r.visibility IN ('public', 'unlisted')\nAND instr(tree.path, ',' || r.id || ',') = 0\n)\nSELECT tree.id, tree.object_uri, s.replies_fetched_at\nFROM tree JOIN remote_statuses s ON s.id = tree.id\nWHERE tree.depth = $2 AND tree.id > $3 ORDER BY tree.id LIMIT $4",
 ) as (
   rootId: string,
   depth: number,
@@ -24,5 +24,6 @@ export namespace listRemoteThreadLevel {
   export type Result = {
     id: string | null;
     object_uri: string;
+    replies_fetched_at: string | null;
   };
 }

@@ -204,11 +204,36 @@ const ownCollectionUri = (value: unknown, actorUri: URL): string | undefined => 
   }
 };
 
-/** An actor read from its own document, with the keys it publishes. */
+/**
+ * An actor read from its own document, with the keys it publishes, and the
+ * handle its FEP-2c59 `webfinger` property declares, when that names one.
+ */
 export type FetchedRemoteActor = Readonly<{
   actor: RemoteActor;
   keys: ReadonlyArray<RemoteActorKey>;
+  declaredHandle?: AccountHandle | undefined;
 }>;
+
+const DeclaredHandleSchema = z.object({ webfinger: z.unknown().optional() }).passthrough();
+const parseDeclaredHandle = schemaResult(DeclaredHandleSchema);
+
+/**
+ * The handle an actor document's FEP-2c59 `webfinger` declares, read as
+ * Mastodon's `extract_username_and_domain!` splits it: a string with both a
+ * username and a domain, the domain lowercased. Anything else declares none,
+ * and the round trip starts from `preferredUsername` at the URI's authority.
+ */
+const declaredHandleOf = (raw: unknown): AccountHandle | undefined => {
+  const document = parseDeclaredHandle(raw);
+  const declared = document.isOk() ? document.value.webfinger : undefined;
+  if (typeof declared !== "string") {
+    return undefined;
+  }
+  const handle = domainHandle(declared);
+  return handle && handle.username !== "" && handle.domain !== ""
+    ? { username: handle.username, domain: handle.domain.toLowerCase() }
+    : undefined;
+};
 
 /**
  * An actor document that describes `actorUri`, and the keys it publishes
@@ -275,7 +300,11 @@ export const remoteActorFromDocument = (
   if (actor.isErr()) {
     return err({ kind: "InvalidSignature" });
   }
-  return ok({ actor: actor.value, keys: actorKeys(raw, actorUri) });
+  return ok({
+    actor: actor.value,
+    keys: actorKeys(raw, actorUri),
+    declaredHandle: declaredHandleOf(raw),
+  });
 };
 
 const sameHandle = (a: AccountHandle, b: AccountHandle): boolean =>
@@ -355,7 +384,8 @@ const unanswered = (
 
 /**
  * Mastodon's `check_webfinger!` for an actor read from its own document. The
- * lookup starts at `preferredUsername@<URI authority>`; a `subject` on another
+ * lookup starts at the handle the document declares (`declared`, FEP-2c59), or
+ * else at `preferredUsername@<URI authority>`; a `subject` on another
  * domain is taken only when WebFinger on that domain names the same account
  * and links back to the same actor, so an actor cannot claim a domain it does
  * not control. A claimed domain this instance does not federate with is
@@ -380,6 +410,7 @@ const unanswered = (
 const confirmHandle = async (
   identity: InstanceIdentity,
   actor: RemoteActor,
+  declared: AccountHandle | undefined,
   options: FederatedFetchOptions,
   answered: AccountHandle | undefined,
   stored: AccountHandle | undefined,
@@ -392,12 +423,17 @@ const confirmHandle = async (
       ? { kind: "Refused", host }
       : { kind: "Confirmed", handle: { ...handle, username: handle.username.toLowerCase() } };
   };
-  const claimed = { username: actor.username, domain: actor.domain };
+  const claimed = declared ?? { username: actor.username, domain: actor.domain };
   const vouched = (handle: AccountHandle): boolean =>
     answered !== undefined && sameHandle(answered, handle);
   const fromUriAuthority = async (): Promise<UriSideTrip> => {
     if (vouched(claimed)) {
       return confirmed(claimed);
+    }
+    // A declared domain is refused before it is asked, as `domain_not_allowed?`.
+    const asked = declared === undefined ? undefined : confirmed(claimed);
+    if (asked?.kind === "Refused") {
+      return asked;
     }
     const first = await lookUp(identity, claimed, options);
     if (first.kind !== "Answered") {
@@ -460,7 +496,8 @@ export type CacheFetchedActorError = RepositoryError | WebfingerRefusal;
  * Cache an actor read from its own document, and the keys it publishes, under
  * the handle the round trip settles (`WebfingerConfirmation.handleWrite`). A
  * confirmed handle is taken from any other row that held it. An actor whose
- * claimed account domain is refused is not cached.
+ * claimed account domain is refused is not cached, nor is one not cached yet
+ * that WebFinger does not vouch for.
  */
 export const cacheFetchedActor = async (
   db: D1Database,
@@ -469,7 +506,7 @@ export const cacheFetchedActor = async (
   options: FederatedFetchOptions,
   check: HandleCheck = { kind: "RoundTrip" },
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
-  const { actor, keys } = fetched;
+  const { actor, keys, declaredHandle } = fetched;
   const now = IsoInstant.parse(nowIso());
   if (now.isErr()) {
     return err(toRepositoryError("invalid clock"));
@@ -485,11 +522,16 @@ export const cacheFetchedActor = async (
   const confirmation = await confirmHandle(
     identity,
     actor,
+    declaredHandle,
     options,
     check.answered,
     stored.value && { username: stored.value.username, domain: stored.value.domain },
   );
-  const write = WebfingerConfirmation.handleWrite(confirmation, now.value);
+  const write = WebfingerConfirmation.handleWrite(
+    confirmation,
+    now.value,
+    stored.value === undefined ? "FirstSeen" : "Cached",
+  );
   if (write.isErr()) {
     return err(write.error);
   }

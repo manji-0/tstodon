@@ -34,7 +34,12 @@ export type WebfingerConfirmation =
 
 export type WebfingerRefusal =
   | Readonly<{ kind: "DomainRefused"; host: Hostname }>
-  | Readonly<{ kind: "UnsupportedUsername" }>;
+  | Readonly<{ kind: "UnsupportedUsername" }>
+  /**
+   * WebFinger does not vouch for an actor not cached yet: `check_webfinger!`
+   * raises, and Mastodon stores no account.
+   */
+  | Readonly<{ kind: "WebfingerMismatch" }>;
 
 /**
  * How actor fetch writes an actor's handle (`username@domain` and
@@ -52,23 +57,30 @@ export type HandleWrite =
    */
   | Readonly<{ kind: "Keep" }>;
 
+/** Whether the actor the round trip ran for is cached already. */
+export type ActorRecord = "Cached" | "FirstSeen";
+
 /**
  * The handle write a round trip calls for. A lookup that could not finish
  * keeps the cached handle and its stamp, so an outage does not move an actor
  * off its account domain and does not make that handle look newly confirmed.
  * The round trip ends `Unavailable` only while the URI host still names the
  * cached handle, or when that handle is the URI's own. A definite answer that
- * the domain does not vouch for the actor falls back to the URI's authority.
+ * the domain does not vouch for a cached actor falls back to the URI's
+ * authority; a first-seen actor is refused, as `check_webfinger!` raises.
  */
 const handleWrite = (
   confirmation: WebfingerConfirmation,
   now: IsoInstant,
+  record: ActorRecord,
 ): Result<HandleWrite, WebfingerRefusal> => {
   switch (confirmation.kind) {
     case "Confirmed":
       return ok({ kind: "Confirm", handle: confirmation.handle, webfingeredAt: now });
     case "Mismatch":
-      return ok({ kind: "UriAuthority" });
+      return record === "Cached"
+        ? ok({ kind: "UriAuthority" })
+        : err({ kind: "WebfingerMismatch" });
     case "Unavailable":
       return ok({ kind: "Keep" });
     case "Refused":

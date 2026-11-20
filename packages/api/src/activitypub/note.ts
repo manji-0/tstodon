@@ -70,14 +70,6 @@ export const ApReplies = z.object({
 });
 export type ApRepliesJSON = z.infer<typeof ApReplies>;
 
-/** A status's `replies` collection as served at its URI. */
-export const ApRepliesDocument = withContext(ApReplies);
-export type ApRepliesDocumentJSON = z.infer<typeof ApRepliesDocument>;
-
-/** A page of a status's `replies` as served at its link. */
-export const ApRepliesPageDocument = withContext(ApRepliesPage.extend({ id: ApUri }));
-export type ApRepliesPageDocumentJSON = z.infer<typeof ApRepliesPageDocument>;
-
 const noteFields = {
   id: ApUri,
   attributedTo: ApUri,
@@ -136,6 +128,25 @@ export type ApQuestionJSON = z.infer<typeof ApQuestion>;
 /** A local status: the object a `Create`, `Update` or `QuoteRequest` carries. */
 export const ApStatusObject = z.discriminatedUnion("type", [ApNote, ApQuestion]);
 export type ApStatusObjectJSON = z.infer<typeof ApStatusObject>;
+
+/**
+ * A page of a status's `replies` as its link serves it (Mastodon's
+ * `RepliesController`): a local reply embedded as its note, any other as its
+ * URI.
+ */
+export const ApRepliesServedPage = ApRepliesPage.extend({
+  id: ApUri,
+  items: z.array(z.union([ApUri, ApStatusObject])),
+});
+export type ApRepliesServedPageJSON = z.infer<typeof ApRepliesServedPage>;
+
+/** A page of a status's `replies` as served at its link. */
+export const ApRepliesPageDocument = withContext(ApRepliesServedPage);
+export type ApRepliesPageDocumentJSON = z.infer<typeof ApRepliesPageDocument>;
+
+/** A status's `replies` collection as served at its URI, its first page embedded. */
+export const ApRepliesDocument = withContext(ApReplies.extend({ first: ApRepliesServedPage }));
+export type ApRepliesDocumentJSON = z.infer<typeof ApRepliesDocument>;
 
 /** A local status as served at its URI. */
 export const ApStatusDocument = z.discriminatedUnion("type", [

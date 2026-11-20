@@ -2,6 +2,7 @@ import { createExecutionContext, env } from "cloudflare:test";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { webfingerAnswer } from "../test/webfinger-fixture";
 import { forgetInboxRefusalWindows } from "./inbox-refusal";
 import { postInbox } from "./routes/activitypub";
 
@@ -238,10 +239,16 @@ const actorDocument = (remote: Remote, overrides: Record<string, unknown> = {}) 
 
 const ACTOR_CONTEXT = ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"];
 
-/** `fetch` answering `documents` by URL (the fragment dropped), 404 for anything else. */
+/**
+ * `fetch` answering `documents` by URL (the fragment dropped), and WebFinger
+ * for the actors among them; 404 for anything else.
+ */
 const serve = (documents: Readonly<Record<string, unknown>>, status = 200) =>
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(new Request(input, init).url);
+    if (url.pathname === "/.well-known/webfinger") {
+      return webfingerAnswer(documents, url);
+    }
     url.hash = "";
     const document = documents[url.href];
     return document === undefined

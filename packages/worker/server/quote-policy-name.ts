@@ -49,20 +49,19 @@ export const loadNoteQuotePolicy = async (
   return stored.isErr() ? "nobody" : noteQuotePolicy(account, note, stored.value);
 };
 
-/** {@link loadNoteQuotePolicy} for several notes of `account`, keyed by note id, in one statement. */
+/** {@link loadNoteQuotePolicy} for several notes, each with its author, keyed by note id, in one statement. */
 export const loadNoteQuotePolicies = async (
   db: D1Database,
-  account: LocalAccount,
-  notes: ReadonlyArray<LocalNote>,
+  notes: ReadonlyArray<Readonly<{ author: LocalAccount; note: LocalNote }>>,
 ): Promise<ReadonlyMap<string, QuotePolicy>> => {
   const stored = await findStatusQuotePolicies(
     db,
-    notes.map((note) => note.id),
+    notes.map(({ note }) => note.id),
   );
   return new Map(
-    notes.map((note) => [
+    notes.map(({ author, note }) => [
       note.id,
-      stored.isErr() ? "nobody" : noteQuotePolicy(account, note, stored.value.get(note.id)),
+      stored.isErr() ? "nobody" : noteQuotePolicy(author, note, stored.value.get(note.id)),
     ]),
   );
 };

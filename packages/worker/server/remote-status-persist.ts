@@ -941,6 +941,10 @@ const storeRemoteNote = async (
   const status = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
+  // A note that replies to itself would make its own thread a cycle.
+  if (inReplyTo === status.objectUri) {
+    return ok(undefined);
+  }
   const read = await cachedRemoteStatus(env, identity, status.objectUri, known);
   if (read.isErr()) {
     return err(read.error);
