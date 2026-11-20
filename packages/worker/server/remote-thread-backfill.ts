@@ -252,9 +252,9 @@ type ListedReplies = Readonly<{ items: ReadonlyArray<unknown>; pages: number }>;
  * The replies the note at `objectUri` lists: the items of the pages of its
  * `replies`, read until they hold {@link THREAD_COLLECTION_PAGE_ITEMS} or
  * `maxPages` were read, up to {@link THREAD_COLLECTION_REPLY_LIMIT}. The
- * collection is read only on the note's own origin, as Mastodon's
- * `fetch_collection_page` checks with `reference_uri`, and so is a `next`
- * link. `Unavailable` when the note's document or a page after the first did
+ * collection, its `first` page and each `next` page are read only from the
+ * note's own origin, as Mastodon's `fetch_collection_page` checks each link
+ * against `reference_uri`. `Unavailable` when the note's document or a page after the first did
  * not answer: the list would be cut short, and a later try may read it whole.
  */
 const listedReplies = async (
@@ -268,24 +268,19 @@ const listedReplies = async (
     return "Unavailable";
   }
   const origin = URL.parse(objectUri)?.origin;
+  const reading = { itemLimit: THREAD_COLLECTION_REPLY_LIMIT, origin: origin ?? "" };
   const holder = raw.isOk() ? parseRepliesHolder(raw.value) : undefined;
   const replies = holder?.isOk() ? holder.value.replies : undefined;
   let page;
   if (typeof replies === "string") {
     page =
       URL.parse(replies)?.origin === origin
-        ? await firstCollectionPage(identity, replies, options, THREAD_COLLECTION_REPLY_LIMIT)
+        ? await firstCollectionPage(identity, replies, options, reading)
         : undefined;
   } else {
     const collection = replies === undefined ? undefined : parseCollection(replies);
     page = collection?.isOk()
-      ? await firstPageOf(
-          identity,
-          collection.value,
-          objectUri,
-          options,
-          THREAD_COLLECTION_REPLY_LIMIT,
-        )
+      ? await firstPageOf(identity, collection.value, objectUri, options, reading)
       : undefined;
   }
   const items: unknown[] = [];
@@ -302,12 +297,7 @@ const listedReplies = async (
     ) {
       break;
     }
-    const following = await readCollectionPage(
-      identity,
-      next,
-      options,
-      THREAD_COLLECTION_REPLY_LIMIT,
-    );
+    const following = await readCollectionPage(identity, next, options, reading);
     if (following === "Unavailable") {
       return "Unavailable";
     }

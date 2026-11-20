@@ -354,15 +354,44 @@ describe("opening a remote status", () => {
     });
     await deliver(strayAuthor, strayNote);
     const strayId = await statusIdOf(stray);
-    await requested(strayId, recording.env);
+    const strayRecording = recordingEnv();
+    await requested(strayId, strayRecording.env);
     await serving(
       new Map<string, unknown>([
         [stray, strayNote],
         [elsewhere, page(elsewhere, [noteUri(other, "paged-beyond-the-pages")])],
+        [
+          noteUri(other, "paged-beyond-the-pages"),
+          noteDocument(other, "paged-beyond-the-pages", { inReplyTo: stray }),
+        ],
       ]),
-      () => runQueued(recording),
+      () => drain(strayRecording),
     );
     expect((await contextOf(strayId)).descendants).toEqual([]);
+
+    // Nor a `first` page on another origin, as Mastodon's `fetch_collection_page`
+    // checks it against the note's URI.
+    const firstAuthor = await remoteActor("paged-first", "paged.example");
+    const firstAway = noteUri(firstAuthor, "paged-first-opened");
+    const firstNote = noteDocument(firstAuthor, "paged-first-opened", {
+      replies: { id: `${firstAway}/replies`, type: "Collection", first: elsewhere },
+    });
+    await deliver(firstAuthor, firstNote);
+    const firstId = await statusIdOf(firstAway);
+    const firstRecording = recordingEnv();
+    await requested(firstId, firstRecording.env);
+    await serving(
+      new Map<string, unknown>([
+        [firstAway, firstNote],
+        [elsewhere, page(elsewhere, [noteUri(other, "paged-beyond-the-pages")])],
+        [
+          noteUri(other, "paged-beyond-the-pages"),
+          noteDocument(other, "paged-beyond-the-pages", { inReplyTo: firstAway }),
+        ],
+      ]),
+      () => drain(firstRecording),
+    );
+    expect((await contextOf(firstId)).descendants).toEqual([]);
   });
 
   it("retries, and does not close the fetch, while a page of replies does not answer", async () => {
