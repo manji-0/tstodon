@@ -296,6 +296,33 @@ describe("the status notification of a followed remote actor's note", () => {
     expect(await statusNotifications("rsn-mentions-muter@example.com", plain)).toBe(1);
   });
 
+  // `followers_for_local_distribution` keeps the followers whose user signed
+  // in within `User::ACTIVE_DURATION` (7 days).
+  it("goes to no follower who has not signed in for a week", async () => {
+    const author = await remoteActor("rsninactive", "rsn-inactive.example");
+    await followRemote("rsn-inactive-away@example.com", author, { notify: true });
+    await followRemote("rsn-inactive-recent@example.com", author, { notify: true });
+    const away = await signedInAccount("rsn-inactive-away@example.com");
+    const recent = await signedInAccount("rsn-inactive-recent@example.com");
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
+        daysAgo(8),
+        away.id,
+      ),
+      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
+        daysAgo(6),
+        recent.id,
+      ),
+    ]);
+
+    const id = await create(author, "https://rsn-inactive.example/notes/1", {});
+
+    expect(await statusNotifications("rsn-inactive-away@example.com", id)).toBe(0);
+    expect(await statusNotifications("rsn-inactive-recent@example.com", id)).toBe(1);
+  });
+
   it("goes to each notifying follower for a quote request's recent note, not for an old one", async () => {
     const author = await remoteActor("rsnquote", "rsn-quote.example");
     await followRemote("rsn-quote-notify@example.com", author, { notify: true });

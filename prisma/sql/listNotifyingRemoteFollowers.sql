@@ -1,12 +1,20 @@
 -- @param {String} $1:actorUri
 -- @param {String} $2:now
 -- @param {String} $3:statusId
+-- @param {String} $4:activeSinceDay
 -- A follower who mutes the actor, notifications on or not, is left out:
 -- Mastodon's `filter_from_home` filters a muted author's status. So is one
 -- who blocks or mutes an account or actor the note `$3` actively mentions
 -- (`crutches[:active_mentions]`): a silent mention is not an active one.
+-- Only followers who made an authenticated request on or after the UTC day
+-- `$4` count, as `followers_for_local_distribution` keeps the users who
+-- signed in recently (`User.signed_in_recently`).
 SELECT f.account_id, f.languages_json FROM outbound_follows f
 WHERE f.actor_uri = $1 AND f.state = 'Accepted' AND f.notify != 0
+  AND EXISTS (
+    SELECT 1 FROM account_activity_days d
+    WHERE d.account_id = f.account_id AND d.day >= $4
+  )
   AND NOT EXISTS (
     SELECT 1 FROM mutes m
     WHERE m.account_id = f.account_id AND m.target_actor_uri = $1

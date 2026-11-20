@@ -3,6 +3,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
+import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 import { parseJsonColumn } from "./json-column";
@@ -255,9 +256,9 @@ export const listFollowers = async (
   });
 
 /**
- * Local followers who asked for a notification on every new status, do not
- * mute the account, and do not block or mute an account or actor the
- * account's note `statusId` mentions.
+ * Local followers who signed in recently, asked for a notification on every
+ * new status, do not mute the account, and do not block or mute an account
+ * or actor the account's note `statusId` mentions.
  */
 export const notifyingFollowers = async (
   db: D1Database,
@@ -267,7 +268,7 @@ export const notifyingFollowers = async (
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingFollowersSql(accountId, nowIso(), statusId),
+      listNotifyingFollowersSql(accountId, nowIso(), statusId, signedInRecentlySinceDay()),
       NotifyingFollowerRow,
     );
     return rows.map((row) => ({

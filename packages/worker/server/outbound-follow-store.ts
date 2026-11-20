@@ -2,6 +2,7 @@ import { type NotifyingFollower, OutboundFollow, type OutboundFollowAnswer } fro
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import type { FollowOptions } from "./follow-store";
@@ -217,8 +218,8 @@ export const deleteOutboundFollow = async (
 warmSchemas([OutboundFollowRowSchema]);
 
 /**
- * The local accounts following `actorUri` (accepted) that asked for a
- * notification on each new note, do not mute it, and do not block or mute an
+ * The local accounts following `actorUri` (accepted) that signed in
+ * recently, asked for a notification on each new note, do not mute it, and do not block or mute an
  * account or actor its note `statusId` actively mentions.
  */
 export const notifyingRemoteFollowers = async (
@@ -229,7 +230,7 @@ export const notifyingRemoteFollowers = async (
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingRemoteFollowersSql(actorUri, nowIso(), statusId),
+      listNotifyingRemoteFollowersSql(actorUri, nowIso(), statusId, signedInRecentlySinceDay()),
       NotifyingFollowerRow,
     );
     return rows.map((row) => ({
