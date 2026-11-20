@@ -250,7 +250,7 @@ Seven more were closed after that, each with a Worker test, and their steps are 
 
 The last four known gaps were closed after that, each with a Worker test, and their steps are plain steps now. No step is a known gap.
 
-- tstodon fetches the replies to the replies of a remote post it opened, a level of the reply tree per queue job, up to Mastodon's 1000 replies and 500 pages (INT-4; `server/remote-thread-backfill.test.ts`).
+- tstodon fetches the replies to the replies of a remote post it opened, a level of the reply tree per queue job, up to Mastodon's 1000 replies and 500 pages, reading pages of each collection until they hold five replies and skipping a reply whose replies it read within 15 minutes (INT-4; `server/remote-thread-backfill.test.ts`).
 - The delete of a tstodon post that another tstodon account boosted reaches that booster's followers on Mastodon, who lose the boost (INT-9; `server/status-delete-federation.test.ts`). Mastodon does not send it for its own posts; tstodon goes beyond Mastodon here ([what a Mastodon peer does differently](#what-a-mastodon-peer-does-differently-from-a-tstodon-peer)).
 - A hashtag followed on tstodon brings public posts to the home timeline (INT-14; `server/followed-tag-home.test.ts`).
 - A hashtag featured on Mastodon shows on the tstodon profile, from the `Add` and from the actor's `featuredTags` collection (INT-14; `server/remote-featured-tags.test.ts`).

@@ -7,8 +7,8 @@ import {
   type RemoteStatus,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
-import type { Result } from "neverthrow";
-import { type RepositoryError, runD1 } from "./d1";
+import { err, ok, type Result } from "neverthrow";
+import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { z } from "zod";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { parseLocalStatusId } from "./activitypub";
@@ -20,7 +20,11 @@ import {
   parseCollection,
   readCollectionPage,
 } from "./remote-collection";
-import { listRemoteThreadLevel } from "./generated/prisma/sql";
+import {
+  listCachedRemoteStatusUris,
+  listRemoteThreadLevel,
+  stampRemoteStatusRepliesFetched,
+} from "./generated/prisma/sql";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
 import { storeFetchedNote, storeNoteDocument } from "./remote-status-persist";
 import {
@@ -32,11 +36,19 @@ import {
   type ThreadRefreshRecord,
 } from "./remote-status-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
-import { queryTyped } from "./typed-sql";
+import { queryTyped, runTyped } from "./typed-sql";
 import { instanceActorFetchSigner } from "./instance-actor";
 
+/**
+ * How long a status's `replies` count as read, Mastodon's
+ * `FETCH_REPLIES_COOLDOWN_MINUTES`: opening the status fetches its thread
+ * again only after this, and the tree walk skips a cached reply whose
+ * `replies` it read within it (`replies_fetched_at`).
+ */
+export const THREAD_REPLIES_COOLDOWN_MS = 15 * 60 * 1000;
+
 /** How long a fetched thread counts as fresh before opening the status fetches it again. */
-export const THREAD_BACKFILL_TTL_MS = 60 * 60 * 1000;
+export const THREAD_BACKFILL_TTL_MS = THREAD_REPLIES_COOLDOWN_MS;
 
 /**
  * Notes fetched above the opened status. Each can cost a fetch, and an
@@ -45,22 +57,38 @@ export const THREAD_BACKFILL_TTL_MS = 60 * 60 * 1000;
  */
 export const THREAD_BACKFILL_ANCESTOR_LIMIT = 5;
 
-/** Replies stored from the status's `replies` collection. */
-export const THREAD_BACKFILL_REPLY_LIMIT = 20;
+/**
+ * Pages of a `replies` collection are read until they hold this many
+ * replies, as Mastodon's `collection_items` reads them with `max_items`
+ * `FetchRepliesService::MAX_REPLIES` (`FetchAllRepliesService#call` is the
+ * parent's, so the constant resolves to the parent's 5). Mastodon's own
+ * first page holds the author's replies only, and the page its `next`
+ * links every other account's (`?only_other_accounts=true&page=true`).
+ */
+export const THREAD_COLLECTION_PAGE_ITEMS = 5;
+
+/** Replies kept of what one collection listed, `FetchAllRepliesService::MAX_REPLIES`. */
+export const THREAD_COLLECTION_REPLY_LIMIT = 500;
 
 /**
- * Pages of `replies` read, the first one included. Mastodon's first page
- * holds the author's own replies only; every other account's are on the
- * pages its `next` links (`?only_other_accounts=true&page=true`).
- *
- * With the two limits above this bounds one job's fetches. A stored note
- * costs its document and, for an author not cached, that actor's at most
- * thirteen requests (`remote-actor-refresh.ts`): 5 ancestors and 20 replies
- * are at most 350, and the status's document and these pages 4 more. That is
- * inside the Workers Paid limit this server is sized for, not the Free
- * plan's 50, which the ancestors alone can pass.
+ * Pages of one collection read in one job. Mastodon reads on while the tree
+ * has pages left; a collection whose first ten pages hold fewer than
+ * {@link THREAD_COLLECTION_PAGE_ITEMS} replies is read no further here, so
+ * that a job's subrequests stay bounded.
  */
-export const THREAD_BACKFILL_REPLY_PAGES = 3;
+export const THREAD_COLLECTION_PAGE_LIMIT = 10;
+
+/**
+ * Replies not cached yet that one job fetches. A stored note costs its
+ * document and, for an author not cached, that actor's at most thirteen
+ * requests (`remote-actor-refresh.ts`), so 20 are at most 280; the 5
+ * ancestors of the first job at most 70 more, and the documents and pages
+ * of the replies a job expands ({@link THREAD_TREE_NODES_PER_JOB}) at most
+ * 55. That is inside the Workers Paid limit this server is sized for, not
+ * the Free plan's 50. A list with more goes on in the next job, where the
+ * job stopped in it.
+ */
+export const THREAD_BACKFILL_REPLY_LIMIT = 20;
 
 /**
  * Replies listed in a whole reply tree, as Mastodon's
@@ -73,12 +101,10 @@ export const THREAD_TREE_REPLY_LIMIT = 1000;
 export const THREAD_TREE_PAGE_LIMIT = 500;
 
 /**
- * Replies expanded by one job of the tree walk. Each costs its document, its
- * `replies` pages and a fetch per reply it lists that is not cached, so a job
- * also stops once the replies it expanded listed
- * {@link THREAD_BACKFILL_REPLY_LIMIT}, and the next job goes on where it
- * stopped. A job then fetches at most 5 documents, 15 pages and about 40
- * replies, each reply with its author's actor when that is new.
+ * Statuses expanded by one job of the tree walk, each by its document and
+ * its `replies` pages. A job also stops once it fetched
+ * {@link THREAD_BACKFILL_REPLY_LIMIT} replies, and the next job goes on where
+ * it stopped.
  */
 export const THREAD_TREE_NODES_PER_JOB = 5;
 
@@ -205,16 +231,18 @@ const backfillAncestors = async (
 type ListedReplies = Readonly<{ items: ReadonlyArray<unknown>; pages: number }>;
 
 /**
- * The replies the note at `objectUri` lists: the items of the first pages of
- * its `replies`, up to the limits. The collection is read only on the note's
- * own origin, as Mastodon's `fetch_collection_page` checks with
- * `reference_uri`, and so is a `next` link. `Unavailable` when the note's
- * document or a page after the first did not answer: the list would be cut
- * short, and a later try may read it whole.
+ * The replies the note at `objectUri` lists: the items of the pages of its
+ * `replies`, read until they hold {@link THREAD_COLLECTION_PAGE_ITEMS} or
+ * `maxPages` were read, up to {@link THREAD_COLLECTION_REPLY_LIMIT}. The
+ * collection is read only on the note's own origin, as Mastodon's
+ * `fetch_collection_page` checks with `reference_uri`, and so is a `next`
+ * link. `Unavailable` when the note's document or a page after the first did
+ * not answer: the list would be cut short, and a later try may read it whole.
  */
 const listedReplies = async (
   identity: InstanceIdentity,
   objectUri: string,
+  maxPages: number,
   options: FederatedFetchOptions,
 ): Promise<ListedReplies | "Unavailable"> => {
   const raw = await fetchActivityJson(identity, objectUri, options);
@@ -228,12 +256,18 @@ const listedReplies = async (
   if (typeof replies === "string") {
     page =
       URL.parse(replies)?.origin === origin
-        ? await firstCollectionPage(identity, replies, options)
+        ? await firstCollectionPage(identity, replies, options, THREAD_COLLECTION_REPLY_LIMIT)
         : undefined;
   } else {
     const collection = replies === undefined ? undefined : parseCollection(replies);
     page = collection?.isOk()
-      ? await firstPageOf(identity, collection.value, objectUri, options)
+      ? await firstPageOf(
+          identity,
+          collection.value,
+          objectUri,
+          options,
+          THREAD_COLLECTION_REPLY_LIMIT,
+        )
       : undefined;
   }
   const items: unknown[] = [];
@@ -244,66 +278,113 @@ const listedReplies = async (
     const next = page.next;
     if (
       next === undefined ||
-      pages === THREAD_BACKFILL_REPLY_PAGES ||
-      items.length >= THREAD_BACKFILL_REPLY_LIMIT ||
+      pages >= maxPages ||
+      items.length >= THREAD_COLLECTION_PAGE_ITEMS ||
       URL.parse(next)?.origin !== origin
     ) {
       break;
     }
-    const following = await readCollectionPage(identity, next, options);
+    const following = await readCollectionPage(
+      identity,
+      next,
+      options,
+      THREAD_COLLECTION_REPLY_LIMIT,
+    );
     if (following === "Unavailable") {
       return "Unavailable";
     }
     page = following;
   }
-  return { items: items.slice(0, THREAD_BACKFILL_REPLY_LIMIT), pages };
+  return { items: items.slice(0, THREAD_COLLECTION_REPLY_LIMIT), pages };
 };
 
-/** What expanding one note did: the replies its collection listed, the pages read, the replies stored. */
-type Expanded = Readonly<{ listed: number; pages: number; stored: number }>;
+/** A reply a collection listed: its URI, and its object when the list embeds it. */
+type ListedReply = Readonly<{ uri: string; embedded: Record<string, unknown> | undefined }>;
+
+const listedReply = (item: unknown): ListedReply | undefined => {
+  const reference = parseReplyReference(item);
+  if (reference.isErr()) {
+    return undefined;
+  }
+  return typeof reference.value === "string"
+    ? { uri: reference.value, embedded: undefined }
+    : { uri: reference.value.id, embedded: reference.value };
+};
+
+const CachedUriRow = z.object({ object_uri: z.string() });
+
+/** Which of `uris` name a cached remote status, in one statement. */
+const cachedStatusUris = (
+  db: D1Database,
+  uris: ReadonlyArray<string>,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
+  runD1(
+    async () =>
+      new Set(
+        uris.length === 0
+          ? []
+          : (
+              await queryTyped(db, listCachedRemoteStatusUris(jsonStringArray(uris)), CachedUriRow)
+            ).map((row) => row.object_uri),
+      ),
+  );
+
+/** What going through a listed slice of replies did: where it stopped, and the replies it stored. */
+type StoredSlice = Readonly<{ next: number; fetched: number; stored: number }>;
 
 /**
- * Store the replies the note at `objectUri` lists ({@link listedReplies}), as
- * Mastodon's `FetchReplyWorker` does: no one vouches for a reply, so each is
- * stored only under an author on its URI's host. An embedded reply is read as
- * it comes only when its URI is on the origin that listed it; any other is
- * fetched from its URI. `Unavailable` when the list could not be read whole:
- * nothing of it is stored then.
+ * Store the replies `listed` holds from `offset` on that are neither local
+ * nor cached, as Mastodon's `FetchReplyWorker` does, until `fetchBudget` of
+ * them were fetched: no one vouches for a reply, so each is stored only
+ * under an author on its URI's host. An embedded reply is read as it comes
+ * only when its URI is on the origin that listed it; any other is fetched
+ * from its URI. `next` is the offset to go on from, `listed.length` once
+ * every reply was gone through.
  */
-const backfillReplies = async (
+const storeListedReplies = async (
   env: Env,
   identity: InstanceIdentity,
   objectUri: string,
+  listed: ReadonlyArray<unknown>,
+  offset: number,
+  fetchBudget: number,
   options: FederatedFetchOptions,
-): Promise<Expanded | "Unavailable"> => {
-  const listed = await listedReplies(identity, objectUri, options);
-  if (listed === "Unavailable") {
-    return "Unavailable";
+): Promise<Result<StoredSlice, RepositoryError>> => {
+  const replies = listed.map(listedReply);
+  const cached = await cachedStatusUris(
+    env.DB,
+    replies.slice(offset).flatMap((reply) => (reply ? [reply.uri] : [])),
+  );
+  if (cached.isErr()) {
+    return err(cached.error);
   }
+  const replyOptions = { ...options, idClock: "Published" } as const;
+  const origin = URL.parse(objectUri)?.origin;
+  let fetched = 0;
   let stored = 0;
-  for (const item of listed.items) {
-    const reference = parseReplyReference(item);
-    if (reference.isErr()) {
+  let index = offset;
+  for (; index < replies.length && fetched < fetchBudget; index += 1) {
+    const reply = replies[index];
+    if (!reply || cached.value.has(reply.uri) || parseLocalStatusId(identity, reply.uri)) {
       continue;
     }
-    const uri = typeof reference.value === "string" ? reference.value : reference.value.id;
-    const cached = await findRemoteStatusReplyTargetByObjectUri(env.DB, uri);
-    if (cached.isErr() || cached.value) {
-      continue;
-    }
-    const replyOptions = { ...options, idClock: "Published" } as const;
+    fetched += 1;
     const persisted =
-      typeof reference.value !== "string" && URL.parse(uri)?.origin === URL.parse(objectUri)?.origin
-        ? await storeNoteDocument(env, identity, uri, reference.value, replyOptions)
-        : await storeFetchedNote(env, identity, uri, replyOptions);
+      reply.embedded !== undefined && URL.parse(reply.uri)?.origin === origin
+        ? await storeNoteDocument(env, identity, reply.uri, reply.embedded, replyOptions)
+        : await storeFetchedNote(env, identity, reply.uri, replyOptions);
     if (persisted.isOk() && persisted.value) {
       stored += 1;
     }
   }
-  return { listed: listed.items.length, pages: listed.pages, stored };
+  return ok({ next: index, fetched, stored });
 };
 
-const ThreadNodeRow = z.object({ id: z.string(), object_uri: z.string() });
+const ThreadNodeRow = z.object({
+  id: z.string(),
+  object_uri: z.string(),
+  replies_fetched_at: z.string().nullable(),
+});
 
 /** One slice of a level of the reply tree below `rootId` ({@link listRemoteThreadLevel}). */
 const listThreadLevel = (
@@ -386,35 +467,33 @@ const backfillRemoteThreadPass = async (
   };
   if (job.from.kind === "Root") {
     const ancestors = await backfillAncestors(env, identity.value, status.value, options);
-    const replies = await backfillReplies(env, identity.value, status.value.objectUri, options);
-    // Retried, with the claim left running: finishing here would keep a thread
-    // cut short by an outage for the whole TTL. What a try stored stays.
-    if (replies === "Unavailable") {
-      return { kind: "Retry" };
-    }
-    const stored = ancestors + replies.stored;
-    return replies.listed === 0
-      ? { kind: "Finished", stored }
-      : {
-          kind: "Continue",
-          from: {
-            kind: "Level",
-            depth: 1,
-            after: "",
-            listed: replies.listed,
-            pages: replies.pages,
-            stored,
-          },
-        };
+    return expandLevel(
+      env,
+      identity.value,
+      job.statusId,
+      { kind: "Level", depth: 0, after: "", offset: 0, listed: 0, pages: 0, stored: ancestors },
+      options,
+    );
   }
   return expandLevel(env, identity.value, job.statusId, job.from, options);
 };
 
+/** Whether the walk read a status's `replies` within the cooldown, as Mastodon's `fetched_recently`. */
+const repliesFetchedRecently = (fetchedAt: string | null, now: number): boolean =>
+  fetchedAt !== null && Date.parse(fetchedAt) > now - THREAD_REPLIES_COOLDOWN_MS;
+
 /**
- * Expand the next replies of one level of the tree, up to
- * {@link THREAD_TREE_NODES_PER_JOB} of them or until their collections listed
- * {@link THREAD_BACKFILL_REPLY_LIMIT} replies in this job. The walk goes on at
- * the next of the level, or at the next level once this one is done.
+ * Expand the next statuses of one level of the tree (depth 0 is the opened
+ * status), up to {@link THREAD_TREE_NODES_PER_JOB} of them or until this job
+ * fetched {@link THREAD_BACKFILL_REPLY_LIMIT} replies, and record on each
+ * that its `replies` were read. One read within the cooldown is skipped, as
+ * Mastodon's `FetchAllRepliesService` leaves out a status that
+ * `should_not_fetch_replies`. The walk goes on inside the list it stopped
+ * in, at the next status of the level, or at the next level once this one
+ * is done. The opened status's list not answering retries the job; a reply
+ * deeper down whose list does not answer is skipped, as Mastodon's
+ * `FetchAllRepliesWorker` skips a failed fetch, so one host down does not
+ * hold up the rest of the tree.
  */
 const expandLevel = async (
   env: Env,
@@ -438,29 +517,68 @@ const expandLevel = async (
     // empty level ends the walk.
     return from.after === ""
       ? { kind: "Finished", stored: from.stored }
-      : { kind: "Continue", from: { ...from, depth: from.depth + 1, after: "" } };
+      : { kind: "Continue", from: { ...from, depth: from.depth + 1, after: "", offset: 0 } };
   }
-  let { after, listed, pages, stored } = from;
-  let listedHere = 0;
+  const now = Date.now();
+  let { after, offset, listed, pages, stored } = from;
+  let fetched = 0;
   for (const node of nodes.value) {
     if (
       listed >= THREAD_TREE_REPLY_LIMIT ||
       pages >= THREAD_TREE_PAGE_LIMIT ||
-      listedHere >= THREAD_BACKFILL_REPLY_LIMIT
+      fetched >= THREAD_BACKFILL_REPLY_LIMIT
     ) {
       break;
     }
-    // A reply whose list does not answer is skipped, as Mastodon's
-    // `FetchAllRepliesWorker` skips a failed fetch: one host down does not
-    // hold up the rest of the tree.
-    const expanded = await backfillReplies(env, identity, node.object_uri, options);
-    after = node.id;
-    if (expanded !== "Unavailable") {
-      listed += expanded.listed;
-      pages += expanded.pages;
-      stored += expanded.stored;
-      listedHere += expanded.listed;
+    if (offset === 0 && repliesFetchedRecently(node.replies_fetched_at, now)) {
+      // An opened status read so is not walked, as `should_fetch_replies?`.
+      if (from.depth === 0) {
+        return { kind: "Finished", stored };
+      }
+      after = node.id;
+      continue;
     }
+    const list = await listedReplies(
+      identity,
+      node.object_uri,
+      Math.min(THREAD_COLLECTION_PAGE_LIMIT, THREAD_TREE_PAGE_LIMIT - pages),
+      options,
+    );
+    if (list === "Unavailable") {
+      if (from.depth === 0) {
+        // Retried, with the claim left running: finishing here would keep a
+        // thread cut short by an outage for the whole cooldown.
+        return { kind: "Retry" };
+      }
+    } else {
+      if (offset === 0) {
+        listed += list.items.length;
+        pages += list.pages;
+      }
+      const slice = await storeListedReplies(
+        env,
+        identity,
+        node.object_uri,
+        list.items,
+        offset,
+        THREAD_BACKFILL_REPLY_LIMIT - fetched,
+        options,
+      );
+      if (slice.isErr()) {
+        return { kind: "Retry" };
+      }
+      fetched += slice.value.fetched;
+      stored += slice.value.stored;
+      if (slice.value.next < list.items.length) {
+        return {
+          kind: "Continue",
+          from: { ...from, after, offset: slice.value.next, listed, pages, stored },
+        };
+      }
+    }
+    await stampRepliesFetched(env.DB, node.id, now);
+    after = node.id;
+    offset = 0;
   }
   if (listed >= THREAD_TREE_REPLY_LIMIT || pages >= THREAD_TREE_PAGE_LIMIT) {
     return { kind: "Finished", stored };
@@ -470,7 +588,14 @@ const expandLevel = async (
   return {
     kind: "Continue",
     from: levelDone
-      ? { kind: "Level", depth: from.depth + 1, after: "", listed, pages, stored }
-      : { kind: "Level", depth: from.depth, after, listed, pages, stored },
+      ? { kind: "Level", depth: from.depth + 1, after: "", offset: 0, listed, pages, stored }
+      : { kind: "Level", depth: from.depth, after, offset: 0, listed, pages, stored },
   };
+};
+
+/** Record that the walk read the status's `replies` at `now`; best effort. */
+const stampRepliesFetched = async (db: D1Database, statusId: string, now: number) => {
+  await runD1(() =>
+    runTyped(db, stampRemoteStatusRepliesFetched(new Date(now).toISOString(), statusId)),
+  );
 };

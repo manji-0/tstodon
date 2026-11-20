@@ -598,6 +598,8 @@ export * from "./sql/listAuthorsBlockingViewerJson";
 
 export * from "./sql/listBlockersOfActor";
 
+export * from "./sql/listCachedRemoteStatusUris";
+
 export * from "./sql/listConversationHides";
 
 export * from "./sql/listConversationReads";
@@ -939,6 +941,8 @@ export * from "./sql/setStatusReplyUri";
 export * from "./sql/settleRemotePollOwnVotes";
 
 export * from "./sql/silenceRemoteStatusMentionsExcept";
+
+export * from "./sql/stampRemoteStatusRepliesFetched";
 
 export * from "./sql/startPollUpdate";
 
