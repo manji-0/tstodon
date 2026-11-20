@@ -1,6 +1,6 @@
 import { Hostname, type InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
-import { checkSignatureStrength, parseSignatureHeader, verifySignedFetch } from "./http-signature";
+import { checkSignatureStrength, parseRequestSignature, verifySignedFetch } from "./http-signature";
 import { resolveKeyOwner } from "./remote-actor-fetch";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
@@ -8,7 +8,7 @@ import { instanceActorFetchSigner } from "./instance-actor";
 
 /** What the `Signature` of a GET says about who asks (an "authorized fetch"). */
 export type SignedFetchVerdict =
-  /** No `Signature` header, or one that does not parse. */
+  /** No `Signature` header, or one that does not parse (with its `Signature-Input`). */
   | Readonly<{ kind: "Unsigned" }>
   /**
    * The signature is stale or does not sign `date`, the key could not be
@@ -28,11 +28,11 @@ const verify = async (
   identity: InstanceIdentity,
   request: Request,
 ): Promise<SignedFetchVerdict> => {
-  const header = request.headers.get("Signature");
-  const parsed = header ? parseSignatureHeader(header) : undefined;
-  if (!parsed) {
+  const signature = parseRequestSignature(request.headers);
+  if (signature.isErr()) {
     return { kind: "Unsigned" };
   }
+  const parsed = signature.value;
   // Not signed over `date`, or a `Date` outside the window (SIG-1): a
   // captured signed GET cannot be replayed, and no key is fetched for it.
   if (checkSignatureStrength(request, parsed) !== undefined) {

@@ -7,7 +7,8 @@ import { z } from "zod";
  * comes from a `publicKey` or an `rsa-pub` Multikey; `Ed25519` from an
  * `ed25519-pub` Multikey (FEP-521a `assertionMethod`). An RSA key verifies
  * HTTP and Linked Data signatures; an Ed25519 key verifies `eddsa-jcs-2022`
- * integrity proofs (FEP-8b32).
+ * integrity proofs (FEP-8b32) and RFC 9421 HTTP message signatures, not
+ * draft-cavage ones.
  */
 const RemoteActorKeySchema = z.discriminatedUnion("kind", [
   z.object({

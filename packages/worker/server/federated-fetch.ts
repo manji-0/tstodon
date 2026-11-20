@@ -4,7 +4,7 @@ import { Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
 import { linkHeaderAlternate, htmlAlternate } from "./activity-alternate";
 import { MAX_FETCHED_BYTES, readBodyJson, readBodyText } from "./body-limit";
-import { signFetchRequest } from "./http-signature";
+import { fetchDoubleKnocking, signFetchRequest } from "./http-signature";
 import { hostsExemptFromAddressChecks } from "./federation-allow-hosts";
 import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
 
@@ -204,29 +204,43 @@ const ACTIVITY_MAX_REDIRECTS = 3;
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 
 /**
- * The headers of one ActivityPub GET: signed for this URL (its path, query
- * and host are in the signature) when the signer has a key, unsigned when it
- * has none or signing fails (a server outside secure mode still answers).
+ * One ActivityPub GET, not following redirects: signed for this URL (its
+ * path, query and host are in the signature) when the signer has a key,
+ * draft-cavage first and RFC 9421 when that is answered 400 or 401, as
+ * Mastodon's `Request#perform`; unsigned when it has no key or signing
+ * fails (a server outside secure mode still answers). `signal` gives the
+ * signal of each request sent: its own deadline, or one a caller shares.
  */
-const activityGetHeaders = async (
+const getActivityOnce = async (
   identity: InstanceIdentity,
   url: URL,
   key: FetchSigningKey | undefined,
+  signal: () => AbortSignal,
   accept: string = ACTIVITY_JSON_ACCEPT,
-): Promise<Record<string, string>> => {
+): Promise<Response> => {
   const headers: Record<string, string> = {
     Accept: accept,
     "User-Agent": `tstodon (${identity.publicOrigin})`,
   };
+  const send = (signed: Readonly<Record<string, string>>): Promise<Response> =>
+    fetch(url, {
+      method: "GET",
+      headers: { ...headers, ...signed },
+      redirect: "manual",
+      signal: signal(),
+    });
   if (key === undefined) {
-    return headers;
+    return send({});
   }
-  const signed = await signFetchRequest(url, key.privateKeyJwk, key.keyId, accept);
-  if (signed.isErr()) {
-    console.error(JSON.stringify({ kind: "FetchNotSigned", message: signed.error.message }));
-    return headers;
+  const sent = await fetchDoubleKnocking(
+    (scheme) => signFetchRequest(url, key.privateKeyJwk, key.keyId, accept, new Date(), scheme),
+    send,
+  );
+  if (sent.isErr()) {
+    console.error(JSON.stringify({ kind: "FetchNotSigned", message: sent.error.message }));
+    return send({});
   }
-  return { ...headers, ...signed.value };
+  return sent.value;
 };
 
 /**
@@ -249,12 +263,9 @@ export const answersGone = async (
       return false;
     }
     const key = await options.fetchSigner();
-    const response = await fetch(url.value, {
-      method: "GET",
-      headers: await activityGetHeaders(identity, url.value, key),
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
+    const response = await getActivityOnce(identity, url.value, key, () =>
+      AbortSignal.timeout(5000),
+    );
     await response.body?.cancel();
     return response.status === 404 || response.status === 410;
   } catch {
@@ -294,15 +305,10 @@ const getActivity = async (
         });
       }
       fetched.add(url.href);
-      const response = await fetch(url, {
-        method: "GET",
-        headers: await activityGetHeaders(identity, url, key, accept),
-        // Workers' fetch would follow redirects unsigned and past the host
-        // guard, and rejects `redirect: "error"` outright, so each hop is
-        // followed here.
-        redirect: "manual",
-        signal,
-      });
+      // Workers' fetch would follow redirects unsigned and past the host
+      // guard, and rejects `redirect: "error"` outright, so each hop is
+      // followed here.
+      const response = await getActivityOnce(identity, url, key, () => signal, accept);
       const location = response.headers.get("location");
       if (REDIRECT_STATUSES.has(response.status) && location !== null) {
         await response.body?.cancel();

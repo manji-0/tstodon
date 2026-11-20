@@ -13,7 +13,7 @@ import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { deliveredActivity } from "./own-activity-signature";
-import { signInboxRequest } from "./http-signature";
+import { fetchDoubleKnocking, signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
 import {
@@ -471,7 +471,7 @@ export type InboxPost = (inboxUrl: string) => Promise<InboxDeliveryAttempt>;
  * A POST that has not answered in this long counts as a network failure, so
  * one silent inbox does not hold up the others delivered in the same step.
  */
-const POST_TIMEOUT_MS = 60_000;
+export const POST_TIMEOUT_MS = 60_000;
 
 /**
  * Read the activity and its signing key once, for posting it to any number
@@ -525,23 +525,35 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
       console.warn(JSON.stringify({ kind: "OutboxInboxRefused", activityId, host: inbox.host }));
       return local(DeliveryAttemptOutcome.forHttpStatus(400));
     }
-    const headers = await signInboxRequest(inbox, key.privateKeyJwk, key.keyId, body);
-    if (headers.isErr()) {
-      return local(DeliveryAttemptOutcome.forHttpStatus(400));
-    }
-    const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(), POST_TIMEOUT_MS);
+    // Each POST has its own timeout, as Mastodon's `Request` times each one.
+    const post = async (headers: Headers): Promise<Response> => {
+      const timeout = new AbortController();
+      const timer = setTimeout(() => timeout.abort(), POST_TIMEOUT_MS);
+      try {
+        return await fetch(inbox, {
+          method: "POST",
+          headers,
+          body,
+          // Workers' fetch would follow a redirect past the host guard. Like
+          // any other non-2xx answer that is not unsalvageable, a 3xx is
+          // retried, as Mastodon's DeliveryWorker raises on it.
+          redirect: "manual",
+          signal: timeout.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    };
     try {
-      const response = await fetch(inbox, {
-        method: "POST",
-        headers: headers.value,
-        body,
-        // Workers' fetch would follow a redirect past the host guard. Like
-        // any other non-2xx answer that is not unsalvageable, a 3xx is
-        // retried, as Mastodon's DeliveryWorker raises on it.
-        redirect: "manual",
-        signal: timeout.signal,
-      });
+      // Draft-cavage, then RFC 9421 when that is answered 400 or 401.
+      const sent = await fetchDoubleKnocking(
+        (scheme) => signInboxRequest(inbox, key.privateKeyJwk, key.keyId, body, new Date(), scheme),
+        post,
+      );
+      if (sent.isErr()) {
+        return local(DeliveryAttemptOutcome.forHttpStatus(400));
+      }
+      const response = sent.value;
       return {
         outcome: DeliveryAttemptOutcome.forHttpStatus(
           response.status,
@@ -551,8 +563,6 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
       };
     } catch {
       return { outcome: DeliveryAttemptOutcome.Network, remote: true };
-    } finally {
-      clearTimeout(timer);
     }
   };
 };

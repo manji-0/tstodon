@@ -2,10 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildSigningString,
   checkSignatureStrength,
+  parseRequestSignature,
   parseSignatureHeader,
   SIGNATURE_CLOCK_SKEW_MS,
   SIGNATURE_VALIDITY_MS,
   sha256DigestHeader,
+  signInboxRequest,
   verifyInboxRequest,
   verifySignedFetch,
 } from "./http-signature";
@@ -17,6 +19,7 @@ describe("parseSignatureHeader", () => {
       'keyId="https://example.com/users/alice#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="abc123"',
     );
     expect(parsed).toEqual({
+      kind: "Cavage",
       keyId: "https://example.com/users/alice#main-key",
       algorithm: "rsa-sha256",
       headers: ["(request-target)", "host", "date", "digest"],
@@ -314,5 +317,32 @@ describe("signature freshness and strength (SIG-1)", () => {
       kind: "SignatureExpired",
       detail: "invalid",
     });
+  });
+});
+
+describe("verifySignedFetch", () => {
+  it("refuses a request with a body, which it never reads, whatever the scheme", async () => {
+    const keys = await generateAccountKeys();
+    const url = new URL("https://example.com/inbox");
+    for (const scheme of ["Cavage", "MessageSignature"] as const) {
+      const signed = await signInboxRequest(
+        url,
+        keys.privateKeyJwk,
+        "https://remote.example/users/a#main-key",
+        "{}",
+        new Date(),
+        scheme,
+      );
+      const request = new Request(url, {
+        method: "POST",
+        headers: signed._unsafeUnwrap(),
+        body: "{}",
+      });
+      const parsed = parseRequestSignature(request.headers)._unsafeUnwrap();
+      expect(
+        await verifySignedFetch(request, parsed, { kind: "Rsa", publicKeyPem: keys.publicKeyPem }),
+        scheme,
+      ).toBe(false);
+    }
   });
 });

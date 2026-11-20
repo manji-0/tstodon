@@ -191,6 +191,20 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
     expect((await secure(await bob.signedGet(objectPaths()[4] ?? ""))).status).toBe(404);
   });
 
+  it("serves a GET signed with an RFC 9421 message signature, as Mastodon double-knocks (FED-9)", async () => {
+    const bob = await remoteActor("secure-rfc9421", "secure-rfc9421.example");
+    const signed = await bob.signedGet(notePath, undefined, "MessageSignature");
+    expect(signed.headers.get("Signature-Input")).toMatch(/^sig1=\("@method" "@target-uri"\);/);
+    const response = await secure(signed.clone());
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private");
+    // `@target-uri` binds it to the note: the same headers do not open the outbox.
+    const elsewhere = await secure(
+      new Request(new URL(`/users/${USERNAME}/outbox`, ORIGIN), { headers: signed.headers }),
+    );
+    expect(elsewhere.status).toBe(401);
+  });
+
   it("refuses a signed GET of a suspended account's documents with 403, kept private", async () => {
     const email = "securesuspended@example.com";
     const created = await SELF.fetch(`${ORIGIN}/api/v1/statuses`, {
