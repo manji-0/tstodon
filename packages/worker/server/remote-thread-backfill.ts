@@ -4,6 +4,7 @@ import {
   OutboxJob,
   type OutboxJob as OutboxJobValue,
   RemoteActor,
+  StatusId,
   type RemoteStatus,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
@@ -391,7 +392,7 @@ const storeListedReplies = async (
 };
 
 const ThreadNodeRow = z.object({
-  id: z.string(),
+  id: StatusId.schema,
   object_uri: z.string(),
   replies_fetched_at: z.string().nullable(),
 });
@@ -485,7 +486,6 @@ const backfillRemoteThreadPass = async (
         kind: "Level",
         depth: 0,
         after: "",
-        offset: 0,
         visited: 0,
         listed: 0,
         pages: 0,
@@ -496,6 +496,12 @@ const backfillRemoteThreadPass = async (
   }
   return expandLevel(env, identity.value, job.statusId, job.from, options);
 };
+
+/** `from` without the list a job stopped in, for a job that starts elsewhere. */
+const withoutResume = ({
+  resume: _resume,
+  ...from
+}: Extract<BackfillRemoteThread["from"], { kind: "Level" }>) => from;
 
 /** Whether the walk reached one of the per-tree caps. */
 const treeDone = (visited: number, listed: number, pages: number): boolean =>
@@ -542,14 +548,15 @@ const expandLevel = async (
     // empty level ends the walk.
     return from.after === "" || from.depth >= THREAD_TREE_DEPTH_LIMIT
       ? { kind: "Finished", stored: from.stored }
-      : { kind: "Continue", from: { ...from, depth: from.depth + 1, after: "", offset: 0 } };
+      : { kind: "Continue", from: { ...withoutResume(from), depth: from.depth + 1, after: "" } };
   }
   const levelDoneAt = (last: string): boolean =>
     last === nodes.value.at(-1)?.id && nodes.value.length < THREAD_TREE_NODES_PER_JOB;
   const now = Date.now();
-  let { after, offset, visited, listed, pages, stored } = from;
+  let { after, visited, listed, pages, stored } = from;
   let fetched = 0;
   for (const node of nodes.value) {
+    const offset = from.resume?.id === node.id ? from.resume.offset : 0;
     if (treeDone(visited, listed, pages) || fetched >= THREAD_BACKFILL_REPLY_LIMIT) {
       break;
     }
@@ -598,13 +605,20 @@ const expandLevel = async (
       if (slice.value.next < list.items.length) {
         return {
           kind: "Continue",
-          from: { ...from, after, offset: slice.value.next, visited, listed, pages, stored },
+          from: {
+            ...from,
+            after,
+            resume: { id: node.id, offset: slice.value.next },
+            visited,
+            listed,
+            pages,
+            stored,
+          },
         };
       }
     }
     await stampRepliesFetched(env.DB, node.id, now);
     after = node.id;
-    offset = 0;
   }
   if (
     treeDone(visited, listed, pages) ||
@@ -620,13 +634,12 @@ const expandLevel = async (
           kind: "Level",
           depth: from.depth + 1,
           after: "",
-          offset: 0,
           visited,
           listed,
           pages,
           stored,
         }
-      : { kind: "Level", depth: from.depth, after, offset: 0, visited, listed, pages, stored },
+      : { kind: "Level", depth: from.depth, after, visited, listed, pages, stored },
   };
 };
 

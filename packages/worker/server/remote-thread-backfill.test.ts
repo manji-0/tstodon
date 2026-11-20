@@ -503,11 +503,16 @@ describe("opening a remote status", () => {
     await requested(await statusIdOf(opened.id), recording.env);
     await serving(new Map([[opened.id, opened]]), () => runQueued(recording));
 
-    const Next = z.object({ from: z.object({ listed: z.number(), offset: z.number() }) });
+    const Next = z.object({
+      from: z.object({
+        listed: z.number(),
+        resume: z.object({ id: z.string(), offset: z.number() }),
+      }),
+    });
     expect(read(Next, recording.sent[0]).from).toEqual(
       expect.objectContaining({
         listed: THREAD_COLLECTION_REPLY_LIMIT,
-        offset: THREAD_BACKFILL_REPLY_LIMIT,
+        resume: { id: expect.any(String), offset: THREAD_BACKFILL_REPLY_LIMIT },
       }),
     );
   });
@@ -821,6 +826,58 @@ describe("the reply tree of an opened remote status", () => {
     expect(
       (await contextOf(await statusIdOf(walked.id))).descendants.map((entry) => entry.uri),
     ).toEqual([child.id]);
+  });
+
+  it("goes on inside the list of the reply a job stopped in, not of the first one after it", async () => {
+    const author = await remoteActor("resume-author", "tree.example");
+    const [first, second] = [noteUri(author, "resume-first"), noteUri(author, "resume-second")];
+    const leaf = (slug: string) => noteUri(author, `resume-${slug}`);
+    const root = withReplies(author, "resume-root", [first, second]);
+    await deliver(author, root);
+    const rootId = await statusIdOf(root.id);
+    const documents = new Map<string, unknown>([
+      [root.id, root],
+      [first, withReplies(author, "resume-first", [leaf("a1")], { inReplyTo: root.id })],
+      [
+        second,
+        withReplies(author, "resume-second", [leaf("b1"), leaf("b2")], { inReplyTo: root.id }),
+      ],
+      [leaf("a1"), noteDocument(author, "resume-a1", { inReplyTo: first })],
+      [leaf("b1"), noteDocument(author, "resume-b1", { inReplyTo: second })],
+      [leaf("b2"), noteDocument(author, "resume-b2", { inReplyTo: second })],
+    ]);
+    // The first pass stores both replies.
+    const setup = recordingEnv();
+    await requested(rootId, setup.env);
+    await serving(documents, () => runQueued(setup));
+
+    // A job that stopped after the second's first reply, as if the first was
+    // stored after that job was queued.
+    const recording = recordingEnv();
+    recording.sent.push({
+      kind: "BackfillRemoteThread",
+      statusId: rootId,
+      from: {
+        kind: "Level",
+        depth: 1,
+        after: "",
+        resume: { id: await statusIdOf(second), offset: 1 },
+        listed: 2,
+        pages: 1,
+        stored: 2,
+      },
+    });
+    await serving(documents, () => drain(recording));
+
+    const cached = async (uri: string) =>
+      (await env.DB.prepare("SELECT 1 FROM remote_statuses WHERE object_uri = ?")
+        .bind(uri)
+        .first()) !== null;
+    expect({
+      a1: await cached(leaf("a1")),
+      b1: await cached(leaf("b1")),
+      b2: await cached(leaf("b2")),
+    }).toEqual({ a1: true, b1: false, b2: true });
   });
 
   it("does not store a note that replies to itself", async () => {
