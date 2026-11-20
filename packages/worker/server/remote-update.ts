@@ -31,7 +31,11 @@ import {
   persistRemoteObject,
 } from "./remote-status-persist";
 import { claimOwed, listOwed, newOwedMarker, owedStatement } from "./remote-status-owed";
-import { findDeliveredRemoteStatus, upsertRemoteStatus } from "./remote-status-store";
+import {
+  findDeliveredRemoteStatus,
+  markRemotePollFetchedStatement,
+  upsertRemoteStatus,
+} from "./remote-status-store";
 
 /** Fetch options, and the activity as received, which a note it stores or edits forwards. */
 type ForwardingFetchOptions = FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>;
@@ -198,7 +202,13 @@ const applyNoteUpdate = async (
     // The version being replaced goes into the history with the row that
     // replaces it; the original is the first one kept.
     edited ? [remoteRevisionStatement(env.DB, cached.value)] : [],
-    marker ? [(id) => owedStatement(env.DB, id, marker)] : [],
+    [
+      ...(marker ? [(id: string) => owedStatement(env.DB, id, marker)] : []),
+      // As Mastodon's `update_poll!`, an `Update` that carries the poll is a fetch of it.
+      ...(status.poll.kind === "NoPoll"
+        ? []
+        : [(id: string) => markRemotePollFetchedStatement(env.DB, id)]),
+    ],
   );
   if (stored.isErr()) {
     return err(stored.error);

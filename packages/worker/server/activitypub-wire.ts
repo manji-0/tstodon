@@ -162,7 +162,11 @@ export const RemoteWebfingerSchema = z
 const PollOptionDocumentSchema = z
   .object({
     name: z.string(),
-    replies: z.object({ totalItems: z.number().int().nonnegative() }).partial().optional(),
+    // Mastodon sends a null count for a poll that hides its totals until it ends.
+    replies: z
+      .object({ totalItems: z.number().int().nonnegative().nullable() })
+      .partial()
+      .optional(),
   })
   .passthrough();
 

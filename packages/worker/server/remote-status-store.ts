@@ -49,6 +49,7 @@ import {
   markRemoteStatusesTagsIndexed as markRemoteStatusesTagsIndexedSql,
   listUnindexedRemoteStatuses as listUnindexedRemoteStatusesSql,
   markRemoteStatusTagsIndexed as markRemoteStatusTagsIndexedSql,
+  markRemotePollFetched as markRemotePollFetchedSql,
   insertRemoteStatus as insertRemoteStatusSql,
   refuseBuriedRemoteStatus as refuseBuriedRemoteStatusSql,
   refuseReplacedRemoteStatus as refuseReplacedRemoteStatusSql,
@@ -675,6 +676,15 @@ export type KnownRemoteStatus = Readonly<{
   objectUri: string;
   row: RemoteStatus | undefined;
 }>;
+
+/**
+ * The statement that records a fetch of the poll of a remote status, as an
+ * `Update` that carries a poll does in Mastodon (`update_poll!`).
+ */
+export const markRemotePollFetchedStatement = (
+  db: D1Database,
+  statusId: string,
+): D1PreparedStatement => d1PrepareTyped(db, markRemotePollFetchedSql(nowIso(), statusId));
 
 /**
  * Store a remote status, or update the one cached at its object URI. It

@@ -7958,6 +7958,7 @@ export const Remote_statusesScalarFieldEnum = {
   created_at: "created_at",
   updated_at: "updated_at",
   quote_policy_json: "quote_policy_json",
+  poll_fetched_at: "poll_fetched_at",
 } as const;
 
 export type Remote_statusesScalarFieldEnum =

@@ -40,6 +40,8 @@ export * from "./sql/claimRemoteOutboxBackfill";
 
 export * from "./sql/claimRemotePollExpiryNotice";
 
+export * from "./sql/claimRemotePollRefresh";
+
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
 export * from "./sql/clearLegacyMediaKey";
@@ -801,6 +803,8 @@ export * from "./sql/markHeaderMetadataStripped";
 export * from "./sql/markMediaMetadataStripped";
 
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/markRemotePollFetched";
 
 export * from "./sql/markRemoteStatusTagsIndexed";
 
