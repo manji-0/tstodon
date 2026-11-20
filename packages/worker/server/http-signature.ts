@@ -521,7 +521,7 @@ export const verifyInboxRequest = async (
 };
 
 /**
- * A signed fetch (a GET with no body): a draft-cavage signature must cover
+ * A signed fetch (a GET or HEAD; any other method is refused): a draft-cavage signature must cover
  * `(request-target)`, so it cannot be replayed against another resource (an
  * RFC 9421 one covers `@target-uri`), and pass {@link checkSignatureStrength},
  * so it cannot be replayed later. An RFC 9421 signature that covers
@@ -532,7 +532,9 @@ export const verifySignedFetch = async (
   parsed: RequestSignature,
   key: VerificationKey,
 ): Promise<boolean> => {
-  if (checkSignatureStrength(request, parsed) !== undefined) {
+  // It reads no body, so it authenticates none: a request with one goes
+  // through `verifyInboxRequest`.
+  if (hasBody(request.method) || checkSignatureStrength(request, parsed) !== undefined) {
     return false;
   }
   const covered =
