@@ -1,11 +1,44 @@
 -- @param {String} $1:actorUri
 -- @param {String} $2:now
+-- @param {String} $3:statusId
 -- A follower who mutes the actor, notifications on or not, is left out:
--- Mastodon's `filter_from_home` filters a muted author's status.
+-- Mastodon's `filter_from_home` filters a muted author's status. So is one
+-- who blocks or mutes an account or actor the note `$3` actively mentions
+-- (`crutches[:active_mentions]`): a silent mention is not an active one.
 SELECT f.account_id, f.languages_json FROM outbound_follows f
 WHERE f.actor_uri = $1 AND f.state = 'Accepted' AND f.notify != 0
   AND NOT EXISTS (
     SELECT 1 FROM mutes m
     WHERE m.account_id = f.account_id AND m.target_actor_uri = $1
       AND (m.expires_at IS NULL OR m.expires_at > $2)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM remote_status_mentions sm
+    WHERE sm.status_id = $3 AND sm.silent = 0
+      AND (
+        EXISTS (
+          SELECT 1 FROM blocks b
+          WHERE b.blocker_account_id = f.account_id AND b.target_account_id = sm.account_id
+        )
+        OR EXISTS (
+          SELECT 1 FROM mutes m
+          WHERE m.account_id = f.account_id AND m.target_account_id = sm.account_id
+            AND (m.expires_at IS NULL OR m.expires_at > $2)
+        )
+      )
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM remote_status_remote_mentions sm
+    WHERE sm.status_id = $3
+      AND (
+        EXISTS (
+          SELECT 1 FROM blocks b
+          WHERE b.blocker_account_id = f.account_id AND b.target_actor_uri = sm.actor_uri
+        )
+        OR EXISTS (
+          SELECT 1 FROM mutes m
+          WHERE m.account_id = f.account_id AND m.target_actor_uri = sm.actor_uri
+            AND (m.expires_at IS NULL OR m.expires_at > $2)
+        )
+      )
   )

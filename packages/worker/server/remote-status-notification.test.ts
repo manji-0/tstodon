@@ -265,6 +265,37 @@ describe("the status notification of a followed remote actor's note", () => {
     expect(await statusNotifications("rsn-mute-follower@example.com", id)).toBe(0);
   });
 
+  // `filter_from_home` filters a status whose active mentions name an
+  // account the follower blocks or mutes (`crutches[:active_mentions]`).
+  it("goes to no follower who blocks or mutes an account or actor the note mentions", async () => {
+    const author = await remoteActor("rsnmentions", "rsn-mentions.example");
+    const muted = await remoteActor("rsnmentionsmuted", "rsn-mentions-muted.example");
+    const blocked = await signedInAccount("rsn-mentions-blocked@example.com");
+    await followRemote("rsn-mentions-blocker@example.com", author, { notify: true });
+    await followRemote("rsn-mentions-muter@example.com", author, { notify: true });
+    await call("rsn-mentions-blocker@example.com", `/api/v1/accounts/${blocked.id}/block`, {});
+    await call(
+      "rsn-mentions-muter@example.com",
+      `/api/v1/accounts/${RemoteAccountId.encode(muted.actorUri)}/mute`,
+      { notifications: false },
+    );
+    const blockedActor = await actorOf("rsn-mentions-blocked@example.com");
+
+    const naming = await create(author, "https://rsn-mentions.example/notes/naming", {
+      cc: [`${author.actorUri}/followers`, blockedActor, muted.actorUri],
+      tag: [
+        { type: "Mention", href: blockedActor },
+        { type: "Mention", href: muted.actorUri },
+      ],
+    });
+    const plain = await create(author, "https://rsn-mentions.example/notes/plain", {});
+
+    expect(await statusNotifications("rsn-mentions-blocker@example.com", naming)).toBe(0);
+    expect(await statusNotifications("rsn-mentions-muter@example.com", naming)).toBe(0);
+    expect(await statusNotifications("rsn-mentions-blocker@example.com", plain)).toBe(1);
+    expect(await statusNotifications("rsn-mentions-muter@example.com", plain)).toBe(1);
+  });
+
   it("goes to each notifying follower for a quote request's recent note, not for an old one", async () => {
     const author = await remoteActor("rsnquote", "rsn-quote.example");
     await followRemote("rsn-quote-notify@example.com", author, { notify: true });
@@ -399,6 +430,37 @@ describe("a remote note of an actor many local accounts follow with notification
         await call(email, `/api/v1/accounts/${RemoteAccountId.encode(author.actorUri)}/follow`, {
           notify: false,
         });
+      }
+      await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
+
+      let notified = 0;
+      for (const email of followers) {
+        notified += await statusNotifications(email, id);
+      }
+      expect(notified).toBe(INLINE_NOTE_RECIPIENTS);
+    },
+  );
+
+  it(
+    "notifies a queued follower only if it does not mute an actor the note mentions when its job runs",
+    { timeout: 120_000 },
+    async () => {
+      const author = await remoteActor("rsnlatemute", "rsn-late-mute.example");
+      const named = await remoteActor("rsnlatemutenamed", "rsn-late-mute-named.example");
+      const followers = Array.from(
+        { length: INLINE_NOTE_RECIPIENTS + 4 },
+        (_, n) => `rsn-late-mute-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const id = await create(author, "https://rsn-late-mute.example/notes/1", {
+        cc: [`${author.actorUri}/followers`, named.actorUri],
+        tag: [{ type: "Mention", href: named.actorUri }],
+      });
+      for (const email of followers) {
+        await call(email, `/api/v1/accounts/${RemoteAccountId.encode(named.actorUri)}/mute`, {});
       }
       await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
 

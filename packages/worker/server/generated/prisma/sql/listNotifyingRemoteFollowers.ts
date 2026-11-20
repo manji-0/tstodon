@@ -7,19 +7,21 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param actorUri
  * @param now
+ * @param statusId
  */
 export const listNotifyingRemoteFollowers = $runtime.makeTypedQueryFactory(
-  "SELECT f.account_id, f.languages_json FROM outbound_follows f\nWHERE f.actor_uri = $1 AND f.state = 'Accepted' AND f.notify != 0\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.account_id AND m.target_actor_uri = $1\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)",
+  "SELECT f.account_id, f.languages_json FROM outbound_follows f\nWHERE f.actor_uri = $1 AND f.state = 'Accepted' AND f.notify != 0\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.account_id AND m.target_actor_uri = $1\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\nAND NOT EXISTS (\nSELECT 1 FROM remote_status_mentions sm\nWHERE sm.status_id = $3 AND sm.silent = 0\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.account_id AND b.target_account_id = sm.account_id\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.account_id AND m.target_account_id = sm.account_id\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)\nAND NOT EXISTS (\nSELECT 1 FROM remote_status_remote_mentions sm\nWHERE sm.status_id = $3\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.account_id AND b.target_actor_uri = sm.actor_uri\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.account_id AND m.target_actor_uri = sm.actor_uri\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)",
 ) as (
   actorUri: string,
   now: string,
+  statusId: string,
 ) => $runtime.TypedSql<
   listNotifyingRemoteFollowers.Parameters,
   listNotifyingRemoteFollowers.Result
 >;
 
 export namespace listNotifyingRemoteFollowers {
-  export type Parameters = [actorUri: string, now: string];
+  export type Parameters = [actorUri: string, now: string, statusId: string];
   export type Result = {
     account_id: string;
     languages_json: string;

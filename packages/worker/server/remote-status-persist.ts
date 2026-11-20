@@ -380,7 +380,7 @@ const statusNotified = async (
   ) {
     return ok([]);
   }
-  const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri);
+  const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri, late.status.id);
   if (followers.isErr()) {
     return err(followers.error);
   }
@@ -587,10 +587,11 @@ export const processFinishRemoteNoteRecipientJob = async (
     return "ok";
   }
   // As `FeedInsertWorker#notify?` reads the follow when it runs, a follower
-  // that unfollowed, turned notifications off or muted the actor since the
-  // job was queued gets no `status` notification.
+  // that unfollowed, turned notifications off, muted the actor, or blocked
+  // or muted an account the note mentions since the job was queued gets no
+  // `status` notification.
   const notifying = job.steps.includes("Status")
-    ? await isNotifyingRemoteFollower(env.DB, job.accountId, job.actorUri)
+    ? await isNotifyingRemoteFollower(env.DB, job.accountId, job.actorUri, job.statusId)
     : ok(true);
   if (notifying.isErr()) {
     return "retry";

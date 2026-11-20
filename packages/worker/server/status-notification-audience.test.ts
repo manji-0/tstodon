@@ -122,6 +122,30 @@ describe("the status notification of a followed account's post", () => {
     expect(await statusNotifications("sna-language-ja@example.com", id)).toBe(0);
     expect(await statusNotifications("sna-language-en@example.com", id)).toBe(1);
   });
+
+  // `filter_from_home` filters a status whose active mentions name an
+  // account the follower blocks or mutes (`crutches[:active_mentions]`).
+  it("goes to no follower who blocks or mutes an account the note mentions", async () => {
+    const author = await signedInAccount("sna-mentions-author@example.com");
+    const blocked = await signedInAccount("sna-mentions-blocked@example.com");
+    const muted = await signedInAccount("sna-mentions-muted@example.com");
+    await notifyingFollower("sna-mentions-blocker@example.com", author.id);
+    await notifyingFollower("sna-mentions-muter@example.com", author.id);
+    await call("sna-mentions-blocker@example.com", `/api/v1/accounts/${blocked.id}/block`, {});
+    await call("sna-mentions-muter@example.com", `/api/v1/accounts/${muted.id}/mute`, {
+      notifications: false,
+    });
+
+    const naming = await post("sna-mentions-author@example.com", {
+      status: `hello @${blocked.username} and @${muted.username}`,
+    });
+    const plain = await post("sna-mentions-author@example.com", { status: "hello" });
+
+    expect(await statusNotifications("sna-mentions-blocker@example.com", naming)).toBe(0);
+    expect(await statusNotifications("sna-mentions-muter@example.com", naming)).toBe(0);
+    expect(await statusNotifications("sna-mentions-blocker@example.com", plain)).toBe(1);
+    expect(await statusNotifications("sna-mentions-muter@example.com", plain)).toBe(1);
+  });
 });
 
 describe("migration 0159", () => {

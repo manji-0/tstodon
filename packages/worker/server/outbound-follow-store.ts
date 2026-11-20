@@ -216,15 +216,20 @@ export const deleteOutboundFollow = async (
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([OutboundFollowRowSchema]);
 
-/** The local accounts following `actorUri` (accepted) that asked for a notification on each new note and do not mute it. */
+/**
+ * The local accounts following `actorUri` (accepted) that asked for a
+ * notification on each new note, do not mute it, and do not block or mute an
+ * account or actor its note `statusId` actively mentions.
+ */
 export const notifyingRemoteFollowers = async (
   db: D1Database,
   actorUri: string,
+  statusId: string,
 ): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingRemoteFollowersSql(actorUri, nowIso()),
+      listNotifyingRemoteFollowersSql(actorUri, nowIso(), statusId),
       NotifyingFollowerRow,
     );
     return rows.map((row) => ({
@@ -233,16 +238,21 @@ export const notifyingRemoteFollowers = async (
     }));
   });
 
-/** Whether `accountId` still follows `actorUri` (accepted) with notifications on, and does not mute it. */
+/**
+ * Whether `accountId` still follows `actorUri` (accepted) with notifications
+ * on, does not mute it, and does not block or mute an account or actor its
+ * note `statusId` actively mentions.
+ */
 export const isNotifyingRemoteFollower = async (
   db: D1Database,
   accountId: string,
   actorUri: string,
+  statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      findNotifyingRemoteFollowSql(accountId, actorUri, nowIso()),
+      findNotifyingRemoteFollowSql(accountId, actorUri, nowIso(), statusId),
       FoundRow,
     );
     return rows.length > 0;
