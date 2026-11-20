@@ -40,6 +40,8 @@ export * from "./sql/claimRemoteOutboxBackfill";
 
 export * from "./sql/claimRemotePollExpiryNotice";
 
+export * from "./sql/claimRemotePollRefresh";
+
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
 export * from "./sql/clearLegacyMediaKey";
@@ -380,6 +382,8 @@ export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteFollowsJson";
 
+export * from "./sql/findRemotePollFetchedAt";
+
 export * from "./sql/findRemoteStatusById";
 
 export * from "./sql/findRemoteStatusByObjectUri";
@@ -718,6 +722,8 @@ export * from "./sql/listRemoteActorModerations";
 
 export * from "./sql/listRemoteActorPinnedStatuses";
 
+export * from "./sql/listRemoteActorsDueLinkCheck";
+
 export * from "./sql/listRemoteFeaturedTags";
 
 export * from "./sql/listRemoteNoteReplies";
@@ -798,9 +804,17 @@ export * from "./sql/markAvatarMetadataStripped";
 
 export * from "./sql/markHeaderMetadataStripped";
 
+export * from "./sql/markLocalProfileFieldVerified";
+
 export * from "./sql/markMediaMetadataStripped";
 
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/markRemoteActorLinksChecked";
+
+export * from "./sql/markRemotePollFetched";
+
+export * from "./sql/markRemoteProfileFieldVerified";
 
 export * from "./sql/markRemoteStatusTagsIndexed";
 
@@ -887,6 +901,8 @@ export * from "./sql/releaseInboxActivity";
 export * from "./sql/releasePollUpdate";
 
 export * from "./sql/releaseRemoteOutboxBackfill";
+
+export * from "./sql/releaseRemotePollRefresh";
 
 export * from "./sql/releaseRemoteStatusThreadBackfill";
 

@@ -183,8 +183,15 @@ const cachedCard = async (
     return { card, fresh: Number.isFinite(fetched) && Date.now() - fetched < CARD_TTL_MS };
   });
 
-/** Redirects a preview fetch follows before giving up. */
-const MAX_REDIRECTS = 5;
+/** How a page fetch is bounded: the redirects it follows, its deadline, and what it accepts. */
+export type PageFetchLimits = Readonly<{ redirects: number; timeoutMs: number; accept: string }>;
+
+/** A preview fetch follows five redirects within 3 s. */
+const PREVIEW_FETCH: PageFetchLimits = {
+  redirects: 5,
+  timeoutMs: FETCH_TIMEOUT_MS,
+  accept: "text/html,application/xhtml+xml",
+};
 
 type GuardedFetch =
   | Readonly<{ kind: "Response"; response: Response }>
@@ -196,17 +203,18 @@ type GuardedFetch =
  * federation rules and the DNS check, not only the first. A redirect past the
  * hop limit, or to a non-http(s) or malformed target, is refused.
  */
-const fetchGuarded = async (
+export const fetchGuarded = async (
   first: URL,
   identity: InstanceIdentity,
   options: Readonly<{
     allowHosts?: ReadonlySet<string>;
     blockedHosts?: ReadonlySet<Hostname>;
   }>,
+  limits: PageFetchLimits = PREVIEW_FETCH,
 ): Promise<GuardedFetch> => {
-  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(limits.timeoutMs);
   let url = first;
-  for (let hops = 0; hops <= MAX_REDIRECTS; hops += 1) {
+  for (let hops = 0; hops <= limits.redirects; hops += 1) {
     const admitted = await checkFederatedHost(url.hostname, identity.domain, options);
     if (admitted !== "Admitted") {
       return { kind: admitted === "Refused" ? "Refused" : "Unavailable" };
@@ -214,7 +222,7 @@ const fetchGuarded = async (
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Accept: "text/html,application/xhtml+xml",
+        Accept: limits.accept,
         "User-Agent": `tstodon (${identity.publicOrigin})`,
       },
       redirect: "manual",

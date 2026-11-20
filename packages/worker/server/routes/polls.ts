@@ -3,7 +3,9 @@ import { assertNever, warmSchemas } from "@tstodon/core";
 import { PollBallot } from "@tstodon/domain";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
 import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
+import { ok } from "neverthrow";
 import { findRemotePollVotes } from "../remote-poll-vote-store";
+import { refreshRemotePoll } from "../remote-poll-refresh";
 import { voteOnRemotePoll } from "../remote-poll-own-vote";
 import { findRemoteStatusById } from "../remote-status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
@@ -46,14 +48,19 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
     ) {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
-    const votes = await findRemotePollVotes(c.env.DB, viewerId, [remote.value]);
+    const shown =
+      viewerId === undefined ? ok(remote.value) : await refreshRemotePoll(c.env, remote.value);
+    if (shown.isErr()) {
+      return jsonRepositoryError(c, shown.error.message);
+    }
+    const { poll } = shown.value;
+    // The refetched note may have dropped its poll.
+    if (poll.kind === "NoPoll") {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
+    const votes = await findRemotePollVotes(c.env.DB, viewerId, [shown.value]);
     return c.json(
-      remotePollJson(
-        remote.value.id,
-        remote.value.poll,
-        votes.get(remote.value.id),
-        remote.value.emojis,
-      ),
+      remotePollJson(shown.value.id, poll, votes.get(shown.value.id), shown.value.emojis),
     );
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), viewerId);

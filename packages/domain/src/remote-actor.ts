@@ -3,6 +3,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
+import { ProfileFieldSchema } from "./profile-field";
 import { RemoteEmojiSchema } from "./remote-status";
 
 /**
@@ -27,7 +28,7 @@ const RemoteActorProfileSchema = z.object({
    * is the actor's HTML as sent: sanitise it before it is rendered. None on a
    * profile stored before they were kept.
    */
-  fields: z.array(z.object({ name: z.string(), value: z.string() })).default([]),
+  fields: z.array(ProfileFieldSchema).default([]),
 });
 
 export type RemoteActorProfile = z.infer<typeof RemoteActorProfileSchema>;
@@ -94,13 +95,29 @@ const hostnames = (actor: RemoteActor): ReadonlyArray<Hostname> => {
   return [Hostname.ofAuthority(actor.domain), ...(uriHost ? [uriHost] : [])];
 };
 
+/** Whether `url` is on the host of `actorUri`, ignoring case (Mastodon's `mismatching_origin?`). */
+const sameHost = (url: string, actorUri: string): boolean => {
+  const host = Hostname.ofUri(url);
+  return host !== undefined && host === Hostname.ofUri(actorUri);
+};
+
 export const RemoteActor = {
   schema: RemoteActorSchema,
   profileSchema: RemoteActorProfileSchema,
+  sameHost,
   emptyProfile: EMPTY_PROFILE,
   parse: parseRemoteActor,
-  /** The actor's `url`, its profile page, or its id when it names none. */
-  profileUrl: (actor: RemoteActor): string => actor.profile.profileUrl ?? actor.actorUri,
+  /**
+   * The actor's `url`, its profile page, or its id when it names none or one
+   * on another host, as Mastodon's `ProcessAccountService#url` drops it
+   * (`mismatching_origin?`): an actor cannot claim another's profile.
+   */
+  profileUrl: (actor: RemoteActor): string => {
+    const { profileUrl } = actor.profile;
+    return profileUrl !== null && sameHost(profileUrl, actor.actorUri)
+      ? profileUrl
+      : actor.actorUri;
+  },
   fromFetched: (input: {
     actorUri: string;
     username: string;

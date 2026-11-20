@@ -251,6 +251,7 @@ export {
   type RemoteActorProfile,
 } from "./remote-actor";
 export { RemoteActorKey } from "./remote-actor-key";
+export { ProfileField, ProfileFieldSchema } from "./profile-field";
 export {
   type AccountHandle,
   WebfingerConfirmation,

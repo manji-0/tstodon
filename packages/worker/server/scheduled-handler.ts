@@ -6,6 +6,7 @@ import { hasExpiredPollWork } from "./poll-expiry";
 import { hasDueScheduledStatuses } from "./scheduled-status-publish";
 import { processOutboxJob } from "./outbox-job";
 import { hasDueStatusFederations } from "./pending-status-federation";
+import { queueDueProfileLinkChecks } from "./profile-link-verification";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 import { deleteAbandonedOwed } from "./remote-status-owed";
 import { runRemoteStatusRetention } from "./remote-status-retention";
@@ -165,6 +166,8 @@ export const handleScheduled = (
           refreshStaleRemoteActors(env),
           // Delete a slice of stale remote statuses nothing local needs.
           runRemoteStatusRetention(env),
+          // Queue the link checks of the profiles fetched since the last run.
+          queueDueProfileLinkChecks(env),
           // Start or restart the delivery Workflows of targets left `Queued`
           // past their next attempt (a failed create, a step that errored).
           sweepStuckDeliveries(env),

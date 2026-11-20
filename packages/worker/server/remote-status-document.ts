@@ -69,17 +69,7 @@ export const mastodonRemoteStatus = (
     media_attachments: status.media.flatMap((attachment, index) =>
       httpUrl(attachment.url) === undefined
         ? []
-        : [
-            remoteMediaJson(attachment, {
-              id: `${status.id}-${index}`,
-              url: attachment.url,
-              preview_url: attachment.url,
-              remote_url: attachment.url,
-              text_url: attachment.url,
-              description: attachment.description.length > 0 ? attachment.description : null,
-              blurhash: attachment.blurhash ?? null,
-            }),
-          ],
+        : [remoteMediaJson(attachment, `${status.id}-${index}`)],
     ),
     mentions: [...(extras.mentions ?? [])],
     tags: [...(extras.tags ?? [])],
@@ -101,21 +91,76 @@ export const mastodonRemoteStatus = (
   };
 };
 
-type RemoteMediaFields = Omit<ApiMediaAttachmentJSON, "type" | "meta">;
+type RemoteMediaType = "image" | "video" | "audio";
+
+const typed = (type: RemoteMediaType, mimes: ReadonlyArray<string>) =>
+  mimes.map((mime) => [mime, type] as const);
 
 /**
- * A remote attachment as Mastodon's REST `MediaAttachment`. The file is not
- * downloaded, so its sizes are the ones the note declares: `meta.original`,
- * and for an image `meta.small`, the size Mastodon's `small` style would have.
- * `preview_url` stays the original file.
+ * The media types Mastodon downloads a remote file of, and the type it gives
+ * the attachment (`MediaAttachment::IMAGE_MIME_TYPES`, `VIDEO_MIME_TYPES` and
+ * `AUDIO_MIME_TYPES`, as `set_type_and_extension` reads them: the audio list
+ * holds `video/x-ms-asf`). Mastodon does not download a file of another type
+ * (`unsupported_media_type?`), and that attachment stays `unknown`.
  */
-const remoteMediaJson = (
-  attachment: RemoteAttachment,
-  fields: RemoteMediaFields,
-): ApiMediaAttachmentJSON => {
+const MASTODON_MEDIA_TYPES: ReadonlyMap<string, RemoteMediaType> = new Map([
+  ...typed("image", [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/heic",
+    "image/heif",
+    "image/webp",
+    "image/avif",
+  ]),
+  ...typed("video", ["video/webm", "video/mp4", "video/quicktime", "video/ogg"]),
+  ...typed("audio", [
+    "audio/wave",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/x-pn-wave",
+    "audio/vnd.wave",
+    "audio/ogg",
+    "audio/vorbis",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/webm",
+    "audio/flac",
+    "audio/aac",
+    "audio/m4a",
+    "audio/x-m4a",
+    "audio/mp4",
+    "audio/3gpp",
+    "video/x-ms-asf",
+  ]),
+]);
+
+/**
+ * A remote attachment as Mastodon's REST `MediaAttachment` shows it once
+ * downloaded, without the download. `url` is the remote file. `preview_url`
+ * is the thumbnail the attachment's `icon` names (`preview_remote_url`), else
+ * an image's own file, else none: Mastodon's would be a frame of the video or
+ * the audio's cover art, read from the file. The sizes are the ones the note
+ * declares: `meta.original`, and for an image `meta.small`, the size
+ * Mastodon's `small` style would have. A GIF stays an `image` and a video
+ * without sound a `video`; Mastodon makes both a `gifv` from the file.
+ */
+const remoteMediaJson = (attachment: RemoteAttachment, id: string): ApiMediaAttachmentJSON => {
   const { size } = attachment;
   const focus = attachment.focus ? { focus: attachment.focus } : {};
-  const type = remoteMediaType(attachment.mediaType);
+  const type = MASTODON_MEDIA_TYPES.get(attachment.mediaType.toLowerCase()) ?? "unknown";
+  const fields = {
+    id,
+    url: attachment.url,
+    preview_url:
+      attachment.thumbnailUrl ?? (type === "image" || type === "unknown" ? attachment.url : null),
+    remote_url: attachment.url,
+    preview_remote_url: attachment.thumbnailUrl ?? null,
+    // Mastodon gives a text URL to a local attachment only.
+    text_url: null,
+    description: attachment.description.length > 0 ? attachment.description : null,
+    blurhash: attachment.blurhash ?? null,
+  };
   switch (type) {
     case "image":
       return {
@@ -140,21 +185,4 @@ const remoteMediaJson = (
     case "unknown":
       return { ...fields, type, meta: {} };
   }
-};
-
-const remoteMediaType = (mediaType: string): "image" | "video" | "audio" | "unknown" => {
-  const type = mediaType.toLowerCase();
-  if (type.length === 0) {
-    return "unknown";
-  }
-  if (type.startsWith("video/")) {
-    return "video";
-  }
-  if (type.startsWith("audio/")) {
-    return "audio";
-  }
-  if (type.startsWith("image/")) {
-    return "image";
-  }
-  return "unknown";
 };
