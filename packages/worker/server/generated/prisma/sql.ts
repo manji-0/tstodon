@@ -720,6 +720,8 @@ export * from "./sql/listPushSubscriptions";
 
 export * from "./sql/listQuoteFilterRelationsJson";
 
+export * from "./sql/listRemoteActorAddressedHomeEntries";
+
 export * from "./sql/listRemoteActorHomeEntryIds";
 
 export * from "./sql/listRemoteActorModerations";
