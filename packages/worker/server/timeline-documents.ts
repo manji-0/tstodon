@@ -1,6 +1,11 @@
 import type { ApiStatusJSON } from "@tstodon/api";
 import { withinHorizon } from "./followed-feed";
-import { InstanceIdentity, type LocalStatus, type RemoteNote, Visibility } from "@tstodon/domain";
+import {
+  InstanceIdentity,
+  type LocalStatus,
+  type RemoteNote,
+  RemoteVisibility,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import {
@@ -45,7 +50,7 @@ export const remoteTimelineDocuments = async (
   viewerId: string | undefined,
   /** Direct notes already chosen for the viewer pass whatever their visibility. */
   visible: (status: RemoteNote) => boolean = (status) =>
-    !Visibility.isRestricted(status.visibility),
+    !RemoteVisibility.isRestricted(status.visibility),
 ): Promise<
   Result<
     Readonly<{
@@ -194,7 +199,7 @@ const publicSurfaceDocuments = async (
         ),
       ),
       pageSource(
-        remoteStatuses.value.filter((status) => !Visibility.isRestricted(status.visibility)),
+        remoteStatuses.value.filter((status) => !RemoteVisibility.isRestricted(status.visibility)),
         async (statuses) =>
           (await remoteTimelineDocuments(env, identity, statuses, viewerId, () => true)).asyncMap(
             (rendered) =>

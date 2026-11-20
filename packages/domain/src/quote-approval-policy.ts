@@ -1,7 +1,7 @@
 import { QUOTE_APPROVAL_AUDIENCES, type UserQuotePolicy } from "@tstodon/api/values";
 import { schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
-import type { Visibility } from "./visibility";
+import type { RemoteVisibility } from "./visibility";
 
 const PublicSchema = unitKind("Public");
 const FollowersSchema = unitKind("Followers");
@@ -173,11 +173,12 @@ export const QuoteInteractionPolicy = {
   },
   /**
    * Mastodon's `quote_policy_for_account`: no viewer and a direct note are
-   * denied, the author may always quote their own note, then the policy.
+   * denied (a limited one is not), the author may always quote their own
+   * note, then the policy.
    */
   forViewer: (
     policy: QuoteInteractionPolicy,
-    visibility: Visibility,
+    visibility: RemoteVisibility,
     relation: QuoteViewerRelation | undefined,
   ): QuoteApprovalForViewer => {
     if (relation === undefined || visibility.kind === "Direct") {

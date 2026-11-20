@@ -1,5 +1,7 @@
+import { assertNever } from "@tstodon/core";
 import {
   OutboundFollow,
+  RemoteVisibility,
   Visibility,
   type LocalStatus,
   type RemoteBoostValue as RemoteBoost,
@@ -80,25 +82,30 @@ const canViewLocal = (
 /**
  * A cached remote status: public and unlisted ones are open to all but the
  * local accounts the author blocks, a followers-only one is shown to the
- * author's accepted local followers, and a direct or followers-only one to the
- * local accounts it addresses.
+ * author's accepted local followers, and a direct, limited or followers-only
+ * one to the local accounts it addresses, silently or not.
  */
 const canViewRemote = (
   status: RemoteStatus,
   viewerId: string | undefined,
   access: ViewerAccess,
 ): boolean => {
-  if (!Visibility.isRestricted(status.visibility)) {
-    return viewerId === undefined || !access.blocks(status.actorUri);
+  switch (status.visibility.kind) {
+    case "Public":
+    case "Unlisted":
+      return viewerId === undefined || !access.blocks(status.actorUri);
+    case "FollowersOnly":
+      return (
+        viewerId !== undefined &&
+        (access.granted("OutboundFollow", status.actorUri) ||
+          access.granted("RemoteStatus", status.id))
+      );
+    case "Direct":
+    case "Limited":
+      return viewerId !== undefined && access.granted("RemoteStatus", status.id);
+    default:
+      return assertNever(status.visibility);
   }
-  if (viewerId === undefined) {
-    return false;
-  }
-  return (
-    (status.visibility.kind === "FollowersOnly" &&
-      access.granted("OutboundFollow", status.actorUri)) ||
-    access.granted("RemoteStatus", status.id)
-  );
 };
 
 export const canViewStatus = async (
@@ -125,7 +132,7 @@ const listAuthorsBlockingViewer = async (
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
   // Only a public or unlisted status asks whether its author blocks the viewer.
   const open = <T extends LocalStatus | RemoteStatus>(statuses: ReadonlyArray<T>) =>
-    statuses.filter((status) => !Visibility.isRestricted(status.visibility));
+    statuses.filter((status) => !RemoteVisibility.isRestricted(status.visibility));
   const accountIds = new Set(open(locals).map((status) => status.accountId));
   const actorUris = new Set(open(remotes).map((status) => status.actorUri));
   if (accountIds.size === 0 && actorUris.size === 0) {
@@ -199,7 +206,9 @@ const listViewerGrants = async (
   const restrictedLocals = locals.filter(
     (status) => status.accountId !== viewerId && Visibility.isRestricted(status.visibility),
   );
-  const restrictedRemotes = remotes.filter((status) => Visibility.isRestricted(status.visibility));
+  const restrictedRemotes = remotes.filter((status) =>
+    RemoteVisibility.isRestricted(status.visibility),
+  );
   if (restrictedLocals.length === 0 && restrictedRemotes.length === 0) {
     return ok(new Set());
   }

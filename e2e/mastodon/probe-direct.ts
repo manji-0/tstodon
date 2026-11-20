@@ -10,8 +10,12 @@ import {
   Conversations,
   eventually,
   follow,
+  mastodonRails,
+  notified,
   Notifications,
   post,
+  resolveStatus,
+  Search,
   Status,
   step,
   StepFailure,
@@ -183,6 +187,109 @@ const strangerMessage = async (
   );
 };
 
+/**
+ * A note from `sender` that tags `mentioned` and reaches `addressed` without
+ * a tag, delivered by Mastodon's own `ActivityPub::DeliveryWorker`, signed
+ * with the sender's key. Mastodon's API cannot write such a note: its
+ * `to` names only the accounts a status mentions. `inbox` is where it goes.
+ */
+const deliverUntagged = (
+  sender: E2eUser,
+  slug: string,
+  audience: Readonly<{ to: string[]; tag: E2eUser; inbox: string }>,
+): string => {
+  const noteUri = `${sender.uri}/statuses/${slug}`;
+  const published = new Date().toISOString();
+  const note = {
+    id: noteUri,
+    type: "Note",
+    attributedTo: sender.uri,
+    content: `<p>${slug}</p>`,
+    published,
+    to: audience.to,
+    cc: [],
+    tag: [{ type: "Mention", href: audience.tag.uri, name: `@${audience.tag.acct}` }],
+  };
+  const create = {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    id: `${noteUri}/activity`,
+    type: "Create",
+    actor: sender.uri,
+    published,
+    to: audience.to,
+    cc: [],
+    object: note,
+  };
+  // Base64 keeps the JSON out of Ruby's string interpolation (`#{`, `#@`).
+  // `perform` returns without raising on a 4xx (`@unsalvageable`), so the
+  // script checks that the request went through (`@performed`).
+  const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
+  mastodonRails(
+    [
+      `json = Base64.strict_decode64("${base64(JSON.stringify(create))}").force_encoding("UTF-8")`,
+      `sender = Account.find_local!(Base64.strict_decode64("${base64(sender.username)}"))`,
+      `inbox = Base64.strict_decode64("${base64(audience.inbox)}")`,
+      "worker = ActivityPub::DeliveryWorker.new",
+      "worker.perform(json, sender.id, inbox, { 'bypass_availability' => true })",
+      'raise "not delivered to #{inbox}" unless worker.instance_variable_get(:@performed)',
+    ].join("\n"),
+  );
+  return noteUri;
+};
+
+/**
+ * Mastodon's `limited`: a note its audience makes direct that reaches an
+ * account without a `Mention` tag (`Create#process_audience`), or arrives at
+ * the personal inbox of an account it does not tag. tstodon serves it as
+ * `private` to the accounts it reaches and to no one else, adds it to no
+ * conversation, and notifies the tagged account past its private-mention
+ * policy.
+ */
+const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
+  const mentioned = await signUp(A, "lima");
+  const addressed = await signUp(A, "limb");
+  const bystander = await signUp(A, "limc");
+  const checkLimited = async (noteUri: string): Promise<void> => {
+    for (const viewer of [mentioned, addressed]) {
+      const seen = await resolveStatus(viewer, noteUri);
+      if (seen.visibility !== "private") {
+        throw new StepFailure(`${viewer.acct} sees it as ${seen.visibility}`);
+      }
+    }
+    const query = new URLSearchParams({ q: noteUri, resolve: "true", type: "statuses" });
+    const found = await call(bystander, `/api/v2/search?${query.toString()}`, Search);
+    if (found.statuses.length > 0) {
+      throw new StepFailure("an account it does not reach finds it");
+    }
+    await notified(mentioned, "mention", sender, noteUri);
+    const conversations = await call(mentioned, "/api/v1/conversations?limit=40", Conversations);
+    if (conversations.some((entry) => entry.last_status?.uri === noteUri)) {
+      throw new StepFailure("the limited note has a conversation");
+    }
+  };
+
+  await step("a note that reaches a tstodon user untagged is limited: Mastodon → tstodon", () =>
+    checkLimited(
+      deliverUntagged(sender, `limited-cc-${stamp}`, {
+        to: [mentioned.uri, addressed.uri],
+        tag: mentioned,
+        inbox: `${A}/inbox`,
+      }),
+    ),
+  );
+  await step(
+    "a note at the personal inbox of a tstodon user it does not tag is limited: Mastodon → tstodon",
+    () =>
+      checkLimited(
+        deliverUntagged(sender, `limited-inbox-${stamp}`, {
+          to: [mentioned.uri],
+          tag: mentioned,
+          inbox: `${A}/users/${addressed.username}/inbox`,
+        }),
+      ),
+  );
+};
+
 export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promise<void> => {
   const alice = await signUp(A, "dora");
   const bob = await signUp(A, "dirk");
@@ -222,4 +329,6 @@ export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
     "a stranger's direct message waits in a notification request: Mastodon → tstodon",
     () => signUp(A, "rita").then((receiver) => strangerMessage(stamp, dana, receiver)),
   );
+
+  await limitedNote(stamp, carol);
 };

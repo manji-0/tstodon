@@ -369,7 +369,13 @@ export {
   type StreamSubscription as StreamSubscriptionValue,
 } from "./stream-subscription";
 export { Username } from "./username";
-export { Visibility, reblogVisibility, type Visibility as VisibilityValue } from "./visibility";
+export {
+  RemoteVisibility,
+  type StoredRemoteVisibility,
+  Visibility,
+  reblogVisibility,
+  type Visibility as VisibilityValue,
+} from "./visibility";
 export { Notification, type Notification as NotificationValue } from "./notification";
 export {
   MIN_AGE_CHOICES,

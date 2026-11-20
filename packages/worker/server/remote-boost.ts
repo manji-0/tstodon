@@ -7,7 +7,7 @@ import {
   type StatusTargetValue,
   type RemoteStatusValue,
   StatusId,
-  type Visibility,
+  type RemoteVisibility,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { ok, type Result } from "neverthrow";
@@ -38,7 +38,8 @@ const announcedTarget = async (
   remote: RemoteStatusValue | undefined,
 ): Promise<
   Result<
-    Readonly<{ target: StatusTargetValue; visibility: Visibility; authorUri?: string }> | undefined,
+    | Readonly<{ target: StatusTargetValue; visibility: RemoteVisibility; authorUri?: string }>
+    | undefined,
     RepositoryError
   >
 > => {
