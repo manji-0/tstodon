@@ -1,8 +1,9 @@
 import {
   InstanceIdentity,
   RealtimeWindow,
-  type RemoteActor,
+  RemoteActor,
   type RemoteStatus as RemoteStatusValue,
+  RemoteVisibility,
   type MentionedPost,
   type OutboxJob,
 } from "@tstodon/domain";
@@ -16,6 +17,7 @@ import { readableRow, type RepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
+import { findRemoteActorsByUris } from "./remote-actor-store";
 import type { IdClock } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountsByUsernames } from "./account-store";
@@ -125,20 +127,24 @@ const mentionedRemoteActorUris = (identity: InstanceIdentity, raw: unknown): str
  * The local accounts a remote note names, as Mastodon's
  * `ActivityPub::Activity::Create` sorts them. `mentioned` are the ones its
  * `Mention` tags name (`process_mention`): the note's mentions, shown and
- * notified. `addressed` are the ones only its `to`/`cc` name
- * (`process_audience`): silent mentions, which let the account read the note
- * and nothing more.
+ * notified. `addressed` are the ones only its `to`/`cc` name, and the owner
+ * of the personal inbox it came to (`process_audience`): silent mentions,
+ * which let the account read the note and nothing more.
  */
 type LocalAddressees = Readonly<{
   mentioned: ReadonlyArray<string>;
   addressed: ReadonlyArray<string>;
 }>;
 
-/** Every local account a remote note names, read in one query. */
+/**
+ * Every local account a remote note names, read in one query. `deliveredTo`
+ * is the account whose personal inbox the note came to, if any.
+ */
 const localAddressees = async (
   db: D1Database,
   identity: InstanceIdentity,
   raw: unknown,
+  deliveredTo?: string,
 ): Promise<Result<LocalAddressees, RepositoryError>> => {
   const note = parseNoteDocument(raw);
   const tagged = localUsernames(identity, mentionHrefs(raw));
@@ -159,8 +165,45 @@ const localAddressees = async (
   const mentionedSet = new Set(mentioned);
   return ok({
     mentioned,
-    addressed: accountIds(audience).filter((id) => !mentionedSet.has(id)),
+    addressed: [
+      ...new Set([...accountIds(audience), ...(deliveredTo === undefined ? [] : [deliveredTo])]),
+    ].filter((id) => !mentionedSet.has(id)),
   });
+};
+
+/**
+ * `Create#process_audience`: whether the note reaches an account Mastodon
+ * knows other than through a `Mention` tag. That is a local account or a
+ * cached remote actor in its `to`/`cc` that no tag names, or the owner of the
+ * personal inbox it came to when the note does not mention it. A note its
+ * audience makes direct is then limited ({@link RemoteVisibility.ofAudience}).
+ */
+const reachesAudienceOnlyAccount = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  raw: unknown,
+  deliveredTo: string | undefined,
+): Promise<Result<boolean, RepositoryError>> => {
+  const local = await localAddressees(db, identity, raw, deliveredTo);
+  if (local.isErr()) {
+    return err(local.error);
+  }
+  if (local.value.addressed.length > 0) {
+    return ok(true);
+  }
+  const note = parseNoteDocument(raw);
+  const tagged = new Set(mentionHrefs(raw));
+  const origin = new URL(identity.publicOrigin).origin;
+  const remotes = (
+    note.isOk() ? [...stringList(note.value.to), ...stringList(note.value.cc)] : []
+  ).flatMap((uri) => {
+    const url = URL.parse(uri);
+    return url && url.origin !== origin && !tagged.has(uri) ? [uri.split("#")[0] ?? uri] : [];
+  });
+  const known = await findRemoteActorsByUris(db, remotes);
+  return known.map((actors) =>
+    [...actors.values()].some((actor) => !tagged.has(RemoteActor.profileUrl(actor))),
+  );
 };
 
 /**
@@ -449,7 +492,7 @@ const writeLateSteps = async (
   late: LateSteps,
 ): Promise<Result<void, RepositoryError>> => {
   const { actor, raw, status, options } = late;
-  const addressees = await localAddressees(env.DB, identity, raw);
+  const addressees = await localAddressees(env.DB, identity, raw, options.deliveredTo);
   if (addressees.isErr()) {
     return err(addressees.error);
   }
@@ -467,7 +510,8 @@ const writeLateSteps = async (
   // marker, so its redelivery finds the rows and would notify nobody.
   const reached = await reachRecipients(env, identity, actor, status, {
     mention: mentionsToNotify(late, mentioned),
-    // Everyone a new direct note reaches here: the conversation lists it for each.
+    // Everyone a new direct note reaches here: the conversation lists it for
+    // each. A limited note joins no conversation (`FanOutOnWriteService`).
     conversation:
       late.kind === "Created" && status.visibility.kind === "Direct"
         ? [...mentioned, ...addressed]
@@ -548,6 +592,13 @@ type PersistOptions = FederatedFetchOptions &
      * a newer edit, but not a note it already had.
      */
     forward?: ReceivedActivity;
+    /**
+     * The local account whose personal inbox the `Create` came to, as
+     * Mastodon's `delivered_to_account_id`: the note becomes readable to it
+     * (a silent mention when it is not mentioned), and a direct note that
+     * does not mention it is limited.
+     */
+    deliveredTo?: string;
   }>;
 
 type ObjectReference = string | Readonly<{ id: string } & Record<string, unknown>>;
@@ -881,7 +932,7 @@ export const remoteQuoteContext = (
 ): RemoteQuoteContext => {
   const depth = options.quoteDepth ?? 0;
   const mayFetch = depth < MAX_QUOTE_DEPTH;
-  const { forward: _forward, ...fetchOnly } = options;
+  const { forward: _forward, deliveredTo: _deliveredTo, ...fetchOnly } = options;
   const nested: PersistOptions = { ...fetchOnly, delivery: "Fetched", quoteDepth: depth + 1 };
   return {
     fetchOptions: options,
@@ -938,20 +989,36 @@ const storeRemoteNote = async (
   if (parsed.isErr()) {
     return ok(undefined);
   }
-  const status = await applyMediaPolicy(env, actor, parsed.value);
+  const media = await applyMediaPolicy(env, actor, parsed.value);
   const note = parseNoteDocument(raw);
   const inReplyTo = note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined;
   // A note that replies to itself would make its own thread a cycle.
-  if (inReplyTo === status.objectUri) {
+  if (inReplyTo === media.objectUri) {
     return ok(undefined);
   }
-  const read = await cachedRemoteStatus(env, identity, status.objectUri, known);
+  const read = await cachedRemoteStatus(env, identity, media.objectUri, known);
   if (read.isErr()) {
     return err(read.error);
   }
   if (read.value && read.value.kind !== "RemoteNote") {
     return ok(undefined);
   }
+  const audienceOnly =
+    media.visibility.kind === "Direct"
+      ? await reachesAudienceOnlyAccount(env.DB, identity, raw, options.deliveredTo)
+      : ok(false);
+  if (audienceOnly.isErr()) {
+    return err(audienceOnly.error);
+  }
+  // Mastodon sets a note's visibility once, when it stores it: a stored
+  // limited note stays limited.
+  const status: RemoteStatusValue = {
+    ...media,
+    visibility:
+      read.value?.visibility.kind === "Limited"
+        ? RemoteVisibility.Limited
+        : RemoteVisibility.ofAudience(media.visibility, { audienceOnly: audienceOnly.value }),
+  };
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.
   const marker =

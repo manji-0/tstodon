@@ -4,7 +4,8 @@
 -- @param {String} $4:localStatusUriPrefix
 -- Delete the remote statuses of one retention slice, ids in ($1, $2], that
 -- were last written before $3 and that nothing local needs. Each NOT EXISTS
--- is one equality on an indexed column. A direct status is never deleted.
+-- is one equality on an indexed column. A direct or limited status is never
+-- deleted.
 -- Kept: statuses by an actor a local account follows (any state), that
 -- follows one, or that was reported; statuses a local account favourited,
 -- bookmarked, boosted, replied to, voted in, or muted the thread of; ones
@@ -19,7 +20,7 @@
 DELETE FROM remote_statuses AS rs
 WHERE rs.id > $1 AND rs.id <= $2
   AND rs.updated_at < $3
-  AND rs.visibility <> 'direct'
+  AND rs.visibility NOT IN ('direct', 'limited')
   AND (rs.in_reply_to_uri IS NULL OR substr(rs.in_reply_to_uri, 1, length($4)) <> $4)
   AND NOT EXISTS (SELECT 1 FROM outbound_follows f WHERE f.actor_uri = rs.actor_uri)
   AND NOT EXISTS (SELECT 1 FROM remote_follows f WHERE f.remote_actor_uri = rs.actor_uri)
