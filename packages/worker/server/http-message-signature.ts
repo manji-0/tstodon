@@ -47,13 +47,10 @@ export const parseMessageSignature = (
   signature: string,
 ): Result<MessageSignature, MessageSignatureParseError> => {
   const inputs = parseSfDictionary(signatureInput);
-  if (inputs.isErr() || inputs.value.length === 0) {
-    return err({ kind: "MalformedSignatureInput" });
-  }
-  if (inputs.value.length > 1) {
+  if (inputs.isOk() && inputs.value.length > 1) {
     return err({ kind: "MultipleSignatures" });
   }
-  const [entry] = inputs.value;
+  const entry = inputs.isOk() ? inputs.value[0] : undefined;
   if (entry === undefined) {
     return err({ kind: "MalformedSignatureInput" });
   }
