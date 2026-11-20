@@ -61,4 +61,40 @@ export const signatureScenarios = async ({ stamp, mona }: Cast): Promise<void> =
       throw new StepFailure(`verify_actor! on tstodon's Delete: ${out.trim().slice(-300)}`);
     }
   });
+
+  await step(
+    "tstodon accepts the RFC 9421 delivery Mastodon double-knocks with (FED-9)",
+    async () => {
+      // Mastodon sends RFC 9421 only once a draft-cavage request is answered
+      // 400 or 401, which tstodon does not do to a good signature, and no
+      // setting changes that. So the step runs that second knock itself:
+      // `DeliveryWorker#build_request`, then `Request#perform_rfc9421_signed_request`.
+      const target = await signUp(A, "knock");
+      const out = mastodonRails(`
+      account = Account.find_local(${JSON.stringify(mona.username)})
+      body = Oj.dump({
+        '@context' => 'https://www.w3.org/ns/activitystreams',
+        'id' => ${JSON.stringify(`${mona.uri}#follows/rfc9421-${stamp}`)},
+        'type' => 'Follow',
+        'actor' => ActivityPub::TagManager.instance.uri_for(account),
+        'object' => ${JSON.stringify(target.uri)},
+      })
+      request = Request.new(:post, ${JSON.stringify(new URL("/inbox", target.uri).href)}, body: body)
+      request.on_behalf_of(account)
+      request.add_headers(ActivityPub::DeliveryWorker::HEADERS)
+      response = request.send(:perform_rfc9421_signed_request)
+      puts "STATUS #{response.code}"
+    `);
+      if (!out.includes("STATUS 202")) {
+        throw new StepFailure(`tstodon answered the RFC 9421 Follow: ${out.trim().slice(-300)}`);
+      }
+      await eventually("tstodon records mona's follow", async () =>
+        tstodonSql(
+          `SELECT 1 FROM remote_follows WHERE target_account_id = '${target.id}' AND remote_actor_uri = '${mona.uri}'`,
+        ).length > 0
+          ? true
+          : undefined,
+      );
+    },
+  );
 };
