@@ -668,6 +668,8 @@ export * from "./sql/listLocalBoostsOfRemoteActor";
 
 export * from "./sql/listLocalBoostsOfRemoteObject";
 
+export * from "./sql/listLocalFollowsOfActor";
+
 export * from "./sql/listLocalNoteReplies";
 
 export * from "./sql/listLocalNoteTextsAfter";
@@ -727,6 +729,8 @@ export * from "./sql/listRemoteActorPinnedStatuses";
 export * from "./sql/listRemoteActorsDueLinkCheck";
 
 export * from "./sql/listRemoteFeaturedTags";
+
+export * from "./sql/listRemoteFollowerUrisByPrefix";
 
 export * from "./sql/listRemoteNoteReplies";
 
@@ -801,6 +805,8 @@ export * from "./sql/listUnstrippedHeaders";
 export * from "./sql/listUnstrippedMedia";
 
 export * from "./sql/listViewerStatusAccessJson";
+
+export * from "./sql/lockFollowersSynchronization";
 
 export * from "./sql/markAvatarMetadataStripped";
 
@@ -975,6 +981,8 @@ export * from "./sql/trimRemoteActorPins";
 export * from "./sql/unfeatureTag";
 
 export * from "./sql/unfollowTag";
+
+export * from "./sql/unlockFollowersSynchronization";
 
 export * from "./sql/unmuteStatus";
 

@@ -301,7 +301,14 @@ const federate = async (
       ? noteCreateActivity(identity, account.value, read.value.object)
       : noteUpdateActivity(read.value.object, newEntityId(), editedAt),
   );
-  const stored = await storeOwedActivity(env.DB, pending, account.value.id, payload, quoteRequest);
+  const stored = await storeOwedActivity(
+    env.DB,
+    pending,
+    account.value.id,
+    payload,
+    quoteRequest,
+    false,
+  );
   if (stored.isErr()) {
     return failed(env, pending, "store");
   }

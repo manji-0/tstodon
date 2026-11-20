@@ -65,6 +65,8 @@ const OutboundActivityWithSignerRowSchema = OutboundActivityRowSchema.extend({
    */
   signer_username: z.string().nullable(),
   signer_private_key_jwk: Sensitive.schema(z.string().min(1)).nullable(),
+  /** 1 when each POST carries a `Collection-Synchronization` header. */
+  synchronize_followers: z.number(),
 });
 
 export type OutboundActivityWithSignerRow = z.infer<typeof OutboundActivityWithSignerRowSchema>;
@@ -177,6 +179,8 @@ export const insertOutboundActivity = async (
     kind: string;
     payload: unknown;
     audience: OutboundAudience;
+    /** Each POST carries a `Collection-Synchronization` header (FEP-8fcf). */
+    synchronizeFollowers?: boolean;
   },
 ): Promise<Result<OutboundActivityRow, RepositoryError>> => {
   const accountId = input.signer.kind === "Account" ? input.signer.accountId : null;
@@ -189,7 +193,14 @@ export const insertOutboundActivity = async (
   const batched = await runD1Batch(db, [
     d1PrepareTyped(
       db,
-      insertOutboundActivitySql(id, accountId, input.kind, payloadJson, createdAt),
+      insertOutboundActivitySql(
+        id,
+        accountId,
+        input.kind,
+        payloadJson,
+        createdAt,
+        input.synchronizeFollowers ? 1 : 0,
+      ),
     ),
     d1PrepareTyped(
       db,
@@ -305,6 +316,7 @@ export const departedAccountActivityStatements = (
       activity.kind,
       JSON.stringify(activity.payload),
       createdAt,
+      0,
     ),
     insertOutboxDeliveryFanoutSql(
       newEntityId(),

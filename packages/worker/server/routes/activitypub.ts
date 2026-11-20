@@ -5,6 +5,7 @@ import {
   type ApActorCollectionPageJSON,
   type ApFeaturedCollectionJSON,
   type ApFeaturedTagsCollectionJSON,
+  type ApFollowersSynchronizationCollectionJSON,
   type ApOutboxJSON,
   type ApOutboxPageJSON,
   type ApRepliesDocumentJSON,
@@ -16,6 +17,7 @@ import {
   CollectionPage,
   type CollectionCursor,
   type CollectionPageLinks,
+  FollowersSynchronization,
   Hostname,
   InboxActivity,
   InstanceIdentity,
@@ -57,10 +59,13 @@ import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
 import { signedFetchActor } from "../signed-fetch";
 import {
+  authorizedFetchEnabled,
   authorizeObjectFetch,
   type FetchAccess,
+  requireSignedFetch,
   restrictedActorDocument,
 } from "../authorized-fetch";
+import { remoteFollowerUrisUnder } from "../followers-synchronization-store";
 import {
   claimInboxActivity,
   completeInboxActivity,
@@ -616,6 +621,49 @@ export const getUsersByUsernameFollowers = (
 export const getUsersByUsernameFollowing = (
   c: Context<{ Bindings: Env }, "/users/:username/following">,
 ) => followCollection(c, "following");
+
+/**
+ * The account's followers on the signer's host (FEP-8fcf), as Mastodon's
+ * `FollowersSynchronizationsController`: the account as any of its documents
+ * (404, 410, 403), then a signature from any actor that federates here, then
+ * every follower URI under the signer's scheme and authority, uncached.
+ */
+export const getUsersByUsernameFollowersSynchronization = async (
+  c: Context<{ Bindings: Env }, "/users/:username/followers_synchronization">,
+) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const owner = await documentOwner(
+    c,
+    authorizedFetchEnabled(c.env) ? { kind: "Restricted" } : { kind: "Public" },
+    c.req.param("username"),
+  );
+  if (owner.kind === "Refused") {
+    return owner.response;
+  }
+  const signed = await requireSignedFetch(c, identity.value);
+  if (signed.kind === "Denied") {
+    return signed.response;
+  }
+  const prefix = FollowersSynchronization.uriPrefix(signed.actor.actorUri);
+  const items =
+    prefix === undefined
+      ? ok([])
+      : await remoteFollowerUrisUnder(c.env.DB, owner.account.id, prefix);
+  if (items.isErr()) {
+    return jsonRepositoryError(c, items.error.message);
+  }
+  const document: ApFollowersSynchronizationCollectionJSON = {
+    "@context": ACTIVITY_STREAMS,
+    id: `${InstanceIdentity.actorUrl(identity.value, owner.account.username)}/followers_synchronization`,
+    type: "OrderedCollection",
+    orderedItems: items.value,
+  };
+  c.header("Cache-Control", "max-age=0, private");
+  return c.json(document, 200, jsonLd);
+};
 
 /**
  * Who reads an outbox page, as Mastodon's `AccountStatusesFilter`: an

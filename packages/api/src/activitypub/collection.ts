@@ -54,6 +54,21 @@ export const ApActorCollectionPage = orderedCollectionPage(ApUri).extend({
 export type ApActorCollectionPageJSON = z.infer<typeof ApActorCollectionPage>;
 
 /**
+ * A local account's followers on the signer's host, as Mastodon's
+ * `FollowersSynchronizationsController` serves them (FEP-8fcf): every actor
+ * URI in one document, unordered and without a count.
+ */
+export const ApFollowersSynchronizationCollection = z.object({
+  "@context": ApContext,
+  id: ApUri,
+  type: z.literal("OrderedCollection"),
+  orderedItems: z.array(ApUri),
+});
+export type ApFollowersSynchronizationCollectionJSON = z.infer<
+  typeof ApFollowersSynchronizationCollection
+>;
+
+/**
  * A local account's `featured` collection: its pinned statuses, newest pin
  * first, as their URIs. Mastodon embeds the notes it may distribute; a reader
  * resolves either form.
