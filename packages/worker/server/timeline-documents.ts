@@ -28,7 +28,6 @@ import {
   listPublicRemoteStatuses,
   listTagRemoteStatuses,
 } from "./remote-status-timeline-store";
-import { filterMutedThreads, listStatusMuteRoots, mutedThreadStatusIds } from "./status-mute-store";
 import { listTagStatuses, type TagStatusFilters } from "./status-discovery-store";
 import {
   type AccountStatusFilters,
@@ -276,8 +275,9 @@ export const tagTimelineDocuments = (
 
 /**
  * One feed's local statuses and followed remote actors' notes and boosts,
- * merged and rendered for the viewer: muted conversations left out,
- * `filtered` attached.
+ * merged and rendered for the viewer, `filtered` attached. A muted
+ * conversation stays, as Mastodon's `ConversationMute` silences only its
+ * notifications.
  */
 const feedDocuments = async (
   env: Env,
@@ -289,7 +289,6 @@ const feedDocuments = async (
   cursor: IdCursor,
   horizon: string | undefined = undefined,
 ): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
-  const mutedRoots = listStatusMuteRoots(env.DB, viewerId);
   const [statuses, followed, tagged, boosts] = await Promise.all([
     local,
     listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
@@ -299,10 +298,18 @@ const feedDocuments = async (
       : Promise.resolve(ok([])),
     listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
   ]);
-  // Disjoint: the hashtag query leaves out the followed actors. Nothing past
-  // the horizon, where the followed hashtags were not read.
+  // A followed actor's note under a followed hashtag comes from both queries,
+  // as Mastodon's two fan-out paths push it to the same home once. Nothing
+  // past the horizon, where the followed hashtags were not read.
   const remote = followed.andThen((notes) =>
-    tagged.map((more) => withinHorizon([...notes, ...more], cursor, horizon)),
+    tagged.map((more) => {
+      const listed = new Set(notes.map((note) => note.id));
+      return withinHorizon(
+        [...notes, ...more.filter((note) => !listed.has(note.id))],
+        cursor,
+        horizon,
+      );
+    }),
   );
   if (statuses.isErr()) {
     return err(statuses.error);
@@ -313,50 +320,27 @@ const feedDocuments = async (
   if (boosts.isErr()) {
     return err(boosts.error);
   }
-  const [visible, mutedRemote] = await Promise.all([
-    filterMutedThreads(
-      env.DB,
-      viewerId,
-      withinHorizon(statuses.value, cursor, horizon),
-      mutedRoots,
-    ),
-    mutedThreadStatusIds(
-      env.DB,
-      identity,
-      viewerId,
-      remote.value.map((status) => status.id),
-      mutedRoots,
-    ),
-  ]);
-  if (visible.isErr()) {
-    return err(visible.error);
-  }
-  if (mutedRemote.isErr()) {
-    return err(mutedRemote.error);
-  }
   const filters = sharedRead(() => loadViewerFilters(env.DB, viewerId));
   return renderMergedPage(
     [
-      pageSource(visible.value, async (shown) =>
+      pageSource(withinHorizon(statuses.value, cursor, horizon), async (shown) =>
         (await mastodonStatuses(env, identity, shown, viewerId)).asyncMap((documents) =>
           attachFilteredToStatuses(env.DB, viewerId, "home", shown, documents, filters()),
         ),
       ),
       // The query already keeps followed actors' notes the viewer may see.
-      pageSource(
-        remote.value.filter((status) => !mutedRemote.value.has(status.id)),
-        async (shown) =>
-          (await remoteTimelineDocuments(env, identity, shown, viewerId, () => true)).asyncMap(
-            (rendered) =>
-              attachFilteredToRemoteStatuses(
-                env.DB,
-                viewerId,
-                "home",
-                rendered.statuses,
-                rendered.documents,
-                filters(),
-              ),
-          ),
+      pageSource(remote.value, async (shown) =>
+        (await remoteTimelineDocuments(env, identity, shown, viewerId, () => true)).asyncMap(
+          (rendered) =>
+            attachFilteredToRemoteStatuses(
+              env.DB,
+              viewerId,
+              "home",
+              rendered.statuses,
+              rendered.documents,
+              filters(),
+            ),
+        ),
       ),
       pageSource(withinHorizon(boosts.value, cursor, horizon), (shown) =>
         remoteBoostDocuments(env, identity, shown, viewerId),
@@ -371,8 +355,8 @@ const feedDocuments = async (
  * The viewer's home timeline as Mastodon statuses rendered for the viewer:
  * its own and followed accounts' statuses and boosts, followed remote actors'
  * notes and boosts, public notes under the hashtags it follows, posted since
- * it followed them, without what the viewer blocks or mutes (accounts, domains,
- * conversations), with `filtered` on what its filters match. This is the one definition of
+ * it followed them, without what the viewer blocks or mutes (accounts and
+ * domains), with `filtered` on what its filters match. This is the one definition of
  * what home holds: `GET /api/v1/timelines/home` pages it, and the streaming
  * fan-out asks it for one entry (`onlyId`) to decide whether a follower
  * hears about that entry.
@@ -394,7 +378,7 @@ export const homeTimelineDocuments = async (
       env,
       identity,
       viewerId,
-      { kind: "Home" },
+      { kind: "Home", localActorPrefix: InstanceIdentity.actorUrl(identity, "") },
       listHomeStatuses(env.DB, viewerId, limit, page, horizon.value),
       limit,
       page,

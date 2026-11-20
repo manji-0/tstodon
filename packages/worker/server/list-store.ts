@@ -15,6 +15,7 @@ import { RemoteAccountId } from "./remote-account-id";
 import {
   FEED_LANGUAGES_SQL,
   FEED_SUSPENDED_AUTHORS_SQL,
+  feedLocalMentionsSql,
   feedLocalReblogsSql,
   feedLocalRepliesSql,
   type ListFeed,
@@ -331,6 +332,7 @@ export const listListTimelineStatuses = async (
     const replies = feedLocalRepliesSql(input.feed, input.ownerAccountId);
     const now = nowIso();
     const reblogs = feedLocalReblogsSql(input.ownerAccountId, now);
+    const mentions = feedLocalMentionsSql(input.ownerAccountId, now);
     const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
     const binds = [
       input.ownerAccountId,
@@ -340,6 +342,7 @@ export const listListTimelineStatuses = async (
       input.ownerAccountId,
       now,
       ...reblogs.binds,
+      ...mentions.binds,
       input.ownerAccountId,
       ...replies.binds,
       ...cursorBinds,
@@ -365,6 +368,7 @@ export const listListTimelineStatuses = async (
                AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
                ${FEED_SUSPENDED_AUTHORS_SQL}
                ${reblogs.sql}
+               ${mentions.sql}
                ${FEED_LANGUAGES_SQL}
                ${replies.sql}
                ${where} ${order}

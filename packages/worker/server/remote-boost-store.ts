@@ -15,7 +15,7 @@ import {
   insertRemoteBoost as insertRemoteBoostSql,
 } from "./generated/prisma/sql";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
-import { feedFollowSql, type FollowedFeed } from "./followed-feed";
+import { feedFollowSql, type FollowedFeed, mentionsBlockedOrMutedSql } from "./followed-feed";
 import { SUPPRESSED_ACCOUNT_IDS_SQL, SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { DOMAIN_SUSPENDED_ACTORS_SQL } from "./domain-hidden-actors";
 import { visibilitySql } from "./sql-enums";
@@ -129,7 +129,8 @@ export const findRemoteBoostById = async (
  * remote actors it follows (accepted, with reblogs shown) on that feed, newest
  * first. The boosted status must be one a boost may show; a block or mute
  * of the booster or of the original author hides the boost, as does a domain
- * block or suspension of either.
+ * block or suspension of either, and a block or mute of an account the boosted
+ * status mentions.
  */
 export const listFollowedRemoteBoosts = async (
   db: D1Database,
@@ -142,6 +143,10 @@ export const listFollowedRemoteBoosts = async (
     const now = nowIso();
     const { where, order, binds } = idCursorFragment(cursor);
     const follows = feedFollowSql(feed);
+    const mentions = mentionsBlockedOrMutedSql(accountId, now, {
+      local: "b.local_status_id",
+      remote: "b.remote_status_id",
+    });
     const { results } = await db
       .prepare(
         `SELECT * FROM (
@@ -159,6 +164,7 @@ export const listFollowedRemoteBoosts = async (
              AND COALESCE(rs.actor_uri, '') NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND b.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
              AND COALESCE(rs.actor_uri, '') NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
+             AND NOT ${mentions.sql}
          ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -180,6 +186,7 @@ export const listFollowedRemoteBoosts = async (
         now,
         accountId,
         accountId,
+        ...mentions.binds,
         ...binds,
         limit,
       )

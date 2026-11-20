@@ -102,7 +102,8 @@ describe("conversation mutes", () => {
     expect(read(MutedStatusSchema, unmuted.body).muted).toBe(false);
   });
 
-  it("hides a muted conversation from the viewer's home timeline", async () => {
+  // Mastodon reads `ConversationMute` in `NotifyService` only, never in `FeedManager`.
+  it("keeps a muted conversation on the viewer's home timeline", async () => {
     const viewerEmail = "mute-home-viewer@example.com";
     const authorEmail = "mute-home-author@example.com";
     const viewer = await credentials(viewerEmail);
@@ -125,8 +126,8 @@ describe("conversation mutes", () => {
 
     await muteStatus(viewerEmail, replyId, "mute");
     const after = await homeIds(viewerEmail);
-    expect(after).not.toContain(rootId);
-    expect(after).not.toContain(replyId);
+    expect(after).toContain(rootId);
+    expect(after).toContain(replyId);
     expect(viewer.id).not.toBe(author.id);
   });
 

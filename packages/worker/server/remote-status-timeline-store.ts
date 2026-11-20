@@ -12,6 +12,7 @@ import {
   feedRepliesSql,
   type FollowedFeed,
   followedTagNoteIdsSql,
+  mentionsBlockedOrMutedSql,
 } from "./followed-feed";
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
@@ -76,7 +77,9 @@ export const listRemoteDirectStatusesForAccount = async (
  * whether or not a notification request holds the mention. A follow with `languages[]` keeps statuses in
  * those languages only (and ones without a language). Actors the account
  * blocks or mutes, domains it blocks, and suspended domains stay out; silenced
- * ones are still shown to followers, as in Mastodon.
+ * ones are still shown to followers, as in Mastodon. So do notes that mention
+ * an account or actor it blocks or mutes, and replies the feed does not keep
+ * ({@link feedRepliesSql}): on home, those to an account it does not follow.
  */
 export const listFollowedRemoteStatuses = async (
   db: D1Database,
@@ -89,6 +92,8 @@ export const listFollowedRemoteStatuses = async (
     const { where, order, binds } = idCursorFragment(cursor);
     const follows = feedFollowSql(feed);
     const replies = feedRepliesSql(feed, accountId);
+    const now = nowIso();
+    const mentions = mentionsBlockedOrMutedSql(accountId, now, { remote: "s.id" });
     const addressed =
       feed.kind === "Home"
         ? `OR (s.visibility IN ('limited', 'direct') AND EXISTS (
@@ -112,6 +117,7 @@ export const listFollowedRemoteStatuses = async (
              )
              AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND s.actor_uri NOT IN ${DOMAIN_SUSPENDED_ACTORS_SQL}
+             AND NOT ${mentions.sql}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -121,8 +127,9 @@ export const listFollowedRemoteStatuses = async (
         accountId,
         accountId,
         accountId,
-        nowIso(),
+        now,
         accountId,
+        ...mentions.binds,
         ...binds,
         limit,
       )
@@ -139,8 +146,9 @@ export const listFollowedRemoteStatuses = async (
  * ({@link followedTagNoteIdsSql}), newest first, as Mastodon's
  * `FeedManager#filter_from_tags?` keeps them: not from an actor it blocks or
  * mutes or that blocks it, nor from a domain it blocks or the instance limits
- * or suspends. An actor it follows is left out, as
- * {@link listFollowedRemoteStatuses} lists its notes already.
+ * or suspends, nor one that mentions an account it blocks or mutes. An actor
+ * it follows is kept, so a note {@link listFollowedRemoteStatuses} lists too
+ * comes from both, and home keeps it once.
  */
 export const listFollowedTagRemoteStatuses = async (
   db: D1Database,
@@ -151,17 +159,17 @@ export const listFollowedTagRemoteStatuses = async (
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const { where, order, binds } = idCursorFragment(cursor);
-    const tagged = followedTagNoteIdsSql("Remote", accountId, nowIso(), cursor, horizon);
+    const now = nowIso();
+    const tagged = followedTagNoteIdsSql("Remote", accountId, now, cursor, horizon);
+    const mentions = mentionsBlockedOrMutedSql(accountId, now, { remote: "s.id" });
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM (
            SELECT s.* FROM remote_statuses s
            WHERE s.id IN ${tagged.sql}
-             AND s.actor_uri NOT IN (
-               SELECT actor_uri FROM outbound_follows WHERE account_id = ? AND state = 'Accepted'
-             )
              AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
              AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
+             AND NOT ${mentions.sql}
          ) s WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(
@@ -169,9 +177,9 @@ export const listFollowedTagRemoteStatuses = async (
         accountId,
         accountId,
         accountId,
+        now,
         accountId,
-        nowIso(),
-        accountId,
+        ...mentions.binds,
         ...binds,
         limit,
       )

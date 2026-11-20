@@ -7,10 +7,10 @@ import type { ListRepliesPolicy } from "./list-store";
 /**
  * A timeline fed by the viewer's accepted follows of remote actors: home, or
  * one of the viewer's lists, which holds the followed actors put on it.
- * `localActorPrefix` (`InstanceIdentity.actorUrl(identity, "")`) lets a list
+ * `localActorPrefix` (`InstanceIdentity.actorUrl(identity, "")`) lets a feed
  * recognise a remote reply to one of this instance's posts by its URI.
  */
-export type FollowedFeed = Readonly<{ kind: "Home" }> | ListFeed;
+export type FollowedFeed = Readonly<{ kind: "Home"; localActorPrefix: string }> | ListFeed;
 
 export type ListFeed = Readonly<{
   kind: "List";
@@ -58,15 +58,91 @@ export const reblogOfShownAuthorSql = (viewerId: string, now: string): SqlFragme
   };
 };
 
+/** The local accounts the viewer blocks or mutes. Takes the viewer twice and the clock. */
+const BLOCKED_OR_MUTED_ACCOUNTS_SQL = `(
+  SELECT target_account_id FROM blocks WHERE blocker_account_id = ? AND target_account_id IS NOT NULL
+  UNION ALL
+  SELECT target_account_id FROM mutes
+    WHERE account_id = ? AND target_account_id IS NOT NULL AND (expires_at IS NULL OR expires_at > ?)
+)`;
+
+/** The actors the viewer blocks or mutes. Takes the viewer twice and the clock. */
+const BLOCKED_OR_MUTED_ACTORS_SQL = `(
+  SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?
+  UNION ALL
+  SELECT target_actor_uri FROM mutes WHERE account_id = ? AND (expires_at IS NULL OR expires_at > ?)
+)`;
+
+/**
+ * Holds when a status actively mentions an account or actor the viewer
+ * blocks or mutes (a mute that keeps notifications too), as Mastodon's
+ * `FeedManager` checks `crutches[:active_mentions]` against `blocking` and
+ * `muting`. `local` and `remote` are expressions yielding the id of a local
+ * `statuses` row and of a `remote_statuses` row; either may yield NULL. Each
+ * test seeks the status's mentions by its id and checks them against the
+ * viewer's blocks and mutes, gathered once: the unary `+` keeps SQLite from
+ * seeking the mention table once per block or mute instead.
+ */
+export const mentionsBlockedOrMutedSql = (
+  viewerId: string,
+  now: string,
+  status: Readonly<{ local?: string; remote?: string }>,
+): SqlFragment => {
+  const binds = [viewerId, viewerId, now];
+  const probe = (table: string, id: string, target: string): SqlFragment => ({
+    sql: `EXISTS (SELECT 1 FROM ${table} m WHERE m.status_id = ${id} AND ${target})`,
+    binds,
+  });
+  const accounts = `+m.account_id IN ${BLOCKED_OR_MUTED_ACCOUNTS_SQL}`;
+  const actors = `+m.actor_uri IN ${BLOCKED_OR_MUTED_ACTORS_SQL}`;
+  const probes = [
+    ...(status.local === undefined
+      ? []
+      : [
+          probe("status_mentions", status.local, accounts),
+          probe("status_remote_mentions", status.local, actors),
+        ]),
+    ...(status.remote === undefined
+      ? []
+      : [
+          // A silent mention is not an active one (`Mention.active`).
+          probe("remote_status_mentions", status.remote, `m.silent = 0 AND ${accounts}`),
+          probe("remote_status_remote_mentions", status.remote, actors),
+        ]),
+  ];
+  return {
+    sql: `(${probes.map((part) => part.sql).join(" OR ")})`,
+    binds: probes.flatMap((part) => part.binds),
+  };
+};
+
+/**
+ * Leaves out of a feed the local `statuses` rows that mention an account the
+ * viewer blocks or mutes ({@link mentionsBlockedOrMutedSql}), except the
+ * viewer's own, which Mastodon's `filter_from_home` keeps whatever they hold.
+ */
+export const feedLocalMentionsSql = (viewerId: string, now: string): SqlFragment => {
+  const hidden = mentionsBlockedOrMutedSql(viewerId, now, { local: "statuses.id" });
+  return {
+    sql: `AND (statuses.account_id = ? OR NOT ${hidden.sql})`,
+    binds: [viewerId, ...hidden.binds],
+  };
+};
+
 /**
  * The local boosts (`LocalReblog` rows of `statuses`) a feed of the viewer
  * keeps, by Mastodon's `FeedManager`: the viewer's own always; another's
- * unless the viewer's follow of the booster hides its reblogs, or the viewer
- * does not see the boosted status's author ({@link reblogOfShownAuthorSql}).
+ * unless the viewer's follow of the booster hides its reblogs, the viewer
+ * does not see the boosted status's author ({@link reblogOfShownAuthorSql}),
+ * or the boosted status mentions an account the viewer blocks or mutes.
  * Notes pass.
  */
 export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment => {
   const shown = reblogOfShownAuthorSql(viewerId, now);
+  const mentions = mentionsBlockedOrMutedSql(viewerId, now, {
+    local: "statuses.reblog_of_id",
+    remote: "statuses.reblog_of_remote_id",
+  });
   return {
     sql: `AND (
       statuses.kind <> 'LocalReblog' OR statuses.account_id = ? OR (
@@ -75,9 +151,10 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
           WHERE follower_account_id = ? AND kind = 'Accepted' AND reblogs = 0
         )
         AND ${shown.sql}
+        AND NOT ${mentions.sql}
       )
     )`,
-    binds: [viewerId, viewerId, ...shown.binds],
+    binds: [viewerId, viewerId, ...shown.binds, ...mentions.binds],
   };
 };
 
@@ -102,14 +179,14 @@ const FOLLOWED_TAG_SIDES = {
     notes: "statuses",
     shown: "+n.kind = 'LocalNote' AND +n.visibility = 'public' AND n.account_id NOT IN hidden",
     /**
-     * The authors home leaves out ({@link SUPPRESSED_ACCOUNT_IDS_SQL}, the
-     * members of the viewer's exclusive lists) and those the instance limits.
+     * The authors home leaves out ({@link SUPPRESSED_ACCOUNT_IDS_SQL}) and
+     * those the instance limits. Members of the viewer's exclusive lists
+     * stay, as `filter_from_tags?` does not read those lists.
      */
     hidden: (viewerId: string, now: string): SqlFragment => ({
       sql: `SELECT * FROM ${SUPPRESSED_ACCOUNT_IDS_SQL}
-        UNION SELECT * FROM ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
         UNION SELECT account_id FROM account_moderation WHERE moderation IN ('Silenced', 'Suspended')`,
-      binds: [viewerId, viewerId, viewerId, now, viewerId],
+      binds: [viewerId, viewerId, viewerId, now],
     }),
   },
   Remote: {
@@ -117,15 +194,16 @@ const FOLLOWED_TAG_SIDES = {
     notes: "remote_statuses",
     shown: "+n.visibility = 'public' AND n.actor_uri NOT IN hidden",
     /**
-     * The actors the viewer blocks or mutes or that block it, those on a
-     * domain it blocks or the instance limits, and those it follows, whose
-     * notes the followed-actor query lists.
+     * The actors the viewer blocks or mutes or that block it, and those on a
+     * domain it blocks or the instance limits. Followed actors stay: the
+     * hashtag brings their notes the followed-actor query leaves out (an
+     * exclusive list's, a reply to a stranger's, another language's), and
+     * home drops the notes both queries list once.
      */
     hidden: (viewerId: string, now: string): SqlFragment => ({
       sql: `SELECT * FROM ${SUPPRESSED_ACTOR_URIS_SQL}
-        UNION SELECT * FROM ${DOMAIN_RESTRICTED_ACTORS_SQL}
-        UNION SELECT actor_uri FROM outbound_follows WHERE account_id = ? AND state = 'Accepted'`,
-      binds: [viewerId, viewerId, viewerId, now, viewerId, viewerId],
+        UNION SELECT * FROM ${DOMAIN_RESTRICTED_ACTORS_SQL}`,
+      binds: [viewerId, viewerId, viewerId, now, viewerId],
     }),
   },
 } as const;
@@ -319,13 +397,20 @@ const LIST_ACTORS_SQL = `(SELECT f.actor_uri FROM outbound_follows f
   JOIN account_list_remote_members m ON m.outbound_follow_id = f.id
   WHERE m.list_id = ? AND f.state = 'Accepted')`;
 
+/** Whose replies a feed keeps; home's are the ones a list with `followed` keeps. */
+type RepliesFeed = Readonly<{ kind: "Home" }> | ListFeed;
+
 /**
- * The replies a list keeps, by Mastodon's `FeedManager`: a reply to its own
- * author or to the list's owner always passes; otherwise `none` drops it,
- * `followed` keeps replies to accounts the owner follows, and `list` keeps
- * replies to the list's members. Non-replies are never touched.
+ * The replies a feed keeps, by Mastodon's `FeedManager`: a reply to its own
+ * author or to the viewer always passes. Otherwise home keeps replies to
+ * accounts the viewer follows (`filter_from_home`), and a list as its policy
+ * says (`filter_from_list?`): `none` drops them, `followed` keeps replies to
+ * accounts the owner follows, and `list` keeps replies to the list's members.
+ * A reply whose parent this instance does not hold is dropped, as Mastodon
+ * drops one without an `in_reply_to_account_id`. Non-replies are never
+ * touched.
  */
-const listRepliesSql = (feed: ListFeed, viewerId: string, parent: ReplyParent): SqlFragment => {
+const repliesSql = (feed: RepliesFeed, viewerId: string, parent: ReplyParent): SqlFragment => {
   const account = (test: string, bind: string): SqlFragment => ({
     sql: `${parent.account.sql} ${test}`,
     binds: [...parent.account.binds, bind],
@@ -334,21 +419,27 @@ const listRepliesSql = (feed: ListFeed, viewerId: string, parent: ReplyParent): 
     sql: `${parent.actor.sql} ${test}`,
     binds: [...parent.actor.binds, bind],
   });
+  const followed = [
+    account(`IN ${FOLLOWED_ACCOUNTS_SQL}`, viewerId),
+    actor(`IN ${FOLLOWED_ACTORS_SQL}`, viewerId),
+  ];
+  const byPolicy = (list: ListFeed): SqlFragment[] => {
+    switch (list.repliesPolicy) {
+      case "followed":
+        return followed;
+      case "list":
+        return [
+          account(`IN ${LIST_ACCOUNTS_SQL}`, list.listId),
+          actor(`IN ${LIST_ACTORS_SQL}`, list.listId),
+        ];
+      case "none":
+        return [];
+    }
+  };
   const kept: SqlFragment[] = [
     account("= ?", viewerId),
     { sql: parent.self, binds: [] },
-    ...(feed.repliesPolicy === "followed"
-      ? [
-          account(`IN ${FOLLOWED_ACCOUNTS_SQL}`, viewerId),
-          actor(`IN ${FOLLOWED_ACTORS_SQL}`, viewerId),
-        ]
-      : []),
-    ...(feed.repliesPolicy === "list"
-      ? [
-          account(`IN ${LIST_ACCOUNTS_SQL}`, feed.listId),
-          actor(`IN ${LIST_ACTORS_SQL}`, feed.listId),
-        ]
-      : []),
+    ...(feed.kind === "Home" ? followed : byPolicy(feed)),
   ];
   return {
     sql: `AND (NOT ${parent.isReply} OR ${kept.map((part) => `(${part.sql})`).join(" OR ")})`,
@@ -356,39 +447,35 @@ const listRepliesSql = (feed: ListFeed, viewerId: string, parent: ReplyParent): 
   };
 };
 
-/** Which replies of the remote status `s` the feed keeps; home keeps them all. */
+/** Which replies of the remote status `s` the feed keeps. */
 export const feedRepliesSql = (feed: FollowedFeed, viewerId: string): SqlFragment =>
-  feed.kind === "Home"
-    ? { sql: "", binds: [] }
-    : listRepliesSql(feed, viewerId, {
-        isReply: "(s.in_reply_to_uri IS NOT NULL)",
-        account: {
-          // A local status URI ends in `/statuses/<id>` under its author's actor URL.
-          sql: `(SELECT l.account_id FROM statuses l JOIN accounts a ON a.id = l.account_id
+  repliesSql(feed, viewerId, {
+    isReply: "(s.in_reply_to_uri IS NOT NULL)",
+    account: {
+      // A local status URI ends in `/statuses/<id>` under its author's actor URL.
+      sql: `(SELECT l.account_id FROM statuses l JOIN accounts a ON a.id = l.account_id
             WHERE l.id = substr(s.in_reply_to_uri, -${ENTITY_ID_DIGITS})
               AND s.in_reply_to_uri = ? || a.username || '/statuses/' || l.id)`,
-          binds: [feed.localActorPrefix],
-        },
-        actor: {
-          sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
-          binds: [],
-        },
-        self: "s.actor_uri = (SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
-      });
+      binds: [feed.localActorPrefix],
+    },
+    actor: {
+      sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
+      binds: [],
+    },
+    self: "s.actor_uri = (SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = s.in_reply_to_uri)",
+  });
 
-/** Which replies of the local `statuses` row a list keeps; home keeps them all. */
-export const feedLocalRepliesSql = (feed: FollowedFeed, viewerId: string): SqlFragment =>
-  feed.kind === "Home"
-    ? { sql: "", binds: [] }
-    : listRepliesSql(feed, viewerId, {
-        isReply: "(statuses.in_reply_to_id IS NOT NULL OR statuses.in_reply_to_uri IS NOT NULL)",
-        account: {
-          sql: "(SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
-          binds: [],
-        },
-        actor: {
-          sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = statuses.in_reply_to_uri)",
-          binds: [],
-        },
-        self: "statuses.account_id = (SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
-      });
+/** Which replies of the local `statuses` row the feed keeps. */
+export const feedLocalRepliesSql = (feed: RepliesFeed, viewerId: string): SqlFragment =>
+  repliesSql(feed, viewerId, {
+    isReply: "(statuses.in_reply_to_id IS NOT NULL OR statuses.in_reply_to_uri IS NOT NULL)",
+    account: {
+      sql: "(SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
+      binds: [],
+    },
+    actor: {
+      sql: "(SELECT rp.actor_uri FROM remote_statuses rp WHERE rp.object_uri = statuses.in_reply_to_uri)",
+      binds: [],
+    },
+    self: "statuses.account_id = (SELECT p.account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id)",
+  });
