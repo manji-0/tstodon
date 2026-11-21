@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { vi } from "vite-plus/test";
 import { z } from "zod";
 import { handleQueue } from "../server/queue-handler";
-import { meter, meterWork, resetMeter } from "./meter";
+import { meter, meterWork, resetMeter, settle } from "./meter";
 
 /** D1's queries per Worker invocation (Workers Paid). */
 export const QUERIES_PER_INVOCATION = 1000;
@@ -32,21 +32,45 @@ export const QUEUE_BATCH = builtBatch;
 
 export type HeldQueue = Readonly<{ bodies: unknown[] }>;
 
-/** Queue messages the Worker sends from now on, held here instead of sent. */
-export const holdQueue = (): HeldQueue => {
+/** Queue messages the Worker sends from now on, held here instead of sent until `release`. */
+export const holdQueue = (): HeldQueue & Readonly<{ release: () => void }> => {
   const bodies: unknown[] = [];
   const proto = Object.getPrototypeOf(env.OUTBOX_PROCESS_QUEUE);
-  vi.spyOn(proto, "send").mockImplementation((body: unknown) => {
+  const send = vi.spyOn(proto, "send").mockImplementation((body: unknown) => {
     bodies.push(body);
   });
-  vi.spyOn(proto, "sendBatch").mockImplementation((messages: unknown) => {
+  const sendBatch = vi.spyOn(proto, "sendBatch").mockImplementation((messages: unknown) => {
     for (const message of Array.isArray(messages) ? messages : []) {
       bodies.push(
         typeof message === "object" && message !== null ? Reflect.get(message, "body") : undefined,
       );
     }
   });
-  return { bodies };
+  return {
+    bodies,
+    release: () => {
+      send.mockRestore();
+      sendBatch.mockRestore();
+    },
+  };
+};
+
+/**
+ * Run `work` with the outbox queue held, then the held jobs of `kinds` as
+ * the queue would (`drainHeld`), and let the queue go.
+ */
+export const withQueueDrained = async <T>(
+  kinds: ReadonlyArray<string>,
+  work: () => Promise<T>,
+): Promise<T> => {
+  const held = holdQueue();
+  try {
+    const result = await work();
+    await drainHeld(held, kinds);
+    return result;
+  } finally {
+    held.release();
+  }
 };
 
 export const kindOf = (body: unknown): unknown =>
@@ -81,6 +105,9 @@ export const drainHeld = async (held: HeldQueue, kinds: ReadonlyArray<string>): 
           env,
         ),
       );
+      // The work the jobs put off (a notification's stream render and push)
+      // runs in the same invocation; count it too.
+      await settle();
       most = Math.max(most, meter.tally.statements);
     }
   }

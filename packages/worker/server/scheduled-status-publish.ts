@@ -20,35 +20,40 @@ import {
   type ScheduledStatusRow,
 } from "./scheduled-status-store";
 
-/** How many due posts one cron run publishes. */
-const PUBLISH_BATCH = 20;
+/**
+ * How many due posts one run publishes. A plain post costs about 45 D1
+ * statements and each local account it mentions about 35 more, and the run
+ * shares its queue invocation's 1000 with up to four other jobs, so a full
+ * backlog is published by chained runs of 5 rather than by one of 20.
+ */
+export const PUBLISH_BATCH = 5;
 
 /**
  * Replay one scheduled post through the normal publish path. A row whose
  * params no longer validate is dropped; a repository failure keeps the row so
- * the next run retries it.
+ * the next run retries it. Resolves to whether the row is gone, published
+ * or dropped.
  */
-const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void> => {
+const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<boolean> => {
+  const drop = async (): Promise<boolean> =>
+    (await deleteScheduledStatus(env.DB, row.accountId, row.id)).isOk();
   const identity = parseInstanceIdentity(env);
   if (identity.isErr()) {
-    return;
+    return false;
   }
   const account = await findAccountById(env.DB, row.accountId);
   if (account.isErr() || !account.value) {
     // The account is gone (cascade would have removed the row); drop a stray.
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-    return;
+    return drop();
   }
   const moderation = await findLocalAccountModeration(env.DB, row.accountId);
   if (moderation.isOk() && LocalAccountModeration.isBarred(moderation.value)) {
     // A blocked login cannot publish; Mastodon drops the job the same way.
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-    return;
+    return drop();
   }
   const visibility = Visibility.fromMastodon(row.params.visibility);
   if (visibility.isErr()) {
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-    return;
+    return drop();
   }
   // A scheduled quote is resolved again, as `PostStatusService` does when
   // `PublishScheduledStatusWorker` replays it: a quoted status that is gone,
@@ -67,14 +72,10 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     );
     if (resolved.isErr()) {
       // A failed read keeps the post for the next run, as the media check does.
-      if (resolved.error.kind === "Rejected") {
-        await deleteScheduledStatus(env.DB, row.accountId, row.id);
-      }
-      return;
+      return resolved.error.kind === "Rejected" ? drop() : false;
     }
     if (resolved.value.quote === null) {
-      await deleteScheduledStatus(env.DB, row.accountId, row.id);
-      return;
+      return drop();
     }
     quoted = resolved.value;
   }
@@ -94,8 +95,7 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
   });
   const draft = StatusComposition.validate(composing);
   if (draft.isErr() || !mediaDescriptionsFit(row.params.media_attributes)) {
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-    return;
+    return drop();
   }
   // Mastodon checks media again when it publishes: another status may hold it by now.
   const unattachable = await findUnattachableMediaIds(
@@ -105,28 +105,25 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
     null,
   );
   if (unattachable.isErr()) {
-    return;
+    return false;
   }
   if (unattachable.value.length > 0) {
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-    return;
+    return drop();
   }
   const inReplyToId =
     row.params.in_reply_to_id === null ? null : StatusId.parse(row.params.in_reply_to_id);
   if (inReplyToId !== null && inReplyToId.isErr()) {
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-    return;
+    return drop();
   }
   let replyTo: ThreadStatus | null = null;
   if (inReplyToId !== null) {
     const parent = await findReplyTarget(env, inReplyToId.value, account.value.id);
     // A failed read keeps the post for the next run, as the media check does.
     if (parent.isErr()) {
-      return;
+      return false;
     }
     if (!parent.value) {
-      await deleteScheduledStatus(env.DB, row.accountId, row.id);
-      return;
+      return drop();
     }
     replyTo = parent.value;
   }
@@ -157,9 +154,7 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<void
           ? row.params.quote_policy
           : null,
   });
-  if (published.isOk()) {
-    await deleteScheduledStatus(env.DB, row.accountId, row.id);
-  }
+  return published.isOk() && drop();
 };
 
 /** Whether a scheduled post is due now. A failed read answers yes. */
@@ -168,13 +163,20 @@ export const hasDueScheduledStatuses = async (env: Env): Promise<boolean> => {
   return due.isErr() || due.value.length > 0;
 };
 
-/** Cron path: publish the posts that are due, a bounded batch per run. */
-export const publishDueScheduledStatuses = async (env: Env): Promise<void> => {
+/**
+ * Cron path: publish the posts that are due, a bounded batch per run. Resolves
+ * to whether another run should follow at once: the batch was full and at
+ * least one row is gone, so a backlog drains without repeating rows that keep
+ * failing until the next cron.
+ */
+export const publishDueScheduledStatuses = async (env: Env): Promise<boolean> => {
   const due = await listDueScheduledStatuses(env.DB, nowIso(), PUBLISH_BATCH);
   if (due.isErr()) {
-    return;
+    return false;
   }
+  let settled = 0;
   for (const row of due.value) {
-    await publishScheduled(env, row);
+    settled += (await publishScheduled(env, row)) ? 1 : 0;
   }
+  return due.value.length === PUBLISH_BATCH && settled > 0;
 };

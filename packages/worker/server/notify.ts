@@ -441,19 +441,19 @@ export const notifyFromRemote = (
   notifyAccount(env, remoteNotification(input), mentionedPost);
 
 /**
- * {@link notifyFromRemote}, unless the account already holds a notification
- * of this kind from this actor about this status, created at `since` or later
- * (at any time by default). A delivery that is applied again after a failure
- * calls this, so the work it repeats notifies nobody twice, also when another
- * delivery of the same note repeats it at the same moment: the check and the
- * insert are one statement (`insertNotificationOnce`), and only the delivery
- * that inserted holds, publishes and pushes the notification. A notification
- * the first attempt dropped (a block, a mute, the policy) left no row, and is
- * screened again.
+ * {@link notifyAccount}, unless the account already holds a notification of
+ * this kind from this sender about this status, created at `since` or later
+ * (at any time by default). Work that is applied again after a failure (a
+ * redelivered activity, a retried job) calls this, so what it repeats
+ * notifies nobody twice, also when another run of the same work repeats it
+ * at the same moment: the check and the insert are one statement
+ * (`insertNotificationOnce`), and only the run that inserted holds,
+ * publishes and pushes the notification. A notification the first attempt
+ * dropped (a block, a mute, the policy) left no row, and is screened again.
  */
-export const notifyFromRemoteOnce = (
+export const notifyAccountOnce = (
   env: Env,
-  input: RemoteNotification & Readonly<{ statusId: string }>,
+  input: NewNotification & Readonly<{ statusId: string }>,
   since?: string,
   mentionedPost?: MentionedPost,
 ): Promise<Result<void, RepositoryError>> =>
@@ -463,6 +463,20 @@ export const notifyFromRemoteOnce = (
       insertNotification: (notification, groupKey) =>
         insertNotificationOnce(env.DB, notification, groupKey, since),
     },
-    remoteNotification(input),
+    input,
+    mentionedPost,
+  );
+
+/** {@link notifyAccountOnce} for a notification from a remote actor. */
+export const notifyFromRemoteOnce = (
+  env: Env,
+  input: RemoteNotification & Readonly<{ statusId: string }>,
+  since?: string,
+  mentionedPost?: MentionedPost,
+): Promise<Result<void, RepositoryError>> =>
+  notifyAccountOnce(
+    env,
+    { ...remoteNotification(input), statusId: input.statusId },
+    since,
     mentionedPost,
   );

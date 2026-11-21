@@ -14,6 +14,7 @@ import {
   processFinishRemoteNoteRecipientJob,
   processNotifyRemoteNoteFollowersJob,
 } from "./remote-status-persist";
+import { processNotifyLocalNoteFollowersJob } from "./local-note-follower-notifications";
 import { processNotifyRemoteNoteBoostersJob } from "./remote-note-booster-updates";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
@@ -368,7 +369,14 @@ export const processOutboxJob = async (
         chained: false,
       }));
     case "PublishScheduledStatuses":
-      await publishDueScheduledStatuses(env);
+      if (await publishDueScheduledStatuses(env)) {
+        try {
+          await env.OUTBOX_PROCESS_QUEUE.send(job);
+        } catch {
+          // The next cron run publishes the rest.
+          console.error(JSON.stringify({ kind: "PublishScheduledStatusesNotChained" }));
+        }
+      }
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);
@@ -376,6 +384,8 @@ export const processOutboxJob = async (
       return processFinishRemoteNoteRecipientJob(env, job);
     case "NotifyRemoteNoteFollowers":
       return processNotifyRemoteNoteFollowersJob(env, job);
+    case "NotifyLocalNoteFollowers":
+      return processNotifyLocalNoteFollowersJob(env, job);
     case "NotifyRemoteNoteBoosters":
       return processNotifyRemoteNoteBoostersJob(env, job);
     case "DistributePollUpdate":

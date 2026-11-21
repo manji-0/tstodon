@@ -7,6 +7,7 @@ import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
 import { type IdCursor, type MaxIdCursor, idCursorFragment } from "./id-cursor";
 import { parseJsonColumn } from "./json-column";
+import type { NotifyingFollowerPage } from "./outbound-follow-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { queryTyped, runTyped } from "./typed-sql";
 import {
@@ -18,6 +19,7 @@ import {
   listFamiliarFollowerIdsJson as listFamiliarFollowerIdsJsonSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
   listNotifyingFollowers as listNotifyingFollowersSql,
+  listNotifyingFollowersAmong as listNotifyingFollowersAmongSql,
   rejectFollowRequest as rejectFollowRequestSql,
   upsertFollowOptions as upsertFollowOptionsSql,
 } from "./generated/prisma/sql";
@@ -30,9 +32,11 @@ const OptionsRow = z.object({
 });
 const FollowerAccountIdRow = z.object({ follower_account_id: z.string() });
 const NotifyingFollowerRow = z.object({
+  id: z.string(),
   follower_account_id: z.string(),
   languages_json: z.string(),
 });
+const NotifyingFollowerAmongRow = NotifyingFollowerRow.omit({ id: true });
 const KindRow = z.object({ kind: z.string() });
 const TargetAccountIdRow = z.object({ target_account_id: z.string() });
 
@@ -226,20 +230,65 @@ export const listFollowers = async (
   });
 
 /**
- * Local followers who signed in recently, asked for a notification on every
- * new status, do not mute the account, and do not block or mute an account
- * or actor the account's note `statusId` mentions.
+ * A page of the local followers of `accountId` who signed in recently, asked
+ * for a notification on every new status, do not mute the account, and do
+ * not block or mute an account or actor its note `statusId` mentions: up to
+ * `limit` of them, after the follow `afterFollowId` (empty for the first
+ * page), in follow id order.
  */
-export const notifyingFollowers = async (
+export const notifyingFollowersPage = async (
   db: D1Database,
   accountId: string,
   statusId: string,
-): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
+  afterFollowId: string,
+  limit: number,
+): Promise<Result<NotifyingFollowerPage, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingFollowersSql(accountId, nowIso(), statusId, signedInRecentlySinceDay()),
+      listNotifyingFollowersSql(
+        accountId,
+        nowIso(),
+        statusId,
+        signedInRecentlySinceDay(),
+        afterFollowId,
+        limit,
+      ),
       NotifyingFollowerRow,
+    );
+    return {
+      followers: rows.map((row) => ({
+        accountId: row.follower_account_id,
+        languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
+      })),
+      next: rows.length === limit ? rows.at(-1)?.id : undefined,
+    };
+  });
+
+/**
+ * The local followers among `followerIds` that {@link notifyingFollowersPage}
+ * would list, in one read: a direct note's addressed accounts.
+ */
+export const notifyingFollowersAmong = async (
+  db: D1Database,
+  accountId: string,
+  statusId: string,
+  followerIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
+  runD1(async () => {
+    if (followerIds.length === 0) {
+      return [];
+    }
+    const rows = await queryTyped(
+      db,
+      listNotifyingFollowersAmongSql(
+        accountId,
+        nowIso(),
+        statusId,
+        signedInRecentlySinceDay(),
+        jsonStringArray(followerIds),
+      ),
+      NotifyingFollowerAmongRow,
     );
     return rows.map((row) => ({
       accountId: row.follower_account_id,

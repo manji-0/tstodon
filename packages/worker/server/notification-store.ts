@@ -59,9 +59,10 @@ export const deleteRemoteNotifications = async (
   );
 
 /**
- * Record a notification from a remote actor about a status, unless the
- * account already holds one of the same kind from that actor about that
- * status, created at `since` or later (at any time by default). One
+ * Record a notification about a status, unless the account already holds
+ * one of the same kind from that sender (a local account, or a remote actor
+ * and its `r_…` id) about that status, created at `since` or later (at any
+ * time by default). One
  * statement, so of two deliveries that record the same one at once, one
  * inserts. Resolves to the new id, or `undefined` when nothing was inserted.
  * The lookup reads `idx_notifications_account_status`.
@@ -81,8 +82,8 @@ export const insertNotificationOnce = async (
          SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10
          WHERE NOT EXISTS (
            SELECT 1 FROM notifications
-           WHERE account_id = ?2 AND status_id = ?6 AND kind = ?5 AND from_actor_uri = ?4
-             AND created_at >= ?9
+           WHERE account_id = ?2 AND status_id = ?6 AND kind = ?5 AND from_account_id = ?3
+             AND from_actor_uri IS ?4 AND created_at >= ?9
          )
            -- A recipient deleted since it was picked (a queued job's) is notified of nothing.
            AND EXISTS (SELECT 1 FROM accounts WHERE id = ?2)`,
