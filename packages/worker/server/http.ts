@@ -120,15 +120,20 @@ export const setLinkHeader = (
  * Mastodon's `Link` header for a list paged by `offset` (trends): a full page
  * offers `offset + limit` as `rel="next"`, and a page past the first offers
  * `offset - limit` (at least 0) as `rel="prev"`, keeping the request's `limit`.
+ * A `limit` of 0 gets no links: both would point at the page itself.
  */
 export const setOffsetPaginationLinks = (
   c: Context<{ Bindings: Env }>,
   page: Readonly<{ offset: number; limit: number; count: number }>,
-): void =>
+): void => {
+  if (page.limit === 0) {
+    return;
+  }
   setLinks(c, [], {
     next: page.count >= page.limit ? ["offset", String(page.offset + page.limit)] : undefined,
     prev: page.offset > 0 ? ["offset", String(Math.max(page.offset - page.limit, 0))] : undefined,
   });
+};
 
 /** The `Link` header: the request URL keeping `limit` and `filters`, plus each rel's cursor. */
 const setLinks = (

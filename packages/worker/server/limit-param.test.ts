@@ -1,7 +1,13 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { ApiAccount, ApiAdminDomainAllow, ApiConversation, ApiStatus } from "@tstodon/api";
+import {
+  ApiAccount,
+  ApiAdminDomainAllow,
+  ApiAdminPreviewCardProvider,
+  ApiConversation,
+  ApiStatus,
+} from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 
@@ -106,6 +112,55 @@ describe("limit_param", () => {
     expect((await allows("?limit=300")).items).toHaveLength(210);
     expect((await allows("?limit=-150")).items).toHaveLength(150);
     await env.DB.prepare("DELETE FROM domain_allows WHERE domain LIKE 'limit-allow-%'").run();
+  });
+
+  it("answers every endorsement for exactly limit=0, as EndorsementsController#unlimited?", async () => {
+    const email = "limit-endorser@example.com";
+    for (const other of ["limit-endorsed-a@example.com", "limit-endorsed-b@example.com"]) {
+      await send(email, `/api/v1/accounts/${(await me(other)).id}/endorse`);
+    }
+    const headers = await authHeaders(email);
+    const endorsements = (query: string) =>
+      page(ApiAccount, `/api/v1/endorsements${query}`, headers);
+
+    const all = await endorsements("?limit=0");
+    expect(all.items).toHaveLength(2);
+    expect(all.link).toBeNull();
+    // Only the string "0" is unlimited; `"00".to_i` is an empty page.
+    expect((await endorsements("?limit=00")).items).toEqual([]);
+    expect((await endorsements("?limit=1")).items).toHaveLength(1);
+    // An account's endorsements have no such rule.
+    const owner = await me(email);
+    expect(
+      (await page(ApiAccount, `/api/v1/accounts/${owner.id}/endorsements?limit=0`)).items,
+    ).toEqual([]);
+  });
+
+  it("pages admin trend publishers by 100, as PreviewCardProvidersController::LIMIT", async () => {
+    const headers = await authHeaders("limit-trends-admin@example.com", { admin: true });
+    for (let index = 0; index < 12; index += 1) {
+      const approved = await SELF.fetch(
+        `https://example.com/api/v1/admin/trends/links/publishers/limit-publisher-${index}.example/approve`,
+        { method: "POST", headers },
+      );
+      expect(approved.status).toBe(200);
+    }
+    const publishers = await page(
+      ApiAdminPreviewCardProvider,
+      "/api/v1/admin/trends/links/publishers",
+      headers,
+    );
+    expect(
+      publishers.items.filter((provider) => provider.domain.startsWith("limit-publisher-")),
+    ).toHaveLength(12);
+  });
+
+  it("sends no Link on an offset-paged list asked for limit=0", async () => {
+    for (const query of ["?limit=0", "?limit=0&offset=5"]) {
+      const response = await request(`/api/v1/trends/tags${query}`);
+      expect(response.status, query).toBe(200);
+      expect(response.headers.get("Link"), query).toBeNull();
+    }
   });
 
   it("answers search with 20 results by default and refuses a negative limit", async () => {

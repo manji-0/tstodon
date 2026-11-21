@@ -115,9 +115,14 @@ const endorsementDocuments = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   ownerId: string,
+  options: Readonly<{ unlimited: boolean }> = { unlimited: false },
 ): Promise<Response> => {
   const limit = queryLimit(c, PageSize.accounts);
-  const rows = await listEndorsements(c.env.DB, ownerId, limit, queryCursor(c));
+  const rows = await listEndorsements(
+    c.env.DB,
+    ownerId,
+    options.unlimited ? { kind: "All" } : { kind: "Page", limit, cursor: queryCursor(c) },
+  );
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -127,6 +132,9 @@ const endorsementDocuments = async (
     return jsonRepositoryError(c, resolved.error.message);
   }
   const documents = documentsInOrder(ids, resolved.value);
+  if (options.unlimited) {
+    return c.json(documents);
+  }
   setPaginationLinks(
     c,
     rows.value.map((row) => row.id),
@@ -144,7 +152,10 @@ export const getV1Endorsements = async (c: Context<{ Bindings: Env }, "/api/v1/e
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  return endorsementDocuments(c, identity.value, user.value.id);
+  // `Api::V1::EndorsementsController#unlimited?`: exactly "0" asks for every endorsement.
+  return endorsementDocuments(c, identity.value, user.value.id, {
+    unlimited: c.req.query("limit") === "0",
+  });
 };
 
 export const getV1AccountsByIdEndorsements = async (

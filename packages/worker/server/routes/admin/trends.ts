@@ -253,7 +253,8 @@ export const getV1AdminTrendsLinksPublishers = async (
     ]),
   ];
   const offset = queryOffset(c.req.query("offset"));
-  const limit = queryLimit(c, PageSize.trends);
+  // `Admin::Trends::Links::PreviewCardProvidersController::LIMIT`
+  const limit = queryLimit(c, PageSize.admin);
   return c.json(
     domains
       .slice(offset, offset + limit)
