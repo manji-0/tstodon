@@ -8,6 +8,12 @@ export type IdCursor = Readonly<{
 }>;
 
 /**
+ * The cursors of Mastodon's `paginate_by_max_id`, for a list that reads no
+ * `min_id`: newest first, below `max_id` and above `since_id`.
+ */
+export type MaxIdCursor = Readonly<{ maxId?: string | undefined; sinceId?: string | undefined }>;
+
+/**
  * Mastodon id cursors: `max_id` pages older (newest first), `since_id` pages
  * newer (newest first), and `min_id` pages newer from the oldest side so a
  * client can prepend. `min_id` wins, then `since_id`, then `max_id`.

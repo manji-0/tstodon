@@ -61,6 +61,20 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
  * backfill of the actor's outbox and pins when it has not run lately; this
  * response shows what is cached already.
  */
+/**
+ * `Api::V1::Accounts::StatusesController`'s `Link`, keeping `limit` and
+ * `AccountStatusesFilter::KEYS`. Pinned statuses are answered whole, not
+ * paged, so they get none.
+ */
+const setAccountStatusesLinks = (
+  c: Context<{ Bindings: Env }>,
+  ids: ReadonlyArray<string>,
+  limit: number,
+): void =>
+  setPaginationLinks(c, ids, limit, {
+    filters: ["pinned", "tagged", "only_media", "exclude_replies", "exclude_reblogs"],
+  });
+
 const remoteAccountStatuses = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
@@ -107,6 +121,13 @@ const remoteAccountStatuses = async (
       );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
+  }
+  if (!pinned) {
+    setAccountStatusesLinks(
+      c,
+      documents.value.map((status) => status.id),
+      filters.limit,
+    );
   }
   return c.json(documents.value);
 };
@@ -175,6 +196,13 @@ export const getV1AccountsByIdStatuses = async (
   const documents = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
+  }
+  if (!pinned) {
+    setAccountStatusesLinks(
+      c,
+      statuses.value.map((status) => status.id),
+      filters.limit,
+    );
   }
   return c.json(
     await attachFilteredToStatuses(c.env.DB, viewerId, "public", statuses.value, documents.value),

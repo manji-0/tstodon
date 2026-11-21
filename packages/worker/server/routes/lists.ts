@@ -4,8 +4,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
+  queryCursor,
   queryLimit,
+  queryUnlimited,
   requireUser,
+  setPaginationLinks,
+  setTimelineLinks,
   PageSize,
 } from "../http";
 import {
@@ -145,14 +149,29 @@ export const getV1ListsByIdAccounts = async (
   if (!list.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const members = await listListMembers(c.env.DB, list.value.id);
+  // Mastodon's `unlimited?`: exactly `limit=0` answers every member, with no `Link`.
+  const unlimited = queryUnlimited(c);
+  const limit = queryLimit(c, PageSize.accounts);
+  const members = await listListMembers(
+    c.env.DB,
+    list.value.id,
+    unlimited ? "All" : { limit, cursor: queryCursor(c) },
+  );
   if (members.isErr()) {
     return jsonRepositoryError(c, members.error.message);
   }
-  const memberIds = members.value.map(ListMember.accountId);
+  const memberIds = members.value.map((paged) => ListMember.accountId(paged.member));
   const byId = await availableAccountDocumentsByIds(c.env, identity.value, memberIds);
   if (byId.isErr()) {
     return jsonRepositoryError(c, byId.error.message);
+  }
+  if (!unlimited) {
+    setPaginationLinks(
+      c,
+      members.value.map((paged) => paged.cursor),
+      limit,
+      { prev: "since_id" },
+    );
   }
   return c.json(documentsInOrder(memberIds, byId.value));
 };
@@ -293,5 +312,9 @@ export const getV1TimelinesListById = async (
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
+  setTimelineLinks(
+    c,
+    documents.value.map((status) => status.id),
+  );
   return c.json(documents.value);
 };

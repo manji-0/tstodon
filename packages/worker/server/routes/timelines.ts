@@ -17,6 +17,7 @@ import {
   queryLimit,
   requireUser,
   PageSize,
+  setTimelineLinks,
 } from "../http";
 import { mastodonStatuses } from "../local-status-documents";
 import { writeTimelineMetric } from "../metrics";
@@ -87,6 +88,11 @@ export const getV1TimelinesPublic = async (
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
+  setTimelineLinks(
+    c,
+    documents.value.map((status) => status.id),
+    ["local", "remote", "only_media"],
+  );
   return c.json(documents.value);
 };
 
@@ -122,6 +128,11 @@ export const getV1TimelinesHome = async (
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
+  setTimelineLinks(
+    c,
+    documents.value.map((status) => status.id),
+    ["local"],
+  );
   return c.json(documents.value);
 };
 
@@ -198,6 +209,12 @@ export const getV1TimelinesTagByHashtag = async (
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
+  // `TagController::PERMITTED_PARAMS`: not `remote`, `any`, `all` or `none`.
+  setTimelineLinks(
+    c,
+    documents.value.map((status) => status.id),
+    ["local", "only_media"],
+  );
   return c.json(documents.value);
 };
 
@@ -277,7 +294,13 @@ export const getV1TimelinesLink = async (
     rendered.value.statuses,
     rendered.value.documents,
   );
-  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
+  const page = mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit);
+  setTimelineLinks(
+    c,
+    page.map((status) => status.id),
+    ["url"],
+  );
+  return c.json(page);
 };
 
 export const getV1TimelinesDirect = async (

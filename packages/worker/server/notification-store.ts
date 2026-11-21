@@ -430,16 +430,17 @@ export const clearNotifications = async (
     await runTyped(db, clearNotificationsSql(accountId, nowIso()));
   });
 
-/** Count visible notifications newer than the notifications marker. */
+/** Count visible notifications newer than the notifications marker, at most `limit`. */
 export const countUnreadNotifications = async (
   db: D1Database,
   accountId: string,
   markerId: string | undefined,
+  limit: number,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      countUnreadNotificationsSql(accountId, markerId ?? "", nowIso()),
+      countUnreadNotificationsSql(accountId, markerId ?? "", nowIso(), limit),
       CountRow,
     );
     return Number(rows[0]?.count ?? 0);

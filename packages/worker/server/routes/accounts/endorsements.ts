@@ -8,6 +8,7 @@ import {
   jsonValidationError,
   queryLimit,
   queryCursor,
+  queryUnlimited,
   requireUser,
   setPaginationLinks,
   PageSize,
@@ -154,7 +155,7 @@ export const getV1Endorsements = async (c: Context<{ Bindings: Env }, "/api/v1/e
   }
   // `Api::V1::EndorsementsController#unlimited?`: exactly "0" asks for every endorsement.
   return endorsementDocuments(c, identity.value, user.value.id, {
-    unlimited: c.req.query("limit") === "0",
+    unlimited: queryUnlimited(c),
   });
 };
 

@@ -5,7 +5,7 @@ import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
-import { type IdCursor, idCursorFragment } from "./id-cursor";
+import { type IdCursor, type MaxIdCursor, idCursorFragment } from "./id-cursor";
 import { parseJsonColumn } from "./json-column";
 import { RemoteAccountId } from "./remote-account-id";
 import { queryTyped, runTyped } from "./typed-sql";
@@ -94,36 +94,6 @@ export const unfollowAccount = async (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await runTyped(db, deleteFollowSql(followerId, targetId));
-  });
-
-export type PendingFollowRequester = Readonly<{
-  followerAccountId: string;
-  createdAt: string;
-}>;
-
-export const listPendingFollowRequesters = async (
-  db: D1Database,
-  targetAccountId: string,
-  limit: number,
-  cursor: IdCursor = {},
-): Promise<Result<PendingFollowRequester[], RepositoryError>> =>
-  runD1(async () => {
-    const { where, order, binds } = idCursorFragment(cursor);
-    const { results } = await db
-      .prepare(
-        `SELECT follower_account_id, created_at FROM follows
-         WHERE target_account_id = ? AND kind = 'Pending' ${where} ${order} LIMIT ?`,
-      )
-      .bind(targetAccountId, ...binds, limit)
-      .all();
-    const rows = parseRows(
-      z.object({ follower_account_id: z.string(), created_at: z.string() }),
-      results,
-    );
-    return rows.map((row) => ({
-      followerAccountId: row.follower_account_id,
-      createdAt: row.created_at,
-    }));
   });
 
 /**
@@ -285,6 +255,36 @@ export const followingAccountIds = async (
   runD1(async () => {
     const rows = await queryTyped(db, listFollowingAccountIdsSql(accountId), TargetAccountIdRow);
     return new Set(rows.map((row) => row.target_account_id));
+  });
+
+/**
+ * Pending follows of `targetAccountId`, from local accounts and from remote
+ * actors (as `r_…` ids), one list ordered by follow row id. As Mastodon's
+ * `paginate_by_max_id`, the page reads `max_id` and `since_id`, not `min_id`.
+ */
+export const listFollowRequests = async (
+  db: D1Database,
+  targetAccountId: string,
+  limit: number,
+  cursor: MaxIdCursor = {},
+): Promise<Result<FollowEdge[], RepositoryError>> =>
+  runD1(async () => {
+    const { where, order, binds } = idCursorFragment({
+      maxId: cursor.maxId,
+      sinceId: cursor.sinceId,
+    });
+    const { results } = await db
+      .prepare(
+        `SELECT id, follower_account_id AS account_id, NULL AS actor_uri FROM follows
+         WHERE target_account_id = ? AND kind = 'Pending' ${where}
+         UNION ALL
+         SELECT id, NULL, remote_actor_uri FROM remote_follows
+         WHERE target_account_id = ? AND remote_request_kind = 'Queued' ${where}
+         ${order} LIMIT ?`,
+      )
+      .bind(targetAccountId, ...binds, targetAccountId, ...binds, limit)
+      .all();
+    return followEdges(results);
   });
 
 /**

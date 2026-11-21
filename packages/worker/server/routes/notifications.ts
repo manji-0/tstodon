@@ -38,6 +38,7 @@ import {
   queryCursor,
   setLinkHeader,
   setPaginationLinks,
+  setTimelineLinks,
   requireUser,
   PageSize,
 } from "../http";
@@ -163,14 +164,11 @@ export const getV1Notifications = async (
     documents.push(withFiltered(found, filtered));
   }
   // Mastodon pages the notification list by notification id, over the rows
-  // the page read: rows left out here do not end the list.
-  setPaginationLinks(
+  // the page read, and offers the next page after any page that is not empty.
+  setTimelineLinks(
     c,
     rows.value.map((row) => row.id),
-    limit,
-    {
-      filters: ["account_id", "types", "exclude_types", "include_filtered", "supported_types"],
-    },
+    ["account_id", "types", "exclude_types", "include_filtered", "supported_types"],
   );
   return c.json(documents);
 };
@@ -187,7 +185,12 @@ export const getV1NotificationsUnreadCount = async (
     return jsonRepositoryError(c, markers.error.message);
   }
   const markerId = markers.value.notifications?.last_read_id;
-  const count = await countUnreadNotifications(c.env.DB, user.value.id, markerId);
+  const count = await countUnreadNotifications(
+    c.env.DB,
+    user.value.id,
+    markerId,
+    queryLimit(c, PageSize.unreadNotifications),
+  );
   if (count.isErr()) {
     return jsonRepositoryError(c, count.error.message);
   }
@@ -505,7 +508,10 @@ export const getV2NotificationsUnreadCount = async (
       .filter((row) => !(markerId && row.id <= markerId))
       .map((row) => NotificationGroup.key(groupedEntry(row), groupedTypes)),
   );
-  return c.json({ count: unreadKeys.size });
+  // At most `limit` groups, as Mastodon counts `paginate_groups_by_min_id(limit, ...)`.
+  return c.json({
+    count: Math.min(unreadKeys.size, queryLimit(c, PageSize.unreadNotifications)),
+  });
 };
 
 export const getV2Notifications = async (

@@ -7,12 +7,9 @@ import { findAccountByUsername } from "./account-store";
 import { generateAccountKeys } from "./keys";
 import { signInboxRequest } from "./http-signature";
 import { listOutboundActivities } from "./outbox-store";
-import {
-  listAcceptedRemoteFollowerUris,
-  listPendingRemoteFollowRequesters,
-  upsertRemoteActor,
-} from "./remote-actor-store";
+import { listAcceptedRemoteFollowerUris, upsertRemoteActor } from "./remote-actor-store";
 import { RemoteAccountId } from "./remote-account-id";
+import { listFollowRequests } from "./follow-store";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { ApiRelationship } from "@tstodon/api";
@@ -262,10 +259,12 @@ describe("follow requests", () => {
       expect(accepted.value).toContain(actorUri);
     }
 
-    const pending = await listPendingRemoteFollowRequesters(env.DB, local.value.id, 20);
+    const pending = await listFollowRequests(env.DB, local.value.id, 20);
     expect(pending.isOk()).toBe(true);
     if (pending.isOk()) {
-      expect(pending.value.map((request) => request.remoteActorUri)).not.toContain(actorUri);
+      expect(pending.value.map((request) => request.accountId)).not.toContain(
+        RemoteAccountId.encode(actorUri),
+      );
     }
 
     const activities = await listOutboundActivities(env.DB, local.value.id, 20);
@@ -366,9 +365,11 @@ describe("follow requests", () => {
     if (accepted.isOk()) {
       expect(accepted.value).not.toContain(actorUri);
     }
-    const pending = await listPendingRemoteFollowRequesters(env.DB, local.value.id, 20);
+    const pending = await listFollowRequests(env.DB, local.value.id, 20);
     if (pending.isOk()) {
-      expect(pending.value.map((request) => request.remoteActorUri)).not.toContain(actorUri);
+      expect(pending.value.map((request) => request.accountId)).not.toContain(
+        RemoteAccountId.encode(actorUri),
+      );
     }
   });
 });

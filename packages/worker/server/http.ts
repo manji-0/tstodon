@@ -32,6 +32,16 @@ export const PageSize = {
   accounts: pageSize(40),
   /** The trends' `DEFAULT_TAGS_LIMIT` and `DEFAULT_LINKS_LIMIT`. */
   trends: pageSize(10),
+  /**
+   * `DomainBlocksController::BLOCK_LIMIT`, and the same 100 as
+   * `FollowedTagsController::TAGS_LIMIT`.
+   */
+  domainBlocks: pageSize(100),
+  /**
+   * `DEFAULT_NOTIFICATIONS_COUNT_LIMIT` and `MAX_NOTIFICATIONS_COUNT_LIMIT`,
+   * how many unread notifications `unread_count` counts.
+   */
+  unreadNotifications: pageSize(100, 1000),
   /** The admin lists' `LIMIT`. */
   admin: pageSize(100),
   /** `LIMIT` and `MAX_LIMIT` of the admin domain blocks and domain allows. */
@@ -57,9 +67,29 @@ export const rubyToI = (raw: string): number => {
 export const limitParam = (raw: string | undefined, size: PageSize): number =>
   raw === undefined ? size.default : Math.min(Math.abs(rubyToI(raw)), size.max);
 
-/** The request's `limit` query parameter, read as {@link limitParam}. */
+/**
+ * A query parameter with a bare key read as Rack reads it: `?limit` with no
+ * `=` is `nil` (`undefined`) in Mastodon's `params`, not the empty string
+ * `URLSearchParams` makes of it. A repeated key takes its first pair, as
+ * every other query parameter here does.
+ */
+export const rackQueryParam = (url: string, name: string): string | undefined => {
+  for (const pair of new URL(url).search.slice(1).split("&")) {
+    const [entry] = new URLSearchParams(pair);
+    if (entry?.[0] === name) {
+      return pair.includes("=") ? entry[1] : undefined;
+    }
+  }
+  return undefined;
+};
+
+/** The request's `limit` query parameter as Rack reads it, then as {@link limitParam}. */
 export const queryLimit = (c: Context<{ Bindings: Env }>, size: PageSize): number =>
-  limitParam(c.req.query("limit"), size);
+  limitParam(rackQueryParam(c.req.url, "limit"), size);
+
+/** Mastodon's `unlimited?` (`params[:limit] == '0'`): exactly `limit=0` asks for every row. */
+export const queryUnlimited = (c: Context<{ Bindings: Env }>): boolean =>
+  rackQueryParam(c.req.url, "limit") === "0";
 
 /** Mastodon's `offset` for paged lists, kept to a value SQLite can bind as an integer. */
 export const queryOffset = (raw: string | number | undefined): number => {
@@ -96,6 +126,18 @@ export const setPaginationLinks = (
     },
     options.filters,
   );
+
+/**
+ * Mastodon's `Link` header for a list that offers the next page after any page
+ * that is not empty (the timelines' `unless: -> { @statuses.empty? }`, v1
+ * notifications): `max_id=<last id>` as `rel="next"` and `min_id=<first id>`
+ * as `rel="prev"`. An empty page gets no `Link`.
+ */
+export const setTimelineLinks = (
+  c: Context<{ Bindings: Env }>,
+  ids: ReadonlyArray<string>,
+  filters: LinkFilters = [],
+): void => setLinkHeader(c, { next: ids.at(-1), prev: ids[0] }, filters);
 
 /**
  * Mastodon's `Link` header from page cursors: `max_id=<next>` as `rel="next"`

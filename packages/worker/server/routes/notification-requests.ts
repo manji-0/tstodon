@@ -21,6 +21,7 @@ import {
   jsonRepositoryError,
   jsonValidationError,
   queryLimit,
+  setPaginationLinks,
   requireUser,
   PageSize,
 } from "../http";
@@ -291,10 +292,11 @@ export const getV1NotificationsRequests = async (
     return jsonValidationError(c);
   }
   // Mastodon: `limit` defaults to 40 and caps at 80.
+  const limit = queryLimit(c, PageSize.accounts);
   const requests = await listNotificationRequests(
     c.env.DB,
     user.value.id,
-    queryLimit(c, PageSize.accounts),
+    limit,
     paramsCursor(params.value),
   );
   if (requests.isErr()) {
@@ -308,9 +310,16 @@ export const getV1NotificationsRequests = async (
     requests.value,
     availableAccountDocumentsByIds,
   );
-  return documents.isErr()
-    ? jsonRepositoryError(c, documents.error.message)
-    : c.json(documents.value);
+  if (documents.isErr()) {
+    return jsonRepositoryError(c, documents.error.message);
+  }
+  // Paged over the requests read: one left out here does not end the list.
+  setPaginationLinks(
+    c,
+    requests.value.map((request) => request.id),
+    limit,
+  );
+  return c.json(documents.value);
 };
 
 export const getV1NotificationsRequestsMerged = (

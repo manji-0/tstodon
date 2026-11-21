@@ -12,14 +12,17 @@ import {
   isTagFollowed as isTagFollowedSql,
   listFeaturedTags as listFeaturedTagsSql,
   listFollowedTags as listFollowedTagsSql,
+  pageFollowedTags as pageFollowedTagsSql,
   searchTags as searchTagsSql,
   unfeatureTag as unfeatureTagSql,
   unfollowTag as unfollowTagSql,
 } from "./generated/prisma/sql";
 import { hashtagUses, recordTagNames } from "./hashtags";
+import type { MaxIdCursor } from "./id-cursor";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
 const TagNameRow = z.object({ tag_name: z.string() });
+const IdTagNameRow = z.object({ id: z.string(), tag_name: z.string() });
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 const CountLastStatusAtRow = z.object({
   count: z.union([z.number(), z.bigint()]),
@@ -112,6 +115,22 @@ export const isTagFollowed = async (
   runD1(async () => {
     const rows = await queryTyped(db, isTagFollowedSql(accountId, tag), TagNameRow);
     return rows.length > 0;
+  });
+
+/** A page of the account's followed tags, newest follow first: each follow's row id and tag. */
+export const pageFollowedTags = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: MaxIdCursor = {},
+): Promise<Result<ReadonlyArray<Readonly<{ id: string; tag: string }>>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      pageFollowedTagsSql(accountId, cursor.maxId ?? "", cursor.sinceId ?? "", limit),
+      IdTagNameRow,
+    );
+    return rows.map((row) => ({ id: row.id, tag: row.tag_name }));
   });
 
 export const listFollowedTags = async (

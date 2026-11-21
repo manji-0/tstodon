@@ -6,6 +6,7 @@ import {
   jsonValidationError,
   limitParam,
   PageSize,
+  rackQueryParam,
   rubyToI,
 } from "./http";
 import { z } from "zod";
@@ -63,9 +64,31 @@ describe("limitParam", () => {
       statuses: { default: 20, max: 40 },
       accounts: { default: 40, max: 80 },
       trends: { default: 10, max: 20 },
+      domainBlocks: { default: 100, max: 200 },
+      unreadNotifications: { default: 100, max: 1000 },
       admin: { default: 100, max: 200 },
       adminDomainRules: { default: 100, max: 500 },
     });
+  });
+});
+
+describe("rackQueryParam", () => {
+  const read = (query: string) =>
+    rackQueryParam(`https://example.com/api/v1/blocks${query}`, "limit");
+
+  it("reads a key with no = as absent, as Rack's nil", () => {
+    expect(read("")).toBeUndefined();
+    expect(read("?limit")).toBeUndefined();
+    expect(read("?foo=1&limit")).toBeUndefined();
+    expect(read("?limit=")).toBe("");
+  });
+
+  it("takes the first value of a repeated key, decoded", () => {
+    expect(read("?limit=1&limit=2")).toBe("1");
+    expect(read("?limit&limit=2")).toBeUndefined();
+    expect(read("?%6Cimit=%2B5")).toBe("+5");
+    expect(read("?limit=+5")).toBe(" 5");
+    expect(read("?limits=5&xlimit=6")).toBeUndefined();
   });
 });
 
