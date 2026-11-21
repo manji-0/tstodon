@@ -351,7 +351,7 @@ Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` t
 | `stream.render`           | `[renders, delivered, errors, totalMs, maxMs, p50Ms, p95Ms]` | `[home or list or public, ok or error]`                                            | `errors`; `p95Ms` growth                                                    |
 | `metrics.dropped`         | `[droppedPoints, writtenPoints]`                             | `[fetch or queue or scheduled or workflow, indexThatLostMost]`                     | Any point: an invocation hit the data point budget                          |
 
-`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `AuthorizeFollowRequests`, `SeverSuspendedActorFollows`, `ResumeSuspendedActorSeverances`, `FanOutRemovedStatuses`, `BackfillRemoteTags`, `BackfillLocalNoteTags`, `FoldTagNames`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
+`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `AuthorizeFollowRequests`, `SeverSuspendedActorFollows`, `ResumeSuspendedActorSeverances`, `FanOutRemovedStatuses`, `BackfillRemoteTags`, `BackfillLocalNoteTags`, `FoldTagNames`, `AsciiDomainNames`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
 
 Query with the SQL API (an API token with Account Analytics Read):
 
@@ -678,7 +678,15 @@ tstodon handles a **remote** actor's rotation the same way: when a signature fai
 
    The next hourly cron renames what the old build wrote; a rename of a name already folded writes nothing.
 
-6. Remote actor keys (migration 0152): the keys moved from `remote_actors.public_key_id` / `public_key_pem` to `remote_actor_keys`. The migration writes the old columns as the actor URI and a placeholder RSA key (`LEGACY_PUBLIC_KEY_PEM`) whose private half was thrown away, and newer builds keep writing them so. A build from before the migration, during the deploy or after a rollback, therefore reads every actor: no signature verifies against the placeholder, so it fetches the signer's key again (a key id that is not the actor URI is not found under it, and is fetched at once), and writes the real key into the old columns. Signatures may fail for a few minutes while actors are refetched (one refetch per actor per five minutes). Keys that build stores are not in `remote_actor_keys`; after deploying forward again, the first signature from each such actor fails against a stale key there and refetches the actor once. No manual step is needed.
+6. Internationalized domains (migration 0164): a build from before it stores a domain block, a user's domain block, an allowed domain or an email domain block typed in Unicode (`bücher.example`) as it is, where newer builds look up its ASCII form (`xn--bcher-kva.example`). The `AsciiDomainNames` job renames such rows once and then stops scanning. If such a build ran after the job completed, deploy forward and then make the job scan again:
+
+   ```sh
+   wrangler d1 execute <database> --remote --command "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'domain_name_ascii'"
+   ```
+
+   The next hourly cron renames what the old build wrote, merging into a row already stored under the ASCII name.
+
+7. Remote actor keys (migration 0152): the keys moved from `remote_actors.public_key_id` / `public_key_pem` to `remote_actor_keys`. The migration writes the old columns as the actor URI and a placeholder RSA key (`LEGACY_PUBLIC_KEY_PEM`) whose private half was thrown away, and newer builds keep writing them so. A build from before the migration, during the deploy or after a rollback, therefore reads every actor: no signature verifies against the placeholder, so it fetches the signer's key again (a key id that is not the actor URI is not found under it, and is fetched at once), and writes the real key into the old columns. Signatures may fail for a few minutes while actors are refetched (one refetch per actor per five minutes). Keys that build stores are not in `remote_actor_keys`; after deploying forward again, the first signature from each such actor fails against a stale key there and refetches the actor once. No manual step is needed.
 
 ### Dead-lettered jobs
 
