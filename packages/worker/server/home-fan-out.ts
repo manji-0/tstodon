@@ -109,7 +109,7 @@ const followerEvent = async (
   if (documents.isErr()) {
     return err(documents.error);
   }
-  const [document] = documents.value;
+  const [document] = documents.value.statuses;
   return ok(document ? { kind: job.event, payload: document } : undefined);
 };
 
@@ -140,7 +140,7 @@ const listEvent = async (
   if (documents.isErr()) {
     return err(documents.error);
   }
-  const [document] = documents.value;
+  const [document] = documents.value.statuses;
   return ok(document ? { kind: job.event, payload: document } : undefined);
 };
 

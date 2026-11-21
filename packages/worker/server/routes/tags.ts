@@ -10,7 +10,16 @@ import { newEntityId } from "../ids";
 import { localRef, remoteRef } from "../account-ref";
 import { findAccountById } from "../account-store";
 import { authenticate } from "../auth";
-import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  PageSize,
+  queryCursor,
+  queryLimit,
+  requireUser,
+  setPaginationLinks,
+} from "../http";
 import { RemoteAccountId } from "../remote-account-id";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { listRemoteFeaturedTags } from "../remote-featured-tag-store";
@@ -28,7 +37,7 @@ import {
   isTagFeatured,
   isTagFollowed,
   listFeaturedTags,
-  listFollowedTags,
+  pageFollowedTags,
   tagDailyHistories,
   tagDailyHistory,
   unfeatureTag,
@@ -281,20 +290,28 @@ export const getV1FollowedTags = async (c: Context<{ Bindings: Env }, "/api/v1/f
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const tags = await listFollowedTags(c.env.DB, user.value.id);
-  if (tags.isErr()) {
-    return jsonRepositoryError(c, tags.error.message);
+  const limit = queryLimit(c, PageSize.domainBlocks);
+  const follows = await pageFollowedTags(c.env.DB, user.value.id, limit, queryCursor(c));
+  if (follows.isErr()) {
+    return jsonRepositoryError(c, follows.error.message);
   }
+  const tags = follows.value.map((follow) => follow.tag);
   const [histories, featured] = await Promise.all([
-    tagDailyHistories(c.env.DB, tags.value),
+    tagDailyHistories(c.env.DB, tags),
     listFeaturedTags(c.env.DB, user.value.id),
   ]);
   if (histories.isErr()) {
     return jsonRepositoryError(c, histories.error.message);
   }
   const featuring = new Set(featured.unwrapOr([]));
+  setPaginationLinks(
+    c,
+    follows.value.map((follow) => follow.id),
+    limit,
+    { prev: "since_id" },
+  );
   return c.json(
-    tags.value.map((name) =>
+    tags.map((name) =>
       mastodonTag(identity.value, name, {
         history: histories.value.get(name) ?? [],
         following: true,

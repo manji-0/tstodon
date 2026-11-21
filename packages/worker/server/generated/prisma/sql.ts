@@ -710,8 +710,6 @@ export * from "./sql/listOutboundFollowsByActor";
 
 export * from "./sql/listPeerDomains";
 
-export * from "./sql/listPendingRemoteFollowRequesters";
-
 export * from "./sql/listPinnedStatuses";
 
 export * from "./sql/listPollInteractorInboxes";
@@ -839,6 +837,10 @@ export * from "./sql/markRemoteStatusTagsIndexed";
 export * from "./sql/markRemoteStatusesTagsIndexed";
 
 export * from "./sql/muteStatus";
+
+export * from "./sql/pageAccountDomainBlocks";
+
+export * from "./sql/pageFollowedTags";
 
 export * from "./sql/pageNotificationGroupsNewer";
 

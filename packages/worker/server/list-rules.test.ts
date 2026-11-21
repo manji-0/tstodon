@@ -284,9 +284,10 @@ describe("local members' boosts", () => {
     expect(await labels(owner, path)).toEqual(newestFirst);
     expect(await walk(owner, path)).toEqual(newestFirst);
     const ids = read(z.array(StatusSchema), (await get(owner, path)).body).map((entry) => entry.id);
+    // The two just above min_id, newest first.
     expect(await labels(owner, `${path}?min_id=${ids[3]}&limit=2`)).toEqual([
-      "boost:author post",
       "boost:boost-list-note",
+      "boost:author post",
     ]);
     expect(await labels(owner, `${path}?since_id=${ids[2]}`)).toEqual([
       "quiet post",

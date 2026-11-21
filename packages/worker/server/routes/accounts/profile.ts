@@ -13,6 +13,7 @@ import {
   jsonValidationError,
   queryLimit,
   queryCursor,
+  setLinkHeader,
   setPaginationLinks,
   PageSize,
 } from "../../http";
@@ -53,6 +54,25 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
     ? c.json(found.value)
     : c.json({ error: "Record not found", kind: "NotFound" }, 404);
 };
+
+/**
+ * `Api::V1::Accounts::StatusesController`'s `Link`, keeping `limit` and
+ * `AccountStatusesFilter::KEYS`. Pinned statuses are answered whole, not
+ * paged, so they get none.
+ */
+const ACCOUNT_STATUSES_FILTERS = [
+  "pinned",
+  "tagged",
+  "only_media",
+  "exclude_replies",
+  "exclude_reblogs",
+];
+
+const setAccountStatusesLinks = (
+  c: Context<{ Bindings: Env }>,
+  ids: ReadonlyArray<string>,
+  limit: number,
+): void => setPaginationLinks(c, ids, limit, { filters: ACCOUNT_STATUSES_FILTERS });
 
 /**
  * A cached remote actor's statuses. As in Mastodon, the list is empty when the
@@ -96,19 +116,35 @@ const remoteAccountStatuses = async (
     return c.json([]);
   }
   await requestRemoteOutboxBackfill(c.env, actor.value.actorUri);
-  const documents = pinned
-    ? await remoteAccountPinnedDocuments(c.env, identity, actor.value.actorUri, viewerId)
-    : await remoteAccountTimelineDocuments(
-        c.env,
-        identity,
-        actor.value.actorUri,
-        viewerId,
-        filters,
-      );
-  if (documents.isErr()) {
-    return jsonRepositoryError(c, documents.error.message);
+  if (pinned) {
+    const documents = await remoteAccountPinnedDocuments(
+      c.env,
+      identity,
+      actor.value.actorUri,
+      viewerId,
+    );
+    return documents.isErr()
+      ? jsonRepositoryError(c, documents.error.message)
+      : c.json(documents.value);
   }
-  return c.json(documents.value);
+  const read = await remoteAccountTimelineDocuments(
+    c.env,
+    identity,
+    actor.value.actorUri,
+    viewerId,
+    filters,
+  );
+  if (read.isErr()) {
+    return jsonRepositoryError(c, read.error.message);
+  }
+  // Paged over the rows read: a boost left out of the page does not end the list.
+  const page = read.value;
+  setLinkHeader(
+    c,
+    { next: page.continues ? page.next : undefined, prev: page.prev },
+    ACCOUNT_STATUSES_FILTERS,
+  );
+  return c.json(page.statuses);
 };
 
 /** An account's pins the viewer may see; there are few, so each is checked as by id. */
@@ -175,6 +211,13 @@ export const getV1AccountsByIdStatuses = async (
   const documents = await mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
+  }
+  if (!pinned) {
+    setAccountStatusesLinks(
+      c,
+      statuses.value.map((status) => status.id),
+      filters.limit,
+    );
   }
   return c.json(
     await attachFilteredToStatuses(c.env.DB, viewerId, "public", statuses.value, documents.value),

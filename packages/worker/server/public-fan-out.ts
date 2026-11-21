@@ -80,7 +80,7 @@ const channelDocument = async (
         1,
         cursor,
       );
-      return documents.map((found) => found[0]);
+      return documents.map((found) => found.statuses[0]);
     }
     case "Hashtag": {
       const documents = await tagTimelineDocuments(
@@ -95,7 +95,7 @@ const channelDocument = async (
         1,
         cursor,
       );
-      return documents.map((found) => found[0]);
+      return documents.map((found) => found.statuses[0]);
     }
     case "User":
     case "UserNotification":

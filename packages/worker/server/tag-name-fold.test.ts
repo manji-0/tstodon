@@ -225,6 +225,29 @@ describe("accent folding of tag names", () => {
     ).toEqual([["tnfdate", "2020-01-01T00:00:00.000Z"]]);
   });
 
+  it("keeps a renamed follow's id, even where a new id would repeat it", async () => {
+    const id = (await signedInAccount(author)).id;
+    // The rename writes its row at the next rowid, 65536 above the old one:
+    // the id migration 0166's trigger derives from the same `created_at`
+    // would be the old row's.
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO followed_tags (rowid, account_id, tag_name, created_at)
+         VALUES (1000001, ?1, 'tnfzahlé', '2020-01-01T00:00:00.000Z')`,
+      ).bind(id),
+      env.DB.prepare(
+        `INSERT INTO followed_tags (rowid, account_id, tag_name, created_at)
+         VALUES (1065536, ?1, 'tnffiller', '2021-01-01T00:00:00.000Z')`,
+      ).bind(id),
+    ]);
+    const [before] = await rows("SELECT id FROM followed_tags WHERE tag_name = 'tnfzahlé'");
+    await restartCursor();
+    await foldEveryPage(200);
+    expect(await rows("SELECT id FROM followed_tags WHERE tag_name = 'tnfzahle'")).toEqual([
+      before,
+    ]);
+  });
+
   it("removes a spelling the job has not renamed yet when the tag is unfollowed", async () => {
     const id = (await signedInAccount(other)).id;
     await env.DB.prepare(

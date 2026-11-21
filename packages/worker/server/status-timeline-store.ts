@@ -15,7 +15,7 @@ import {
   followedTagNoteIdsSql,
   reblogOfShownAuthorSql,
 } from "./followed-feed";
-import { type IdCursor, idCursorFragment } from "./id-cursor";
+import { type IdCursor, idCursorFragment, newestFirst } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
 /** Authors silenced or suspended by an admin are hidden from public surfaces. */
@@ -241,7 +241,7 @@ export const listAccountStatusesFiltered = async (
         filters.limit,
       )
       .all();
-    return hydrateStatusRows(db, results ?? []);
+    return newestFirst(filters.cursor ?? {}, await hydrateStatusRows(db, results ?? []));
   });
 
 /**

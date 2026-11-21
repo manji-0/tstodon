@@ -17,6 +17,7 @@ import {
   queryLimit,
   requireUser,
   PageSize,
+  timelineResponse,
 } from "../http";
 import { mastodonStatuses } from "../local-status-documents";
 import { writeTimelineMetric } from "../metrics";
@@ -34,7 +35,7 @@ import { isTagUsable } from "../tag-moderation-store";
 import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 import {
   homeTimelineDocuments,
-  mergeTimelineDocuments,
+  timelinePage,
   publicTimelineDocuments,
   remoteTimelineDocuments,
   tagTimelineDocuments,
@@ -82,12 +83,12 @@ export const getV1TimelinesPublic = async (
     c.env,
     "public",
     startedAt,
-    documents.isOk() ? documents.value.length : undefined,
+    documents.isOk() ? documents.value.statuses.length : undefined,
   );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  return c.json(documents.value);
+  return timelineResponse(c, documents.value, ["local", "remote", "only_media"]);
 };
 
 export const getV1TimelinesHome = async (
@@ -117,12 +118,12 @@ export const getV1TimelinesHome = async (
     c.env,
     "home",
     startedAt,
-    documents.isOk() ? documents.value.length : undefined,
+    documents.isOk() ? documents.value.statuses.length : undefined,
   );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  return c.json(documents.value);
+  return timelineResponse(c, documents.value, ["local"]);
 };
 
 /**
@@ -193,12 +194,13 @@ export const getV1TimelinesTagByHashtag = async (
     c.env,
     "tag",
     startedAt,
-    documents.isOk() ? documents.value.length : undefined,
+    documents.isOk() ? documents.value.statuses.length : undefined,
   );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  return c.json(documents.value);
+  // `TagController::PERMITTED_PARAMS`: not `remote`, `any`, `all` or `none`.
+  return timelineResponse(c, documents.value, ["local", "only_media"]);
 };
 
 /**
@@ -277,7 +279,11 @@ export const getV1TimelinesLink = async (
     rendered.value.statuses,
     rendered.value.documents,
   );
-  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, cursor, limit));
+  return timelineResponse(
+    c,
+    timelinePage([...filteredLocal, ...filteredRemote], cursor, limit, [local.value, remote.value]),
+    ["url"],
+  );
 };
 
 export const getV1TimelinesDirect = async (
@@ -350,7 +356,10 @@ export const getV1TimelinesDirect = async (
     rendered.value.statuses,
     rendered.value.documents,
   );
-  return c.json(mergeTimelineDocuments(filteredLocal, filteredRemote, {}, limit));
+  return c.json(
+    timelinePage([...filteredLocal, ...filteredRemote], {}, limit, [statuses.value, remote.value])
+      .statuses,
+  );
 };
 
 warmSchemas([

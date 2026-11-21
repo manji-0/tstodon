@@ -6,16 +6,24 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param listId
+ * @param maxId
+ * @param sinceId
+ * @param limit
  */
 export const listListMembers = $runtime.makeTypedQueryFactory(
-  "SELECT 'LocalAccount' AS kind, member_account_id AS member, created_at\nFROM account_list_members\nWHERE list_id = $1\nUNION ALL\nSELECT 'RemoteActor' AS kind, f.actor_uri AS member, m.created_at\nFROM account_list_remote_members m\nJOIN outbound_follows f ON f.id = m.outbound_follow_id\nWHERE m.list_id = $1\nORDER BY created_at ASC",
-) as (listId: string) => $runtime.TypedSql<listListMembers.Parameters, listListMembers.Result>;
+  "SELECT 'LocalAccount' AS kind, member_account_id AS member, member_account_id AS cursor\nFROM account_list_members\nWHERE list_id = $1\nAND member_account_id > $3\nAND member_account_id < COALESCE(NULLIF($2, ''), X'FF')\nUNION ALL\nSELECT 'RemoteActor' AS kind, f.actor_uri AS member, m.outbound_follow_id AS cursor\nFROM account_list_remote_members m\nJOIN outbound_follows f ON f.id = m.outbound_follow_id\nWHERE m.list_id = $1\nAND m.outbound_follow_id > $3\nAND m.outbound_follow_id < COALESCE(NULLIF($2, ''), X'FF')\nORDER BY cursor DESC\nLIMIT $4",
+) as (
+  listId: string,
+  maxId: string,
+  sinceId: string,
+  limit: number,
+) => $runtime.TypedSql<listListMembers.Parameters, listListMembers.Result>;
 
 export namespace listListMembers {
-  export type Parameters = [listId: string];
+  export type Parameters = [listId: string, maxId: string, sinceId: string, limit: number];
   export type Result = {
     kind: null | null;
     member: string;
-    created_at: string;
+    cursor: string;
   };
 }

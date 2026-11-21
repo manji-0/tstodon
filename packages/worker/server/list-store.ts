@@ -20,7 +20,7 @@ import {
   feedLocalRepliesSql,
   type ListFeed,
 } from "./followed-feed";
-import { type IdCursor, idCursorFragment } from "./id-cursor";
+import { type IdCursor, type MaxIdCursor, idCursorFragment } from "./id-cursor";
 import {
   createList as createListSql,
   deleteList as deleteListSql,
@@ -66,6 +66,7 @@ export type ListMember = z.infer<typeof ListMemberSchema>;
 const ListMemberRowSchema = z.object({
   kind: z.union([z.literal("LocalAccount"), z.literal("RemoteActor")]),
   member: z.string().min(1),
+  cursor: z.string().min(1),
 });
 
 warmSchemas([ListRepliesPolicySchema, ListRowSchema, ListMemberSchema, ListMemberRowSchema]);
@@ -201,14 +202,30 @@ export const deleteList = async (
     return rows.length > 0;
   });
 
-/** The list's local and remote members, in the order they were added. */
+/** A list member and the id a page of members is cursored by. */
+export type PagedListMember = Readonly<{ cursor: string; member: ListMember }>;
+
+/**
+ * A page of the list's local and remote members, by cursor descending: a
+ * local member's account id (Mastodon pages a list's accounts by account id),
+ * a remote one's outbound follow id. `"All"` reads every member, as Mastodon's
+ * `unlimited?` does for `limit=0`.
+ */
 export const listListMembers = async (
   db: D1Database,
   listId: string,
-): Promise<Result<ListMember[], RepositoryError>> =>
-  runD1(async () =>
-    (await queryTyped(db, listListMembersSql(listId), ListMemberRowSchema)).map(memberFromRow),
-  );
+  page: Readonly<{ limit: number; cursor: MaxIdCursor }> | "All",
+): Promise<Result<PagedListMember[], RepositoryError>> =>
+  runD1(async () => {
+    // SQLite reads a negative LIMIT as no limit.
+    const { limit, cursor } = page === "All" ? { limit: -1, cursor: {} } : page;
+    const rows = await queryTyped(
+      db,
+      listListMembersSql(listId, cursor.maxId ?? "", cursor.sinceId ?? "", limit),
+      ListMemberRowSchema,
+    );
+    return rows.map((row) => ({ cursor: row.cursor, member: memberFromRow(row) }));
+  });
 
 const insertMemberSql = (listId: string, member: ListMember, now: string) =>
   member.kind === "LocalAccount"

@@ -207,7 +207,8 @@ describe("remote accounts on lists", () => {
       account_ids: [local.id, accountId(remote)],
     });
     expect(added.status).toBe(200);
-    expect(await memberIds(owner, listId)).toEqual([local.id, accountId(remote)]);
+    // Newest first: the remote member's follow came after the local account.
+    expect(await memberIds(owner, listId)).toEqual([accountId(remote), local.id]);
     expect(await listsContaining(owner, accountId(remote))).toEqual([listId]);
 
     const removed = await send(owner, `/api/v1/lists/${listId}/accounts`, "DELETE", {

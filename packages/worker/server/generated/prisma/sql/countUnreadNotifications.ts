@@ -8,17 +8,19 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param markerId
  * @param now
+ * @param limit
  */
 export const countUnreadNotifications = $runtime.makeTypedQueryFactory(
-  "SELECT COUNT(*) AS count FROM notifications n\nWHERE n.account_id = $1\nAND n.id > $2\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_requests WHERE account_id = $1\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION ALL\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION ALL\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $3)\n)\nAND COALESCE(n.from_actor_uri, '') NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1\nUNION ALL\nSELECT target_actor_uri FROM mutes\nWHERE account_id = $1 AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $3)\n)",
+  "SELECT COUNT(*) AS count FROM (SELECT 1 FROM notifications n\nWHERE n.account_id = $1\nAND n.id > $2\nAND n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_requests WHERE account_id = $1\n)\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION ALL\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION ALL\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $3)\n)\nAND COALESCE(n.from_actor_uri, '') NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1\nUNION ALL\nSELECT target_actor_uri FROM mutes\nWHERE account_id = $1 AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $3)\n)\nLIMIT $4\n)",
 ) as (
   accountId: string,
   markerId: string,
   now: string,
+  limit: number,
 ) => $runtime.TypedSql<countUnreadNotifications.Parameters, countUnreadNotifications.Result>;
 
 export namespace countUnreadNotifications {
-  export type Parameters = [accountId: string, markerId: string, now: string];
+  export type Parameters = [accountId: string, markerId: string, now: string, limit: number];
   export type Result = {
     count: bigint;
   };

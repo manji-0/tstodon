@@ -66,14 +66,18 @@ const renameMembership = (
   `DELETE FROM ${table} AS r WHERE r.${column} IN ${OLD_NAMES}${where}`,
 ];
 
-/** As `renameMembership`, for an account's follow or feature: the earliest `created_at` wins. */
-const renameDatedMembership = (table: string): ReadonlyArray<string> => [
-  `INSERT INTO ${table} (account_id, created_at, tag_name)
-   SELECT r.account_id, r.created_at, ${NEW}
+/**
+ * As `renameMembership`, for an account's follow or feature: the earliest
+ * `created_at` wins. A table with `id`s (migration 0166) keeps the row's id,
+ * the earliest of two merged ones, as that id pages the list.
+ */
+const renameDatedMembership = (table: string, keepsId = false): ReadonlyArray<string> => [
+  `INSERT INTO ${table} (account_id, created_at, tag_name${keepsId ? ", id" : ""})
+   SELECT r.account_id, r.created_at, ${NEW}${keepsId ? ", r.id" : ""}
    FROM json_each(?1) e JOIN ${table} r ON r.tag_name = ${OLD}
    WHERE true
    ON CONFLICT (account_id, tag_name) DO UPDATE SET
-     created_at = min(created_at, excluded.created_at)`,
+     created_at = min(created_at, excluded.created_at)${keepsId ? ", id = min(id, excluded.id)" : ""}`,
   `DELETE FROM ${table} AS r WHERE r.tag_name IN ${OLD_NAMES}`,
 ];
 
@@ -94,7 +98,7 @@ const RENAMES: ReadonlyArray<string> = [
      listable = min(listable, excluded.listable),
      display_name = coalesce(display_name, excluded.display_name)`,
   `DELETE FROM tags WHERE name IN ${OLD_NAMES}`,
-  ...renameDatedMembership("followed_tags"),
+  ...renameDatedMembership("followed_tags", true),
   ...renameDatedMembership("featured_tags"),
   ...renameMembership("local_status_tags", "tag", ["status_id"]),
   ...renameMembership("remote_status_tags", "tag", ["status_id"]),

@@ -8,6 +8,7 @@ import {
   jsonRepositoryError,
   queryCursor,
   queryLimit,
+  setPaginationLinks,
   readBody,
   requireUser,
   PageSize,
@@ -82,12 +83,8 @@ export const getV1ScheduledStatuses = async (
     return jsonAuthError(c, user.error);
   }
   // Mastodon: 20 by default, max 40.
-  const rows = await listScheduledStatuses(
-    c.env.DB,
-    user.value.id,
-    queryLimit(c, PageSize.statuses),
-    queryCursor(c),
-  );
+  const limit = queryLimit(c, PageSize.statuses);
+  const rows = await listScheduledStatuses(c.env.DB, user.value.id, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -98,6 +95,11 @@ export const getV1ScheduledStatuses = async (
       documents.push(document);
     }
   }
+  setPaginationLinks(
+    c,
+    rows.value.map((row) => row.id),
+    limit,
+  );
   return c.json(documents);
 };
 

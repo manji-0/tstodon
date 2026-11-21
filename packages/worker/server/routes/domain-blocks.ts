@@ -6,8 +6,17 @@ import {
   type ApiDomainBlockPreviewJSON,
 } from "@tstodon/api";
 import { blockAccountDomain } from "../account-domain-block";
-import { listBlockedDomains, previewDomainBlock, unblockDomain } from "../domain-block-store";
-import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
+import { pageBlockedDomains, previewDomainBlock, unblockDomain } from "../domain-block-store";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  PageSize,
+  queryCursor,
+  queryLimit,
+  requireUser,
+  setPaginationLinks,
+} from "../http";
 import { readMergedParams, readParams, readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
 
@@ -16,11 +25,18 @@ export const getV1DomainBlocks = async (c: Context<{ Bindings: Env }, "/api/v1/d
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const domains = await listBlockedDomains(c.env.DB, user.value.id);
-  if (domains.isErr()) {
-    return jsonRepositoryError(c, domains.error.message);
+  const limit = queryLimit(c, PageSize.domainBlocks);
+  const blocks = await pageBlockedDomains(c.env.DB, user.value.id, limit, queryCursor(c));
+  if (blocks.isErr()) {
+    return jsonRepositoryError(c, blocks.error.message);
   }
-  return c.json(domains.value);
+  setPaginationLinks(
+    c,
+    blocks.value.map((block) => block.id),
+    limit,
+    { prev: "since_id" },
+  );
+  return c.json(blocks.value.map((block) => block.domain));
 };
 
 /**

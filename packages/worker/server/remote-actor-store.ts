@@ -46,7 +46,6 @@ import {
   listAcceptedRemoteFollowerActors as listAcceptedRemoteFollowerActorsSql,
   listPeerDomains as listPeerDomainsSql,
   searchPeerDomains as searchPeerDomainsSql,
-  listPendingRemoteFollowRequesters as listPendingRemoteFollowRequestersSql,
   cancelRemoteActorDeliveries as cancelRemoteActorDeliveriesSql,
   listHomeFanOutAccounts as listHomeFanOutAccountsSql,
   listLocalBoostsOfRemoteActor as listLocalBoostsOfRemoteActorSql,
@@ -74,10 +73,6 @@ import {
 import { parseJsonColumn } from "./json-column";
 
 const ActorUriRow = z.object({ actor_uri: z.string() });
-const RemoteActorUriCreatedAtRow = z.object({
-  remote_actor_uri: z.string(),
-  created_at: z.string(),
-});
 const FollowActivityIdRow = z.object({ follow_activity_id: z.string().nullable() });
 const FollowActivityIdRemoteRequestKindRow = z.object({
   follow_activity_id: z.string().nullable(),
@@ -553,28 +548,6 @@ export const upsertRemoteFollow = async (
     return recorded.length > 0 ? "Recorded" : "UndoneFirst";
   });
 };
-
-export type PendingRemoteFollowRequester = Readonly<{
-  remoteActorUri: string;
-  createdAt: string;
-}>;
-
-export const listPendingRemoteFollowRequesters = async (
-  db: D1Database,
-  targetAccountId: string,
-  limit: number,
-): Promise<Result<PendingRemoteFollowRequester[], RepositoryError>> =>
-  runD1(async () => {
-    const rows = await queryTyped(
-      db,
-      listPendingRemoteFollowRequestersSql(targetAccountId, limit),
-      RemoteActorUriCreatedAtRow,
-    );
-    return rows.map((row) => ({
-      remoteActorUri: row.remote_actor_uri,
-      createdAt: row.created_at,
-    }));
-  });
 
 /** The original Follow activity id of a pending remote follow, if one exists. */
 export const findPendingRemoteFollowRequest = async (

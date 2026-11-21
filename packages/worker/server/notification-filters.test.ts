@@ -128,10 +128,10 @@ describe("notification filters", () => {
     expect(
       (await notifications(viewerEmail, `?since_id=${oldest?.id ?? ""}`)).map((row) => row.id),
     ).toEqual([newest?.id, middle?.id]);
-    // min_id pages upward, so the oldest of the newer rows comes first.
+    // min_id pages upward and answers the page newest first.
     expect(
       (await notifications(viewerEmail, `?min_id=${oldest?.id ?? ""}`)).map((row) => row.id),
-    ).toEqual([middle?.id, newest?.id]);
+    ).toEqual([newest?.id, middle?.id]);
   });
 
   it("limits cursor pages from the right end and keeps cursor precedence", async () => {
@@ -163,11 +163,11 @@ describe("notification filters", () => {
     expect(await ids(`?max_id=${second}&limit=2`)).toEqual([third, fourth]);
     // since_id keeps the newest rows above the cursor; min_id the oldest.
     expect(await ids(`?since_id=${follow}&limit=2`)).toEqual([first, second]);
-    expect(await ids(`?min_id=${follow}&limit=2`)).toEqual([fourth, third]);
+    expect(await ids(`?min_id=${follow}&limit=2`)).toEqual([third, fourth]);
     // min_id wins over since_id and max_id; since_id wins over max_id.
     expect(await ids(`?min_id=${third}&since_id=${follow}&max_id=${second}`)).toEqual([
-      second,
       first,
+      second,
     ]);
     expect(await ids(`?since_id=${third}&max_id=${second}`)).toEqual([first, second]);
     expect(await ids(`?types[]=mention&max_id=${second}`)).toEqual([third, fourth]);

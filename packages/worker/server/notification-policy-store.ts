@@ -4,7 +4,7 @@ import { nowIso } from "./clock";
 import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, runD1, runD1Batch, type RepositoryError } from "./d1";
-import { idCursorFragment, type IdCursor } from "./id-cursor";
+import { idCursorFragment, newestFirst, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 import {
   countNotificationRequests as countNotificationRequestsSql,
@@ -144,10 +144,11 @@ export const listNotificationRequests = async (
       )
       .bind(accountId, ...binds, limit)
       .all();
-    return (results ?? []).flatMap((raw) => {
+    const page = (results ?? []).flatMap((raw) => {
       const request = requestFromRow(raw);
       return request ? [request] : [];
     });
+    return newestFirst(cursor, page);
   });
 
 /**

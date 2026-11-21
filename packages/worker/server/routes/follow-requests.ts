@@ -1,4 +1,3 @@
-import type { ApiAccountJSON } from "@tstodon/api";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
 import { acceptRemoteFollowRequest } from "../follow-request-approval";
@@ -8,24 +7,20 @@ import {
   queryLimit,
   queryCursor,
   requireUser,
+  setPaginationLinks,
   PageSize,
 } from "../http";
-import { availableAccountDocumentsByIds } from "../account-documents";
+import { availableAccountDocumentsByIds, documentsInOrder } from "../account-documents";
 import { mastodonRelationship } from "../relationship-document";
 import {
   findPendingRemoteFollowRequest,
   findRemoteActorByUri,
-  listPendingRemoteFollowRequesters,
   rejectRemoteFollowRequest,
 } from "../remote-actor-store";
 import { sendFollowReject } from "../remote-follower";
 import { parseInstanceIdentity } from "../runtime-config";
 import { RemoteAccountId } from "../remote-account-id";
-import {
-  authorizeFollowRequest,
-  listPendingFollowRequesters,
-  rejectFollowRequest,
-} from "../follow-store";
+import { authorizeFollowRequest, listFollowRequests, rejectFollowRequest } from "../follow-store";
 import { relationshipFlags } from "../relationship-store";
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
@@ -68,43 +63,23 @@ export const getV1FollowRequests = async (
     return jsonAuthError(c, user.error);
   }
   const limit = queryLimit(c, PageSize.accounts);
-  const [local, remote] = await Promise.all([
-    listPendingFollowRequesters(c.env.DB, user.value.id, limit, queryCursor(c)),
-    listPendingRemoteFollowRequesters(c.env.DB, user.value.id, limit),
-  ]);
-  if (local.isErr()) {
-    return jsonRepositoryError(c, local.error.message);
+  const requests = await listFollowRequests(c.env.DB, user.value.id, limit, queryCursor(c));
+  if (requests.isErr()) {
+    return jsonRepositoryError(c, requests.error.message);
   }
-  if (remote.isErr()) {
-    return jsonRepositoryError(c, remote.error.message);
-  }
-
-  type Entry = Readonly<{ createdAt: string; document: ApiAccountJSON }>;
-  const requesters = [
-    ...local.value.map((requester) => ({
-      createdAt: requester.createdAt,
-      accountId: requester.followerAccountId,
-    })),
-    ...remote.value.map((requester) => ({
-      createdAt: requester.createdAt,
-      accountId: RemoteAccountId.encode(requester.remoteActorUri),
-    })),
-  ];
-  const documents = await availableAccountDocumentsByIds(
-    c.env,
-    identity.value,
-    requesters.map((requester) => requester.accountId),
-  );
+  const accountIds = requests.value.map((request) => request.accountId);
+  const documents = await availableAccountDocumentsByIds(c.env, identity.value, accountIds);
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  const entries = requesters.flatMap((requester): Entry[] => {
-    const document = documents.value.get(requester.accountId);
-    return document ? [{ createdAt: requester.createdAt, document }] : [];
-  });
-  return c.json(
-    entries.toSorted((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((entry) => entry.document),
+  // Follow row ids are not in the documents, so the Link header carries them.
+  setPaginationLinks(
+    c,
+    requests.value.map((request) => request.id),
+    limit,
+    { prev: "since_id" },
   );
+  return c.json(documentsInOrder(accountIds, documents.value));
 };
 
 export const postV1FollowRequestsByIdAuthorize = async (

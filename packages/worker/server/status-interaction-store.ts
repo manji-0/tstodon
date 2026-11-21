@@ -11,7 +11,7 @@ import {
 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
-import { type IdCursor, idCursorFragment } from "./id-cursor";
+import { type IdCursor, idCursorFragment, newestFirst } from "./id-cursor";
 import { statusTargetColumns } from "./status-store";
 import { d1PrepareTyped, queryTyped, runTyped } from "./typed-sql";
 import {
@@ -112,14 +112,17 @@ const listEngagedTargets = async (
       )
       .bind(accountId, ...binds, limit)
       .all();
-    return parseRows(TargetRowSchema, results).flatMap((row) => {
-      const target = StatusTarget.parse(
-        row.local_status_id
-          ? { kind: "LocalStatus", statusId: row.local_status_id }
-          : { kind: "RemoteStatus", statusId: row.remote_status_id },
-      );
-      return target.isOk() ? [target.value] : [];
-    });
+    return newestFirst(
+      cursor,
+      parseRows(TargetRowSchema, results).flatMap((row) => {
+        const target = StatusTarget.parse(
+          row.local_status_id
+            ? { kind: "LocalStatus", statusId: row.local_status_id }
+            : { kind: "RemoteStatus", statusId: row.remote_status_id },
+        );
+        return target.isOk() ? [target.value] : [];
+      }),
+    );
   });
 
 /** The account's favourites, local and remote statuses alike, paged by status id. */

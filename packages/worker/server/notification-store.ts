@@ -14,6 +14,7 @@ import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { nowIso } from "./clock";
+import { newestFirst } from "./id-cursor";
 import { CountedRow, queryTyped, runTyped } from "./typed-sql";
 import {
   clearNotifications as clearNotificationsSql,
@@ -196,8 +197,9 @@ export const listNotifications = async (
     const includeFiltered = filters.includeFiltered ? 1 : 0;
     const minId = filters.minId ?? "";
     const sinceId = filters.sinceId ?? "";
-    // Mastodon's cursors: `min_id` pages newer from the oldest side; `since_id`
-    // (which wins over `max_id`) newer and `max_id` older, both newest first.
+    // Mastodon's cursors: `min_id` pages newer from the oldest side, answered
+    // newest first; `since_id` (which wins over `max_id`) newer and `max_id`
+    // older.
     const query =
       minId.length > 0
         ? listNotificationsAscendingSql(
@@ -223,7 +225,7 @@ export const listNotifications = async (
             includeFiltered,
             ...groupParameters(filters.group),
           );
-    const results = await queryTyped(db, query, NotificationQueryRowSchema);
+    const results = newestFirst({ minId }, await queryTyped(db, query, NotificationQueryRowSchema));
     return results.map((row) => ({
       id: row.id ?? "",
       account_id: row.account_id,
@@ -430,16 +432,17 @@ export const clearNotifications = async (
     await runTyped(db, clearNotificationsSql(accountId, nowIso()));
   });
 
-/** Count visible notifications newer than the notifications marker. */
+/** Count visible notifications newer than the notifications marker, at most `limit`. */
 export const countUnreadNotifications = async (
   db: D1Database,
   accountId: string,
   markerId: string | undefined,
+  limit: number,
 ): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      countUnreadNotificationsSql(accountId, markerId ?? "", nowIso()),
+      countUnreadNotificationsSql(accountId, markerId ?? "", nowIso(), limit),
       CountRow,
     );
     return Number(rows[0]?.count ?? 0);

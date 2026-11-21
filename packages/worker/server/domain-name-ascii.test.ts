@@ -288,4 +288,30 @@ describe("asciiDomainNames switching a stored block on", () => {
     ]);
     expect(await follows(account, remote.actorUri)).toEqual([]);
   });
+
+  it("keeps a renamed block's id, even where a new id would repeat it", async () => {
+    const account = await accountId("idn-id-keeper@example.com");
+    // The rename writes its row at the next rowid, 65536 above the old one:
+    // the id migration 0166's trigger derives from the same `created_at`
+    // would be the old row's.
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO account_domain_blocks (rowid, account_id, domain, created_at)
+         VALUES (1000001, ?1, 'zahl-ü.example', '2020-01-01T00:00:00.000Z')`,
+      ).bind(account),
+      env.DB.prepare(
+        `INSERT INTO account_domain_blocks (rowid, account_id, domain, created_at)
+         VALUES (1065536, ?1, 'filler.example', '2021-01-01T00:00:00.000Z')`,
+      ).bind(account),
+    ]);
+    const [before] = await rows(
+      "SELECT id FROM account_domain_blocks WHERE domain = 'zahl-ü.example'",
+    );
+
+    await renameAndRunQueued();
+
+    expect(
+      await rows("SELECT id FROM account_domain_blocks WHERE domain = 'xn--zahl--ova.example'"),
+    ).toEqual([before]);
+  });
 });

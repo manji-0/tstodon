@@ -1,7 +1,9 @@
 -- @param {String} $1:accountId
 -- @param {String} $2:markerId
 -- @param {String} $3:now
-SELECT COUNT(*) AS count FROM notifications n
+-- @param {Int} $4:limit
+-- At most `limit` notifications, as Mastodon counts `paginate_by_min_id(limit, ...)`.
+SELECT COUNT(*) AS count FROM (SELECT 1 FROM notifications n
 WHERE n.account_id = $1
   AND n.id > $2
   AND n.created_at > COALESCE(
@@ -32,3 +34,5 @@ WHERE n.account_id = $1
       WHERE account_id = $1 AND notifications != 0
         AND (expires_at IS NULL OR expires_at > $3)
   )
+  LIMIT $4
+)

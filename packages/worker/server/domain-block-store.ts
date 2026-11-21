@@ -10,10 +10,13 @@ import {
   findAccountDomainBlock as findAccountDomainBlockSql,
   insertAccountDomainBlock as insertAccountDomainBlockSql,
   listAccountDomainBlocks as listAccountDomainBlocksSql,
+  pageAccountDomainBlocks as pageAccountDomainBlocksSql,
 } from "./generated/prisma/sql";
+import type { MaxIdCursor } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 
 const DomainRow = z.object({ domain: z.string() });
+const IdDomainRow = z.object({ id: z.string(), domain: z.string() });
 
 const hostOfRow = (row: z.infer<typeof DomainRow>): Hostname => Hostname.ofAuthority(row.domain);
 
@@ -36,6 +39,22 @@ export const unblockDomain = async (
   runD1(async () => {
     const rows = await queryTyped(db, deleteAccountDomainBlockSql(accountId, domain), DomainRow);
     return rows.length > 0;
+  });
+
+/** A page of the account's domain blocks, newest first: each block's row id and domain. */
+export const pageBlockedDomains = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: MaxIdCursor = {},
+): Promise<Result<ReadonlyArray<Readonly<{ id: string; domain: Hostname }>>, RepositoryError>> =>
+  runD1(async () => {
+    const rows = await queryTyped(
+      db,
+      pageAccountDomainBlocksSql(accountId, cursor.maxId ?? "", cursor.sinceId ?? "", limit),
+      IdDomainRow,
+    );
+    return rows.map((row) => ({ id: row.id, domain: hostOfRow(row) }));
   });
 
 export const listBlockedDomains = async (
