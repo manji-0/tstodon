@@ -94,7 +94,9 @@ describe("account status filters", () => {
     );
     expect(reblogId).not.toBe(plainId);
 
-    expect(await ids(`${base}?exclude_replies=true`)).not.toContain(replyId);
+    // A reply to the author's own status stays (`Status.without_replies`);
+    // `without-replies.test.ts` drops the ones to someone else.
+    expect(await ids(`${base}?exclude_replies=true`)).toContain(replyId);
     expect(await ids(`${base}?exclude_reblogs=true`)).not.toContain(reblogId);
 
     const onlyMedia = await ids(`${base}?only_media=true`);

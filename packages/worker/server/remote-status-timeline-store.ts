@@ -221,7 +221,7 @@ export const listActorRemoteStatuses = async (
                ))
                OR (? = 0 AND s.id IN (SELECT status_id FROM remote_status_mentions WHERE account_id = ?))
              )
-             AND (? = 0 OR s.in_reply_to_uri IS NULL)
+             AND (? = 0 OR ${REMOTE_WITHOUT_REPLIES_SQL})
              AND (? = 0 OR s.media_json NOT IN ('[]', ''))
              AND (? = '' OR EXISTS (
                SELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = ?
@@ -251,8 +251,16 @@ export const listActorRemoteStatuses = async (
   });
 
 /**
+ * Mastodon's `Status.without_replies` for a remote note: no `inReplyTo`, or
+ * a reply that answers its own author. A reply to a note not held answers no
+ * one, so it stays out, as Mastodon's `reply` flag is set from `inReplyTo`.
+ */
+const REMOTE_WITHOUT_REPLIES_SQL = `(in_reply_to_uri IS NULL OR in_reply_to_actor_uri = actor_uri)`;
+
+/**
  * Public remote statuses, newest id first, paged by the id cursor; `onlyId`
- * asks for one entry and `onlyMedia` keeps the ones with attachments. Actors
+ * asks for one entry and `onlyMedia` keeps the ones with attachments. Replies
+ * to someone else stay out (`PublicFeed#without_replies_scope`). Actors
  * the viewer blocks or mutes or that block the viewer, domains it blocks or the instance limits or
  * suspends (matched against both the account domain and the actor URI's
  * host; an instance rule also covers subdomains), and actors an admin
@@ -274,6 +282,7 @@ export const listPublicRemoteStatuses = async (
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
          WHERE visibility = 'public'
+           AND ${REMOTE_WITHOUT_REPLIES_SQL}
            AND (? = 0 OR media_json NOT IN ('[]', ''))
            AND actor_uri NOT IN (
              SELECT target_actor_uri FROM blocks WHERE blocker_account_id = ?

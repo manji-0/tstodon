@@ -32,12 +32,23 @@ export type StatusCursor = IdCursor;
 
 export const cursorFragment = idCursorFragment;
 
+/**
+ * Mastodon's `Status.without_replies`: a status that is no reply, or a reply
+ * that answers its own author (`in_reply_to_account_id = account_id`). A
+ * reply keeps whom it answers after its parent is deleted, as Mastodon's
+ * `reply` flag stays.
+ */
+const WITHOUT_REPLIES_SQL = `(in_reply_to_account_id = account_id OR (
+  in_reply_to_id IS NULL AND in_reply_to_uri IS NULL
+  AND in_reply_to_account_id IS NULL AND in_reply_to_actor_uri IS NULL))`;
+
 /** Media-only timelines keep statuses with an attachment, as `only_media` asks. */
 export const WITH_MEDIA_SQL = `AND id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL)`;
 
 /**
- * Public local notes, without the authors `viewerId` must not see. Boosts stay
- * off, as Mastodon's `PublicFeed` is `without_reblogs`.
+ * Public local notes, without the authors `viewerId` must not see. Boosts and
+ * replies to someone else stay off, as Mastodon's `PublicFeed` is
+ * `without_reblogs` and `without_replies`.
  */
 export const listPublicStatuses = async (
   db: D1Database,
@@ -51,7 +62,8 @@ export const listPublicStatuses = async (
     const media = onlyMedia ? WITH_MEDIA_SQL : "";
     const { results } = await db
       .prepare(
-        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' AND visibility = 'public' ${MODERATED_ACCOUNTS_SQL}
+        `SELECT ${statusSelect} FROM statuses WHERE kind = 'LocalNote' AND visibility = 'public'
+         AND ${WITHOUT_REPLIES_SQL} ${MODERATED_ACCOUNTS_SQL}
          AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL} ${media} ${where} ${order} LIMIT ?`,
       )
       .bind(...suppressedBinds(viewerId), ...binds, limit)
@@ -168,7 +180,8 @@ export type AccountStatusFilters = Readonly<{
  * author sees all; an account the author blocks sees none; anyone else sees
  * public and unlisted ones, followers-only ones when following, and, unless
  * `excludeDirect`, the ones that mention them; and only the boosts of authors
- * they see (`filtered_reblogs_scope`).
+ * they see (`filtered_reblogs_scope`). `excludeReplies` keeps the replies
+ * that answer the author (`no_replies_scope`).
  */
 export const listAccountStatusesFiltered = async (
   db: D1Database,
@@ -197,7 +210,7 @@ export const listAccountStatusesFiltered = async (
              )
            ))
            AND (kind <> 'LocalReblog' OR ? = '' OR account_id = ? OR (${reblogs.sql}))
-           AND (? = 0 OR in_reply_to_id IS NULL)
+           AND (? = 0 OR ${WITHOUT_REPLIES_SQL})
            AND (? = 0 OR kind <> 'LocalReblog')
            AND (? = 0 OR visibility <> 'direct')
            AND (? = 0 OR id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL))
