@@ -1,8 +1,8 @@
 import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
-import { meter, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
+import { meter, patchD1, requestsSettled, resetMeter, seedNoise, settle } from "../test/meter";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { HOME_HORIZON_STEPS } from "./timeline-documents";
 import { ACTIVITY_JSON } from "../test/activity-json";
@@ -27,14 +27,14 @@ const get = async (token: string, path: string): Promise<number> =>
     }),
   );
 
-/** The rows read by the request `send` makes, after the writes before it settle. */
+/** The rows read by the request `send` makes, its after-response work included. */
 const measure = async (path: string, send: () => Promise<Response>): Promise<number> => {
   await settle();
   resetMeter();
   const response = await send();
   expect(response.status, path).toBe(200);
   await response.text();
-  await settle();
+  await requestsSettled();
   return meter.tally.rowsRead;
 };
 
@@ -291,13 +291,23 @@ describe("D1 rows read do not grow with unrelated rows", () => {
  * sequential queries with one request.
  */
 describe("D1 statements do not grow with how many things a request names", () => {
+  // The requests a test compares run at one instant, so an isolate cache that
+  // expires by the clock (the stream listeners, 5 s) is read by all of them or
+  // by none, not by whichever one starts after it expires.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   /** The D1 statements, and the rows they read, of one request. */
   const metered = async (send: () => Promise<Response>) => {
     await settle();
     resetMeter();
     const response = await send();
     await response.text();
-    await settle();
+    await requestsSettled();
     return { status: response.status, ...meter.tally };
   };
 
@@ -321,9 +331,9 @@ describe("D1 statements do not grow with how many things a request names", () =>
         const instance = await env.OUTBOX_DELIVERY_WORKFLOW.create({
           params: { kind: "DeliverActivity", activityId: "budget-meter-no-such-activity" },
         });
-        const deadline = Date.now() + 30_000;
-        while ((await instance.status()).status !== "complete") {
-          if (Date.now() > deadline) throw new Error("the Workflow did not complete");
+        // About 30 s of settles; the clock is frozen, so it cannot time this.
+        for (let tries = 0; (await instance.status()).status !== "complete"; tries += 1) {
+          if (tries > 200) throw new Error("the Workflow did not complete");
           await settle();
         }
         return request();
