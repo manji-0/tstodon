@@ -367,20 +367,11 @@ const loopsBack = (lookup: WebfingerLookup, handle: AccountHandle, actorUri: str
   sameHandle(lookup.subject, handle) &&
   lookup.self === actorUri;
 
-/**
- * How the lookups from the URI authority ended: as the round trip settles
- * it, or `Unavailable` with the handle whose lookup failed.
- */
-type UriSideTrip =
-  | Exclude<WebfingerConfirmationValue, { kind: "Unavailable" }>
-  | Readonly<{ kind: "Unavailable"; pending: AccountHandle }>;
-
-/** What a lookup of `handle` that answered nothing usable means for the round trip. */
+/** What a lookup that answered nothing usable means for the round trip. */
 const unanswered = (
   lookup: Exclude<WebfingerLookup, { kind: "Answered" }>,
-  handle: AccountHandle,
-): UriSideTrip =>
-  lookup.kind === "Disowned" ? { kind: "Mismatch" } : { kind: "Unavailable", pending: handle };
+): WebfingerConfirmationValue =>
+  lookup.kind === "Disowned" ? { kind: "Mismatch" } : { kind: "Unavailable" };
 
 /**
  * Mastodon's `check_webfinger!` for an actor read from its own document. The
@@ -397,15 +388,12 @@ const unanswered = (
  * domain settles nothing, so a third party cannot rename another server's
  * actor by pointing its own WebFinger at it.
  *
- * `stored` is the handle cached for the actor. When it is on another domain
- * and the lookups from the URI authority fail anywhere but at that domain
- * (the URI host does not answer, or names a domain that does not), only that
- * domain can keep it, as Mastodon's `ResolveAccountService` asks the account
- * domain: the stored handle stays when its own WebFinger names it and links
- * to this actor, is `Unavailable` while that domain does not answer, and is a
- * `Mismatch` on any other answer. A URI host therefore cannot keep a domain
- * that disowns it by failing its own lookups: only a failure at the stored
- * handle's own domain, which the URI host does not control, keeps it.
+ * Anything but a confirmation writes nothing (`WebfingerConfirmation.handleWrite`),
+ * so a cached actor keeps its stored handle through a failed round trip. The
+ * stored handle's own domain decides whether it keeps it: a handle lookup
+ * ({@link resolveRemoteActorByHandle}) and a refresh
+ * ({@link refreshRemoteActor}) ask it, and take the handle away when it
+ * links another actor.
  */
 const confirmHandle = async (
   identity: InstanceIdentity,
@@ -413,7 +401,6 @@ const confirmHandle = async (
   declared: AccountHandle | undefined,
   options: FederatedFetchOptions,
   answered: AccountHandle | undefined,
-  stored: AccountHandle | undefined,
 ): Promise<WebfingerConfirmationValue> => {
   const confirmed = (
     handle: AccountHandle,
@@ -426,7 +413,7 @@ const confirmHandle = async (
   const claimed = declared ?? { username: actor.username, domain: actor.domain };
   const vouched = (handle: AccountHandle): boolean =>
     answered !== undefined && sameHandle(answered, handle);
-  const fromUriAuthority = async (): Promise<UriSideTrip> => {
+  const fromUriAuthority = async (): Promise<WebfingerConfirmationValue> => {
     if (vouched(claimed)) {
       return confirmed(claimed);
     }
@@ -437,7 +424,7 @@ const confirmHandle = async (
     }
     const first = await lookUp(identity, claimed, options);
     if (first.kind !== "Answered") {
-      return unanswered(first, claimed);
+      return unanswered(first);
     }
     // The second lookup must name the same username, so only the first's is checked.
     if (!first.supportedUsername) {
@@ -456,28 +443,11 @@ const confirmHandle = async (
     }
     const second = await lookUp(identity, subject, options);
     if (second.kind !== "Answered") {
-      return unanswered(second, subject);
+      return unanswered(second);
     }
     return loopsBack(second, subject, actor.actorUri) ? settled : { kind: "Mismatch" };
   };
-  const trip = await fromUriAuthority();
-  if (trip.kind !== "Unavailable") {
-    return trip;
-  }
-  const foreign =
-    stored && stored.domain.toLowerCase() !== claimed.domain.toLowerCase() ? stored : undefined;
-  if (foreign === undefined || sameHandle(trip.pending, foreign)) {
-    return { kind: "Unavailable" };
-  }
-  const kept = confirmed(foreign);
-  if (kept.kind === "Refused" || vouched(foreign)) {
-    return kept;
-  }
-  const own = await lookUp(identity, foreign, options);
-  if (own.kind === "Failed") {
-    return { kind: "Unavailable" };
-  }
-  return loopsBack(own, foreign, actor.actorUri) ? kept : { kind: "Mismatch" };
+  return fromUriAuthority();
 };
 
 /**
@@ -538,28 +508,14 @@ const cacheActorWithKeys = async (
   if (check.kind === "KeepStored") {
     return upsertRemoteActorKeepingHandle(db, document, keys);
   }
-  const stored = await findRemoteActorByUri(db, actor.actorUri);
-  if (stored.isErr()) {
-    return err(stored.error);
-  }
   const confirmation = await confirmHandle(
     identity,
     actor,
     declaredHandle,
     options,
     check.answered,
-    stored.value && { username: stored.value.username, domain: stored.value.domain },
   );
-  const claimed = declaredHandle ?? { username: actor.username, domain: actor.domain };
-  const write = WebfingerConfirmation.handleWrite(
-    confirmation,
-    now.value,
-    stored.value === undefined
-      ? "FirstSeen"
-      : sameHandle(claimed, stored.value)
-        ? "CachedUnderClaimedHandle"
-        : "CachedUnderOtherHandle",
-  );
+  const write = WebfingerConfirmation.handleWrite(confirmation, now.value);
   if (write.isErr()) {
     // A lookup that did not answer is a server that did not answer: the
     // inbox answers 503 and the sender delivers again.
@@ -569,16 +525,11 @@ const cacheActorWithKeys = async (
         : write.error,
     );
   }
-  switch (write.value.kind) {
-    case "Confirm":
-      return upsertConfirmedRemoteActor(
-        db,
-        { ...document, ...write.value.handle, webfingeredAt: write.value.webfingeredAt },
-        keys,
-      );
-    case "Keep":
-      return upsertRemoteActorKeepingHandle(db, document, keys);
-  }
+  return upsertConfirmedRemoteActor(
+    db,
+    { ...document, ...write.value.handle, webfingeredAt: write.value.webfingeredAt },
+    keys,
+  );
 };
 
 /**
@@ -978,11 +929,14 @@ export const resolveRemoteActorByHandle = async (
 };
 
 /**
- * Re-fetch a cached actor and run the round trip again. When its document
- * does not answer and its stored handle is on another domain than its URI's,
- * that domain's WebFinger alone decides whether it keeps the handle, so a
- * former holder cannot keep a domain that disowns it by failing its own
- * server altogether.
+ * Re-fetch a cached actor and run the round trip again. When that fails
+ * (its document or the round trip's lookups do not answer, or WebFinger does
+ * not vouch for it) and its handle was confirmed, nothing of the actor is
+ * written, and the handle's own WebFinger decides whether it keeps it, as
+ * Mastodon's refresh resolves the stored handle (`ResolveAccountService`):
+ * an answer that names another account or links another actor takes it away
+ * (Mastodon's `invalidate_username!` on the former holder), and a 404, a 410
+ * or no answer leaves it.
  */
 export const refreshRemoteActor = async (
   db: D1Database,
@@ -991,10 +945,11 @@ export const refreshRemoteActor = async (
   options: FederatedFetchOptions,
 ): Promise<Result<void, RepositoryError>> => {
   const fetched = await refetchRemoteActor(db, identity, actorUri, options);
-  if (fetched.isOk() || !unreachable(fetched.error)) {
-    return fetched.isErr() && fetched.error.kind === "RepositoryError"
-      ? err(fetched.error)
-      : ok(undefined);
+  if (fetched.isOk()) {
+    return ok(undefined);
+  }
+  if (fetched.error.kind === "RepositoryError") {
+    return err(fetched.error);
   }
   const stored = await findRemoteActorByUri(db, actorUri);
   if (stored.isErr()) {
@@ -1004,5 +959,6 @@ export const refreshRemoteActor = async (
     return ok(undefined);
   }
   const handle = { username: stored.value.username, domain: stored.value.domain };
-  return settleHandleHolder(db, handle, await lookUp(identity, handle, options));
+  const lookup = await lookUp(identity, handle, options);
+  return lookup.kind === "Answered" ? settleHandleHolder(db, handle, lookup) : ok(undefined);
 };

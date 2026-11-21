@@ -315,23 +315,24 @@ const displayNameOf = async (actorUri: string): Promise<string> =>
 
 describe("an actor cached under a username Mastodon's Account would refuse", () => {
   // Mastodon validates a remote username only when it changes
-  // (`will_save_change_to_username?`).
-  it("is still refreshed by the cron while its document keeps that username", async () => {
-    const remote = await remoteActor("bob.", "wf-oddname.example", { fetchedAt: EPOCH });
-    serveRemotes([{ remote, username: "bob.", name: "Bob Refreshed" }], {});
+  // (`will_save_change_to_username?`), but `check_webfinger!` refuses such a
+  // username on every refetch but the actor's own `Update`.
+  it.each([
+    ["bob.", "bob.", "wf-oddname.example"],
+    ["bob_.", "Bob_.", "wf-oddname-case.example"],
+  ])("is not refreshed by the cron while WebFinger confirms %s", async (stored, served, host) => {
+    const remote = await remoteActor(stored, host, { fetchedAt: EPOCH });
+    const before = await displayNameOf(remote.actorUri);
+    serveRemotes([{ remote, username: served, name: "Bob Refreshed" }], {
+      [host]: { subject: `acct:${served}@${host}`, self: remote.actorUri },
+    });
 
     await refreshStaleRemoteActors(env);
 
-    expect(await displayNameOf(remote.actorUri)).toBe("Bob Refreshed");
-  });
-
-  it("is still refreshed while its document keeps that username in another case", async () => {
-    const remote = await remoteActor("bob_.", "wf-oddname-case.example", { fetchedAt: EPOCH });
-    serveRemotes([{ remote, username: "Bob_.", name: "Bob Cased" }], {});
-
-    await refreshStaleRemoteActors(env);
-
-    expect(await displayNameOf(remote.actorUri)).toBe("Bob Cased");
+    expect({
+      acct: await acctOf(remote.actorUri),
+      name: await displayNameOf(remote.actorUri),
+    }).toEqual({ acct: `${stored}@${host}`, name: before });
   });
 
   it("is still refreshed by its own actor Update while that keeps the username", async () => {
@@ -378,33 +379,36 @@ describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
     expect(await acctOf(remote.actorUri)).toBe(`dave@wf-${slug}.example`);
   });
 
-  it("leaves the actor as it was when the account domain answers 404, as check_webfinger! raises", async () => {
-    // Mastodon's refresh (`ResolveAccountService`) asks the stored handle
-    // first, and a 404 there raises before the document is read.
-    const host = "social.wf-gone404.example";
-    const remote = await remoteActor("dave", host, {
-      accountDomain: "wf-gone404.example",
-      fetchedAt: EPOCH,
-    });
-    const before = await displayNameOf(remote.actorUri);
-    serveRemotes([{ remote, username: "dave", name: "Dave, renamed" }], {
-      [host]: { subject: "acct:dave@wf-gone404.example", self: remote.actorUri },
-      "wf-gone404.example": { status: 404 },
-    });
+  it.each([404, 410])(
+    "leaves the actor as it was when the account domain answers %i",
+    async (status) => {
+      // Mastodon's refresh (`ResolveAccountService`) asks the stored handle
+      // first: a 404 raises and changes nothing. A 410 there deletes the
+      // account (`queue_deletion!`), which tstodon does not (FED-9).
+      const host = `social.wf-gone${status}.example`;
+      const domain = `wf-gone${status}.example`;
+      const remote = await remoteActor("dave", host, { accountDomain: domain, fetchedAt: EPOCH });
+      const before = await displayNameOf(remote.actorUri);
+      serveRemotes([{ remote, username: "dave", name: "Dave, renamed" }], {
+        [host]: { subject: `acct:dave@${domain}`, self: remote.actorUri },
+        [domain]: { status },
+      });
 
-    await refreshStaleRemoteActors(env);
+      await refreshStaleRemoteActors(env);
 
-    expect({
-      acct: await acctOf(remote.actorUri),
-      name: await displayNameOf(remote.actorUri),
-    }).toEqual({ acct: "dave@wf-gone404.example", name: before });
-  });
+      expect({
+        acct: await acctOf(remote.actorUri),
+        name: await displayNameOf(remote.actorUri),
+      }).toEqual({ acct: `dave@${domain}`, name: before });
+    },
+  );
 
-  it("updates an actor under the handle it holds, which WebFinger links to another actor, as Mastodon asks none", async () => {
-    // `extract_username_and_domain!` skips `check_webfinger!` when the
-    // document claims the handle the account is stored under.
+  it("leaves an actor as it was when its URI host links its own handle to another actor", async () => {
+    // Every refetch but an actor's own `Update` runs `check_webfinger!`,
+    // which raises when the answer does not loop back.
     const host = "social.wf-other.example";
     const remote = await remoteActor("dave", host, { fetchedAt: EPOCH });
+    const before = await displayNameOf(remote.actorUri);
     serveRemotes([{ remote, username: "dave", name: "Dave, renamed" }], {
       [host]: { subject: `acct:dave@${host}`, self: `https://${host}/users/someone-else` },
     });
@@ -414,7 +418,7 @@ describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
     expect({
       acct: await acctOf(remote.actorUri),
       name: await displayNameOf(remote.actorUri),
-    }).toEqual({ acct: `dave@${host}`, name: "Dave, renamed" });
+    }).toEqual({ acct: `dave@${host}`, name: before });
   });
 
   it("keeps refusing an actor whose suspended account domain refuses the lookup", async () => {
@@ -570,6 +574,102 @@ describe("a first-seen actor whose WebFinger does not answer", () => {
     expect(await mentioned(viewer, `again @pia@${domain}`)).toEqual([
       { id: RemoteAccountId.encode(remote.actorUri), acct: `pia@${domain}` },
     ]);
+  });
+});
+
+/**
+ * Mastodon's refresh resolves the stored handle (`ResolveAccountService`):
+ * when its domain now links the handle to another actor, that actor takes
+ * the account and the former holder loses the handle (`invalidate_username!`
+ * on a conflicting account). Here the former holder falls back to its URI
+ * authority, and the handle's next lookup stores the actor it links.
+ */
+describe("a cached actor whose account domain now links its handle to another actor", () => {
+  const hijack = async (slug: string) => {
+    const domain = `wf-hijack-${slug}.example`;
+    const old = await remoteActor("alice", `evil.${domain}`, {
+      accountDomain: domain,
+      fetchedAt: EPOCH,
+    });
+    const next = await remoteActor("alice", `new.${domain}`, { cache: false });
+    return { domain, old, next, linked: { subject: `acct:alice@${domain}`, self: next.actorUri } };
+  };
+
+  it("loses the handle its document still declares, and nothing else changes", async () => {
+    const { domain, old, next, linked } = await hijack("declared");
+    const before = await displayNameOf(old.actorUri);
+    serveRemotes(
+      [
+        { remote: old, username: "alice", name: "Not Alice", webfinger: `alice@${domain}` },
+        { remote: next, username: "alice" },
+      ],
+      { [domain]: linked, [`new.${domain}`]: linked },
+    );
+
+    await refreshStaleRemoteActors(env);
+
+    expect({
+      acct: await acctOf(old.actorUri),
+      name: await displayNameOf(old.actorUri),
+    }).toEqual({ acct: `alice@evil.${domain}`, name: before });
+  });
+
+  it("loses it when its own URI host's WebFinger answers 503", async () => {
+    const { domain, old, next, linked } = await hijack("down");
+    serveRemotes(
+      [
+        { remote: old, username: "alice" },
+        { remote: next, username: "alice" },
+      ],
+      {
+        [`evil.${domain}`]: { status: 503 },
+        [domain]: linked,
+        [`new.${domain}`]: linked,
+      },
+    );
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(old.actorUri)).toBe(`alice@evil.${domain}`);
+  });
+
+  it("hands the handle to the actor its domain links, on the handle's next lookup", async () => {
+    const { domain, old, next, linked } = await hijack("handover");
+    serveRemotes(
+      [
+        { remote: old, username: "alice" },
+        { remote: next, username: "alice" },
+      ],
+      {
+        [domain]: linked,
+        [`new.${domain}`]: linked,
+      },
+    );
+
+    await refreshStaleRemoteActors(env);
+    const mentions = await mentioned(`wf-hijack-handover@example.com`, `hi @alice@${domain}`);
+
+    expect({
+      mentions,
+      old: await acctOf(old.actorUri),
+      next: await acctOf(next.actorUri),
+    }).toEqual({
+      mentions: [{ id: RemoteAccountId.encode(next.actorUri), acct: `alice@${domain}` }],
+      old: `alice@evil.${domain}`,
+      next: `alice@${domain}`,
+    });
+  });
+
+  it("keeps the handle while the account domain does not answer", async () => {
+    const { domain, old } = await hijack("transient");
+    serveRemotes([{ remote: old, username: "alice" }], {
+      [`evil.${domain}`]: { status: 503 },
+      [domain]: { timeout: true },
+    });
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(old.actorUri)).toBe(`alice@${domain}`);
   });
 });
 
@@ -1368,13 +1468,36 @@ describe("a former holder of a handle whose account domain is down", () => {
 });
 
 describe("a former holder of a handle whose URI host serves no document", () => {
-  it("loses the account domain that answers 404", async () => {
+  it("keeps the account domain that answers 404, as Mastodon's refresh raises on it", async () => {
     const host = "old.wf-n1-nodoc.example";
     const remote = await remoteActor("alice", host, {
       accountDomain: "wf-n1-nodoc.example",
       fetchedAt: EPOCH,
     });
     serveRemotes([], { [host]: { status: 503 }, "wf-n1-nodoc.example": { status: 404 } }, 503);
+
+    await refreshStaleRemoteActors(env);
+
+    expect(await acctOf(remote.actorUri)).toBe("alice@wf-n1-nodoc.example");
+  });
+
+  it("loses the account domain that links the handle to another actor", async () => {
+    const host = "old.wf-n1-nodoc-lost.example";
+    const remote = await remoteActor("alice", host, {
+      accountDomain: "wf-n1-nodoc-lost.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemotes(
+      [],
+      {
+        [host]: { status: 503 },
+        "wf-n1-nodoc-lost.example": {
+          subject: "acct:alice@wf-n1-nodoc-lost.example",
+          self: "https://new.wf-n1-nodoc-lost.example/users/alice",
+        },
+      },
+      503,
+    );
 
     await refreshStaleRemoteActors(env);
 
@@ -1629,6 +1752,8 @@ describe("an account domain whose WebFinger redirect cannot be followed", () => 
       asked: fetched
         .filter((url) => url.pathname === "/.well-known/webfinger" && url.host !== host)
         .map((url) => url.host),
-    }).toEqual({ acct: `alice@${domain}`, asked });
+      // The round trip's lookup of the account domain, then the refresh's own
+      // lookup of the stored handle once the round trip failed.
+    }).toEqual({ acct: `alice@${domain}`, asked: [...asked, ...asked] });
   });
 });

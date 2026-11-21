@@ -43,58 +43,33 @@ export type WebfingerRefusal =
   | Readonly<{ kind: "WebfingerMismatch" }>;
 
 /**
- * Why a round trip writes nothing: a refusal, or a lookup for an actor not
- * cached yet that could not finish (`check_webfinger!` raises on it too). The
- * latter is transient: nothing is stored, and the next request asks again.
+ * Why a round trip writes nothing: a refusal, or a lookup that could not
+ * finish (`check_webfinger!` raises on it too). The latter is transient:
+ * nothing is written, and the next request asks again.
  */
 export type HandleWriteError = WebfingerRefusal | Readonly<{ kind: "WebfingerUnavailable" }>;
 
-/**
- * How actor fetch writes an actor's handle (`username@domain` and
- * `last_webfingered_at`) after the round trip.
- */
-export type HandleWrite =
-  /** Store `handle`, confirmed `webfingeredAt`, and take it from every other row. */
-  | Readonly<{ kind: "Confirm"; handle: AccountHandle; webfingeredAt: IsoInstant }>
-  /**
-   * Leave the handle and its stamp as the row holds them when it is written,
-   * not as it was read before the round trip, so a confirmation another actor
-   * made meanwhile stands.
-   */
-  | Readonly<{ kind: "Keep" }>;
+/** A handle WebFinger confirmed, stored with `last_webfingered_at` set to `webfingeredAt`. */
+export type HandleWrite = Readonly<{ handle: AccountHandle; webfingeredAt: IsoInstant }>;
 
 /**
- * Whether the actor the round trip ran for is cached already, and if so
- * whether its document claims the handle it is cached under (its FEP-2c59
- * `webfinger`, else `preferredUsername` at its URI's authority), which
- * Mastodon's `extract_username_and_domain!` checks before it asks WebFinger.
- */
-export type ActorRecord = "FirstSeen" | "CachedUnderClaimedHandle" | "CachedUnderOtherHandle";
-
-/**
- * The handle write a round trip calls for. Mastodon asks WebFinger only for
- * a handle the account is not stored under, and `check_webfinger!` raises on
- * any failure, so an actor the domain does not vouch for is not stored, or is
- * left as it was, unless it is cached under the handle its document claims:
- * Mastodon updates that one without asking. A lookup that could not finish
- * keeps a cached actor's handle and its stamp, so an outage does not move it
- * off its account domain or make that handle look newly confirmed; it stores
- * no first-seen actor, which the next request looks up again.
+ * The handle write a round trip calls for. Every actor fetch but an actor's
+ * own `Update` (which keeps the stored handle without asking) runs Mastodon's
+ * `check_webfinger!`, which raises on anything but a confirmation: the actor
+ * is not stored, or a cached one is left as it was, document and keys
+ * included.
  */
 const handleWrite = (
   confirmation: WebfingerConfirmation,
   now: IsoInstant,
-  record: ActorRecord,
 ): Result<HandleWrite, HandleWriteError> => {
   switch (confirmation.kind) {
     case "Confirmed":
-      return ok({ kind: "Confirm", handle: confirmation.handle, webfingeredAt: now });
+      return ok({ handle: confirmation.handle, webfingeredAt: now });
     case "Mismatch":
-      return record === "CachedUnderClaimedHandle"
-        ? ok({ kind: "Keep" })
-        : err({ kind: "WebfingerMismatch" });
+      return err({ kind: "WebfingerMismatch" });
     case "Unavailable":
-      return record === "FirstSeen" ? err({ kind: "WebfingerUnavailable" }) : ok({ kind: "Keep" });
+      return err({ kind: "WebfingerUnavailable" });
     case "Refused":
       return err({ kind: "DomainRefused", host: confirmation.host });
     case "UnsupportedUsername":
