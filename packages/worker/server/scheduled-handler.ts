@@ -80,6 +80,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Rename the tag names stored before accents were folded; a single read
   // once the cursor is complete.
   { kind: "Inline", job: { kind: "FoldTagNames" } },
+  // Rename the domains stored in Unicode before they were read in ASCII; a
+  // single read once the cursor is complete.
+  { kind: "Inline", job: { kind: "AsciiDomainNames" } },
   // Move attachments stored at an id-derived key to a random one.
   { kind: "Inline", job: { kind: "RekeyLegacyMedia", afterId: "" } },
   // Queue one cleanup run per account with automated post deletion on.

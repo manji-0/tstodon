@@ -46,6 +46,22 @@ const BackfillLocalNoteTagsSchema = unitKind("BackfillLocalNoteTags");
  */
 const FoldTagNamesSchema = unitKind("FoldTagNames");
 /**
+ * Rename the next page of domains stored in Unicode before `Hostname.fromInput`
+ * read them in ASCII, from the `domain_name_ascii` cursor (cron, self-chaining,
+ * stops once complete).
+ */
+const AsciiDomainNamesSchema = unitKind("AsciiDomainNames");
+/**
+ * Carry out what making the instance domain block on `domain` does, by its
+ * current row: clear the media of `reject_media`, sever the follows of a
+ * suspension. For a block that starts applying without being made, such as
+ * one `AsciiDomainNames` renamed to the ASCII host its actors are on.
+ */
+const ApplyDomainBlockEffectsSchema = z.object({
+  kind: z.literal("ApplyDomainBlockEffects"),
+  domain: Hostname.schema,
+});
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -475,6 +491,8 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteTagsSchema,
   BackfillLocalNoteTagsSchema,
   FoldTagNamesSchema,
+  AsciiDomainNamesSchema,
+  ApplyDomainBlockEffectsSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

@@ -1,4 +1,5 @@
 import type { SensitiveValue } from "@tstodon/core";
+import { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { ok, type Result } from "neverthrow";
 import { nowIso } from "./clock";
@@ -13,7 +14,6 @@ import {
   findCanonicalEmailBlockById as findCanonicalEmailBlockByIdSql,
   findCanonicalEmailBlockByHash as findCanonicalEmailBlockByHashSql,
   findEmailDomainBlockById as findEmailDomainBlockByIdSql,
-  findEmailDomainBlockByDomain as findEmailDomainBlockByDomainSql,
   insertCanonicalEmailBlock as insertCanonicalEmailBlockSql,
   insertEmailDomainBlock as insertEmailDomainBlockSql,
 } from "./generated/prisma/sql";
@@ -204,13 +204,22 @@ export const isRegistrationBlocked = async (
   db: D1Database,
   email: SensitiveValue<string>,
 ): Promise<Result<boolean, RepositoryError>> => {
-  const [local, domain] = email.reveal().trim().toLowerCase().split("@", 2);
-  if (!local || !domain) {
+  const [local, rawDomain] = email.reveal().trim().split("@", 2);
+  const domain = rawDomain === undefined ? undefined : Hostname.fromInput(rawDomain);
+  if (!local || domain === undefined) {
     return ok(false);
   }
-  const blockedDomain = await runD1(async () =>
-    queryTyped(db, findEmailDomainBlockByDomainSql(domain), IdRow),
-  );
+  // `EmailDomainBlock::Matcher#domains_with_variants`: the address's host and
+  // each domain above it, in the ASCII form blocks are stored in.
+  const blockedDomain = await runD1(async () => {
+    const { results } = await db
+      .prepare(
+        "SELECT id FROM email_domain_blocks WHERE domain IN (SELECT value FROM json_each(?)) LIMIT 1",
+      )
+      .bind(JSON.stringify(Hostname.variants(domain)))
+      .all();
+    return parseRows(IdRow, results);
+  });
   if (blockedDomain.isErr()) {
     return blockedDomain.map(() => false);
   }

@@ -15,6 +15,27 @@ export type Hostname = z.infer<typeof schema>;
 
 const withoutTrailingDots = (host: string): string => host.replace(/\.+$/, "");
 
+/**
+ * An internationalized name in its ASCII (punycode) form, as Addressable's
+ * `normalized_host`. A name with URL syntax in it stays as it is, as an ASCII
+ * one does, so `DomainValidator` refuses it rather than the URL parser
+ * reading a host out of it. The conversion maps `。` to `.`, so a trailing
+ * one is dropped after it.
+ */
+const asciiHost = (host: Hostname): Hostname => {
+  if (!/[^\x00-\x7f]/.test(host) || /[@?#\\/:]/.test(host)) {
+    return host;
+  }
+  try {
+    return schema.parse(withoutTrailingDots(new URL(`http://${host}`).hostname));
+  } catch {
+    return host;
+  }
+};
+
+const MAX_DOMAIN_LENGTH = 256;
+const DOMAIN_LABEL = /^[a-z0-9-]{1,63}$/;
+
 const ofAuthority = (authority: string): Hostname => {
   const lower = authority.toLowerCase();
   if (lower.startsWith("[")) {
@@ -30,7 +51,8 @@ export const Hostname = {
   ofAuthority,
   /**
    * A domain as a person types it: scheme, path, a leading `@` and the port
-   * dropped. `undefined` when nothing is left.
+   * dropped, an internationalized name in its ASCII form. `undefined` when
+   * nothing is left.
    */
   fromInput: (raw: string): Hostname | undefined => {
     const host = ofAuthority(
@@ -40,8 +62,11 @@ export const Hostname = {
         .replace(/^https?:\/\//i, "")
         .replace(/\/.*$/, ""),
     );
-    return host.length > 0 ? host : undefined;
+    return host.length > 0 ? asciiHost(host) : undefined;
   },
+  /** Whether Mastodon's `DomainValidator` accepts the name a domain block or allow stores. */
+  isValidDomain: (host: Hostname): boolean =>
+    host.length < MAX_DOMAIN_LENGTH && host.split(".").every((label) => DOMAIN_LABEL.test(label)),
   /**
    * The host and each domain above it, most specific first: Mastodon's
    * `domain_variants`, which `DomainBlock.rule_for` looks a host up by.

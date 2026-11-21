@@ -69,6 +69,7 @@ export {
   type InboxClaim as InboxClaimValue,
 } from "./inbox-activity";
 export { CoveredHosts } from "./covered-hosts";
+export { DomainBlockPolicy } from "./domain-block-policy";
 export { Hostname, type Hostname as HostnameValue } from "./hostname";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";

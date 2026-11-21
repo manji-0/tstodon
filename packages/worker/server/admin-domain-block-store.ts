@@ -93,6 +93,26 @@ export const findDomainBlockByDomain = async (
     return rows[0];
   });
 
+/**
+ * The block that applies to `host`: Mastodon's `DomainBlock.rule_for`, the
+ * block on the host or its nearest parent domain.
+ */
+export const findDomainBlockRule = async (
+  db: D1Database,
+  host: Hostname,
+): Promise<Result<DomainBlockRow | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT id, domain, severity, reject_media, reject_reports, obfuscate, private_comment, public_comment, created_at
+         FROM domain_blocks WHERE domain IN (SELECT value FROM json_each(?))
+         ORDER BY length(domain) DESC LIMIT 1`,
+      )
+      .bind(JSON.stringify(Hostname.variants(host)))
+      .all();
+    return parseRows(DomainBlockRowSchema, results)[0];
+  });
+
 export const insertDomainBlock = async (
   db: D1Database,
   input: DomainBlockInput,
