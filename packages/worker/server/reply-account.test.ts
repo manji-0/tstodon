@@ -203,6 +203,25 @@ describe("in_reply_to_account_id", () => {
     // Linked when its parent arrived, already answering Gina.
     expect(await answered(reader, underLate)).toBe(remoteId(gina));
   });
+
+  it("outlives a deleted parent, and a self-reply under it still carries it over", async () => {
+    const alice = "ra-deleted-alice@example.com";
+    const bob = await signedInAccount("ra-deleted-bob@example.com");
+    await signedInAccount(alice);
+
+    const bobRoot = await post("ra-deleted-bob@example.com", "bob's thread");
+    const toBob = await post(alice, "to bob", bobRoot);
+    const deleted = await SELF.fetch(`https://example.com/api/v1/statuses/${bobRoot}`, {
+      method: "DELETE",
+      headers: await authHeaders("ra-deleted-bob@example.com"),
+    });
+    expect(deleted.status).toBe(200);
+    // Mastodon nulls `in_reply_to_id` only; the reply is still a reply to Bob.
+    const underToBob = await post(alice, "more to bob", toBob);
+
+    expect(await answered(alice, toBob)).toBe(bob.id);
+    expect(await answered(alice, underToBob)).toBe(bob.id);
+  });
 });
 
 describe("home's reply filter", () => {

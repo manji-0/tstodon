@@ -70,6 +70,16 @@ const deliver = async (author: Remote, slug: string, inReplyTo?: string): Promis
   return row.id;
 };
 
+/** The migration's two backfill statements. */
+const backfillStatements = (): string[] =>
+  migration
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n")
+    .split(/;\s*\n(?=\S|$)/)
+    .map((statement) => statement.trim().replace(/;$/, ""))
+    .filter((statement) => statement.startsWith("WITH RECURSIVE"));
+
 /** Forget every stored reply account, then run the migration's backfill. */
 const backfill = async (): Promise<void> => {
   await env.DB.batch([
@@ -80,16 +90,10 @@ const backfill = async (): Promise<void> => {
       "UPDATE remote_statuses SET in_reply_to_account_id = NULL, in_reply_to_actor_uri = NULL",
     ),
   ]);
-  const statements = migration
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("--"))
-    .join("\n")
-    .split(/;\s*\n(?=\S|$)/)
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.startsWith("WITH RECURSIVE"));
+  const statements = backfillStatements();
   expect(statements).toHaveLength(2);
   for (const statement of statements) {
-    await env.DB.prepare(statement.replace(/;$/, "")).run();
+    await env.DB.prepare(statement).run();
   }
 };
 
@@ -149,5 +153,14 @@ describe("migration 0162", () => {
       expected.map(async ([id]) => [id, await answered(alice, id)] as const),
     );
     expect(actual).toEqual(expected);
+  });
+
+  it("walks each thread down once, seeking each reply's children by key", async () => {
+    for (const statement of backfillStatements()) {
+      const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${statement}`).all();
+      const details = parseRows(z.object({ detail: z.string() }), results).map((row) => row.detail);
+      expect(details.filter((detail) => /^SCAN child\b/.test(detail))).toEqual([]);
+      expect(details.some((detail) => /^SEARCH child USING INDEX/.test(detail))).toBe(true);
+    }
   });
 });

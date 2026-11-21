@@ -18,7 +18,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param updatedAt
  */
 export const insertLocalNote = $runtime.makeTypedQueryFactory(
-  "INSERT INTO statuses (\nid, account_id, kind, in_reply_to_id, content_text, content_html, visibility, sensitive,\nspoiler_text, language, created_at, updated_at, in_reply_to_account_id, in_reply_to_actor_uri\n) VALUES (\n$1, $2, 'LocalNote', $3, $4, $5, $6, $7, $8, $9, $10, $11,\n(SELECT CASE\nWHEN p.account_id = $2 AND (p.in_reply_to_id IS NOT NULL OR p.in_reply_to_uri IS NOT NULL)\nTHEN p.in_reply_to_account_id\nELSE p.account_id\nEND FROM statuses p WHERE p.id = $3),\n(SELECT CASE\nWHEN p.account_id = $2 AND (p.in_reply_to_id IS NOT NULL OR p.in_reply_to_uri IS NOT NULL)\nTHEN p.in_reply_to_actor_uri\nEND FROM statuses p WHERE p.id = $3)\n)",
+  "INSERT INTO statuses (\nid, account_id, kind, in_reply_to_id, content_text, content_html, visibility, sensitive,\nspoiler_text, language, created_at, updated_at, in_reply_to_account_id, in_reply_to_actor_uri\n) VALUES (\n$1, $2, 'LocalNote', $3, $4, $5, $6, $7, $8, $9, $10, $11,\n(SELECT CASE\nWHEN p.account_id = $2 AND (p.in_reply_to_account_id IS NOT NULL OR p.in_reply_to_actor_uri IS NOT NULL\nOR p.in_reply_to_id IS NOT NULL OR p.in_reply_to_uri IS NOT NULL)\nTHEN p.in_reply_to_account_id\nELSE p.account_id\nEND FROM statuses p WHERE p.id = $3),\n(SELECT CASE\nWHEN p.account_id = $2 AND (p.in_reply_to_account_id IS NOT NULL OR p.in_reply_to_actor_uri IS NOT NULL\nOR p.in_reply_to_id IS NOT NULL OR p.in_reply_to_uri IS NOT NULL)\nTHEN p.in_reply_to_actor_uri\nEND FROM statuses p WHERE p.id = $3)\n)",
 ) as (
   id: string,
   accountId: string,

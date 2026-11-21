@@ -30,10 +30,12 @@ INSERT INTO remote_statuses (
   CASE WHEN $19 IS NOT NULL
     THEN (SELECT l.account_id FROM statuses l WHERE l.id = $19)
     ELSE (SELECT p.in_reply_to_account_id FROM remote_statuses p
-          WHERE p.object_uri = $14 AND p.actor_uri = $2 AND p.in_reply_to_uri IS NOT NULL)
+          WHERE p.object_uri = $14 AND p.actor_uri = $2)
   END,
   CASE WHEN $19 IS NULL
-    THEN (SELECT CASE WHEN p.actor_uri = $2 AND p.in_reply_to_uri IS NOT NULL
+    THEN (SELECT CASE WHEN p.actor_uri = $2
+                       AND (p.in_reply_to_uri IS NOT NULL OR p.in_reply_to_account_id IS NOT NULL
+                            OR p.in_reply_to_actor_uri IS NOT NULL)
                       THEN p.in_reply_to_actor_uri ELSE p.actor_uri END
           FROM remote_statuses p WHERE p.object_uri = $14)
   END

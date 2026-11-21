@@ -21,11 +21,12 @@ CREATE TRIGGER IF NOT EXISTS remote_statuses_link_replies AFTER INSERT ON remote
 BEGIN
     UPDATE remote_statuses SET
         in_reply_to_account_id = CASE
-            WHEN actor_uri = NEW.actor_uri AND NEW.in_reply_to_uri IS NOT NULL
-            THEN NEW.in_reply_to_account_id
+            WHEN actor_uri = NEW.actor_uri THEN NEW.in_reply_to_account_id
         END,
         in_reply_to_actor_uri = CASE
-            WHEN actor_uri = NEW.actor_uri AND NEW.in_reply_to_uri IS NOT NULL
+            WHEN actor_uri = NEW.actor_uri
+             AND (NEW.in_reply_to_uri IS NOT NULL OR NEW.in_reply_to_account_id IS NOT NULL
+                  OR NEW.in_reply_to_actor_uri IS NOT NULL)
             THEN NEW.in_reply_to_actor_uri
             ELSE NEW.actor_uri
         END
@@ -34,66 +35,64 @@ BEGIN
       AND in_reply_to_actor_uri IS NULL;
 END;
 
--- The statuses stored before: each reply climbs its author's own statuses
--- (at most 1000 steps, as `server/own-ancestry.ts` did) to the first that
--- answers someone else, or to a root, which answers the author. A parent
--- that is not held leaves both NULL. A remote reply to a local status is
--- matched by the `/users/<username>/statuses/<id>` ending of its URI, as
--- migration 0138 counts replies: the instance's origin is configuration.
+-- The statuses stored before. Each thread is walked once, down from where an
+-- author's run of their own statuses starts: a reply to someone else's
+-- status answers that status's author, and a reply to the author's own root
+-- answers the author. A reply to the author's own reply then takes that
+-- reply's, one child at a time through the reply indexes, so each row is
+-- read and written once (at most 1000 steps down, as `server/own-ancestry.ts`
+-- climbed). A reply that answers no one is left NULL, and so are the replies
+-- below it. A reply whose parent was deleted before this migration lost its
+-- parent's author with `in_reply_to_id`, so it answers no one. A remote reply
+-- to a local status is matched by the `/users/<username>/statuses/<id>`
+-- ending of its URI, as migration 0138 counts replies: the instance's origin
+-- is configuration.
 
-WITH RECURSIVE run (id, account_id, parent_id, parent_uri, depth) AS (
-    SELECT id, account_id, in_reply_to_id, in_reply_to_uri, 0
-    FROM statuses
-    WHERE kind = 'LocalNote' AND (in_reply_to_id IS NOT NULL OR in_reply_to_uri IS NOT NULL)
+WITH RECURSIVE answered (id, account_id, answer_account, answer_actor, depth) AS (
+    SELECT s.id, s.account_id,
+        CASE WHEN p.account_id = s.account_id THEN s.account_id ELSE p.account_id END,
+        NULL, 0
+    FROM statuses s
+    JOIN statuses p ON p.id = s.in_reply_to_id
+    WHERE s.kind = 'LocalNote'
+      AND (p.account_id <> s.account_id OR (p.in_reply_to_id IS NULL AND p.in_reply_to_uri IS NULL))
     UNION ALL
-    SELECT run.id, run.account_id, parent.in_reply_to_id, parent.in_reply_to_uri, run.depth + 1
-    FROM run
-    JOIN statuses AS parent ON parent.id = run.parent_id
-    WHERE parent.account_id = run.account_id AND run.depth < 1000
-),
-top AS (
-    SELECT id, account_id, parent_id, parent_uri, max(depth) AS depth FROM run GROUP BY id
+    SELECT s.id, s.account_id, NULL, p.actor_uri, 0
+    FROM statuses s
+    JOIN remote_statuses p ON p.object_uri = s.in_reply_to_uri
+    WHERE s.kind = 'LocalNote' AND s.in_reply_to_id IS NULL
+    UNION ALL
+    SELECT child.id, child.account_id, answered.answer_account, answered.answer_actor, answered.depth + 1
+    FROM answered
+    JOIN statuses child ON child.in_reply_to_id = answered.id
+    WHERE child.kind = 'LocalNote' AND child.account_id = answered.account_id AND answered.depth < 1000
 )
-UPDATE statuses SET
-    in_reply_to_account_id = CASE
-        WHEN top.parent_id IS NULL AND top.parent_uri IS NULL THEN top.account_id
-        WHEN top.parent_id IS NOT NULL
-        THEN (SELECT p.account_id FROM statuses p WHERE p.id = top.parent_id)
-    END,
-    in_reply_to_actor_uri = CASE
-        WHEN top.parent_id IS NULL AND top.parent_uri IS NOT NULL
-        THEN (SELECT p.actor_uri FROM remote_statuses p WHERE p.object_uri = top.parent_uri)
-    END
-FROM top
-WHERE statuses.id = top.id;
+UPDATE statuses SET in_reply_to_account_id = answer_account, in_reply_to_actor_uri = answer_actor
+FROM answered
+WHERE statuses.id = answered.id;
 
-WITH RECURSIVE run (id, actor_uri, parent_uri, depth) AS (
-    SELECT id, actor_uri, in_reply_to_uri, 0
-    FROM remote_statuses
-    WHERE in_reply_to_uri IS NOT NULL
+WITH RECURSIVE answered (id, object_uri, actor_uri, answer_account, answer_actor, depth) AS (
+    SELECT s.id, s.object_uri, s.actor_uri, NULL,
+        CASE WHEN p.actor_uri = s.actor_uri THEN s.actor_uri ELSE p.actor_uri END,
+        0
+    FROM remote_statuses s
+    JOIN remote_statuses p ON p.object_uri = s.in_reply_to_uri
+    WHERE p.actor_uri <> s.actor_uri OR p.in_reply_to_uri IS NULL
     UNION ALL
-    SELECT run.id, run.actor_uri, parent.in_reply_to_uri, run.depth + 1
-    FROM run
-    JOIN remote_statuses AS parent ON parent.object_uri = run.parent_uri
-    WHERE parent.actor_uri = run.actor_uri AND run.depth < 1000
-),
-top AS (
-    SELECT id, actor_uri, parent_uri, max(depth) AS depth FROM run GROUP BY id
+    SELECT s.id, s.object_uri, s.actor_uri, l.account_id, NULL, 0
+    FROM remote_statuses s
+    JOIN statuses l ON l.id = substr(s.in_reply_to_uri, -18)
+    JOIN accounts a ON a.id = l.account_id
+    WHERE substr(s.in_reply_to_uri, -length('/users/' || a.username || '/statuses/' || l.id))
+          = '/users/' || a.username || '/statuses/' || l.id
+      AND NOT EXISTS (SELECT 1 FROM remote_statuses h WHERE h.object_uri = s.in_reply_to_uri)
+    UNION ALL
+    SELECT child.id, child.object_uri, child.actor_uri, answered.answer_account,
+        answered.answer_actor, answered.depth + 1
+    FROM answered
+    JOIN remote_statuses child ON child.in_reply_to_uri = answered.object_uri
+    WHERE child.actor_uri = answered.actor_uri AND answered.depth < 1000
 )
-UPDATE remote_statuses SET
-    in_reply_to_account_id = CASE
-        WHEN top.parent_uri IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM remote_statuses p WHERE p.object_uri = top.parent_uri)
-        THEN (
-            SELECT l.account_id FROM statuses l JOIN accounts a ON a.id = l.account_id
-            WHERE l.id = substr(top.parent_uri, -18)
-              AND substr(top.parent_uri, -length('/users/' || a.username || '/statuses/' || l.id))
-                  = '/users/' || a.username || '/statuses/' || l.id
-        )
-    END,
-    in_reply_to_actor_uri = CASE
-        WHEN top.parent_uri IS NULL THEN top.actor_uri
-        ELSE (SELECT p.actor_uri FROM remote_statuses p WHERE p.object_uri = top.parent_uri)
-    END
-FROM top
-WHERE remote_statuses.id = top.id;
+UPDATE remote_statuses SET in_reply_to_account_id = answer_account, in_reply_to_actor_uri = answer_actor
+FROM answered
+WHERE remote_statuses.id = answered.id;
