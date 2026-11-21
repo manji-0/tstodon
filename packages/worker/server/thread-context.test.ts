@@ -399,6 +399,41 @@ describe("thread context for silenced authors", () => {
     expect(await batchIds([reply.id], follower)).toEqual([]);
   });
 
+  // `following?` reads accepted follows only, not a request waiting for an answer.
+  it("does not count a follow request that is not accepted yet", async () => {
+    const owner = "tsp-owner@example.com";
+    const requester = "tsp-requester@example.com";
+    const locked = "tsp-locked@example.com";
+    const lockedId = (await signedInAccount(locked)).id;
+    const requesterId = (await signedInAccount(requester)).id;
+    const remote = await remoteActor("thread-silenced-pending");
+    const locking = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...(await authHeaders(locked)) },
+      body: JSON.stringify({ locked: true }),
+    });
+    expect(locking.status).toBe(200);
+    await follow(requester, lockedId);
+    await follow(requester, RemoteAccountId.encode(remote.actorUri));
+    const states = await env.DB.prepare(
+      `SELECT kind AS state FROM follows WHERE follower_account_id = ?1
+       UNION ALL SELECT state FROM outbound_follows WHERE account_id = ?1`,
+    )
+      .bind(requesterId)
+      .all<{ state: string }>();
+    expect(states.results.map((row) => row.state).sort()).toEqual(["Pending", "Requested"]);
+
+    const root = await post(owner, "pending followers");
+    const local = await post(locked, "a locked reply", root.id);
+    const reply = await receiveReply(remote, "thread-silenced-pending-1", root.uri);
+    await asAdmin(`/api/v1/admin/accounts/${lockedId}/silence`);
+    await asAdmin(`/api/v1/admin/accounts/${RemoteAccountId.encode(remote.actorUri)}/silence`);
+
+    expect((await context(root.id, locked)).descendants).toEqual([local.id]);
+    expect((await context(root.id, requester)).descendants).toEqual([]);
+    expect(await batchIds([local.id, reply.id], requester)).toEqual([]);
+  });
+
   it("shows a silenced local account's statuses to its followers and itself", async () => {
     const owner = "thread-silence-local-owner@example.com";
     const follower = "thread-silence-local-follower@example.com";
