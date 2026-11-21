@@ -183,6 +183,35 @@ const noAnswer = (error: FederatedFetchError): boolean =>
   error.kind === "VerificationUnavailable" && error.status === undefined;
 
 /**
+ * How many keys are fetched at once. A Worker opens six connections at a
+ * time and queues the rest, while each fetch's deadline already runs, so a
+ * queued fetch could time out and read as no answer.
+ */
+const MAX_CONCURRENT_FETCHES = 6;
+
+/** `run` over `items`, at most `limit` at a time, the results in order. */
+const mapPooled = async <T, R>(
+  items: ReadonlyArray<T>,
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<ReadonlyArray<R>> => {
+  const results: R[] = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      const item = items[index];
+      if (item !== undefined) {
+        results[index] = await run(item);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+};
+
+/**
  * The keys `published` (from {@link publishedKeys}) stand for: each given
  * key, and each named one read from its own document, fetched unless
  * `fetched` holds it (the document a signature's key id already served),
@@ -192,7 +221,7 @@ const noAnswer = (error: FederatedFetchError): boolean =>
  * fetch with no answer fails the whole read (`VerificationUnavailable`), so
  * the caller keeps what it holds; a malformed `publicKeyMultibase` refuses
  * the actor (`InvalidSignature`). At most twenty keys are fetched, ten from
- * each list.
+ * each list, six at a time.
  */
 export const resolvePublishedKeys = async (
   identity: InstanceIdentity,
@@ -201,28 +230,26 @@ export const resolvePublishedKeys = async (
   options: FederatedFetchOptions,
   fetched: ReadonlyMap<string, unknown> = new Map(),
 ): Promise<Result<ReadonlyArray<RemoteActorKey>, FederatedFetchError>> => {
-  const read = await Promise.all(
-    published.map(
-      async (entry): Promise<Result<RemoteActorKey | undefined, FederatedFetchError>> => {
-        if (entry.kind === "Given") {
-          return ok(entry.key);
-        }
-        const document = fetched.has(entry.keyId)
-          ? ok(fetched.get(entry.keyId))
-          : await fetchActivityJson(identity, entry.keyId, options);
-        if (document.isErr()) {
-          return noAnswer(document.error)
-            ? err({ kind: "VerificationUnavailable" })
-            : ok(undefined);
-        }
-        if (entry.form === "PublicKey") {
-          return ok(servedPublicKey(document.value, entry.keyId, actorUri));
-        }
-        return servedMultikey(document.value, entry.keyId, actorUri).mapErr(
-          (): FederatedFetchError => ({ kind: "InvalidSignature" }),
-        );
-      },
-    ),
+  const read = await mapPooled(
+    published,
+    MAX_CONCURRENT_FETCHES,
+    async (entry): Promise<Result<RemoteActorKey | undefined, FederatedFetchError>> => {
+      if (entry.kind === "Given") {
+        return ok(entry.key);
+      }
+      const document = fetched.has(entry.keyId)
+        ? ok(fetched.get(entry.keyId))
+        : await fetchActivityJson(identity, entry.keyId, options);
+      if (document.isErr()) {
+        return noAnswer(document.error) ? err({ kind: "VerificationUnavailable" }) : ok(undefined);
+      }
+      if (entry.form === "PublicKey") {
+        return ok(servedPublicKey(document.value, entry.keyId, actorUri));
+      }
+      return servedMultikey(document.value, entry.keyId, actorUri).mapErr(
+        (): FederatedFetchError => ({ kind: "InvalidSignature" }),
+      );
+    },
   );
   const seen = new Set<string>();
   return Result.combine(read).map((keys) =>

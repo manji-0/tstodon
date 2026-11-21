@@ -1,10 +1,9 @@
 import { assertNever } from "@tstodon/core";
 import type { LocalAccount, RemoteActor } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
-import type { RepositoryError } from "../d1";
 import { receiveRemoteFlag } from "../remote-flag";
 import { applyRemoteMove } from "../remote-move";
-import { applyRemoteUpdate } from "../remote-update";
+import { applyRemoteUpdate, type RemoteUpdateError } from "../remote-update";
 import { receiveLocalAnnounce, receiveRemoteAnnounce } from "./announce";
 import { receiveAnswer } from "./answer";
 import { receiveRemoteBlock } from "./block";
@@ -17,7 +16,13 @@ import { receiveLocalLike, receiveRemoteLike } from "./like";
 import { receiveQuoteRequest } from "./quote-request";
 import { receiveLocalUndo, receiveRemoteUndo } from "./undo";
 
-type Dispatched = Promise<Result<void, RepositoryError>>;
+/**
+ * An `Err` is a failure the sender should retry: storage, or a server an
+ * `Update` had to read that did not answer (`Unavailable`).
+ */
+export type InboxApplyError = RemoteUpdateError;
+
+type Dispatched = Promise<Result<void, InboxApplyError>>;
 
 /**
  * The object an `Update` is applied with: as received, but for a forwarded

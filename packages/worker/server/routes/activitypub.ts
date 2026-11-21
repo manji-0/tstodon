@@ -1309,6 +1309,17 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
   );
   if (applied.isErr()) {
     await releaseInboxActivity(c.env.DB, claimKey);
+    if (applied.error.kind === "Unavailable") {
+      refuse({
+        reason: "KeyUnavailable",
+        status: 503,
+        actor: actorUri,
+        signer: signerUri,
+        detail: received.activity.kind,
+      });
+      c.header("Retry-After", "60");
+      return c.json({ kind: "VerificationUnavailable" }, 503);
+    }
     return jsonRepositoryError(c, applied.error.message);
   }
   // Applied: 202 even if marking it handled fails, as a retry would apply it

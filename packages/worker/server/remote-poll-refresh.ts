@@ -103,7 +103,10 @@ const fetchAndApply = async (
     document.value,
     options,
   );
-  return applied.map(() => true);
+  if (applied.isErr()) {
+    return applied.error.kind === "RepositoryError" ? err(applied.error) : ok(false);
+  }
+  return ok(true);
 };
 
 /**

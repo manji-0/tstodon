@@ -610,6 +610,101 @@ describe("keys an actor's document names by id (FED-8)", () => {
     expect((await post(victim.delivery(create(victim, "still-mine")))).status).toBe(202);
   });
 
+  it("fetches the twenty keys it reads at most six at a time, as Workers opens six connections", async () => {
+    const ivy = await remoteActor("keys-pool-ivy", "keys-pool.example", { cache: false });
+    const own = await generateAccountKeys();
+    const ed = await ed25519Signer();
+    const pemIds = Array.from(
+      { length: 11 },
+      (_, index) => `https://keys-pool.example/rsa/${index}`,
+    );
+    const multikeyIds = Array.from(
+      { length: 11 },
+      (_, index) => `https://keys-pool.example/ed/${index}`,
+    );
+    const documents: Record<string, Record<string, unknown>> = {
+      [ivy.actorUri]: actorDocument(ivy, {
+        publicKey: pemIds,
+        assertionMethod: multikeyIds,
+      }),
+    };
+    for (const id of pemIds) {
+      documents[id] = { id, owner: ivy.actorUri, publicKeyPem: own.publicKeyPem };
+    }
+    for (const id of multikeyIds) {
+      documents[id] = {
+        id,
+        type: "Multikey",
+        controller: ivy.actorUri,
+        publicKeyMultibase: ed.publicKeyMultibase,
+      };
+    }
+    const served = serve(documents);
+    const answer = served.getMockImplementation();
+    let open = 0;
+    let most = 0;
+    served.mockImplementation(async (input, init) => {
+      open += 1;
+      most = Math.max(most, open);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      try {
+        return await (answer ?? fetch)(input, init);
+      } finally {
+        open -= 1;
+      }
+    });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect((await refreshRemoteActor(env.DB, identity, ivy.actorUri, options())).isOk()).toBe(true);
+    expect(most).toBeLessThanOrEqual(6);
+    const urls = fetchedUrls(served);
+    // Ten of each list are read; the eleventh is never fetched.
+    expect(urls).not.toContain(pemIds[10]);
+    expect(urls).not.toContain(multikeyIds[10]);
+    for (const keyId of [...pemIds.slice(0, 10), ...multikeyIds.slice(0, 10)]) {
+      expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()).toBeDefined();
+    }
+  });
+
+  it("answers an actor Update 503 while a key it names does not answer, and applies it on the retry", async () => {
+    const una = await remoteActor("keys-update-una", "keys-update.example", { cache: false });
+    const keyId = "https://keys-update.example/keys/una";
+    const own = await generateAccountKeys();
+    const listing = (overrides: Record<string, unknown> = {}) =>
+      actorDocument(una, {
+        publicKey: [
+          { id: `${una.actorUri}#main-key`, owner: una.actorUri, publicKeyPem: una.publicKeyPem },
+          keyId,
+        ],
+        ...overrides,
+      });
+    const keyDocument = { id: keyId, owner: una.actorUri, publicKeyPem: own.publicKeyPem };
+    serve({ [una.actorUri]: listing(), [keyId]: keyDocument });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect((await refreshRemoteActor(env.DB, identity, una.actorUri, options())).isOk()).toBe(true);
+    const update = {
+      "@context": [AS, DATA_INTEGRITY],
+      id: `${una.actorUri}#updates/1`,
+      type: "Update",
+      actor: una.actorUri,
+      to: [PUBLIC],
+      object: listing({ name: "Updated" }),
+    };
+    const displayName = async () =>
+      (await findRemoteActorByUri(env.DB, una.actorUri))._unsafeUnwrap()?.displayName;
+
+    vi.restoreAllMocks();
+    serve({ [una.actorUri]: listing() }, [keyId]);
+    const first = await refusalsDuring(() => post(una.delivery(update)));
+    expect(first.status).toBe(503);
+    expect(first.refusals).toMatchObject([{ reason: "KeyUnavailable" }]);
+    expect(await displayName()).not.toBe("Updated");
+
+    vi.restoreAllMocks();
+    serve({ [una.actorUri]: listing(), [keyId]: keyDocument });
+    expect((await post(una.delivery(update))).status).toBe(202);
+    expect(await displayName()).toBe("Updated");
+  });
+
   it("moves a key id to another actor of its host only when the key's own document names that actor", async () => {
     const keyId = "https://keys-move.example/keys/shared";
     const holder = await remoteActor("keys-move-holder", "keys-move.example", { cache: false });
