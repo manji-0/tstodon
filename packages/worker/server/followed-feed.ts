@@ -96,8 +96,9 @@ export const mentionsBlockedOrMutedSql = (
     ...(status.local === undefined
       ? []
       : [
-          probe("status_mentions", status.local, accounts),
-          probe("status_remote_mentions", status.local, actors),
+          // A silent mention is not an active one (`Mention.active`).
+          probe("status_mentions", status.local, `m.silent = 0 AND ${accounts}`),
+          probe("status_remote_mentions", status.local, `m.silent = 0 AND ${actors}`),
         ]),
     ...(status.remote === undefined
       ? []

@@ -8,14 +8,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param statusId
  * @param actorUri
  */
-export const insertStatusRemoteMention = $runtime.makeTypedQueryFactory(
-  "INSERT OR IGNORE INTO status_remote_mentions (status_id, actor_uri) VALUES ($1, $2)",
+export const findStatusRemoteMention = $runtime.makeTypedQueryFactory(
+  "SELECT 1 AS found FROM status_remote_mentions WHERE status_id = $1 AND actor_uri = $2",
 ) as (
   statusId: string,
   actorUri: string,
-) => $runtime.TypedSql<insertStatusRemoteMention.Parameters, insertStatusRemoteMention.Result>;
+) => $runtime.TypedSql<findStatusRemoteMention.Parameters, findStatusRemoteMention.Result>;
 
-export namespace insertStatusRemoteMention {
+export namespace findStatusRemoteMention {
   export type Parameters = [statusId: string, actorUri: string];
-  export type Result = {};
+  export type Result = {
+    found: null | null;
+  };
 }

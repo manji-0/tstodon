@@ -288,19 +288,19 @@ export const publishLocalNote = async (
     return err(attributesWritten.error);
   }
   // Persist mention rows before side-effect notifies (D1 write strategy / Create saga).
-  const mentionsSaved = await replaceStatusMentions(
-    env.DB,
-    note.id,
-    mentionedAccounts.map((account) => account.id),
-  );
+  // The quoted author gets a silent mention, as Mastodon's
+  // `Quote#ensure_quoted_access`, so it may read a followers-only quote.
+  const mentionsSaved = await replaceStatusMentions(env.DB, note.id, {
+    mentioned: mentionedAccounts.map((account) => account.id),
+    addressed: quotedAuthor?.kind === "Local" ? [quotedAuthor.accountId] : [],
+  });
   if (mentionsSaved.isErr()) {
     return err(mentionsSaved.error);
   }
-  const remoteSaved = await replaceStatusRemoteMentions(
-    env.DB,
-    note.id,
-    remoteMentions.map((actor) => actor.actorUri),
-  );
+  const remoteSaved = await replaceStatusRemoteMentions(env.DB, note.id, {
+    mentioned: remoteMentions.map((actor) => actor.actorUri),
+    addressed: quotedAuthor?.kind === "Remote" ? [quotedAuthor.actor.actorUri] : [],
+  });
   if (remoteSaved.isErr()) {
     return err(remoteSaved.error);
   }

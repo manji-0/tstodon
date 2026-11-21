@@ -202,11 +202,7 @@ export * from "./sql/deleteSignupIntentsByEmail";
 
 export * from "./sql/deleteStatusMedia";
 
-export * from "./sql/deleteStatusMentions";
-
 export * from "./sql/deleteStatusOwned";
-
-export * from "./sql/deleteStatusRemoteMentions";
 
 export * from "./sql/deleteStreamSubscription";
 
@@ -412,6 +408,8 @@ export * from "./sql/findStatusById";
 
 export * from "./sql/findStatusIdempotency";
 
+export * from "./sql/findStatusRemoteMention";
+
 export * from "./sql/findStatusUpdatedAt";
 
 export * from "./sql/findStreamListeners";
@@ -534,11 +532,15 @@ export * from "./sql/insertSignupIntent";
 
 export * from "./sql/insertSilentRemoteStatusMentionsJson";
 
+export * from "./sql/insertSilentStatusMentionsJson";
+
+export * from "./sql/insertSilentStatusRemoteMentionsJson";
+
 export * from "./sql/insertStatusEdit";
 
-export * from "./sql/insertStatusMention";
+export * from "./sql/insertStatusMentionsJson";
 
-export * from "./sql/insertStatusRemoteMention";
+export * from "./sql/insertStatusRemoteMentionsJson";
 
 export * from "./sql/insertStreamSubscription";
 
@@ -975,6 +977,10 @@ export * from "./sql/setStatusReplyUri";
 export * from "./sql/settleRemotePollOwnVotes";
 
 export * from "./sql/silenceRemoteStatusMentionsExcept";
+
+export * from "./sql/silenceStatusMentionsExcept";
+
+export * from "./sql/silenceStatusRemoteMentionsExcept";
 
 export * from "./sql/stampRemoteStatusRepliesFetched";
 

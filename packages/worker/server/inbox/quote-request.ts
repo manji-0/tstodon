@@ -23,7 +23,6 @@ import {
 } from "../activitypub";
 import { refId } from "../activitypub-wire";
 import { findBlock } from "../block-mute-store";
-import { publishConversationUpdate } from "../conversation-stream";
 import { readableRow, type RepositoryError } from "../d1";
 import { enqueueTargetedActivity } from "../delivery";
 import { isActorDomainBlocked } from "../domain-block-store";
@@ -155,23 +154,14 @@ const cacheInstrument = async (
  * Let the quoted author see the quoting note, as Mastodon's
  * `Quote#ensure_quoted_access`: a silent mention, so a followers-only or
  * direct note reaches them and the quote notification can be sent, without
- * a mention notification of its own.
+ * a mention notification or a conversation of its own.
  */
-const ensureQuotedAccess = async (
+const ensureQuotedAccess = (
   env: Env,
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
   accountId: string,
-): Promise<Result<void, RepositoryError>> => {
-  const recorded = await recordSilentRemoteStatusMention(env.DB, status.id, accountId);
-  if (recorded.isErr()) {
-    return recorded;
-  }
-  if (status.visibility.kind === "Direct") {
-    await publishConversationUpdate(env, identity, [accountId], status.id);
-  }
-  return ok(undefined);
-};
+): Promise<Result<void, RepositoryError>> =>
+  recordSilentRemoteStatusMention(env.DB, status.id, accountId);
 
 const sendAnswer = async (
   env: Env,
@@ -345,12 +335,7 @@ export const receiveQuoteRequest = async (
     return ok(undefined);
   }
   await announceRemoteQuoteChange(env, quoting.value);
-  const access = await ensureQuotedAccess(
-    env,
-    delivery.identity,
-    quoting.value,
-    quoted.value.author.id,
-  );
+  const access = await ensureQuotedAccess(env, quoting.value, quoted.value.author.id);
   if (access.isErr()) {
     return err(access.error);
   }

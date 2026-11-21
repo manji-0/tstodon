@@ -328,14 +328,32 @@ describe("answering a remote QuoteRequest for a local status", () => {
     });
   });
 
-  it("publishes a conversation update for a direct quote", async () => {
+  // The quoted author's silent mention opens the note but makes no
+  // conversation: Mastodon's `participants_from_status` reads active
+  // mentions, and only a mention notification pushes one.
+  it("opens a direct quote to the quoted author without a conversation", async () => {
     const quote = await setup("rqr-direct-stream");
     const socket = await openStream({ email: quote.email, query: "?stream=direct" });
 
     expect(await quote.request({ instrument: quote.note({ to: [], cc: [] }) })).toBe(202);
 
-    expect(await socket.next()).toMatchObject({ stream: ["direct"], event: "conversation" });
+    const noteId = await remoteStatusId(quote.noteUri);
+    expect(await socket.heardNothing({ kind: "Direct" })).toBe(true);
     socket.close();
+    expect(
+      (await json(`/api/v1/statuses/${noteId}`, { headers: await authHeaders(quote.email) }))
+        .status,
+    ).toBe(200);
+    const conversations = read(
+      z.array(z.object({ last_status: z.object({ id: z.string() }).nullable() })),
+      (await json("/api/v1/conversations", { headers: await authHeaders(quote.email) })).body,
+    );
+    expect(conversations.map((c) => c.last_status?.id)).not.toContain(noteId);
+    const direct = read(
+      z.array(IdSchema),
+      (await json("/api/v1/timelines/direct", { headers: await authHeaders(quote.email) })).body,
+    );
+    expect(direct.map((status) => status.id)).not.toContain(noteId);
   });
 
   it("rejects a request from an actor the author blocks", async () => {

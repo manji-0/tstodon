@@ -970,6 +970,7 @@ export type Remote_status_remote_mentionsScalarFieldEnum =
 export const Status_remote_mentionsScalarFieldEnum = {
   status_id: "status_id",
   actor_uri: "actor_uri",
+  silent: "silent",
 } as const;
 
 export type Status_remote_mentionsScalarFieldEnum =
@@ -978,6 +979,7 @@ export type Status_remote_mentionsScalarFieldEnum =
 export const Status_mentionsScalarFieldEnum = {
   status_id: "status_id",
   account_id: "account_id",
+  silent: "silent",
 } as const;
 
 export type Status_mentionsScalarFieldEnum =

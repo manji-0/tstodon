@@ -20,39 +20,63 @@ export type status_remote_mentionsModel =
 
 export type AggregateStatus_remote_mentions = {
   _count: Status_remote_mentionsCountAggregateOutputType | null;
+  _avg: Status_remote_mentionsAvgAggregateOutputType | null;
+  _sum: Status_remote_mentionsSumAggregateOutputType | null;
   _min: Status_remote_mentionsMinAggregateOutputType | null;
   _max: Status_remote_mentionsMaxAggregateOutputType | null;
+};
+
+export type Status_remote_mentionsAvgAggregateOutputType = {
+  silent: number | null;
+};
+
+export type Status_remote_mentionsSumAggregateOutputType = {
+  silent: number | null;
 };
 
 export type Status_remote_mentionsMinAggregateOutputType = {
   status_id: string | null;
   actor_uri: string | null;
+  silent: number | null;
 };
 
 export type Status_remote_mentionsMaxAggregateOutputType = {
   status_id: string | null;
   actor_uri: string | null;
+  silent: number | null;
 };
 
 export type Status_remote_mentionsCountAggregateOutputType = {
   status_id: number;
   actor_uri: number;
+  silent: number;
   _all: number;
+};
+
+export type Status_remote_mentionsAvgAggregateInputType = {
+  silent?: true;
+};
+
+export type Status_remote_mentionsSumAggregateInputType = {
+  silent?: true;
 };
 
 export type Status_remote_mentionsMinAggregateInputType = {
   status_id?: true;
   actor_uri?: true;
+  silent?: true;
 };
 
 export type Status_remote_mentionsMaxAggregateInputType = {
   status_id?: true;
   actor_uri?: true;
+  silent?: true;
 };
 
 export type Status_remote_mentionsCountAggregateInputType = {
   status_id?: true;
   actor_uri?: true;
+  silent?: true;
   _all?: true;
 };
 
@@ -98,6 +122,18 @@ export type Status_remote_mentionsAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: Status_remote_mentionsAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: Status_remote_mentionsSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: Status_remote_mentionsMinAggregateInputType;
@@ -130,6 +166,8 @@ export type status_remote_mentionsGroupByArgs<
   take?: number;
   skip?: number;
   _count?: Status_remote_mentionsCountAggregateInputType | true;
+  _avg?: Status_remote_mentionsAvgAggregateInputType;
+  _sum?: Status_remote_mentionsSumAggregateInputType;
   _min?: Status_remote_mentionsMinAggregateInputType;
   _max?: Status_remote_mentionsMaxAggregateInputType;
 };
@@ -137,7 +175,10 @@ export type status_remote_mentionsGroupByArgs<
 export type Status_remote_mentionsGroupByOutputType = {
   status_id: string;
   actor_uri: string;
+  silent: number;
   _count: Status_remote_mentionsCountAggregateOutputType | null;
+  _avg: Status_remote_mentionsAvgAggregateOutputType | null;
+  _sum: Status_remote_mentionsSumAggregateOutputType | null;
   _min: Status_remote_mentionsMinAggregateOutputType | null;
   _max: Status_remote_mentionsMaxAggregateOutputType | null;
 };
@@ -161,6 +202,7 @@ export type status_remote_mentionsWhereInput = {
   NOT?: Prisma.status_remote_mentionsWhereInput | Prisma.status_remote_mentionsWhereInput[];
   status_id?: Prisma.StringFilter<"status_remote_mentions"> | string;
   actor_uri?: Prisma.StringFilter<"status_remote_mentions"> | string;
+  silent?: Prisma.IntFilter<"status_remote_mentions"> | number;
   statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
   remote_actors?: Prisma.XOR<
     Prisma.Remote_actorsScalarRelationFilter,
@@ -171,6 +213,7 @@ export type status_remote_mentionsWhereInput = {
 export type status_remote_mentionsOrderByWithRelationInput = {
   status_id?: Prisma.SortOrder;
   actor_uri?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
   statuses?: Prisma.statusesOrderByWithRelationInput;
   remote_actors?: Prisma.remote_actorsOrderByWithRelationInput;
 };
@@ -183,6 +226,7 @@ export type status_remote_mentionsWhereUniqueInput = Prisma.AtLeast<
     NOT?: Prisma.status_remote_mentionsWhereInput | Prisma.status_remote_mentionsWhereInput[];
     status_id?: Prisma.StringFilter<"status_remote_mentions"> | string;
     actor_uri?: Prisma.StringFilter<"status_remote_mentions"> | string;
+    silent?: Prisma.IntFilter<"status_remote_mentions"> | number;
     statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
     remote_actors?: Prisma.XOR<
       Prisma.Remote_actorsScalarRelationFilter,
@@ -195,9 +239,12 @@ export type status_remote_mentionsWhereUniqueInput = Prisma.AtLeast<
 export type status_remote_mentionsOrderByWithAggregationInput = {
   status_id?: Prisma.SortOrder;
   actor_uri?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
   _count?: Prisma.status_remote_mentionsCountOrderByAggregateInput;
+  _avg?: Prisma.status_remote_mentionsAvgOrderByAggregateInput;
   _max?: Prisma.status_remote_mentionsMaxOrderByAggregateInput;
   _min?: Prisma.status_remote_mentionsMinOrderByAggregateInput;
+  _sum?: Prisma.status_remote_mentionsSumOrderByAggregateInput;
 };
 
 export type status_remote_mentionsScalarWhereWithAggregatesInput = {
@@ -210,9 +257,11 @@ export type status_remote_mentionsScalarWhereWithAggregatesInput = {
     | Prisma.status_remote_mentionsScalarWhereWithAggregatesInput[];
   status_id?: Prisma.StringWithAggregatesFilter<"status_remote_mentions"> | string;
   actor_uri?: Prisma.StringWithAggregatesFilter<"status_remote_mentions"> | string;
+  silent?: Prisma.IntWithAggregatesFilter<"status_remote_mentions"> | number;
 };
 
 export type status_remote_mentionsCreateInput = {
+  silent?: number;
   statuses: Prisma.statusesCreateNestedOneWithoutStatus_remote_mentionsInput;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutStatus_remote_mentionsInput;
 };
@@ -220,9 +269,11 @@ export type status_remote_mentionsCreateInput = {
 export type status_remote_mentionsUncheckedCreateInput = {
   status_id: string;
   actor_uri: string;
+  silent?: number;
 };
 
 export type status_remote_mentionsUpdateInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutStatus_remote_mentionsNestedInput;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutStatus_remote_mentionsNestedInput;
 };
@@ -230,18 +281,23 @@ export type status_remote_mentionsUpdateInput = {
 export type status_remote_mentionsUncheckedUpdateInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_remote_mentionsCreateManyInput = {
   status_id: string;
   actor_uri: string;
+  silent?: number;
 };
 
-export type status_remote_mentionsUpdateManyMutationInput = {};
+export type status_remote_mentionsUpdateManyMutationInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
+};
 
 export type status_remote_mentionsUncheckedUpdateManyInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type Status_remote_mentionsListRelationFilter = {
@@ -262,16 +318,27 @@ export type status_remote_mentionsStatus_idActor_uriCompoundUniqueInput = {
 export type status_remote_mentionsCountOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   actor_uri?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
+};
+
+export type status_remote_mentionsAvgOrderByAggregateInput = {
+  silent?: Prisma.SortOrder;
 };
 
 export type status_remote_mentionsMaxOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   actor_uri?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
 };
 
 export type status_remote_mentionsMinOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   actor_uri?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
+};
+
+export type status_remote_mentionsSumOrderByAggregateInput = {
+  silent?: Prisma.SortOrder;
 };
 
 export type status_remote_mentionsCreateNestedManyWithoutRemote_actorsInput = {
@@ -495,11 +562,13 @@ export type status_remote_mentionsUncheckedUpdateManyWithoutStatusesNestedInput 
 };
 
 export type status_remote_mentionsCreateWithoutRemote_actorsInput = {
+  silent?: number;
   statuses: Prisma.statusesCreateNestedOneWithoutStatus_remote_mentionsInput;
 };
 
 export type status_remote_mentionsUncheckedCreateWithoutRemote_actorsInput = {
   status_id: string;
+  silent?: number;
 };
 
 export type status_remote_mentionsCreateOrConnectWithoutRemote_actorsInput = {
@@ -554,14 +623,17 @@ export type status_remote_mentionsScalarWhereInput = {
     | Prisma.status_remote_mentionsScalarWhereInput[];
   status_id?: Prisma.StringFilter<"status_remote_mentions"> | string;
   actor_uri?: Prisma.StringFilter<"status_remote_mentions"> | string;
+  silent?: Prisma.IntFilter<"status_remote_mentions"> | number;
 };
 
 export type status_remote_mentionsCreateWithoutStatusesInput = {
+  silent?: number;
   remote_actors: Prisma.remote_actorsCreateNestedOneWithoutStatus_remote_mentionsInput;
 };
 
 export type status_remote_mentionsUncheckedCreateWithoutStatusesInput = {
   actor_uri: string;
+  silent?: number;
 };
 
 export type status_remote_mentionsCreateOrConnectWithoutStatusesInput = {
@@ -608,34 +680,42 @@ export type status_remote_mentionsUpdateManyWithWhereWithoutStatusesInput = {
 
 export type status_remote_mentionsCreateManyRemote_actorsInput = {
   status_id: string;
+  silent?: number;
 };
 
 export type status_remote_mentionsUpdateWithoutRemote_actorsInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutStatus_remote_mentionsNestedInput;
 };
 
 export type status_remote_mentionsUncheckedUpdateWithoutRemote_actorsInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_remote_mentionsUncheckedUpdateManyWithoutRemote_actorsInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_remote_mentionsCreateManyStatusesInput = {
   actor_uri: string;
+  silent?: number;
 };
 
 export type status_remote_mentionsUpdateWithoutStatusesInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   remote_actors?: Prisma.remote_actorsUpdateOneRequiredWithoutStatus_remote_mentionsNestedInput;
 };
 
 export type status_remote_mentionsUncheckedUpdateWithoutStatusesInput = {
   actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_remote_mentionsUncheckedUpdateManyWithoutStatusesInput = {
   actor_uri?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_remote_mentionsSelect<
@@ -644,6 +724,7 @@ export type status_remote_mentionsSelect<
   {
     status_id?: boolean;
     actor_uri?: boolean;
+    silent?: boolean;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
   },
@@ -656,6 +737,7 @@ export type status_remote_mentionsSelectCreateManyAndReturn<
   {
     status_id?: boolean;
     actor_uri?: boolean;
+    silent?: boolean;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
   },
@@ -668,6 +750,7 @@ export type status_remote_mentionsSelectUpdateManyAndReturn<
   {
     status_id?: boolean;
     actor_uri?: boolean;
+    silent?: boolean;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
     remote_actors?: boolean | Prisma.remote_actorsDefaultArgs<ExtArgs>;
   },
@@ -677,12 +760,13 @@ export type status_remote_mentionsSelectUpdateManyAndReturn<
 export type status_remote_mentionsSelectScalar = {
   status_id?: boolean;
   actor_uri?: boolean;
+  silent?: boolean;
 };
 
 export type status_remote_mentionsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "status_id" | "actor_uri",
+  "status_id" | "actor_uri" | "silent",
   ExtArgs["result"]["status_remote_mentions"]
 >;
 export type status_remote_mentionsInclude<
@@ -716,6 +800,7 @@ export type $status_remote_mentionsPayload<
     {
       status_id: string;
       actor_uri: string;
+      silent: number;
     },
     ExtArgs["result"]["status_remote_mentions"]
   >;
@@ -1318,6 +1403,7 @@ export interface Prisma__status_remote_mentionsClient<
 export interface status_remote_mentionsFieldRefs {
   readonly status_id: Prisma.FieldRef<"status_remote_mentions", "String">;
   readonly actor_uri: Prisma.FieldRef<"status_remote_mentions", "String">;
+  readonly silent: Prisma.FieldRef<"status_remote_mentions", "Int">;
 }
 
 // Custom InputTypes

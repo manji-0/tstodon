@@ -287,6 +287,22 @@ describe("remote votes on a local poll", () => {
     expect((await pollState(poll)).votes_count).toBe(0);
   });
 
+  // A silent mention (a quoted author's, or one an edit dropped) lets the
+  // actor fetch the note, so it may vote too.
+  it("counts a vote on a followers-only poll from a silently mentioned actor", async () => {
+    const poll = await createPoll("silent-author@example.com", {}, "private");
+    const voter = await remoteActor("silent-voter");
+    await env.DB.prepare(
+      "INSERT INTO status_remote_mentions (status_id, actor_uri, silent) VALUES (?, ?, 1)",
+    )
+      .bind(poll.statusId, voter.actorUri)
+      .run();
+
+    expect(await castVote(voter, poll, "birds")).toBe(202);
+
+    expect((await pollState(poll)).votes_count).toBe(1);
+  });
+
   it("counts a vote on a followers-only poll from an accepted follower", async () => {
     const poll = await createPoll("follower-author@example.com", {}, "private");
     const voter = await remoteActor("follower-voter");

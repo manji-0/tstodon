@@ -53,7 +53,8 @@ const quoteIdOf = async (statusId: string): Promise<string> =>
 
 /**
  * A remote note by `slug`'s actor on `host` that quotes `quotedId`, accepted:
- * public, followers-only, or direct to the local account `direct` names.
+ * public, followers-only, or direct to the local account `direct` names. As
+ * an accepted `QuoteRequest`, it silently mentions the quoted author.
  */
 const remoteQuote = async (
   slug: string,
@@ -93,6 +94,12 @@ const remoteQuote = async (
      VALUES (?, ?, ?, 'accepted', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`,
   )
     .bind(`${statusId}0`, statusId, quotedId)
+    .run();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO remote_status_mentions (status_id, account_id, silent)
+     SELECT ?, account_id, 1 FROM statuses WHERE id = ?`,
+  )
+    .bind(statusId, quotedId)
     .run();
   return { statusId, accountId: RemoteAccountId.encode(actor.actorUri) };
 };
@@ -194,16 +201,17 @@ describe("the quotes of a status", () => {
     expect((await quotes(stranger, original)).ids).toEqual([]);
   });
 
-  // Mastodon's quoted author passes `StatusPolicy#show?` through the silent
-  // mention each quote gives it (`Quote#ensure_quoted_access`); tstodon gives
-  // none, so the quoted author sees only the quotes it may open (DM-11).
-  it("leaves out for the quoted author a quote it may not see", async () => {
+  // Each quote silently mentions the quoted author (`Quote#ensure_quoted_access`),
+  // so it opens a followers-only or direct quote, and its list skips the filter.
+  it("lists for the quoted author the quotes its silent mention opens", async () => {
     const author = "quotes-list-hidden-author@example.com";
     const bob = "quotes-list-hidden-bob@example.com";
+    const stranger = "quotes-list-hidden-stranger@example.com";
     const bobAccount = await signedInAccount(bob);
+    await signedInAccount(stranger);
     const original = await post(author, { status: "quote me" });
     const shown = await quote("quotes-list-hidden-public@example.com", original);
-    const hidden = [
+    const restricted = [
       await quote("quotes-list-hidden-private@example.com", original, "private"),
       (await remoteQuote("quotes-list-hidden-followers", "remote.example", original, "followers"))
         .statusId,
@@ -214,15 +222,18 @@ describe("the quotes of a status", () => {
       ).statusId,
     ];
 
-    expect((await quotes(author, original)).ids).toEqual([shown]);
-    for (const id of hidden) {
+    expect((await quotes(author, original)).ids.toSorted()).toEqual(
+      [shown, ...restricted].toSorted(),
+    );
+    for (const id of restricted) {
       const response = await request(`/api/v1/statuses/${id}`, {
         headers: await authHeaders(author),
       });
-      expect(response.status, id).toBe(404);
+      expect(response.status, id).toBe(200);
     }
+    expect((await quotes(stranger, original)).ids).toEqual([shown]);
     // Bob, whom the direct note addresses, may see it.
-    expect((await quotes(bob, original)).ids).toContain(hidden[2]);
+    expect((await quotes(bob, original)).ids).toContain(restricted[2]);
   });
 
   it("pages by quote id, with the next link from the page before the filter", async () => {

@@ -99,6 +99,7 @@ import { ActivityJsonSchema, nameCollectionActivity } from "../activitypub-wire"
 import { parseJsonText } from "../json-column";
 import { assertNever, schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
+import { hasStatusRemoteMention } from "../mention-store";
 import {
   loadNoteReplies,
   loadNoteRepliesPage,
@@ -287,7 +288,7 @@ export const getUsersByUsernameStatusesById = async (
   }
   const note = document.value;
   if (visibility !== "Public" && visibility !== "Unlisted") {
-    if (!(await readsPrivateNote(c, identity.value, account, note))) {
+    if (!(await readsPrivateNote(c, identity.value, account, status.value.id, note))) {
       return c.json({ kind: "NotFound" }, 404);
     }
   }
@@ -295,19 +296,20 @@ export const getUsersByUsernameStatusesById = async (
 };
 
 /**
- * Whether the signer of this GET may read a followers-only or direct note,
- * as Mastodon's `StatusPolicy#show?` under authorized fetch: an actor it
- * addresses. When it may, the answer is marked for that signer alone, never
- * for a shared cache.
+ * Whether the signer of this GET may read the followers-only or direct note
+ * `statusId`, as Mastodon's `StatusPolicy#show?` under authorized fetch: an
+ * actor it addresses or mentions, silently too. When it may, the answer is
+ * marked for that signer alone, never for a shared cache.
  */
 const readsPrivateNote = async (
   c: Context<{ Bindings: Env }>,
   identity: InstanceIdentity,
   author: LocalAccount,
+  statusId: string,
   note: Pick<ApStatusDocumentJSON, "to" | "cc" | "attributedTo">,
 ): Promise<boolean> => {
   const signer = await signedFetchActor(c.env, identity, c.req.raw);
-  if (!signer || !(await noteAddresses(c.env.DB, note, author, signer.actorUri))) {
+  if (!signer || !(await noteAddresses(c.env.DB, statusId, note, author, signer.actorUri))) {
     return false;
   }
   c.header("Cache-Control", "private");
@@ -359,7 +361,7 @@ export const getUsersByUsernameStatusesByIdReplies = async (
     if (document.isErr()) {
       return jsonRepositoryError(c, document.error.message);
     }
-    if (!(await readsPrivateNote(c, identity.value, account, document.value))) {
+    if (!(await readsPrivateNote(c, identity.value, account, status.value.id, document.value))) {
       return c.json({ kind: "NotFound" }, 404);
     }
   }
@@ -476,17 +478,23 @@ export const getUsersByUsernameQuoteAuthorizationsById = async (
 };
 
 /**
- * Does the note's audience include this remote actor: named in `to`/`cc`, or an
- * accepted follower when the author's followers collection is addressed?
+ * Does the note's audience include this remote actor: named in `to`/`cc`,
+ * mentioned silently (a quote's quoted author, a mention an edit dropped), or
+ * an accepted follower when the author's followers collection is addressed?
  */
 const noteAddresses = async (
   db: D1Database,
+  statusId: string,
   note: Pick<ApStatusDocumentJSON, "to" | "cc" | "attributedTo">,
   author: LocalAccount,
   actorUri: string,
 ): Promise<boolean> => {
   const audience = [...note.to, ...note.cc];
   if (audience.includes(actorUri)) {
+    return true;
+  }
+  const mentioned = await hasStatusRemoteMention(db, statusId, actorUri);
+  if (mentioned.isOk() && mentioned.value) {
     return true;
   }
   if (!audience.includes(`${note.attributedTo}/followers`)) {
