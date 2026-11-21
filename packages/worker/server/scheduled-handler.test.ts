@@ -34,6 +34,7 @@ const PAGED = new Set([
   "BackfillRemoteTags",
   "BackfillLocalNoteTags",
   "FoldTagNames",
+  "AsciiDomainNames",
   "RekeyLegacyMedia",
   "VacuumMediaAttachments",
   "VacuumActivities",

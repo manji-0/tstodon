@@ -46,6 +46,12 @@ const BackfillLocalNoteTagsSchema = unitKind("BackfillLocalNoteTags");
  */
 const FoldTagNamesSchema = unitKind("FoldTagNames");
 /**
+ * Rename the next page of domains stored in Unicode before `Hostname.fromInput`
+ * read them in ASCII, from the `domain_name_ascii` cursor (cron, self-chaining,
+ * stops once complete).
+ */
+const AsciiDomainNamesSchema = unitKind("AsciiDomainNames");
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -475,6 +481,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   BackfillRemoteTagsSchema,
   BackfillLocalNoteTagsSchema,
   FoldTagNamesSchema,
+  AsciiDomainNamesSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

@@ -1,0 +1,23 @@
+-- `Hostname.fromInput` now reads an internationalized domain in its ASCII
+-- (punycode) form, as Mastodon's `TagManager#normalize_domain`
+-- (`bücher.example` is `xn--bcher-kva.example`). Lookups convert the name
+-- they are given, so a row stored in Unicode before is no longer reached:
+-- a user cannot lift their domain block, and the admin page of the domain
+-- reads it as not blocked. SQLite has no punycode, so the `AsciiDomainNames`
+-- job (server/domain-name-ascii.ts) renames the stored domains a page at a
+-- time with `Hostname.fromInput` itself, from this cursor (the last domain
+-- read), in every table that stores a domain a person typed:
+--
+--   domain_blocks.domain (its `domain_key` follows through migration 0163's
+--   update trigger), account_domain_blocks.domain, domain_allows.domain,
+--   email_domain_blocks.domain
+--
+-- Where the ASCII name is already stored, the rows merge into that row:
+--   - `domain_blocks`: the stricter severity (suspend, then silence, then
+--     noop), each of `reject_media`, `reject_reports` and `obfuscate` if
+--     either row has it, the kept row's comments else the old row's, and the
+--     earlier `created_at`;
+--   - `domain_allows`, `email_domain_blocks`: the earlier `created_at`;
+--   - `account_domain_blocks`: one block per account, the earlier
+--     `created_at`.
+INSERT OR IGNORE INTO backfill_cursors (name) VALUES ('domain_name_ascii');
