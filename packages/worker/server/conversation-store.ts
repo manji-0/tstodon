@@ -311,7 +311,10 @@ export const listConversationsForAccount = async (
   }
 
   // `listed` runs newest first; `min_id` takes the oldest `limit` of it.
-  const selected = page.minId === undefined ? listed.slice(0, limit) : listed.slice(-limit);
+  const selected =
+    page.minId === undefined
+      ? listed.slice(0, limit)
+      : listed.slice(Math.max(listed.length - limit, 0));
   const reads = await listConversationReads(db, accountId, selected);
   if (reads.isErr()) {
     return err(reads.error);

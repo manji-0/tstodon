@@ -5,12 +5,12 @@ import { authenticate } from "../../auth";
 import {
   jsonAuthError,
   jsonRepositoryError,
-  queryAccountsLimit,
-  queryCursor,
   queryLimit,
+  queryCursor,
   requireUser,
   setLinkHeader,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
@@ -57,7 +57,7 @@ const statusEngagementAccounts = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const target = foundStatusTarget(status.value);
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   const engaged =
     kind === "favourited_by"
       ? await listStatusFavouritedBy(c.env.DB, target, limit, queryCursor(c))
@@ -123,7 +123,7 @@ export const getV1StatusesByIdQuotes = async (
   if (auth.value.kind === "Anonymous") {
     return jsonAuthError(c, { kind: "MissingToken" });
   }
-  const limit = queryLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.statuses);
   const page = await listQuotePage(c.env.DB, foundStatusTarget(status.value), viewerId, limit, {
     maxId: c.req.query("max_id"),
     sinceId: c.req.query("since_id"),

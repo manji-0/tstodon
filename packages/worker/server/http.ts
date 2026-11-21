@@ -13,22 +13,53 @@ import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { bodyCapExceeded } from "./body-limit";
 
-/** Read a `limit` query parameter, defaulted to `fallback` and clamped to `max`. */
-const queryLimitMax = (raw: string | number | undefined, fallback: number, max: number): number => {
-  const parsed = typeof raw === "number" ? Math.trunc(raw) : Number.parseInt(raw ?? "", 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return fallback;
-  }
-  return Math.min(parsed, max);
+/**
+ * A list's page size: what a Mastodon controller passes to
+ * `Api::BaseController#limit_param(default_limit, max_limit = default_limit * 2)`.
+ */
+export type PageSize = Readonly<{ default: number; max: number }>;
+
+const pageSize = (fallback: number, max = fallback * 2): PageSize => ({ default: fallback, max });
+
+/** Mastodon v4.7.5's page sizes, named after the controller constants. */
+export const PageSize = {
+  /**
+   * `DEFAULT_STATUSES_LIMIT`, and the same 20 as `ConversationsController::LIMIT`
+   * and `Api::V2::SearchController::RESULTS_LIMIT`.
+   */
+  statuses: pageSize(20),
+  /** `DEFAULT_ACCOUNTS_LIMIT`, and the same 40 as `DEFAULT_NOTIFICATIONS_LIMIT`. */
+  accounts: pageSize(40),
+  /** The trends' `DEFAULT_TAGS_LIMIT` and `DEFAULT_LINKS_LIMIT`. */
+  trends: pageSize(10),
+  /** The admin lists' `LIMIT`. */
+  admin: pageSize(100),
+  /** `LIMIT` and `MAX_LIMIT` of the admin domain blocks and domain allows. */
+  adminDomainRules: pageSize(100, 500),
+} satisfies Record<string, PageSize>;
+
+const RUBY_INTEGER_PREFIX = /^[\t\n\v\f\r ]*([+-]?\d+(?:_\d+)*)/;
+
+/**
+ * Ruby's `String#to_i`: the integer the string starts with, after ASCII
+ * whitespace and with `_` between digits; 0 when it starts with none.
+ */
+export const rubyToI = (raw: string): number => {
+  const digits = RUBY_INTEGER_PREFIX.exec(raw)?.[1];
+  return digits === undefined ? 0 : Number.parseInt(digits.replaceAll("_", ""), 10);
 };
 
-/** Status collections: 20 by default, capped at 40. */
-export const queryLimit = (raw: string | number | undefined, fallback = 20): number =>
-  queryLimitMax(raw, fallback, 40);
+/**
+ * Mastodon's `limit_param`: the default without a `limit`, else
+ * `[params[:limit].to_i.abs, max].min`, so a `limit` that reads as 0 (`0`,
+ * `abc`, or empty) asks for an empty page.
+ */
+export const limitParam = (raw: string | undefined, size: PageSize): number =>
+  raw === undefined ? size.default : Math.min(Math.abs(rubyToI(raw)), size.max);
 
-/** Trends: tags and links default to 10 and cap at 20, as Mastodon does. */
-export const queryTrendsLimit = (raw: string | number | undefined): number =>
-  queryLimitMax(raw, 10, 20);
+/** The request's `limit` query parameter, read as {@link limitParam}. */
+export const queryLimit = (c: Context<{ Bindings: Env }>, size: PageSize): number =>
+  limitParam(c.req.query("limit"), size);
 
 /** Mastodon's `offset` for paged lists, kept to a value SQLite can bind as an integer. */
 export const queryOffset = (raw: string | number | undefined): number => {
@@ -36,17 +67,13 @@ export const queryOffset = (raw: string | number | undefined): number => {
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, Number.MAX_SAFE_INTEGER) : 0;
 };
 
-/** Account collections (followers, blocks, directory…): 40 by default, capped at 80. */
-export const queryAccountsLimit = (raw: string | number | undefined, fallback = 40): number =>
-  queryLimitMax(raw, fallback, 80);
-
-/** Notifications and notification requests: 40 by default, capped at 80. */
-export const queryNotificationsLimit = (raw: string | number | undefined, fallback = 40): number =>
-  queryLimitMax(raw, fallback, 80);
-
-/** Admin lists (accounts, reports, domain blocks): 100 by default, capped at 200. */
-export const queryAdminLimit = (raw: string | undefined, fallback = 100): number =>
-  queryLimitMax(raw, fallback, 200);
+/**
+ * The filters a `Link` keeps besides `limit` and its cursor: what the
+ * controller's `pagination_params` permits beyond Mastodon's
+ * `Api::Pagination::PAGINATION_PARAMS` (`limit` alone). An array filter
+ * matches with or without its `[]`.
+ */
+export type LinkFilters = ReadonlyArray<string>;
 
 /**
  * Mastodon's `Link` pagination headers for a collection of row ids: a full page
@@ -58,18 +85,22 @@ export const setPaginationLinks = (
   c: Context<{ Bindings: Env }>,
   rowIds: ReadonlyArray<string>,
   limit: number,
-  options: Readonly<{ prev?: "min_id" | "since_id" }> = {},
+  options: Readonly<{ prev?: "min_id" | "since_id"; filters?: LinkFilters }> = {},
 ): void =>
-  setLinkHeader(c, {
-    next: rowIds.length >= limit ? rowIds.at(-1) : undefined,
-    prev: rowIds[0],
-    prevCursor: options.prev,
-  });
+  setLinkHeader(
+    c,
+    {
+      next: rowIds.length >= limit ? rowIds.at(-1) : undefined,
+      prev: rowIds[0],
+      prevCursor: options.prev,
+    },
+    options.filters,
+  );
 
 /**
  * Mastodon's `Link` header from page cursors: `max_id=<next>` as `rel="next"`
  * and `min_id=<prev>` (or `since_id`) as `rel="prev"`, keeping the request's
- * other query parameters.
+ * `limit` and `filters`.
  */
 export const setLinkHeader = (
   c: Context<{ Bindings: Env }>,
@@ -78,8 +109,9 @@ export const setLinkHeader = (
     prev: string | undefined;
     prevCursor?: "min_id" | "since_id" | undefined;
   }>,
+  filters: LinkFilters = [],
 ): void =>
-  setLinks(c, ["max_id", "since_id", "min_id"], {
+  setLinks(c, filters, {
     next: cursors.next === undefined ? undefined : ["max_id", cursors.next],
     prev: cursors.prev === undefined ? undefined : [cursors.prevCursor ?? "min_id", cursors.prev],
   });
@@ -87,28 +119,37 @@ export const setLinkHeader = (
 /**
  * Mastodon's `Link` header for a list paged by `offset` (trends): a full page
  * offers `offset + limit` as `rel="next"`, and a page past the first offers
- * `offset - limit` (at least 0) as `rel="prev"`, keeping the request's other
- * query parameters.
+ * `offset - limit` (at least 0) as `rel="prev"`, keeping the request's `limit`.
+ * A `limit` of 0 gets no links: both would point at the page itself.
  */
 export const setOffsetPaginationLinks = (
   c: Context<{ Bindings: Env }>,
   page: Readonly<{ offset: number; limit: number; count: number }>,
-): void =>
-  setLinks(c, ["offset"], {
+): void => {
+  if (page.limit === 0) {
+    return;
+  }
+  setLinks(c, [], {
     next: page.count >= page.limit ? ["offset", String(page.offset + page.limit)] : undefined,
     prev: page.offset > 0 ? ["offset", String(Math.max(page.offset - page.limit, 0))] : undefined,
   });
+};
 
-/** The `Link` header from the request URL, with `cleared` params replaced by each rel's cursor. */
+/** The `Link` header: the request URL keeping `limit` and `filters`, plus each rel's cursor. */
 const setLinks = (
   c: Context<{ Bindings: Env }>,
-  cleared: ReadonlyArray<string>,
+  filters: LinkFilters,
   rels: Readonly<Record<"next" | "prev", readonly [string, string] | undefined>>,
 ): void => {
+  const kept = new Set(["limit", ...filters]);
+  const request = new URL(c.req.url);
   const link = ([param, value]: readonly [string, string], rel: "next" | "prev"): string => {
-    const target = new URL(c.req.url);
-    for (const name of cleared) {
-      target.searchParams.delete(name);
+    const target = new URL(request);
+    target.search = "";
+    for (const [name, keptValue] of request.searchParams) {
+      if (kept.has(name.endsWith("[]") ? name.slice(0, -2) : name)) {
+        target.searchParams.append(name, keptValue);
+      }
     }
     target.searchParams.set(param, value);
     return `<${target.toString()}>; rel="${rel}"`;

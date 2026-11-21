@@ -46,6 +46,7 @@ import {
   requireFunctionalUser,
   requireUser,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { newEntityId } from "../../ids";
 import { ApiRefusal } from "../api-refusal";
@@ -739,7 +740,7 @@ const engagedStatuses = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.statuses);
   const targets = await list(c.env.DB, user.value.id, limit, queryCursor(c));
   if (targets.isErr()) {
     return jsonRepositoryError(c, targets.error.message);

@@ -262,5 +262,8 @@ describe("the quotes of a status", () => {
     expect((await quotes(author, original, `?since_id=${olderQuote}`)).ids).toEqual([newer]);
     // Mastodon pages this list by `max_id` and `since_id` only.
     expect((await quotes(author, original, `?min_id=${olderQuote}`)).ids).toEqual([newer, older]);
+    // `limit_param`: `"-1".to_i.abs` is 1, and `"none".to_i` is an empty page.
+    expect((await quotes(author, original, "?limit=-1")).ids).toEqual([newer]);
+    expect(await quotes(author, original, "?limit=none")).toEqual({ ids: [], link: null });
   });
 });

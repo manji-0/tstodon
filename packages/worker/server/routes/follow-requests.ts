@@ -5,9 +5,10 @@ import { acceptRemoteFollowRequest } from "../follow-request-approval";
 import {
   jsonAuthError,
   jsonRepositoryError,
-  queryAccountsLimit,
+  queryLimit,
   queryCursor,
   requireUser,
+  PageSize,
 } from "../http";
 import { availableAccountDocumentsByIds } from "../account-documents";
 import { mastodonRelationship } from "../relationship-document";
@@ -66,7 +67,7 @@ export const getV1FollowRequests = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   const [local, remote] = await Promise.all([
     listPendingFollowRequesters(c.env.DB, user.value.id, limit, queryCursor(c)),
     listPendingRemoteFollowRequesters(c.env.DB, user.value.id, limit),

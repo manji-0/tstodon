@@ -16,6 +16,7 @@ import {
   jsonValidationError,
   queryLimit,
   requireUser,
+  PageSize,
 } from "../http";
 import { mastodonStatuses } from "../local-status-documents";
 import { writeTimelineMetric } from "../metrics";
@@ -74,7 +75,7 @@ export const getV1TimelinesPublic = async (
     identity.value,
     auth.value.kind === "Account" ? auth.value.account.id : undefined,
     { scopes: timelineScopes(params.value), onlyMedia: params.value.only_media ?? false },
-    queryLimit(params.value.limit),
+    queryLimit(c, PageSize.statuses),
     paramsCursor(params.value),
   );
   writeTimelineMetric(
@@ -109,7 +110,7 @@ export const getV1TimelinesHome = async (
     c.env,
     identity.value,
     user.value.id,
-    queryLimit(params.value.limit),
+    queryLimit(c, PageSize.statuses),
     paramsCursor(params.value),
   );
   writeTimelineMetric(
@@ -185,7 +186,7 @@ export const getV1TimelinesTagByHashtag = async (
     auth.value.kind === "Account" ? auth.value.account.id : undefined,
     hashtag,
     { scopes: timelineScopes(params.value), filters: tagStatusFilters(params.value) },
-    queryLimit(params.value.limit),
+    queryLimit(c, PageSize.statuses),
     paramsCursor(params.value),
   );
   writeTimelineMetric(
@@ -240,7 +241,7 @@ export const getV1TimelinesLink = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const viewerId = auth.value.kind === "Account" ? auth.value.account.id : undefined;
-  const limit = queryLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.statuses);
   const cursor = paramsCursor(params.value);
   const [local, remote] = await Promise.all([
     listLinkStatuses(c.env.DB, viewerId, url.value, limit, cursor),
@@ -290,7 +291,7 @@ export const getV1TimelinesDirect = async (
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.statuses);
   const maxId = c.req.query("max_id");
   const [statuses, remote] = await Promise.all([
     listDirectStatusesForAccount(c.env.DB, user.value.id, limit, maxId),

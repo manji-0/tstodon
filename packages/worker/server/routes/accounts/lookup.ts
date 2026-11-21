@@ -30,9 +30,10 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
+  queryLimit,
   queryOffset,
   requireUser,
+  PageSize,
 } from "../../http";
 import {
   accountDocumentsByIds,
@@ -148,11 +149,12 @@ export const getV1AccountsSearch = async (
   }
   const rawQuery = (params.value.q ?? "").trim();
   const query = rawQuery.replace(/^@/, "");
-  const limit = queryAccountsLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.accounts);
   const offset = queryOffset(params.value.offset);
   const resolve = params.value.resolve ?? false;
   const onlyFollowing = params.value.following ?? false;
-  if (query.length === 0) {
+  // `AccountSearchService`: `return [] if query.blank? || limit < 1`.
+  if (query.length === 0 || limit === 0) {
     return c.json([]);
   }
   const followingIds = onlyFollowing

@@ -1,23 +1,71 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Hono } from "hono";
-import { jsonAuthError, jsonRepositoryError, jsonValidationError, queryLimit } from "./http";
+import {
+  jsonAuthError,
+  jsonRepositoryError,
+  jsonValidationError,
+  limitParam,
+  PageSize,
+  rubyToI,
+} from "./http";
 import { z } from "zod";
 
 const KindBody = z.object({ kind: z.string() });
 
-describe("queryLimit", () => {
-  it("falls back when missing or non-positive", () => {
-    expect(queryLimit(undefined)).toBe(20);
-    expect(queryLimit("")).toBe(20);
-    expect(queryLimit("0")).toBe(20);
-    expect(queryLimit("-3", 10)).toBe(10);
-    expect(queryLimit("abc", 7)).toBe(7);
+describe("rubyToI", () => {
+  // Each pair is what Ruby 3's `String#to_i` returns for the string.
+  it.each([
+    ["5abc", 5],
+    [" 5", 5],
+    ["\t\n\v\f\r5", 5],
+    [" 5", 0],
+    ["+5", 5],
+    ["-5", -5],
+    ["1_000", 1000],
+    ["1__0", 1],
+    ["_1", 0],
+    ["1_", 1],
+    ["0x10", 0],
+    ["1e3", 1],
+    ["5.9", 5],
+    ["05", 5],
+    ["abc", 0],
+    ["", 0],
+    ["-", 0],
+    ["- 5", 0],
+    ["+-5", 0],
+  ])("reads %j as %d", (raw, expected) => {
+    expect(rubyToI(raw)).toBe(expected);
+  });
+});
+
+describe("limitParam", () => {
+  it("takes the default only when limit is absent", () => {
+    expect(limitParam(undefined, PageSize.statuses)).toBe(20);
+    expect(limitParam("", PageSize.statuses)).toBe(0);
+    expect(limitParam("0", PageSize.statuses)).toBe(0);
+    expect(limitParam("abc", PageSize.statuses)).toBe(0);
   });
 
-  it("clamps to 40", () => {
-    expect(queryLimit("1")).toBe(1);
-    expect(queryLimit("40")).toBe(40);
-    expect(queryLimit("100")).toBe(40);
+  it("reads a negative limit by its absolute value", () => {
+    expect(limitParam("-3", PageSize.statuses)).toBe(3);
+    expect(limitParam("-500", PageSize.statuses)).toBe(40);
+  });
+
+  it("caps at the page size's max", () => {
+    expect(limitParam("40", PageSize.statuses)).toBe(40);
+    expect(limitParam("41", PageSize.statuses)).toBe(40);
+    expect(limitParam("99999999999999999999999", PageSize.accounts)).toBe(80);
+  });
+
+  it("matches Mastodon v4.7.5's controller constants", () => {
+    expect(PageSize).toEqual({
+      statuses: { default: 20, max: 40 },
+      accounts: { default: 40, max: 80 },
+      trends: { default: 10, max: 20 },
+      admin: { default: 100, max: 200 },
+      adminDomainRules: { default: 100, max: 500 },
+    });
   });
 });
 

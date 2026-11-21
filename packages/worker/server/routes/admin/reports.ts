@@ -6,11 +6,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { mastodonStatuses } from "../../local-status-documents";
 import { instanceRules, parseInstanceIdentity } from "../../runtime-config";
@@ -108,7 +109,7 @@ export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/a
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.admin);
   const reports = await listReports(c.env.DB, {
     resolution: reportResolvedFilter(c),
     accountId: c.req.query("account_id") || undefined,
@@ -123,6 +124,8 @@ export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/a
     c,
     reports.value.map((report) => report.id),
     limit,
+    // `Api::V1::Admin::ReportsController::FILTER_PARAMS`
+    { filters: ["resolved", "unresolved", "account_id", "target_account_id"] },
   );
   const documents: ApiAdminReportJSON[] = [];
   for (const report of reports.value) {

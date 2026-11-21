@@ -8,11 +8,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { mastodonTag } from "../../tag-documents";
@@ -88,7 +89,7 @@ export const getV1AdminTags = async (c: Context<{ Bindings: Env }, "/api/v1/admi
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.admin);
   const tags = await listTagModerationPage(c.env.DB, queryCursor(c), limit);
   if (tags.isErr()) {
     return jsonRepositoryError(c, tags.error.message);

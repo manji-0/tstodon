@@ -6,8 +6,9 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
+  queryLimit,
   requireUser,
+  PageSize,
 } from "../http";
 import { mastodonAccountDocuments } from "../account-documents";
 import { readQueryParams } from "../request-params";
@@ -29,7 +30,7 @@ const suggestedAccounts = async (
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const limit = queryAccountsLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.accounts);
   const excluded = await listSuggestionExclusionIds(c.env.DB, user.value.id);
   if (excluded.isErr()) {
     return jsonRepositoryError(c, excluded.error.message);

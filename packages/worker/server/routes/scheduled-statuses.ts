@@ -10,6 +10,7 @@ import {
   queryLimit,
   readBody,
   requireUser,
+  PageSize,
 } from "../http";
 import { mastodonMedia } from "../media-document";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -84,7 +85,7 @@ export const getV1ScheduledStatuses = async (
   const rows = await listScheduledStatuses(
     c.env.DB,
     user.value.id,
-    queryLimit(c.req.query("limit"), 20),
+    queryLimit(c, PageSize.statuses),
     queryCursor(c),
   );
   if (rows.isErr()) {
