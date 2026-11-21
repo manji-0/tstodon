@@ -20,39 +20,63 @@ export type status_mentionsModel =
 
 export type AggregateStatus_mentions = {
   _count: Status_mentionsCountAggregateOutputType | null;
+  _avg: Status_mentionsAvgAggregateOutputType | null;
+  _sum: Status_mentionsSumAggregateOutputType | null;
   _min: Status_mentionsMinAggregateOutputType | null;
   _max: Status_mentionsMaxAggregateOutputType | null;
+};
+
+export type Status_mentionsAvgAggregateOutputType = {
+  silent: number | null;
+};
+
+export type Status_mentionsSumAggregateOutputType = {
+  silent: number | null;
 };
 
 export type Status_mentionsMinAggregateOutputType = {
   status_id: string | null;
   account_id: string | null;
+  silent: number | null;
 };
 
 export type Status_mentionsMaxAggregateOutputType = {
   status_id: string | null;
   account_id: string | null;
+  silent: number | null;
 };
 
 export type Status_mentionsCountAggregateOutputType = {
   status_id: number;
   account_id: number;
+  silent: number;
   _all: number;
+};
+
+export type Status_mentionsAvgAggregateInputType = {
+  silent?: true;
+};
+
+export type Status_mentionsSumAggregateInputType = {
+  silent?: true;
 };
 
 export type Status_mentionsMinAggregateInputType = {
   status_id?: true;
   account_id?: true;
+  silent?: true;
 };
 
 export type Status_mentionsMaxAggregateInputType = {
   status_id?: true;
   account_id?: true;
+  silent?: true;
 };
 
 export type Status_mentionsCountAggregateInputType = {
   status_id?: true;
   account_id?: true;
+  silent?: true;
   _all?: true;
 };
 
@@ -98,6 +122,18 @@ export type Status_mentionsAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: Status_mentionsAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: Status_mentionsSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: Status_mentionsMinAggregateInputType;
@@ -129,6 +165,8 @@ export type status_mentionsGroupByArgs<
   take?: number;
   skip?: number;
   _count?: Status_mentionsCountAggregateInputType | true;
+  _avg?: Status_mentionsAvgAggregateInputType;
+  _sum?: Status_mentionsSumAggregateInputType;
   _min?: Status_mentionsMinAggregateInputType;
   _max?: Status_mentionsMaxAggregateInputType;
 };
@@ -136,7 +174,10 @@ export type status_mentionsGroupByArgs<
 export type Status_mentionsGroupByOutputType = {
   status_id: string;
   account_id: string;
+  silent: number;
   _count: Status_mentionsCountAggregateOutputType | null;
+  _avg: Status_mentionsAvgAggregateOutputType | null;
+  _sum: Status_mentionsSumAggregateOutputType | null;
   _min: Status_mentionsMinAggregateOutputType | null;
   _max: Status_mentionsMaxAggregateOutputType | null;
 };
@@ -160,6 +201,7 @@ export type status_mentionsWhereInput = {
   NOT?: Prisma.status_mentionsWhereInput | Prisma.status_mentionsWhereInput[];
   status_id?: Prisma.StringFilter<"status_mentions"> | string;
   account_id?: Prisma.StringFilter<"status_mentions"> | string;
+  silent?: Prisma.IntFilter<"status_mentions"> | number;
   accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
   statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
 };
@@ -167,6 +209,7 @@ export type status_mentionsWhereInput = {
 export type status_mentionsOrderByWithRelationInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
   accounts?: Prisma.accountsOrderByWithRelationInput;
   statuses?: Prisma.statusesOrderByWithRelationInput;
 };
@@ -179,6 +222,7 @@ export type status_mentionsWhereUniqueInput = Prisma.AtLeast<
     NOT?: Prisma.status_mentionsWhereInput | Prisma.status_mentionsWhereInput[];
     status_id?: Prisma.StringFilter<"status_mentions"> | string;
     account_id?: Prisma.StringFilter<"status_mentions"> | string;
+    silent?: Prisma.IntFilter<"status_mentions"> | number;
     accounts?: Prisma.XOR<Prisma.AccountsScalarRelationFilter, Prisma.accountsWhereInput>;
     statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
   },
@@ -188,9 +232,12 @@ export type status_mentionsWhereUniqueInput = Prisma.AtLeast<
 export type status_mentionsOrderByWithAggregationInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
   _count?: Prisma.status_mentionsCountOrderByAggregateInput;
+  _avg?: Prisma.status_mentionsAvgOrderByAggregateInput;
   _max?: Prisma.status_mentionsMaxOrderByAggregateInput;
   _min?: Prisma.status_mentionsMinOrderByAggregateInput;
+  _sum?: Prisma.status_mentionsSumOrderByAggregateInput;
 };
 
 export type status_mentionsScalarWhereWithAggregatesInput = {
@@ -203,9 +250,11 @@ export type status_mentionsScalarWhereWithAggregatesInput = {
     | Prisma.status_mentionsScalarWhereWithAggregatesInput[];
   status_id?: Prisma.StringWithAggregatesFilter<"status_mentions"> | string;
   account_id?: Prisma.StringWithAggregatesFilter<"status_mentions"> | string;
+  silent?: Prisma.IntWithAggregatesFilter<"status_mentions"> | number;
 };
 
 export type status_mentionsCreateInput = {
+  silent?: number;
   accounts: Prisma.accountsCreateNestedOneWithoutStatus_mentionsInput;
   statuses: Prisma.statusesCreateNestedOneWithoutStatus_mentionsInput;
 };
@@ -213,9 +262,11 @@ export type status_mentionsCreateInput = {
 export type status_mentionsUncheckedCreateInput = {
   status_id: string;
   account_id: string;
+  silent?: number;
 };
 
 export type status_mentionsUpdateInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatus_mentionsNestedInput;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutStatus_mentionsNestedInput;
 };
@@ -223,18 +274,23 @@ export type status_mentionsUpdateInput = {
 export type status_mentionsUncheckedUpdateInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_mentionsCreateManyInput = {
   status_id: string;
   account_id: string;
+  silent?: number;
 };
 
-export type status_mentionsUpdateManyMutationInput = {};
+export type status_mentionsUpdateManyMutationInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
+};
 
 export type status_mentionsUncheckedUpdateManyInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type Status_mentionsListRelationFilter = {
@@ -255,16 +311,27 @@ export type status_mentionsStatus_idAccount_idCompoundUniqueInput = {
 export type status_mentionsCountOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
+};
+
+export type status_mentionsAvgOrderByAggregateInput = {
+  silent?: Prisma.SortOrder;
 };
 
 export type status_mentionsMaxOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
 };
 
 export type status_mentionsMinOrderByAggregateInput = {
   status_id?: Prisma.SortOrder;
   account_id?: Prisma.SortOrder;
+  silent?: Prisma.SortOrder;
+};
+
+export type status_mentionsSumOrderByAggregateInput = {
+  silent?: Prisma.SortOrder;
 };
 
 export type status_mentionsCreateNestedManyWithoutAccountsInput = {
@@ -440,11 +507,13 @@ export type status_mentionsUncheckedUpdateManyWithoutStatusesNestedInput = {
 };
 
 export type status_mentionsCreateWithoutAccountsInput = {
+  silent?: number;
   statuses: Prisma.statusesCreateNestedOneWithoutStatus_mentionsInput;
 };
 
 export type status_mentionsUncheckedCreateWithoutAccountsInput = {
   status_id: string;
+  silent?: number;
 };
 
 export type status_mentionsCreateOrConnectWithoutAccountsInput = {
@@ -495,14 +564,17 @@ export type status_mentionsScalarWhereInput = {
   NOT?: Prisma.status_mentionsScalarWhereInput | Prisma.status_mentionsScalarWhereInput[];
   status_id?: Prisma.StringFilter<"status_mentions"> | string;
   account_id?: Prisma.StringFilter<"status_mentions"> | string;
+  silent?: Prisma.IntFilter<"status_mentions"> | number;
 };
 
 export type status_mentionsCreateWithoutStatusesInput = {
+  silent?: number;
   accounts: Prisma.accountsCreateNestedOneWithoutStatus_mentionsInput;
 };
 
 export type status_mentionsUncheckedCreateWithoutStatusesInput = {
   account_id: string;
+  silent?: number;
 };
 
 export type status_mentionsCreateOrConnectWithoutStatusesInput = {
@@ -549,34 +621,42 @@ export type status_mentionsUpdateManyWithWhereWithoutStatusesInput = {
 
 export type status_mentionsCreateManyAccountsInput = {
   status_id: string;
+  silent?: number;
 };
 
 export type status_mentionsUpdateWithoutAccountsInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutStatus_mentionsNestedInput;
 };
 
 export type status_mentionsUncheckedUpdateWithoutAccountsInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_mentionsUncheckedUpdateManyWithoutAccountsInput = {
   status_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_mentionsCreateManyStatusesInput = {
   account_id: string;
+  silent?: number;
 };
 
 export type status_mentionsUpdateWithoutStatusesInput = {
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutStatus_mentionsNestedInput;
 };
 
 export type status_mentionsUncheckedUpdateWithoutStatusesInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_mentionsUncheckedUpdateManyWithoutStatusesInput = {
   account_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  silent?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type status_mentionsSelect<
@@ -585,6 +665,7 @@ export type status_mentionsSelect<
   {
     status_id?: boolean;
     account_id?: boolean;
+    silent?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
   },
@@ -597,6 +678,7 @@ export type status_mentionsSelectCreateManyAndReturn<
   {
     status_id?: boolean;
     account_id?: boolean;
+    silent?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
   },
@@ -609,6 +691,7 @@ export type status_mentionsSelectUpdateManyAndReturn<
   {
     status_id?: boolean;
     account_id?: boolean;
+    silent?: boolean;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
   },
@@ -618,12 +701,13 @@ export type status_mentionsSelectUpdateManyAndReturn<
 export type status_mentionsSelectScalar = {
   status_id?: boolean;
   account_id?: boolean;
+  silent?: boolean;
 };
 
 export type status_mentionsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "status_id" | "account_id",
+  "status_id" | "account_id" | "silent",
   ExtArgs["result"]["status_mentions"]
 >;
 export type status_mentionsInclude<
@@ -657,6 +741,7 @@ export type $status_mentionsPayload<
     {
       status_id: string;
       account_id: string;
+      silent: number;
     },
     ExtArgs["result"]["status_mentions"]
   >;
@@ -1259,6 +1344,7 @@ export interface Prisma__status_mentionsClient<
 export interface status_mentionsFieldRefs {
   readonly status_id: Prisma.FieldRef<"status_mentions", "String">;
   readonly account_id: Prisma.FieldRef<"status_mentions", "String">;
+  readonly silent: Prisma.FieldRef<"status_mentions", "Int">;
 }
 
 // Custom InputTypes

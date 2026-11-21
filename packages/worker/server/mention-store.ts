@@ -4,19 +4,22 @@ import { jsonStringArray, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 import {
   deleteRemoteStatusRemoteMentions as deleteRemoteStatusRemoteMentionsSql,
-  deleteStatusMentions as deleteStatusMentionsSql,
-  deleteStatusRemoteMentions as deleteStatusRemoteMentionsSql,
+  findStatusRemoteMention as findStatusRemoteMentionSql,
   insertRemoteStatusMentionsJson as insertRemoteStatusMentionsJsonSql,
   insertRemoteStatusRemoteMentionsJson as insertRemoteStatusRemoteMentionsJsonSql,
   insertSilentRemoteStatusMentionsJson as insertSilentRemoteStatusMentionsJsonSql,
-  insertStatusMention as insertStatusMentionSql,
-  insertStatusRemoteMention as insertStatusRemoteMentionSql,
+  insertSilentStatusMentionsJson as insertSilentStatusMentionsJsonSql,
+  insertSilentStatusRemoteMentionsJson as insertSilentStatusRemoteMentionsJsonSql,
+  insertStatusMentionsJson as insertStatusMentionsJsonSql,
+  insertStatusRemoteMentionsJson as insertStatusRemoteMentionsJsonSql,
   listRemoteStatusMentions as listRemoteStatusMentionsSql,
   listRemoteStatusRemoteMentions as listRemoteStatusRemoteMentionsSql,
   listShownRemoteStatusMentions as listShownRemoteStatusMentionsSql,
   listStatusMentionsByIds as listStatusMentionsByIdsSql,
   listStatusRemoteMentions as listStatusRemoteMentionsSql,
   silenceRemoteStatusMentionsExcept as silenceRemoteStatusMentionsExceptSql,
+  silenceStatusMentionsExcept as silenceStatusMentionsExceptSql,
+  silenceStatusRemoteMentionsExcept as silenceStatusRemoteMentionsExceptSql,
 } from "./generated/prisma/sql";
 
 const StatusIdAccountIdRow = z.object({ status_id: z.string(), account_id: z.string() });
@@ -96,38 +99,72 @@ export const listActiveRemoteStatusMentionAccountIds = async (
   return rows.map((found) => new Set(found.map((row) => row.account_id)));
 };
 
+/**
+ * Who a local note names, local accounts or remote actors: `mentioned` are
+ * its mentions, and `addressed` only may read it, a silent mention that never
+ * replaces a real one (a quote's quoted author, `Quote#ensure_quoted_access`).
+ */
+export type LocalNoteMentions = Readonly<{
+  mentioned: ReadonlyArray<string>;
+  addressed: ReadonlyArray<string>;
+}>;
+
+/**
+ * Make the local accounts a local note mentions the ones `names` gives, in
+ * one batch however many there are. A mention the note no longer makes
+ * becomes silent rather than going, as Mastodon's
+ * `ProcessMentionsService#assign_mentions!`, so the account keeps its access.
+ */
 export const replaceStatusMentions = async (
   db: D1Database,
   statusId: string,
-  accountIds: ReadonlyArray<string>,
+  names: LocalNoteMentions,
 ): Promise<Result<void, RepositoryError>> => {
-  const statements: D1PreparedStatement[] = [
-    d1PrepareTyped(db, deleteStatusMentionsSql(statusId)),
-    ...accountIds.map((accountId) =>
-      d1PrepareTyped(db, insertStatusMentionSql(statusId, accountId)),
-    ),
-  ];
-  const batched = await runD1Batch(db, statements);
-  if (batched.isErr()) {
-    return err(batched.error);
-  }
-  return ok(undefined);
-};
-
-/** Replace the remote actors a local note mentions. */
-export const replaceStatusRemoteMentions = async (
-  db: D1Database,
-  statusId: string,
-  actorUris: ReadonlyArray<string>,
-): Promise<Result<void, RepositoryError>> => {
+  const mentioned = jsonStringArray([...names.mentioned]);
   const batched = await runD1Batch(db, [
-    d1PrepareTyped(db, deleteStatusRemoteMentionsSql(statusId)),
-    ...actorUris.map((actorUri) =>
-      d1PrepareTyped(db, insertStatusRemoteMentionSql(statusId, actorUri)),
+    d1PrepareTyped(db, silenceStatusMentionsExceptSql(statusId, mentioned)),
+    d1PrepareTyped(db, insertStatusMentionsJsonSql(statusId, mentioned)),
+    d1PrepareTyped(
+      db,
+      insertSilentStatusMentionsJsonSql(statusId, jsonStringArray([...names.addressed])),
     ),
   ]);
   return batched.isErr() ? err(batched.error) : ok(undefined);
 };
+
+/** {@link replaceStatusMentions} for the remote actors a local note names. */
+export const replaceStatusRemoteMentions = async (
+  db: D1Database,
+  statusId: string,
+  names: LocalNoteMentions,
+): Promise<Result<void, RepositoryError>> => {
+  const mentioned = jsonStringArray([...names.mentioned]);
+  const batched = await runD1Batch(db, [
+    d1PrepareTyped(db, silenceStatusRemoteMentionsExceptSql(statusId, mentioned)),
+    d1PrepareTyped(db, insertStatusRemoteMentionsJsonSql(statusId, mentioned)),
+    d1PrepareTyped(
+      db,
+      insertSilentStatusRemoteMentionsJsonSql(statusId, jsonStringArray([...names.addressed])),
+    ),
+  ]);
+  return batched.isErr() ? err(batched.error) : ok(undefined);
+};
+
+/** Whether a local note mentions the remote actor, silently or not. */
+export const hasStatusRemoteMention = async (
+  db: D1Database,
+  statusId: string,
+  actorUri: string,
+): Promise<Result<boolean, RepositoryError>> =>
+  (
+    await runD1(async () =>
+      queryTyped(
+        db,
+        findStatusRemoteMentionSql(statusId, actorUri),
+        z.object({ found: z.number() }),
+      ),
+    )
+  ).map((rows) => rows.length > 0);
 
 export type StatusMentions = Readonly<{
   accountIds: ReadonlyArray<string>;
@@ -200,8 +237,8 @@ export const listShownRemoteStatusMentions = (
 
 /**
  * Local accounts and remote actors each cached remote note addresses, keyed
- * by status id: every mention, the silent ones included, as a direct note's
- * conversation counts them (Mastodon's `participants_from_status`).
+ * by status id: every mention, the silent ones included, as a limited or
+ * direct note reaches them (Mastodon's `mentions`).
  */
 export const listRemoteStatusMentions = (
   db: D1Database,

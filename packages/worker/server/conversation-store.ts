@@ -15,7 +15,11 @@ import {
   upsertConversationHide as upsertConversationHideSql,
 } from "./generated/prisma/sql";
 import { parseLocalStatusId } from "./activitypub";
-import { listRemoteStatusMentions, listStatusMentions, type StatusMentions } from "./mention-store";
+import {
+  listShownRemoteStatusMentions,
+  listStatusMentions,
+  type StatusMentions,
+} from "./mention-store";
 import { RemoteAccountId } from "./remote-account-id";
 import {
   findRemoteStatusReplyTargets,
@@ -243,7 +247,7 @@ export const listConversationsForAccount = async (
         db,
         statuses.flatMap((entry) => (entry.kind === "Local" ? [entry.status.id] : [])),
       ),
-      listRemoteStatusMentions(
+      listShownRemoteStatusMentions(
         db,
         statuses.flatMap((entry) => (entry.kind === "Remote" ? [entry.status.id] : [])),
       ),

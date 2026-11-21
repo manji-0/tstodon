@@ -21,7 +21,9 @@ export const listDirectStatusesForAccount = async (
     const mentionBefore = maxId ? "AND m.status_id < ?" : "";
     const beforeBinds = maxId ? [maxId] : [];
     // The page's ids merge the account's own direct notes and the notes that
-    // mention it, each read in id order, so a page stops after `limit` ids
+    // mention it, not silently (a quote's quoted author is no participant,
+    // as Mastodon's `participants_from_status` reads `active_mentions`), each
+    // read in id order, so a page stops after `limit` ids
     // instead of walking every direct note on the instance.
     const { results } = await db
       .prepare(
@@ -32,7 +34,8 @@ export const listDirectStatusesForAccount = async (
              ${ownBefore}
            UNION
            SELECT m.status_id FROM status_mentions m CROSS JOIN statuses s ON s.id = m.status_id
-           WHERE m.account_id = ? AND s.kind = 'LocalNote' AND s.visibility = 'direct'
+           WHERE m.account_id = ? AND m.silent = 0
+             AND s.kind = 'LocalNote' AND s.visibility = 'direct'
              AND s.account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
              AND NOT EXISTS (
                SELECT 1 FROM withheld_conversation_statuses w

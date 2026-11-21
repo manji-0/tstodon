@@ -28,7 +28,6 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
 import { permittedStatusIds } from "../../status-filter";
-import { viewableStatusIds } from "../../visibility-guard";
 import { findQuoteByQuoting, listQuotePage, saveQuoteState } from "../../quote-store";
 import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
@@ -96,9 +95,9 @@ export const getV1StatusesByIdRebloggedBy = (
  * reader may see, newest quoting status first, for a token with a read scope
  * (an app's own included). Quotes by authors the reader blocks, mutes, or is
  * blocked by are left out before the limit; the rest go through
- * `StatusFilter`, or only its `StatusPolicy#show?` part when the reader
- * wrote the quoted status. The `Link`
- * cursors are quote ids, taken from the page before that filter.
+ * `StatusFilter` unless the reader wrote the quoted status, whom each quote
+ * silently mentions. That reader also sees a suspended author's quote. The
+ * `Link` cursors are quote ids, taken from the page before that filter.
  */
 export const getV1StatusesByIdQuotes = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/quotes">,
@@ -153,30 +152,25 @@ export const getV1StatusesByIdQuotes = async (
   ];
   const wroteQuoted =
     status.value.kind === "LocalStatus" && status.value.status.accountId === viewerId;
-  // Mastodon skips `StatusFilter` for the quoted author, whom each quote
-  // silently mentions so it passes `StatusPolicy#show?`. tstodon records no
-  // such mention (DM-11), so that reader keeps the visibility check.
-  const permitted = wroteQuoted
-    ? await viewableStatusIds(
-        c.env.DB,
-        [...locals.value.values()],
-        [...remotes.value.values()],
-        viewerId,
-      )
-    : await permittedStatusIds(c.env.DB, quoting, viewerId);
-  const kept = quoting.filter((node) => permitted.has(node.status.id));
+  const permitted = wroteQuoted ? undefined : await permittedStatusIds(c.env.DB, quoting, viewerId);
+  const kept = quoting.filter((node) => permitted === undefined || permitted.has(node.status.id));
+  // Mastodon renders a suspended author's quote, which `StatusFilter` drops
+  // for everyone else.
+  const authors = wroteQuoted ? StatusAuthors.existing : StatusAuthors.available;
   const [localDocuments, remoteDocuments] = await Promise.all([
     mastodonStatuses(
       c.env,
       identity.value,
       kept.flatMap((node) => (node.kind === "Local" ? [node.status] : [])),
       viewerId,
+      authors,
     ),
     mastodonRemoteStatuses(
       c.env,
       identity.value,
       kept.flatMap((node) => (node.kind === "Remote" ? [node.status] : [])),
       viewerId,
+      authors,
     ),
   ]);
   if (localDocuments.isErr()) {

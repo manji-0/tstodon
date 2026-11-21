@@ -4,7 +4,7 @@ import { err, ok, type Result } from "neverthrow";
 import { parseLocalStatusId } from "./activitypub";
 import { PollVoteDocumentSchema } from "./activitypub-wire";
 import type { RepositoryError, StoredRowInvalid } from "./d1";
-import { listStatusMentions } from "./mention-store";
+import { hasStatusRemoteMention } from "./mention-store";
 import { readPollByStatusId, recordRemotePollVote } from "./poll-store";
 import { schedulePollUpdate } from "./poll-update";
 import { findRemoteFollow } from "./remote-actor-store";
@@ -17,7 +17,11 @@ export type RemotePollVoteResult = Readonly<{
   kind: "NotAVote" | "Ignored" | "Recorded";
 }>;
 
-/** Whether the poll's note is open to this remote actor, or addresses them. */
+/**
+ * Whether the poll's note is open to this remote actor, or mentions them,
+ * silently too (a quoted author, a mention an edit dropped), as a signed
+ * fetch of the note reads it.
+ */
 const canVote = async (
   env: Env,
   note: LocalNote,
@@ -26,11 +30,11 @@ const canVote = async (
   if (note.visibility.kind === "Public" || note.visibility.kind === "Unlisted") {
     return ok(true);
   }
-  const mentions = await listStatusMentions(env.DB, [note.id]);
-  if (mentions.isErr()) {
-    return err(mentions.error);
+  const mentioned = await hasStatusRemoteMention(env.DB, note.id, actorUri);
+  if (mentioned.isErr()) {
+    return err(mentioned.error);
   }
-  if (mentions.value.get(note.id)?.actorUris.includes(actorUri)) {
+  if (mentioned.value) {
     return ok(true);
   }
   if (note.visibility.kind !== "FollowersOnly") {
