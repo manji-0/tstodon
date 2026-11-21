@@ -168,6 +168,9 @@ export const getV1Notifications = async (
     c,
     rows.value.map((row) => row.id),
     limit,
+    {
+      filters: ["account_id", "types", "exclude_types", "include_filtered", "supported_types"],
+    },
   );
   return c.json(documents);
 };
@@ -531,7 +534,13 @@ export const getV2Notifications = async (
   if (envelope.isErr()) {
     return jsonRepositoryError(c, envelope.error.message);
   }
-  setLinkHeader(c, { next: page.oldestId, prev: page.newestId });
+  setLinkHeader(c, { next: page.oldestId, prev: page.newestId }, [
+    "include_filtered",
+    "types",
+    "exclude_types",
+    "grouped_types",
+    "supported_types",
+  ]);
   return c.json(envelope.value);
 };
 

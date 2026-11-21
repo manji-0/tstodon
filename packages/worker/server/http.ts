@@ -68,6 +68,14 @@ export const queryOffset = (raw: string | number | undefined): number => {
 };
 
 /**
+ * The filters a `Link` keeps besides `limit` and its cursor: what the
+ * controller's `pagination_params` permits beyond Mastodon's
+ * `Api::Pagination::PAGINATION_PARAMS` (`limit` alone). An array filter
+ * matches with or without its `[]`.
+ */
+export type LinkFilters = ReadonlyArray<string>;
+
+/**
  * Mastodon's `Link` pagination headers for a collection of row ids: a full page
  * offers `max_id=<last id>` as `rel="next"`, and any page offers
  * `min_id=<first id>` as `rel="prev"`. Row ids are what clients page these
@@ -77,18 +85,22 @@ export const setPaginationLinks = (
   c: Context<{ Bindings: Env }>,
   rowIds: ReadonlyArray<string>,
   limit: number,
-  options: Readonly<{ prev?: "min_id" | "since_id" }> = {},
+  options: Readonly<{ prev?: "min_id" | "since_id"; filters?: LinkFilters }> = {},
 ): void =>
-  setLinkHeader(c, {
-    next: rowIds.length >= limit ? rowIds.at(-1) : undefined,
-    prev: rowIds[0],
-    prevCursor: options.prev,
-  });
+  setLinkHeader(
+    c,
+    {
+      next: rowIds.length >= limit ? rowIds.at(-1) : undefined,
+      prev: rowIds[0],
+      prevCursor: options.prev,
+    },
+    options.filters,
+  );
 
 /**
  * Mastodon's `Link` header from page cursors: `max_id=<next>` as `rel="next"`
  * and `min_id=<prev>` (or `since_id`) as `rel="prev"`, keeping the request's
- * other query parameters.
+ * `limit` and `filters`.
  */
 export const setLinkHeader = (
   c: Context<{ Bindings: Env }>,
@@ -97,8 +109,9 @@ export const setLinkHeader = (
     prev: string | undefined;
     prevCursor?: "min_id" | "since_id" | undefined;
   }>,
+  filters: LinkFilters = [],
 ): void =>
-  setLinks(c, ["max_id", "since_id", "min_id"], {
+  setLinks(c, filters, {
     next: cursors.next === undefined ? undefined : ["max_id", cursors.next],
     prev: cursors.prev === undefined ? undefined : [cursors.prevCursor ?? "min_id", cursors.prev],
   });
@@ -106,28 +119,32 @@ export const setLinkHeader = (
 /**
  * Mastodon's `Link` header for a list paged by `offset` (trends): a full page
  * offers `offset + limit` as `rel="next"`, and a page past the first offers
- * `offset - limit` (at least 0) as `rel="prev"`, keeping the request's other
- * query parameters.
+ * `offset - limit` (at least 0) as `rel="prev"`, keeping the request's `limit`.
  */
 export const setOffsetPaginationLinks = (
   c: Context<{ Bindings: Env }>,
   page: Readonly<{ offset: number; limit: number; count: number }>,
 ): void =>
-  setLinks(c, ["offset"], {
+  setLinks(c, [], {
     next: page.count >= page.limit ? ["offset", String(page.offset + page.limit)] : undefined,
     prev: page.offset > 0 ? ["offset", String(Math.max(page.offset - page.limit, 0))] : undefined,
   });
 
-/** The `Link` header from the request URL, with `cleared` params replaced by each rel's cursor. */
+/** The `Link` header: the request URL keeping `limit` and `filters`, plus each rel's cursor. */
 const setLinks = (
   c: Context<{ Bindings: Env }>,
-  cleared: ReadonlyArray<string>,
+  filters: LinkFilters,
   rels: Readonly<Record<"next" | "prev", readonly [string, string] | undefined>>,
 ): void => {
+  const kept = new Set(["limit", ...filters]);
+  const request = new URL(c.req.url);
   const link = ([param, value]: readonly [string, string], rel: "next" | "prev"): string => {
-    const target = new URL(c.req.url);
-    for (const name of cleared) {
-      target.searchParams.delete(name);
+    const target = new URL(request);
+    target.search = "";
+    for (const [name, keptValue] of request.searchParams) {
+      if (kept.has(name.endsWith("[]") ? name.slice(0, -2) : name)) {
+        target.searchParams.append(name, keptValue);
+      }
     }
     target.searchParams.set(param, value);
     return `<${target.toString()}>; rel="${rel}"`;

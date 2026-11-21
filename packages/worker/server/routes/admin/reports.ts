@@ -124,6 +124,8 @@ export const getV1AdminReports = async (c: Context<{ Bindings: Env }, "/api/v1/a
     c,
     reports.value.map((report) => report.id),
     limit,
+    // `Api::V1::Admin::ReportsController::FILTER_PARAMS`
+    { filters: ["resolved", "unresolved", "account_id", "target_account_id"] },
   );
   const documents: ApiAdminReportJSON[] = [];
   for (const report of reports.value) {

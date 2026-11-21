@@ -44,6 +44,7 @@ import {
   requireAdmin,
   setPaginationLinks,
   PageSize,
+  type LinkFilters,
 } from "../../http";
 import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
 import { findRemoteActorsByUris } from "../../remote-actor-store";
@@ -389,10 +390,43 @@ const accountIdsByIp = async (
   ]);
 };
 
+/** `Api::V1::Admin::AccountsController::FILTER_PARAMS` */
+const V1_LINK_FILTERS: LinkFilters = [
+  "local",
+  "remote",
+  "by_domain",
+  "active",
+  "pending",
+  "disabled",
+  "sensitized",
+  "silenced",
+  "suspended",
+  "username",
+  "display_name",
+  "email",
+  "ip",
+  "staff",
+];
+
+/** `Api::V2::Admin::AccountsController::FILTER_PARAMS` */
+const V2_LINK_FILTERS: LinkFilters = [
+  "origin",
+  "status",
+  "permissions",
+  "username",
+  "by_domain",
+  "display_name",
+  "email",
+  "ip",
+  "invited_by",
+  "role_ids",
+];
+
 /** The admin account list both versions answer, with Mastodon's `Link` header. */
 const adminAccountsResponse = async (
   c: Context<{ Bindings: Env }>,
   filters: RequestedFilters,
+  linkFilters: LinkFilters,
 ): Promise<Response> => {
   const identity = parseInstanceIdentity(c.env);
   if (identity.isErr()) {
@@ -437,6 +471,7 @@ const adminAccountsResponse = async (
     c,
     documents.map((document) => document.id),
     limit,
+    { filters: linkFilters },
   );
   return c.json(documents);
 };
@@ -448,7 +483,7 @@ export const getV1AdminAccounts = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  return adminAccountsResponse(c, adminAccountFilters(c));
+  return adminAccountsResponse(c, adminAccountFilters(c), V1_LINK_FILTERS);
 };
 
 /** `GET /api/v2/admin/accounts`: v1's list with Mastodon's v2 filters. */
@@ -463,7 +498,7 @@ export const getV2AdminAccounts = async (
   if (filters === "invalid") {
     return c.json({ error: "Validation failed: invalid filter", kind: "ValidationError" }, 422);
   }
-  return adminAccountsResponse(c, filters);
+  return adminAccountsResponse(c, filters, V2_LINK_FILTERS);
 };
 
 /**
