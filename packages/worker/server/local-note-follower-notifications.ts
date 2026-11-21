@@ -7,36 +7,69 @@ import {
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { notifyingFollowersPage } from "./follow-store";
+import { notifyingFollowersAmong, notifyingFollowersPage } from "./follow-store";
 import { listStatusMentions } from "./mention-store";
 import { measureJobPage } from "./metrics";
 import { notifyAccountOnce } from "./notify";
+import type { NotifyingFollowerPage } from "./outbound-follow-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { NOTIFYING_FOLLOWER_PAGE_SIZE } from "./remote-status-persist";
 import { findStatusById, listStatusReplyLinks } from "./status-store";
 
 type FollowersJob = Extract<OutboxJob, { kind: "NotifyLocalNoteFollowers" }>;
 
+const NO_FOLLOWERS: NotifyingFollowerPage = { followers: [], next: undefined };
+
 /**
- * Read the page after the follow `afterFollowId` (empty for the first) of
- * the author's notifying followers, and queue a `Follower` job for each one
- * the note reaches ({@link StatusNotificationAudience}) and the next page
- * when this one is full. Each follower is on one page only, as pages follow
- * follow ids. Resolves to the followers the page read.
+ * The notifying followers the note can reach on the page after the follow
+ * `afterFollowId` (empty for the first). A reply to someone else reaches
+ * none, so no follower is read; a direct note reaches only the accounts it
+ * names (`deliver_to_mentioned_followers!`), read in one page, so the
+ * author's other followers are not paged through.
+ */
+const reachableFollowers = (
+  db: D1Database,
+  note: Pick<LocalNote, "id" | "accountId">,
+  audience: NotifiedNote,
+  afterFollowId: string,
+): Promise<Result<NotifyingFollowerPage, RepositoryError>> => {
+  if (audience.thread.kind === "ReplyToOther") {
+    return Promise.resolve(ok(NO_FOLLOWERS));
+  }
+  switch (audience.visibility.kind) {
+    case "Limited":
+    case "Direct":
+      return notifyingFollowersAmong(db, note.accountId, note.id, [...audience.addressed]).then(
+        (found) => found.map((followers) => ({ followers, next: undefined })),
+      );
+    case "Public":
+    case "Unlisted":
+    case "FollowersOnly":
+      return notifyingFollowersPage(
+        db,
+        note.accountId,
+        note.id,
+        afterFollowId,
+        NOTIFYING_FOLLOWER_PAGE_SIZE,
+      );
+  }
+};
+
+/**
+ * Read a page of the followers the note can reach ({@link reachableFollowers}),
+ * and queue a `Follower` job for each one it reaches
+ * ({@link StatusNotificationAudience}) and the next page when this one is
+ * full. Each follower is on one page only, as pages follow follow ids.
+ * Resolves to how many followers the page read, and whether a next page
+ * was queued.
  */
 const queueFollowerPage = async (
   env: Env,
   note: Pick<LocalNote, "id" | "accountId">,
   audience: NotifiedNote,
   afterFollowId: string,
-): Promise<Result<number, RepositoryError>> => {
-  const page = await notifyingFollowersPage(
-    env.DB,
-    note.accountId,
-    note.id,
-    afterFollowId,
-    NOTIFYING_FOLLOWER_PAGE_SIZE,
-  );
+): Promise<Result<Readonly<{ read: number; chained: boolean }>, RepositoryError>> => {
+  const page = await reachableFollowers(env.DB, note, audience, afterFollowId);
   if (page.isErr()) {
     return err(page.error);
   }
@@ -60,7 +93,7 @@ const queueFollowerPage = async (
         ]),
   ];
   const queued = await queueOutboxJobs(env, jobs);
-  return queued.map(() => followers.length);
+  return queued.map(() => ({ read: followers.length, chained: next !== undefined }));
 };
 
 /**
@@ -134,11 +167,7 @@ export const processNotifyLocalNoteFollowersJob = async (
       }
       const page = await queueFollowerPage(env, note, audience.value, step.afterFollowId);
       return page.isOk()
-        ? {
-            outcome: "ok",
-            size: page.value,
-            chained: page.value === NOTIFYING_FOLLOWER_PAGE_SIZE,
-          }
+        ? { outcome: "ok", size: page.value.read, chained: page.value.chained }
         : retry;
     });
   }

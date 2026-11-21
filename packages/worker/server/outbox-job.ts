@@ -369,7 +369,14 @@ export const processOutboxJob = async (
         chained: false,
       }));
     case "PublishScheduledStatuses":
-      await publishDueScheduledStatuses(env);
+      if (await publishDueScheduledStatuses(env)) {
+        try {
+          await env.OUTBOX_PROCESS_QUEUE.send(job);
+        } catch {
+          // The next cron run publishes the rest.
+          console.error(JSON.stringify({ kind: "PublishScheduledStatusesNotChained" }));
+        }
+      }
       return "ok";
     case "ProcessLinkCard":
       return processLinkCardJob(env, job);

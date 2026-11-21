@@ -1,4 +1,4 @@
-import { LocalFollow } from "@tstodon/domain";
+import { LocalFollow, type NotifyingFollower } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
@@ -19,6 +19,7 @@ import {
   listFamiliarFollowerIdsJson as listFamiliarFollowerIdsJsonSql,
   listFollowingAccountIds as listFollowingAccountIdsSql,
   listNotifyingFollowers as listNotifyingFollowersSql,
+  listNotifyingFollowersAmong as listNotifyingFollowersAmongSql,
   rejectFollowRequest as rejectFollowRequestSql,
   upsertFollowOptions as upsertFollowOptionsSql,
 } from "./generated/prisma/sql";
@@ -35,6 +36,7 @@ const NotifyingFollowerRow = z.object({
   follower_account_id: z.string(),
   languages_json: z.string(),
 });
+const NotifyingFollowerAmongRow = NotifyingFollowerRow.omit({ id: true });
 const KindRow = z.object({ kind: z.string() });
 const TargetAccountIdRow = z.object({ target_account_id: z.string() });
 
@@ -261,6 +263,37 @@ export const notifyingFollowersPage = async (
       })),
       next: rows.length === limit ? rows.at(-1)?.id : undefined,
     };
+  });
+
+/**
+ * The local followers among `followerIds` that {@link notifyingFollowersPage}
+ * would list, in one read: a direct note's addressed accounts.
+ */
+export const notifyingFollowersAmong = async (
+  db: D1Database,
+  accountId: string,
+  statusId: string,
+  followerIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
+  runD1(async () => {
+    if (followerIds.length === 0) {
+      return [];
+    }
+    const rows = await queryTyped(
+      db,
+      listNotifyingFollowersAmongSql(
+        accountId,
+        nowIso(),
+        statusId,
+        signedInRecentlySinceDay(),
+        jsonStringArray(followerIds),
+      ),
+      NotifyingFollowerAmongRow,
+    );
+    return rows.map((row) => ({
+      accountId: row.follower_account_id,
+      languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
+    }));
   });
 
 /** Every local account the viewer follows, for `following=true` searches. */

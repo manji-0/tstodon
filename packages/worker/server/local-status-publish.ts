@@ -329,8 +329,16 @@ export const publishLocalNote = async (
     language: note.language,
     addressed: new Set(mentionedAccounts.map((account) => account.id)),
   });
+  // The note is stored: failing the publish now would leave it unfederated
+  // and have the client post it again. The notifications are lost instead.
   if (followersNotified.isErr()) {
-    return err(followersNotified.error);
+    console.error(
+      JSON.stringify({
+        kind: "StatusNotificationsNotQueued",
+        statusId: note.id,
+        error: followersNotified.error.message,
+      }),
+    );
   }
   // A direct note goes only to the remote accounts it mentions or quotes; with
   // none, nothing leaves the instance.
