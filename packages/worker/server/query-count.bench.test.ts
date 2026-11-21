@@ -1,7 +1,15 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, it } from "vite-plus/test";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
-import { meter, patchBindings, patchD1, resetMeter, seedNoise, settle } from "../test/meter";
+import {
+  meter,
+  patchBindings,
+  patchD1,
+  requestsSettled,
+  resetMeter,
+  seedNoise,
+  settle,
+} from "../test/meter";
 
 /**
  * Counts the D1 statements and serial D1 rounds each Mastodon API request
@@ -73,7 +81,7 @@ const measure = async (
   resetMeter();
   const result = await call(token, method, path, body);
   const before = { ...meter.tally, sql: [...meter.tally.sql] };
-  await settle();
+  await requestsSettled();
   const deferred = meter.tally.statements - before.statements;
   const size = Array.isArray(result.json) ? result.json.length : "";
   // Rows and binding calls are totals, deferred work included: all of it is billed.
