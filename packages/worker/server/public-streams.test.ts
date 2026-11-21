@@ -283,6 +283,55 @@ describe("public streams", () => {
     local.close();
   });
 
+  // `FanOutOnWriteService` broadcasts a status `FetchRemoteStatusService`
+  // stores within the real-time window as it does a delivered one.
+  it("carry a remote public note a boost made this server fetch, only when it was published within six hours", async () => {
+    const actor = await remoteActor("ps-fetched-actor", "ps-fetched.example");
+    const booster = await remoteActor("ps-fetched-booster", "ps-fetched-booster.example");
+    const remote = await openStream({
+      email: "ps-fetched-viewer@example.com",
+      query: "?stream=public:remote",
+    });
+    const old = {
+      ...remoteNote(actor, "ps-fetched-old"),
+      published: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+    };
+    const recent = remoteNote(actor, "ps-fetched-recent");
+    const documents = new Map<string, unknown>([old, recent].map((note) => [note.id, note]));
+    const original = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const document = documents.get(href);
+      return document === undefined
+        ? new Response("not found", { status: 404 })
+        : new Response(JSON.stringify(document), {
+            headers: { "content-type": "application/activity+json" },
+          });
+    };
+    try {
+      for (const note of [old, recent]) {
+        expect(
+          await booster.send({
+            id: `${booster.actorUri}/announces/${note.id.split("/").at(-1)}`,
+            type: "Announce",
+            object: note.id,
+            published: new Date().toISOString(),
+            to: [PUBLIC],
+          }),
+        ).toBe(202);
+      }
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    const heard = await remote.next();
+    expect(heard.stream).toEqual(["public:remote"]);
+    expect(statusOf(heard).uri).toBe(recent.id);
+    expect(await remote.heardNothing(REMOTE)).toBe(true);
+    remote.close();
+  });
+
   it("are looked up in rows that follow the hub's sockets", async () => {
     const rows = async (hub: string): Promise<number> =>
       (
