@@ -71,7 +71,6 @@ export const mastodonNotifications = async (
     (severance.isOk() ? severance.value : []).map((event) => [event.id, event]),
   );
   const documents = new Map<string, ApiNotificationJSON>();
-  const groupedTypes = new Set(NotificationGroup.defaultGroupedTypes);
   for (const row of rows) {
     const sender = accounts.get(row.from_account_id);
     // As Mastodon's `without_suspended`, a sender that is not available hides the notification.
@@ -85,8 +84,8 @@ export const mastodonNotifications = async (
     const base = {
       id: row.id,
       created_at: row.created_at,
-      // The group the web UI files it under, as Mastodon 4.3's default grouping.
-      group_key: NotificationGroup.key(groupedEntry(row), groupedTypes),
+      // The group the web UI files it under, as Mastodon's `NotificationSerializer`.
+      group_key: NotificationGroup.key(groupedEntry(row), NotificationGroup.groupableTypes),
       account: sender.document,
     };
     const target = row.target_account_id

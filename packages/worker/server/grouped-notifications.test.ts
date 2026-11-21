@@ -72,6 +72,123 @@ const favourite = async (email: string, statusId: string): Promise<void> => {
   expect(response.status).toBe(200);
 };
 
+const hourBucket = (createdAt: string): number => Math.floor(Date.parse(createdAt) / 3_600_000);
+
+const V1NotificationSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  created_at: z.string(),
+  group_key: z.string(),
+  status: z.object({ id: z.string() }).nullish(),
+});
+
+/** The account's notifications as `GET /api/v1/notifications` lists them, held ones too. */
+const v1Notifications = async (email: string): Promise<z.infer<typeof V1NotificationSchema>[]> =>
+  read(
+    z.array(V1NotificationSchema),
+    (
+      await json("/api/v1/notifications?limit=80&include_filtered=true", {
+        headers: await auth(email),
+      })
+    ).body,
+  );
+
+/**
+ * Mastodon's key of the favourites of `statusId` that began with its first
+ * favourite: its type prefix and the hour that favourite was recorded in.
+ */
+const favouriteKey = async (email: string, statusId: string): Promise<string> => {
+  const first = (await v1Notifications(email))
+    .filter((entry) => entry.type === "favourite" && entry.status?.id === statusId)
+    .at(-1);
+  return `favourite-${statusId}-${hourBucket(first?.created_at ?? "")}`;
+};
+
+const follow = async (email: string, accountId: string): Promise<void> => {
+  const response = await json(`/api/v1/accounts/${accountId}/follow`, {
+    method: "POST",
+    headers: await auth(email),
+  });
+  expect(response.status).toBe(200);
+};
+
+describe("grouped notification keys", () => {
+  it("groups follows by type within an hour bucket, as Mastodon's set_group_key!", async () => {
+    const targetEmail = "group-follow-target@example.com";
+    const target = await credentials(targetEmail);
+    await follow("group-follow-a@example.com", target.id);
+    await follow("group-follow-b@example.com", target.id);
+
+    const follows = (await v1Notifications(targetEmail)).filter((entry) => entry.type === "follow");
+    expect(follows).toHaveLength(2);
+    const key = `follow-${hourBucket(follows.at(-1)?.created_at ?? "")}`;
+    expect(follows.map((entry) => entry.group_key)).toEqual([key, key]);
+
+    const { notification_groups: groups } = read(
+      EnvelopeSchema,
+      (await json("/api/v2/notifications", { headers: await auth(targetEmail) })).body,
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ group_key: key, type: "follow", notifications_count: 2 });
+    expect(groups[0]?.sample_account_ids).toHaveLength(2);
+    const unread = await json("/api/v2/notifications/unread_count", {
+      headers: await auth(targetEmail),
+    });
+    expect(read(z.object({ count: z.number() }), unread.body).count).toBe(1);
+  });
+
+  it("keys a favourite by its status and hour bucket in both API versions", async () => {
+    const authorEmail = "group-key-format-author@example.com";
+    const p = await postStatus(authorEmail, { status: "key format p" });
+    await favourite("group-key-format-fan-a@example.com", p);
+    await favourite("group-key-format-fan-b@example.com", p);
+
+    const favourites = await v1Notifications(authorEmail);
+    const key = `favourite-${p}-${hourBucket(favourites.at(-1)?.created_at ?? "")}`;
+    expect(favourites.map((entry) => entry.group_key)).toEqual([key, key]);
+    const { notification_groups: groups } = read(
+      EnvelopeSchema,
+      (await json("/api/v2/notifications", { headers: await auth(authorEmail) })).body,
+    );
+    expect(groups.map((group) => [group.group_key, group.notifications_count])).toEqual([[key, 2]]);
+  });
+
+  it("keeps a notification held when it was recorded out of its group once accepted", async () => {
+    const authorEmail = "group-key-accepted-author@example.com";
+    const p = await postStatus(authorEmail, { status: "key accepted p" });
+    await favourite("group-key-accepted-fan-a@example.com", p);
+    const policy = await json("/api/v2/notifications/policy", {
+      method: "PATCH",
+      headers: { ...(await auth(authorEmail)), "content-type": "application/json" },
+      body: JSON.stringify({ for_not_following: "filter" }),
+    });
+    expect(policy.status).toBe(200);
+    await favourite("group-key-accepted-fan-b@example.com", p);
+    const [held] = await v1Notifications(authorEmail);
+    expect(held?.group_key).toBe(`ungrouped-${held?.id ?? ""}`);
+
+    const requests = read(
+      z.array(z.object({ id: z.string() })),
+      (await json("/api/v1/notifications/requests", { headers: await auth(authorEmail) })).body,
+    );
+    expect(requests).toHaveLength(1);
+    const accepted = await json(`/api/v1/notifications/requests/${requests[0]?.id ?? ""}/accept`, {
+      method: "POST",
+      headers: await auth(authorEmail),
+    });
+    expect(accepted.status).toBe(200);
+
+    const { notification_groups: groups } = read(
+      EnvelopeSchema,
+      (await json("/api/v2/notifications", { headers: await auth(authorEmail) })).body,
+    );
+    expect(groups.map((group) => [group.group_key, group.notifications_count])).toEqual([
+      [`ungrouped-${held?.id ?? ""}`, 1],
+      [await favouriteKey(authorEmail, p), 1],
+    ]);
+  });
+});
+
 describe("grouped notifications", () => {
   it("folds favourites of one status into a single group", async () => {
     const authorEmail = "group-author@example.com";
@@ -141,6 +258,11 @@ describe("grouped notifications", () => {
     expect(mention?.notifications_count).toBe(1);
     expect(mention?.group_key.startsWith("ungrouped-")).toBe(true);
     expect(mention?.status_id).toBeDefined();
+    // As Mastodon's `where(group_key:)`: no notification stores an ungrouped key.
+    const accounts = await json(`/api/v2/notifications/${mention?.group_key ?? ""}/accounts`, {
+      headers: await auth(authorEmail),
+    });
+    expect(read(z.array(ApiAccount), accounts.body)).toEqual([]);
   });
 
   it("paginates by group and requires auth", async () => {
@@ -269,7 +391,7 @@ describe("grouped notifications", () => {
     await favourite("group-key-old@example.com", p);
     await favourite("group-key-other@example.com", other);
     await favourite("group-key-new@example.com", p);
-    const groupKey = `favourite-${p}`;
+    const groupKey = await favouriteKey(authorEmail, p);
 
     const single = await json(`/api/v2/notifications/${groupKey}`, {
       headers: await auth(authorEmail),
@@ -351,9 +473,16 @@ const favouriteFrom = async (
         sender.createdAt,
       ),
       env.DB.prepare(
-        `INSERT INTO notifications (id, account_id, from_account_id, kind, status_id, created_at)
-         VALUES (?, ?, ?, 'favourite', ?, ?)`,
-      ).bind(sender.id, author.id, sender.id, statusId, sender.createdAt),
+        `INSERT INTO notifications (id, account_id, from_account_id, kind, status_id, created_at, group_key)
+         VALUES (?, ?, ?, 'favourite', ?, ?, ?)`,
+      ).bind(
+        sender.id,
+        author.id,
+        sender.id,
+        statusId,
+        sender.createdAt,
+        `favourite-${statusId}-${hourBucket(sender.createdAt)}`,
+      ),
     ]),
   );
   return senders.map((sender) => sender.id);
@@ -364,7 +493,7 @@ describe("a notification group by key", () => {
     const authorEmail = "group-large-author@example.com";
     const p = await postStatus(authorEmail, { status: "large p" });
     await favouriteFrom(authorEmail, "group_large_fan", 45, p, "91");
-    const groupKey = `favourite-${p}`;
+    const groupKey = await favouriteKey(authorEmail, p);
 
     const single = read(
       EnvelopeSchema,
@@ -423,7 +552,8 @@ describe("a notification group by key", () => {
     });
     expect(mute.status).toBe(200);
 
-    const dismissed = await json(`/api/v2/notifications/favourite-${p}/dismiss`, {
+    const groupKey = await favouriteKey(authorEmail, p);
+    const dismissed = await json(`/api/v2/notifications/${groupKey}/dismiss`, {
       method: "POST",
       headers: await auth(authorEmail),
     });
@@ -441,7 +571,7 @@ describe("a notification group by key", () => {
       [other, 1],
     ]);
     expect(await notificationIds(authorEmail, "&include_filtered=true")).toHaveLength(1);
-    const gone = await json(`/api/v2/notifications/favourite-${p}`, {
+    const gone = await json(`/api/v2/notifications/${groupKey}`, {
       headers: await auth(authorEmail),
     });
     expect(gone.status).toBe(404);
@@ -451,7 +581,8 @@ describe("a notification group by key", () => {
     const authorEmail = "group-dismiss-twice-author@example.com";
     const p = await postStatus(authorEmail, { status: "twice p" });
     await favourite("group-dismiss-twice-fan@example.com", p);
-    for (const groupKey of [`favourite-${p}`, `favourite-${p}`, "ungrouped-0", "nonsense"]) {
+    const key = await favouriteKey(authorEmail, p);
+    for (const groupKey of [key, key, "ungrouped-0", "nonsense"]) {
       const dismissed = await json(`/api/v2/notifications/${groupKey}/dismiss`, {
         method: "POST",
         headers: await auth(authorEmail),
@@ -474,7 +605,7 @@ describe("a notification group by key", () => {
     const [held] = await notificationIds(authorEmail, "&include_filtered=true");
     expect(await notificationIds(authorEmail, "")).not.toContain(held);
 
-    await json(`/api/v2/notifications/favourite-${p}/dismiss`, {
+    await json(`/api/v2/notifications/${await favouriteKey(authorEmail, p)}/dismiss`, {
       method: "POST",
       headers: await auth(authorEmail),
     });
@@ -523,7 +654,7 @@ describe("a notification group by key", () => {
     const authorEmail = "group-key-types-author@example.com";
     const p = await postStatus(authorEmail, { status: "key types p" });
     await favourite("group-key-types-fan@example.com", p);
-    const groupKey = `favourite-${p}`;
+    const groupKey = await favouriteKey(authorEmail, p);
     const query = "grouped_types[]=reblog";
 
     const single = await json(`/api/v2/notifications/${groupKey}?${query}`, {
@@ -615,7 +746,10 @@ describe("grouped notification pages over long runs", () => {
     await favouriteFrom(authorEmail, "group_big_fan", 12, p, "95");
 
     const { groups } = await groupsAt(authorEmail, "/api/v2/notifications?limit=1");
-    const single = await groupsAt(authorEmail, `/api/v2/notifications/favourite-${p}`);
+    const single = await groupsAt(
+      authorEmail,
+      `/api/v2/notifications/${await favouriteKey(authorEmail, p)}`,
+    );
     expect(groups.map((group) => group.notifications_count)).toEqual([12]);
     expect(single.groups.map((group) => group.notifications_count)).toEqual([12]);
   });

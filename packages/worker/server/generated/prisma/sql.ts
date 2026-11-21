@@ -330,6 +330,8 @@ export * from "./sql/findNextOutboxTargetDue";
 
 export * from "./sql/findNotificationById";
 
+export * from "./sql/findNotificationGroupBucket";
+
 export * from "./sql/findNotificationOwned";
 
 export * from "./sql/findNotificationPolicy";

@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const findNotificationById = $runtime.makeTypedQueryFactory(
-  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at,\nn.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $2) AS held\nFROM notifications n\nWHERE n.id = $1 AND n.account_id = $2\nLIMIT 1",
+  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at, n.group_key,\nn.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $2) AS held\nFROM notifications n\nWHERE n.id = $1 AND n.account_id = $2\nLIMIT 1",
 ) as (
   id: string,
   accountId: string,
@@ -27,6 +27,7 @@ export namespace findNotificationById {
     report_id: string | null;
     severance_event_id: string | null;
     created_at: string;
+    group_key: string | null;
     held: null | null;
   };
 }

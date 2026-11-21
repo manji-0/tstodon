@@ -5,6 +5,7 @@ import {
   FediRole,
   type FediRoleValue,
   type FindMutedThreadStatusIds,
+  type FindNotificationGroupBucket,
   type HoldNotification,
   type InsertNotification,
   type KeepOutOfConversations,
@@ -12,6 +13,7 @@ import {
   LocalFollow,
   type MentionedPost,
   type NewNotification,
+  NotificationGroup,
   type NotificationPolicyAction,
   type PublishNotification,
   type ResolveNotificationDisposition,
@@ -35,9 +37,11 @@ import { findRemoteBlock } from "./remote-block-store";
 import { mastodonNotification } from "./notification-documents";
 import {
   findNotificationById,
+  findNotificationGroupBucket,
   insertNotification,
   insertNotificationOnce,
 } from "./notification-store";
+import { nowIso } from "./clock";
 import { enqueuePushDeliveries } from "./push-delivery";
 import { parseInstanceIdentity } from "./runtime-config";
 import { mutedThreadStatusIds } from "./status-mute-store";
@@ -80,6 +84,8 @@ export type NotifyContracts = Readonly<{
   screenSender: ScreenSender;
   resolveDisposition: ResolveNotificationDisposition;
   findMutedThreadStatusIds: FindMutedThreadStatusIds;
+  now: () => string;
+  findGroupBucket: FindNotificationGroupBucket;
   insertNotification: InsertNotification;
   holdNotification: HoldNotification;
   keepOutOfConversations: KeepOutOfConversations;
@@ -161,12 +167,33 @@ const dropped = (
     ? contracts.keepOutOfConversations(input)
     : Promise.resolve(ok(undefined));
 
+/**
+ * The key Mastodon's `set_group_key!` stores: none for a type it does not
+ * group or a notification the policy holds (`filtered?`).
+ */
+const groupKeyOf = async (
+  contracts: NotifyContracts,
+  input: NewNotification,
+  disposition: Exclude<NotificationPolicyAction, "drop">,
+): Promise<Result<string | undefined, RepositoryError>> => {
+  const prefix = NotificationGroup.typePrefix(input);
+  if (prefix === undefined || disposition === "filter") {
+    return ok(undefined);
+  }
+  const previous = await contracts.findGroupBucket(input.accountId, prefix);
+  return previous.map((bucket) => NotificationGroup.groupKey(prefix, bucket, contracts.now()));
+};
+
 const recordNotification = async (
   contracts: NotifyContracts,
   input: NewNotification,
   disposition: Exclude<NotificationPolicyAction, "drop">,
 ): Promise<Result<void, RepositoryError>> => {
-  const inserted = await contracts.insertNotification(input);
+  const groupKey = await groupKeyOf(contracts, input, disposition);
+  if (groupKey.isErr()) {
+    return err(groupKey.error);
+  }
+  const inserted = await contracts.insertNotification(input, groupKey.value);
   if (inserted.isErr()) {
     return err(inserted.error);
   }
@@ -198,7 +225,11 @@ const notifyContracts = (env: Env): NotifyContracts => {
       identity.isOk()
         ? mutedThreadStatusIds(env.DB, identity.value, accountId, statusIds)
         : Promise.resolve(ok(new Set())),
-    insertNotification: (notification) => insertNotification(env.DB, notification),
+    now: nowIso,
+    findGroupBucket: (accountId, typePrefix) =>
+      findNotificationGroupBucket(env.DB, accountId, typePrefix),
+    insertNotification: (notification, groupKey) =>
+      insertNotification(env.DB, notification, groupKey),
     holdNotification: (notificationId, notification) =>
       holdNotification(
         env.DB,
@@ -429,7 +460,8 @@ export const notifyFromRemoteOnce = (
   deliverNotification(
     {
       ...notifyContracts(env),
-      insertNotification: (notification) => insertNotificationOnce(env.DB, notification, since),
+      insertNotification: (notification, groupKey) =>
+        insertNotificationOnce(env.DB, notification, groupKey, since),
     },
     remoteNotification(input),
     mentionedPost,

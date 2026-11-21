@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import {
   dismissNotificationGroup,
+  findNotificationGroupBucket,
+  listNotifications,
+  listNotificationsAscending,
   pageNotificationGroupsNewer,
   pageNotificationGroupsOlder,
   summarizeNotificationGroups,
@@ -11,7 +14,7 @@ import { d1PrepareTyped } from "./typed-sql";
 
 const PlanRow = z.object({ detail: z.string() });
 
-/** The plan lines that read `notifications`, aliased `n` or `next` in these statements. */
+/** The plan lines that read `notifications`, aliased `n`, `g` or `next` in these statements. */
 const notificationReads = async (typed: {
   sql: string;
   values: ReadonlyArray<unknown>;
@@ -24,7 +27,7 @@ const notificationReads = async (typed: {
     .array(PlanRow)
     .parse(results)
     .map((row) => row.detail)
-    .filter((detail) => /^(SCAN|SEARCH) (n|next)\b/.test(detail));
+    .filter((detail) => /^(SCAN|SEARCH) (n|g|next)\b/.test(detail));
 };
 
 /**
@@ -55,7 +58,7 @@ describe("grouped notification statements", () => {
       summarizeNotificationGroups(
         "account",
         "2026-11-06T00:00:00.000Z",
-        JSON.stringify([{ key: "favourite-s", type: "favourite", target: "s" }]),
+        JSON.stringify([{ key: "favourite-s-493000" }, { key: "ungrouped-1", id: "1" }]),
         "[]",
         "",
         0,
@@ -65,11 +68,71 @@ describe("grouped notification statements", () => {
     ],
     [
       "the group dismissal",
-      dismissNotificationGroup("account", "2026-11-06T00:00:00.000Z", "", "favourite", "s"),
+      dismissNotificationGroup("account", "2026-11-06T00:00:00.000Z", "", "favourite-s-493000"),
     ],
+    ["the group bucket lookup", findNotificationGroupBucket("account", "favourite-s")],
   ])("reads %s through an index past the account", async (_name, typed) => {
     const reads = await notificationReads(typed);
     expect(reads.length).toBeGreaterThan(0);
     expect(reads.filter(wholeAccount)).toEqual([]);
+  });
+
+  it.each([
+    [
+      "the group members",
+      summarizeNotificationGroups(
+        "account",
+        "2026-11-06T00:00:00.000Z",
+        JSON.stringify([{ key: "follow-493000" }]),
+        "[]",
+        "",
+        0,
+        "",
+        0,
+      ),
+    ],
+    ["the latest bucket", findNotificationGroupBucket("account", "follow")],
+    [
+      "the group dismissal",
+      dismissNotificationGroup("account", "2026-11-06T00:00:00.000Z", "", "follow-493000"),
+    ],
+  ])("seeks %s by stored group key", async (_name, typed) => {
+    const reads = await notificationReads(typed);
+    expect(reads.some((detail) => detail.includes("idx_notifications_account_group"))).toBe(true);
+  });
+
+  it.each([
+    [
+      "down",
+      listNotifications(
+        "account",
+        "2026-11-06T00:00:00.000Z",
+        40,
+        "[]",
+        "[]",
+        "",
+        "",
+        "",
+        0,
+        "follow-493000",
+      ),
+    ],
+    [
+      "up",
+      listNotificationsAscending(
+        "account",
+        "2026-11-06T00:00:00.000Z",
+        40,
+        "[]",
+        "[]",
+        "",
+        "1",
+        0,
+        "follow-493000",
+      ),
+    ],
+  ])("walks the account in id order for a group's senders read %s", async (_name, typed) => {
+    const reads = await notificationReads(typed);
+    expect(reads).toEqual([expect.stringMatching(/USING INDEX idx_notifications_account_id /)]);
   });
 });
