@@ -13,9 +13,10 @@ import { env } from "cloudflare:test";
  * making it started (`patchD1` wraps the Worker's `fetch`), or when
  * `meterWork` started the work that makes it. The isolate also runs work no
  * test is measuring: a Workflow retrying a delivery an earlier test queued, a
- * queue batch, a request whose after-response work outlived its window. That
- * work is not counted, and a request's own after-response work never lands
- * in a later request's tally.
+ * queue batch. That work is not counted, and a request's own after-response
+ * work never lands in a later request's tally. `requestsSettled` waits for
+ * that after-response work (what the requests handed `ctx.waitUntil`), so a
+ * tally read after it holds all of it.
  */
 
 export type Tally = {
@@ -56,6 +57,36 @@ const emptyTally = (): Tally => ({
 export const meter: { tally: Tally } = { tally: emptyTally() };
 const counting = new AsyncLocalStorage<Tally>();
 const inFlight = new WeakMap<Tally, number>();
+/** What the requests counted toward a tally handed `ctx.waitUntil`. */
+const keptAlive = new WeakMap<Tally, Promise<unknown>[]>();
+
+/**
+ * Wait until the work the requests counted toward `meter.tally` kept alive
+ * past their responses has settled, including work that work kept alive.
+ */
+export const requestsSettled = async (): Promise<void> => {
+  const pending = keptAlive.get(meter.tally) ?? [];
+  while (pending.length > 0) {
+    await Promise.allSettled(pending.splice(0));
+  }
+};
+
+/** `ctx` with its `waitUntil` also recording each promise against `tally`. */
+const keepingAlive = (ctx: unknown, tally: Tally): void => {
+  if (typeof ctx !== "object" || ctx === null) {
+    return;
+  }
+  const waitUntil: unknown = Reflect.get(ctx, "waitUntil");
+  if (typeof waitUntil !== "function") {
+    return;
+  }
+  Reflect.set(ctx, "waitUntil", (promise: Promise<unknown>) => {
+    const pending = keptAlive.get(tally) ?? [];
+    keptAlive.set(tally, pending);
+    pending.push(promise);
+    return Reflect.apply(waitUntil, ctx, [promise]);
+  });
+};
 
 /** Run `work`, made in the test itself rather than through `SELF`, counted toward `meter.tally`. */
 export const meterWork = <T>(work: () => Promise<T>): Promise<T> => counting.run(meter.tally, work);
@@ -154,7 +185,9 @@ export const patchD1 = (): void => {
     "fetch",
     (original) =>
       function (this: unknown, ...args: unknown[]) {
-        return counting.run(meter.tally, () => Reflect.apply(original, this, args));
+        const tally = meter.tally;
+        keepingAlive(args[2], tally);
+        return counting.run(tally, () => Reflect.apply(original, this, args));
       },
   );
   const all = Reflect.get(stmtProto, "all");
