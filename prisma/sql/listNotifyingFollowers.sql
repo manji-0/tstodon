@@ -9,6 +9,9 @@
 -- request on or after the UTC day `$4` count, as
 -- `followers_for_local_distribution` keeps the users who signed in recently
 -- (`User.signed_in_recently`).
+-- A unary `+` on a target column keeps SQLite seeking a block or mute by
+-- the follower, whose own are few, not by the target, which every account
+-- that blocks or mutes it shares (D1 keeps no `sqlite_stat1`).
 SELECT f.follower_account_id, f.languages_json FROM follows f
 WHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Accepted' AND f.notify != 0
   AND EXISTS (
@@ -17,7 +20,7 @@ WHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Acc
   )
   AND NOT EXISTS (
     SELECT 1 FROM mutes m
-    WHERE m.account_id = f.follower_account_id AND m.target_account_id = $1
+    WHERE m.account_id = f.follower_account_id AND +m.target_account_id = $1
       AND (m.expires_at IS NULL OR m.expires_at > $2)
   )
   AND NOT EXISTS (
@@ -26,11 +29,11 @@ WHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Acc
       AND (
         EXISTS (
           SELECT 1 FROM blocks b
-          WHERE b.blocker_account_id = f.follower_account_id AND b.target_account_id = sm.account_id
+          WHERE b.blocker_account_id = f.follower_account_id AND +b.target_account_id = sm.account_id
         )
         OR EXISTS (
           SELECT 1 FROM mutes m
-          WHERE m.account_id = f.follower_account_id AND m.target_account_id = sm.account_id
+          WHERE m.account_id = f.follower_account_id AND +m.target_account_id = sm.account_id
             AND (m.expires_at IS NULL OR m.expires_at > $2)
         )
       )

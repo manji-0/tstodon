@@ -12,6 +12,9 @@
 -- `$4` count, as `followers_for_local_distribution` keeps the users who
 -- signed in recently (`User.signed_in_recently`). A page lists the follows
 -- after the follow id `$5` (empty for the first page), in id order.
+-- A unary `+` on a target column keeps SQLite seeking a block or mute by
+-- the follower, whose own are few, not by the target, which every account
+-- that blocks or mutes it shares (D1 keeps no `sqlite_stat1`).
 SELECT f.id, f.account_id, f.languages_json FROM outbound_follows f
 WHERE f.actor_uri = $1 AND f.id > $5 AND f.state = 'Accepted' AND f.notify != 0
   AND EXISTS (
@@ -29,11 +32,11 @@ WHERE f.actor_uri = $1 AND f.id > $5 AND f.state = 'Accepted' AND f.notify != 0
       AND (
         EXISTS (
           SELECT 1 FROM blocks b
-          WHERE b.blocker_account_id = f.account_id AND b.target_account_id = sm.account_id
+          WHERE b.blocker_account_id = f.account_id AND +b.target_account_id = sm.account_id
         )
         OR EXISTS (
           SELECT 1 FROM mutes m
-          WHERE m.account_id = f.account_id AND m.target_account_id = sm.account_id
+          WHERE m.account_id = f.account_id AND +m.target_account_id = sm.account_id
             AND (m.expires_at IS NULL OR m.expires_at > $2)
         )
       )
