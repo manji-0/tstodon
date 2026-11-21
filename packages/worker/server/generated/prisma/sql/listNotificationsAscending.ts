@@ -13,12 +13,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param fromAccountId
  * @param minId
  * @param includeFiltered
- * @param notificationId
- * @param groupType
- * @param groupTarget
+ * @param groupKey
  */
 export const listNotificationsAscending = $runtime.makeTypedQueryFactory(
-  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at,\nn.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held\nFROM notifications n\nWHERE n.account_id = $1\nAND +n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND (\n$8 = 1\nOR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND ($9 = '' OR n.id = $9)\nAND (\n$10 = ''\nOR (n.kind = $10 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $11)\n)\nAND n.id > $7\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION ALL\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION ALL\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nAND COALESCE(n.from_actor_uri, '') NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1\nUNION ALL\nSELECT target_actor_uri FROM mutes\nWHERE account_id = $1 AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY n.id ASC\nLIMIT $3",
+  "SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at, n.group_key,\nn.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held\nFROM notifications n\nWHERE n.account_id = $1\nAND +n.created_at > COALESCE(\n(SELECT cleared_at FROM notification_clear_markers WHERE account_id = $1), ''\n)\nAND n.id NOT IN (\nSELECT notification_id FROM notification_dismissals WHERE account_id = $1\n)\nAND (\n$8 = 1\nOR n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\n)\nAND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))\nAND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))\nAND ($6 = '' OR n.from_account_id = $6)\nAND ($9 = '' OR n.group_key = $9)\nAND n.id > $7\nAND n.from_account_id NOT IN (\nSELECT target_account_id FROM blocks\nWHERE blocker_account_id = $1 AND target_account_id IS NOT NULL\nUNION ALL\nSELECT blocker_account_id FROM blocks\nWHERE target_account_id = $1 AND blocker_account_id IS NOT NULL\nUNION ALL\nSELECT target_account_id FROM mutes\nWHERE account_id = $1 AND target_account_id IS NOT NULL AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nAND COALESCE(n.from_actor_uri, '') NOT IN (\nSELECT target_actor_uri FROM blocks WHERE blocker_account_id = $1\nUNION ALL\nSELECT target_actor_uri FROM mutes\nWHERE account_id = $1 AND notifications != 0\nAND (expires_at IS NULL OR expires_at > $2)\n)\nORDER BY n.id ASC\nLIMIT $3",
 ) as (
   accountId: string,
   now: string,
@@ -28,9 +26,7 @@ export const listNotificationsAscending = $runtime.makeTypedQueryFactory(
   fromAccountId: string,
   minId: string,
   includeFiltered: number,
-  notificationId: string,
-  groupType: string,
-  groupTarget: string,
+  groupKey: string,
 ) => $runtime.TypedSql<listNotificationsAscending.Parameters, listNotificationsAscending.Result>;
 
 export namespace listNotificationsAscending {
@@ -43,9 +39,7 @@ export namespace listNotificationsAscending {
     fromAccountId: string,
     minId: string,
     includeFiltered: number,
-    notificationId: string,
-    groupType: string,
-    groupTarget: string,
+    groupKey: string,
   ];
   export type Result = {
     id: string | null;
@@ -57,6 +51,7 @@ export namespace listNotificationsAscending {
     report_id: string | null;
     severance_event_id: string | null;
     created_at: string;
+    group_key: string | null;
     held: null | null;
   };
 }

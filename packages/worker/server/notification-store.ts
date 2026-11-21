@@ -7,6 +7,7 @@ import {
   type NotificationGroupTarget,
   type NotificationPageDirection,
   type NotificationPageRange,
+  type PreviousGroupBucket,
   type RemoteNotificationWithdrawal,
 } from "@tstodon/domain";
 import { z } from "zod";
@@ -22,6 +23,7 @@ import {
   deleteRemoteNotifications as deleteRemoteNotificationsSql,
   dismissNotification as dismissNotificationSql,
   dismissNotificationGroup as dismissNotificationGroupSql,
+  findNotificationGroupBucket as findNotificationGroupBucketSql,
   findNotificationById as findNotificationByIdSql,
   findNotificationOwned as findNotificationOwnedSql,
   insertNotification as insertNotificationSql,
@@ -67,6 +69,7 @@ export const deleteRemoteNotifications = async (
 export const insertNotificationOnce = async (
   db: D1Database,
   input: NewNotification,
+  groupKey: string | undefined,
   since: string = "",
 ): Promise<Result<string | undefined, RepositoryError>> => {
   const id = newEntityId();
@@ -74,8 +77,8 @@ export const insertNotificationOnce = async (
     const written = await db
       .prepare(
         `INSERT INTO notifications
-           (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+           (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id, group_key)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10
          WHERE NOT EXISTS (
            SELECT 1 FROM notifications
            WHERE account_id = ?2 AND status_id = ?6 AND kind = ?5 AND from_actor_uri = ?4
@@ -94,6 +97,7 @@ export const insertNotificationOnce = async (
         nowIso(),
         input.targetAccountId ?? null,
         since,
+        groupKey ?? null,
       )
       .run();
     return (written.meta.changes ?? 0) > 0 ? id : undefined;
@@ -103,6 +107,7 @@ export const insertNotificationOnce = async (
 export const insertNotification = async (
   db: D1Database,
   input: NewNotification,
+  groupKey: string | undefined,
 ): Promise<Result<string, RepositoryError>> => {
   const id = newEntityId();
   const written = await runD1(async () => {
@@ -119,6 +124,7 @@ export const insertNotification = async (
         input.targetAccountId ?? null,
         input.reportId ?? null,
         input.severanceEventId ?? null,
+        groupKey ?? null,
       ),
     );
   });
@@ -127,6 +133,23 @@ export const insertNotification = async (
   }
   return ok(id);
 };
+
+const GroupBucketRow = z.object({ bucket: z.number(), created_at: z.string() });
+
+/** The account's latest bucket of a group type prefix (`findNotificationGroupBucket.sql`). */
+export const findNotificationGroupBucket = async (
+  db: D1Database,
+  accountId: string,
+  typePrefix: string,
+): Promise<Result<PreviousGroupBucket | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const [row] = await queryTyped(
+      db,
+      findNotificationGroupBucketSql(accountId, typePrefix),
+      GroupBucketRow,
+    );
+    return row && { bucket: row.bucket, setAt: row.created_at };
+  });
 
 const NotificationQueryRowSchema = z.object({
   id: z.string().nullable(),
@@ -138,6 +161,7 @@ const NotificationQueryRowSchema = z.object({
   report_id: z.string().nullable(),
   severance_event_id: z.string().nullable(),
   created_at: z.string(),
+  group_key: z.string().nullable(),
   held: z.number(),
 });
 
@@ -156,7 +180,7 @@ export const groupedEntry = (row: NotificationRow): GroupedNotificationEntry => 
   reportId: row.report_id,
   severanceEventId: row.severance_event_id,
   createdAt: row.created_at,
-  held: row.held,
+  groupKey: row.group_key,
 });
 
 export type NotificationFilters = Readonly<{
@@ -168,20 +192,9 @@ export type NotificationFilters = Readonly<{
   minId?: string | undefined;
   /** Include notifications held back by the notification policy. */
   includeFiltered?: boolean | undefined;
-  /** Only the notifications a group key names. */
-  group?: NotificationGroupTarget | undefined;
+  /** Only the notifications that stored this group key. */
+  groupKey?: string | undefined;
 }>;
-
-/**
- * The `notificationId`, `groupType`, `groupTarget` SQL parameters naming a
- * group key's notifications; all empty for no group.
- */
-const groupParameters = (group: NotificationGroupTarget | undefined): [string, string, string] => {
-  if (!group) {
-    return ["", "", ""];
-  }
-  return group.kind === "Notification" ? [group.id, "", ""] : ["", group.type, group.target];
-};
 
 export const listNotifications = async (
   db: D1Database,
@@ -211,7 +224,7 @@ export const listNotifications = async (
             fromAccountId,
             minId,
             includeFiltered,
-            ...groupParameters(filters.group),
+            filters.groupKey ?? "",
           )
         : listNotificationsSql(
             accountId,
@@ -223,7 +236,7 @@ export const listNotifications = async (
             sinceId,
             sinceId.length > 0 ? "" : (filters.maxId ?? ""),
             includeFiltered,
-            ...groupParameters(filters.group),
+            filters.groupKey ?? "",
           );
     const results = newestFirst({ minId }, await queryTyped(db, query, NotificationQueryRowSchema));
     return results.map((row) => ({
@@ -236,6 +249,7 @@ export const listNotifications = async (
       report_id: row.report_id,
       severance_event_id: row.severance_event_id,
       created_at: row.created_at,
+      group_key: row.group_key,
       held: row.held !== 0,
     }));
   });
@@ -268,6 +282,7 @@ export const findNotificationById = async (
       report_id: row.report_id,
       severance_event_id: row.severance_event_id,
       created_at: row.created_at,
+      group_key: row.group_key,
       held: row.held !== 0,
     };
   });
@@ -297,7 +312,15 @@ export const dismissNotificationGroup = async (
   group: NotificationGroupTarget,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, dismissNotificationGroupSql(accountId, nowIso(), ...groupParameters(group)));
+    await runTyped(
+      db,
+      dismissNotificationGroupSql(
+        accountId,
+        nowIso(),
+        group.kind === "Notification" ? group.id : "",
+        group.kind === "Group" ? group.key : "",
+      ),
+    );
   });
 
 const RepresentativeRowSchema = z.object({ id: z.string(), group_key: z.string() });
@@ -350,7 +373,7 @@ const NotificationGroupSummaryRowSchema = z.object({
   report_id: z.string().nullable(),
   severance_event_id: z.string().nullable(),
   created_at: z.string(),
-  held: z.number(),
+  stored_group_key: z.string().nullable(),
   notifications_count: z.number(),
   page_min_id: z.string(),
   sample_1: z.string().nullable(),
@@ -358,11 +381,11 @@ const NotificationGroupSummaryRowSchema = z.object({
   sample_3: z.string().nullable(),
 });
 
-/** A group key as `summarizeNotificationGroups` reads it: `{key, id}` or `{key, type, target}`. */
-const groupJson = (groupKey: string, target: NotificationGroupTarget) =>
-  target.kind === "Notification"
-    ? { key: groupKey, id: target.id }
-    : { key: groupKey, type: target.type, target: target.target };
+/** A group key as `summarizeNotificationGroups` reads it: `{key, id}` or `{key}`. */
+const groupJson = (groupKey: string) => {
+  const target = NotificationGroup.target(groupKey);
+  return target.kind === "Notification" ? { key: groupKey, id: target.id } : { key: groupKey };
+};
 
 /**
  * Each group key's summary within `range`, as Mastodon's `load_groups_data`,
@@ -376,10 +399,7 @@ export const summarizeNotificationGroups = async (
   range: NotificationPageRange,
   hosts: RemoteActorSearchHosts,
 ): Promise<Result<ReadonlyMap<string, NotificationGroupSummary>, RepositoryError>> => {
-  const groups = groupKeys.flatMap((groupKey) => {
-    const target = NotificationGroup.target(groupKey);
-    return target ? [groupJson(groupKey, target)] : [];
-  });
+  const groups = groupKeys.map(groupJson);
   if (groups.length === 0) {
     return ok(new Map());
   }
@@ -410,7 +430,7 @@ export const summarizeNotificationGroups = async (
             reportId: row.report_id,
             severanceEventId: row.severance_event_id,
             createdAt: row.created_at,
-            held: row.held !== 0,
+            groupKey: row.stored_group_key,
           },
           notificationsCount: row.notifications_count,
           pageMinId: row.page_min_id,

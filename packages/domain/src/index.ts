@@ -180,6 +180,7 @@ export {
   type NotificationGroupRepresentative,
   type NotificationGroupSummary,
   type NotificationGroupTarget,
+  type PreviousGroupBucket,
   type NotificationPageDirection,
   type NotificationPageRange,
 } from "./notification-group";
@@ -192,6 +193,7 @@ export { NotificationPolicyAction } from "./notification-policy-action";
 export type { ResolveNotificationDisposition } from "./notification-resolver";
 export type {
   HoldNotification,
+  FindNotificationGroupBucket,
   InsertNotification,
   KeepOutOfConversations,
   MentionedPost,

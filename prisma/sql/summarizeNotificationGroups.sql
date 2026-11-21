@@ -7,19 +7,16 @@
 -- @param {String} $7:lowerId
 -- @param {Int} $8:lowerInclusive
 -- Each group of `groupsJson` (`[{"key", "id"}]` for an ungrouped key,
--- `[{"key", "type", "target"}]` for a type and target key) as Mastodon's
--- `load_groups_data`: its newest visible notification, count and three newest
--- distinct senders up to the range's upper end, and its oldest notification
--- from the range's lower end. An empty `upperId` or `lowerId` leaves that end
--- open. Members are found by id, by status or by sender through indexes and
--- read once; a type and target key leaves out held notifications, which
--- Mastodon gives no group key. A group with no visible member has no row.
+-- `[{"key"}]` for a stored one) as Mastodon's `load_groups_data`: its newest
+-- visible notification, count and three newest distinct senders up to the
+-- range's upper end, and its oldest notification from the range's lower end.
+-- An empty `upperId` or `lowerId` leaves that end open. Members are found by
+-- id or by stored key through indexes and read once. A group with no visible
+-- member has no row.
 WITH
 groups AS (
   SELECT json_extract(value, '$.key') AS group_key,
-    json_extract(value, '$.id') AS notification_id,
-    json_extract(value, '$.type') AS type,
-    json_extract(value, '$.target') AS target
+    json_extract(value, '$.id') AS notification_id
   FROM json_each($3)
 ),
 candidates AS MATERIALIZED (
@@ -27,15 +24,11 @@ candidates AS MATERIALIZED (
     CROSS JOIN notifications n ON n.id = g.notification_id AND n.account_id = $1
   UNION ALL
   SELECT g.group_key, n.id FROM groups g
-    CROSS JOIN notifications n ON n.account_id = $1 AND n.status_id = g.target
-    WHERE n.kind = g.type AND n.status_id <> ''
-  UNION ALL
-  SELECT g.group_key, n.id FROM groups g
-    CROSS JOIN notifications n ON n.account_id = $1 AND n.from_account_id = g.target
-    WHERE n.kind = g.type AND COALESCE(n.status_id, '') = ''
+    CROSS JOIN notifications n ON n.account_id = $1 AND n.group_key = g.group_key
+    WHERE g.notification_id IS NULL
 ),
 members AS MATERIALIZED (
-  SELECT c.group_key, n.id, n.from_account_id, n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
+  SELECT c.group_key, n.id, n.from_account_id
   FROM candidates c CROSS JOIN notifications n ON n.id = c.id
   WHERE n.account_id = $1
     AND +n.created_at > COALESCE(
@@ -87,7 +80,6 @@ members AS MATERIALIZED (
       )
     )
     AND ($5 = '' OR n.id < $5 OR ($6 = 1 AND n.id = $5))
-    AND (c.group_key LIKE 'ungrouped-%' OR NOT n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1))
 ),
 counted AS (
   SELECT group_key, COUNT(*) AS notifications_count, MAX(id) AS newest_id,
@@ -100,11 +92,10 @@ senders AS (
   FROM members GROUP BY group_key, from_account_id
 )
 SELECT c.group_key, n.id, n.kind, n.from_account_id, n.status_id, n.report_id,
-  n.severance_event_id, n.created_at, m.held, c.notifications_count,
+  n.severance_event_id, n.created_at, n.group_key AS stored_group_key, c.notifications_count,
   COALESCE(c.page_min_id, n.id) AS page_min_id,
   (SELECT from_account_id FROM senders s WHERE s.group_key = c.group_key AND s.position = 1) AS sample_1,
   (SELECT from_account_id FROM senders s WHERE s.group_key = c.group_key AND s.position = 2) AS sample_2,
   (SELECT from_account_id FROM senders s WHERE s.group_key = c.group_key AND s.position = 3) AS sample_3
 FROM counted c
 CROSS JOIN notifications n ON n.id = c.newest_id
-JOIN members m ON m.group_key = c.group_key AND m.id = c.newest_id

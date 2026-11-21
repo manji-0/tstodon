@@ -1,5 +1,6 @@
 import type { Result } from "neverthrow";
 import type { RepositoryError } from "./repository-error";
+import type { PreviousGroupBucket } from "./notification-group";
 
 /** A notification to record for `accountId`, before it has an id. */
 export type NewNotification = Readonly<{
@@ -50,13 +51,25 @@ export type ScreenSender = (
 ) => Promise<Result<SenderScreening, RepositoryError>>;
 
 /**
- * Record the notification; resolves to its new id, or `undefined` when it
- * was already recorded and nothing was inserted. The caller holds, publishes
- * and pushes only a notification that was inserted.
+ * Record the notification under its group key, if it has one; resolves to
+ * its new id, or `undefined` when it was already recorded and nothing was
+ * inserted. The caller holds, publishes and pushes only a notification that
+ * was inserted.
  */
 export type InsertNotification = (
   notification: NewNotification,
+  groupKey: string | undefined,
 ) => Promise<Result<string | undefined, RepositoryError>>;
+
+/**
+ * The bucket the account's last notification of a group type prefix went to,
+ * as Mastodon's `notif-group/{account}/{prefix}` Redis key holds it; none
+ * before the first.
+ */
+export type FindNotificationGroupBucket = (
+  accountId: string,
+  typePrefix: string,
+) => Promise<Result<PreviousGroupBucket | undefined, RepositoryError>>;
 
 /** File a recorded notification under the recipient's notification requests. */
 export type HoldNotification = (

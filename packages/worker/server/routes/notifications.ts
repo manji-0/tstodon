@@ -15,12 +15,7 @@ import {
   ApiGetNotificationsParamsSchema,
 } from "@tstodon/api";
 import { assertNever } from "@tstodon/core";
-import {
-  type LocalStatus,
-  NotificationGroup,
-  type NotificationGroupPage,
-  type NotificationGroupTarget,
-} from "@tstodon/domain";
+import { type LocalStatus, NotificationGroup, type NotificationGroupPage } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
 import { paramsCursor, readQueryParams } from "../request-params";
@@ -282,11 +277,10 @@ const groupedQuery = (
   const requested = nonBlank(params.grouped_types);
   return {
     type: "notifications",
-    groupedTypes: new Set(
-      (requested.length > 0 ? requested : NotificationGroup.defaultGroupedTypes).filter((type) =>
-        NotificationGroup.groupableTypes.has(type),
-      ),
-    ),
+    groupedTypes:
+      requested.length > 0
+        ? new Set(requested.filter((type) => NotificationGroup.groupableTypes.has(type)))
+        : NotificationGroup.groupableTypes,
     filters: {
       types: nonBlank(params.types),
       excludeTypes: nonBlank(params.exclude_types),
@@ -335,19 +329,6 @@ const groupedNotificationPage = async (
     hosts,
   );
   return summaries.map((byKey) => NotificationGroup.page(representatives.value, byKey));
-};
-
-/**
- * Mastodon's `by_group_key` for one account. A type and target key leaves out
- * the notifications the policy holds, which Mastodon gives no group key; an
- * `ungrouped-<id>` key names its notification held or not. The list's cursors,
- * `limit`, type filters and `grouped_types` do not apply.
- */
-const groupTarget = (
-  groupKey: string,
-): Readonly<{ group: NotificationGroupTarget; includeFiltered: boolean }> | undefined => {
-  const group = NotificationGroup.target(groupKey);
-  return group ? { group, includeFiltered: group.kind === "Notification" } : undefined;
 };
 
 /**
@@ -588,13 +569,18 @@ export const getV2NotificationsByGroupKeyAccounts = async (
     return c.json(identity.error, 500);
   }
   // As Mastodon's `Notifications::AccountsController`: one sender per
-  // notification of the group, newest first, paged by notification id.
+  // notification that stored the key, newest first, paged by notification
+  // id. No notification stores an `ungrouped-<id>` key.
   const limit = queryLimit(c, PageSize.accounts);
   const cursor = queryCursor(c);
-  const target = groupTarget(c.req.param("groupKey"));
-  const rows = target
-    ? await listNotifications(c.env.DB, user.value.id, limit, { ...target, ...cursor })
-    : ok([]);
+  const target = NotificationGroup.target(c.req.param("groupKey"));
+  const rows =
+    target.kind === "Group"
+      ? await listNotifications(c.env.DB, user.value.id, limit, {
+          groupKey: target.key,
+          ...cursor,
+        })
+      : ok([]);
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
   }
@@ -628,12 +614,13 @@ export const postV2NotificationsByGroupKeyDismiss = async (
   // As Mastodon's `by_group_key(...).destroy_all` and `render_empty`: every
   // notification the key names, whoever sent it, and 200 even when it names
   // none.
-  const target = groupTarget(c.req.param("groupKey"));
-  if (target) {
-    const dismissed = await dismissNotificationGroup(c.env.DB, user.value.id, target.group);
-    if (dismissed.isErr()) {
-      return jsonRepositoryError(c, dismissed.error.message);
-    }
+  const dismissed = await dismissNotificationGroup(
+    c.env.DB,
+    user.value.id,
+    NotificationGroup.target(c.req.param("groupKey")),
+  );
+  if (dismissed.isErr()) {
+    return jsonRepositoryError(c, dismissed.error.message);
   }
   return c.json({});
 };

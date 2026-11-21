@@ -7,10 +7,8 @@
 -- @param {String} $7:sinceId
 -- @param {String} $8:maxId
 -- @param {Int} $9:includeFiltered
--- @param {String} $10:notificationId
--- @param {String} $11:groupType
--- @param {String} $12:groupTarget
-SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at,
+-- @param {String} $10:groupKey
+SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at, n.group_key,
   n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
 FROM notifications n
 WHERE n.account_id = $1
@@ -29,12 +27,8 @@ WHERE n.account_id = $1
   AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
   AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))
   AND ($6 = '' OR n.from_account_id = $6)
-  -- A group key's notifications, as `NotificationGroup.key` builds it.
-  AND ($10 = '' OR n.id = $10)
-  AND (
-    $11 = ''
-    OR (n.kind = $11 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $12)
-  )
+  -- The notifications that stored a group key.
+  AND ($10 = '' OR n.group_key = $10)
   AND n.id > $7
   -- X'FF' is a BLOB, which sorts after every TEXT id: no max_id, no upper bound.
   AND n.id < COALESCE(NULLIF($8, ''), X'FF')

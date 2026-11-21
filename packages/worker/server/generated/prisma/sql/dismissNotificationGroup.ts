@@ -8,17 +8,15 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param createdAt
  * @param notificationId
- * @param groupType
- * @param groupTarget
+ * @param groupKey
  */
 export const dismissNotificationGroup = $runtime.makeTypedQueryFactory(
-  "INSERT INTO notification_dismissals (account_id, notification_id, created_at)\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.id = $3\nUNION ALL\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.status_id = $5 AND n.status_id <> '' AND n.kind = $4\nAND n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\nUNION ALL\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.from_account_id = $5 AND COALESCE(n.status_id, '') = ''\nAND n.kind = $4\nAND n.id NOT IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)\nON CONFLICT(account_id, notification_id) DO NOTHING",
+  "INSERT INTO notification_dismissals (account_id, notification_id, created_at)\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.id = $3\nUNION ALL\nSELECT $1, n.id, $2 FROM notifications n\nWHERE n.account_id = $1 AND n.group_key = $4\nON CONFLICT(account_id, notification_id) DO NOTHING",
 ) as (
   accountId: string,
   createdAt: string,
   notificationId: string,
-  groupType: string,
-  groupTarget: string,
+  groupKey: string,
 ) => $runtime.TypedSql<dismissNotificationGroup.Parameters, dismissNotificationGroup.Result>;
 
 export namespace dismissNotificationGroup {
@@ -26,8 +24,7 @@ export namespace dismissNotificationGroup {
     accountId: string,
     createdAt: string,
     notificationId: string,
-    groupType: string,
-    groupTarget: string,
+    groupKey: string,
   ];
   export type Result = {};
 }
