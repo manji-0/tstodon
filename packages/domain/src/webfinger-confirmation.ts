@@ -36,10 +36,18 @@ export type WebfingerRefusal =
   | Readonly<{ kind: "DomainRefused"; host: Hostname }>
   | Readonly<{ kind: "UnsupportedUsername" }>
   /**
-   * WebFinger does not vouch for an actor not cached yet: `check_webfinger!`
-   * raises, and Mastodon stores no account.
+   * WebFinger does not vouch for the handle an actor's document claims:
+   * `check_webfinger!` raises, and Mastodon stores no account, or leaves a
+   * cached one as it was.
    */
   | Readonly<{ kind: "WebfingerMismatch" }>;
+
+/**
+ * Why a round trip writes nothing: a refusal, or a lookup for an actor not
+ * cached yet that could not finish (`check_webfinger!` raises on it too). The
+ * latter is transient: nothing is stored, and the next request asks again.
+ */
+export type HandleWriteError = WebfingerRefusal | Readonly<{ kind: "WebfingerUnavailable" }>;
 
 /**
  * How actor fetch writes an actor's handle (`username@domain` and
@@ -48,41 +56,45 @@ export type WebfingerRefusal =
 export type HandleWrite =
   /** Store `handle`, confirmed `webfingeredAt`, and take it from every other row. */
   | Readonly<{ kind: "Confirm"; handle: AccountHandle; webfingeredAt: IsoInstant }>
-  /** Store the URI's authority, which the document proves, unconfirmed. */
-  | Readonly<{ kind: "UriAuthority" }>
   /**
    * Leave the handle and its stamp as the row holds them when it is written,
    * not as it was read before the round trip, so a confirmation another actor
-   * made meanwhile stands. A row not cached yet takes the URI's authority.
+   * made meanwhile stands.
    */
   | Readonly<{ kind: "Keep" }>;
 
-/** Whether the actor the round trip ran for is cached already. */
-export type ActorRecord = "Cached" | "FirstSeen";
+/**
+ * Whether the actor the round trip ran for is cached already, and if so
+ * whether its document claims the handle it is cached under (its FEP-2c59
+ * `webfinger`, else `preferredUsername` at its URI's authority), which
+ * Mastodon's `extract_username_and_domain!` checks before it asks WebFinger.
+ */
+export type ActorRecord = "FirstSeen" | "CachedUnderClaimedHandle" | "CachedUnderOtherHandle";
 
 /**
- * The handle write a round trip calls for. A lookup that could not finish
- * keeps the cached handle and its stamp, so an outage does not move an actor
- * off its account domain and does not make that handle look newly confirmed.
- * The round trip ends `Unavailable` only while the URI host still names the
- * cached handle, or when that handle is the URI's own. A definite answer that
- * the domain does not vouch for a cached actor falls back to the URI's
- * authority; a first-seen actor is refused, as `check_webfinger!` raises.
+ * The handle write a round trip calls for. Mastodon asks WebFinger only for
+ * a handle the account is not stored under, and `check_webfinger!` raises on
+ * any failure, so an actor the domain does not vouch for is not stored, or is
+ * left as it was, unless it is cached under the handle its document claims:
+ * Mastodon updates that one without asking. A lookup that could not finish
+ * keeps a cached actor's handle and its stamp, so an outage does not move it
+ * off its account domain or make that handle look newly confirmed; it stores
+ * no first-seen actor, which the next request looks up again.
  */
 const handleWrite = (
   confirmation: WebfingerConfirmation,
   now: IsoInstant,
   record: ActorRecord,
-): Result<HandleWrite, WebfingerRefusal> => {
+): Result<HandleWrite, HandleWriteError> => {
   switch (confirmation.kind) {
     case "Confirmed":
       return ok({ kind: "Confirm", handle: confirmation.handle, webfingeredAt: now });
     case "Mismatch":
-      return record === "Cached"
-        ? ok({ kind: "UriAuthority" })
+      return record === "CachedUnderClaimedHandle"
+        ? ok({ kind: "Keep" })
         : err({ kind: "WebfingerMismatch" });
     case "Unavailable":
-      return ok({ kind: "Keep" });
+      return record === "FirstSeen" ? err({ kind: "WebfingerUnavailable" }) : ok({ kind: "Keep" });
     case "Refused":
       return err({ kind: "DomainRefused", host: confirmation.host });
     case "UnsupportedUsername":

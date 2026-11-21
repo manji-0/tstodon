@@ -17,22 +17,42 @@ describe("WebfingerConfirmation.handleWrite", () => {
     ).toEqual({ kind: "Confirm", handle, webfingeredAt: now });
   });
 
-  it("falls back to the URI's authority when the domain does not vouch for a cached actor", () => {
-    expect(
-      WebfingerConfirmation.handleWrite({ kind: "Mismatch" }, now, "Cached")._unsafeUnwrap(),
-    ).toEqual({ kind: "UriAuthority" });
-  });
+  it.each(["CachedUnderOtherHandle", "FirstSeen"] as const)(
+    "refuses a %s actor the domain does not vouch for, as check_webfinger! raises",
+    (record) => {
+      expect(
+        WebfingerConfirmation.handleWrite({ kind: "Mismatch" }, now, record)._unsafeUnwrapErr(),
+      ).toEqual({ kind: "WebfingerMismatch" });
+    },
+  );
 
-  it("refuses a first-seen actor the domain does not vouch for, as check_webfinger! raises", () => {
+  it("keeps the handle an actor is cached under and claims, which Mastodon does not ask WebFinger for", () => {
     expect(
-      WebfingerConfirmation.handleWrite({ kind: "Mismatch" }, now, "FirstSeen")._unsafeUnwrapErr(),
-    ).toEqual({ kind: "WebfingerMismatch" });
-  });
-
-  it("keeps the row's handle when a lookup could not finish", () => {
-    expect(
-      WebfingerConfirmation.handleWrite({ kind: "Unavailable" }, now, "Cached")._unsafeUnwrap(),
+      WebfingerConfirmation.handleWrite(
+        { kind: "Mismatch" },
+        now,
+        "CachedUnderClaimedHandle",
+      )._unsafeUnwrap(),
     ).toEqual({ kind: "Keep" });
+  });
+
+  it.each(["CachedUnderClaimedHandle", "CachedUnderOtherHandle"] as const)(
+    "keeps the row's handle when a lookup could not finish for a %s actor",
+    (record) => {
+      expect(
+        WebfingerConfirmation.handleWrite({ kind: "Unavailable" }, now, record)._unsafeUnwrap(),
+      ).toEqual({ kind: "Keep" });
+    },
+  );
+
+  it("stores no first-seen actor while a lookup cannot finish, so a later one asks again", () => {
+    expect(
+      WebfingerConfirmation.handleWrite(
+        { kind: "Unavailable" },
+        now,
+        "FirstSeen",
+      )._unsafeUnwrapErr(),
+    ).toEqual({ kind: "WebfingerUnavailable" });
   });
 
   it("refuses an actor whose claimed account domain is refused", () => {

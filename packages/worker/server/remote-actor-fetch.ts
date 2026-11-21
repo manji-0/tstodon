@@ -36,7 +36,6 @@ import {
   releaseRemoteActorHandle,
   type RemoteKeyOwner,
   upsertConfirmedRemoteActor,
-  upsertRemoteActor,
   upsertRemoteActorKeepingHandle,
 } from "./remote-actor-store";
 
@@ -497,9 +496,11 @@ export type CacheFetchedActorError = RepositoryError | WebfingerRefusal | Federa
  * Cache an actor read from its own document, and the keys it publishes
  * ({@link resolvePublishedKeys}, which fetches those it names by id), under
  * the handle the round trip settles (`WebfingerConfirmation.handleWrite`). A
- * confirmed handle is taken from any other row that held it. An actor whose
- * claimed account domain is refused is not cached, nor is one not cached yet
- * that WebFinger does not vouch for, nor one whose keys could not be read.
+ * confirmed handle is taken from any other row that held it. Nothing is
+ * written for an actor whose claimed account domain is refused, one whose
+ * keys could not be read, or one WebFinger does not vouch for (a cached one
+ * is left as it was), nor for an actor not cached yet whose lookup did not
+ * answer: that is a `VerificationUnavailable`, which the caller may retry.
  */
 export const cacheFetchedActor = async (
   db: D1Database,
@@ -549,13 +550,24 @@ const cacheActorWithKeys = async (
     check.answered,
     stored.value && { username: stored.value.username, domain: stored.value.domain },
   );
+  const claimed = declaredHandle ?? { username: actor.username, domain: actor.domain };
   const write = WebfingerConfirmation.handleWrite(
     confirmation,
     now.value,
-    stored.value === undefined ? "FirstSeen" : "Cached",
+    stored.value === undefined
+      ? "FirstSeen"
+      : sameHandle(claimed, stored.value)
+        ? "CachedUnderClaimedHandle"
+        : "CachedUnderOtherHandle",
   );
   if (write.isErr()) {
-    return err(write.error);
+    // A lookup that did not answer is a server that did not answer: the
+    // inbox answers 503 and the sender delivers again.
+    return err(
+      write.error.kind === "WebfingerUnavailable"
+        ? { kind: "VerificationUnavailable" }
+        : write.error,
+    );
   }
   switch (write.value.kind) {
     case "Confirm":
@@ -564,8 +576,6 @@ const cacheActorWithKeys = async (
         { ...document, ...write.value.handle, webfingeredAt: write.value.webfingeredAt },
         keys,
       );
-    case "UriAuthority":
-      return upsertRemoteActor(db, document, keys);
     case "Keep":
       return upsertRemoteActorKeepingHandle(db, document, keys);
   }
