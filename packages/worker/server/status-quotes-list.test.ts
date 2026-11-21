@@ -51,8 +51,16 @@ const quoteIdOf = async (statusId: string): Promise<string> =>
       .first(),
   ).id;
 
-/** A remote note by `slug`'s actor on `host` that quotes `quotedId`, accepted. */
-const remoteQuote = async (slug: string, host: string, quotedId: string) => {
+/**
+ * A remote note by `slug`'s actor on `host` that quotes `quotedId`, accepted:
+ * public, followers-only, or direct to the local account `direct` names.
+ */
+const remoteQuote = async (
+  slug: string,
+  host: string,
+  quotedId: string,
+  audience: "public" | "followers" | Readonly<{ direct: string }> = "public",
+) => {
   const actor = await remoteActor(slug, host);
   const uri = `https://${host}/notes/${slug}`;
   expect(
@@ -65,7 +73,14 @@ const remoteQuote = async (slug: string, host: string, quotedId: string) => {
         attributedTo: actor.actorUri,
         content: `<p>${slug}</p>`,
         published: new Date().toISOString(),
-        to: [PUBLIC],
+        ...(audience === "public"
+          ? { to: [PUBLIC] }
+          : audience === "followers"
+            ? { to: [`${actor.actorUri}/followers`] }
+            : {
+                to: [`https://example.com/users/${audience.direct}`],
+                tag: [{ type: "Mention", href: `https://example.com/users/${audience.direct}` }],
+              }),
       },
     }),
   ).toBe(202);
@@ -156,13 +171,11 @@ describe("the quotes of a status", () => {
     const fan = "quotes-list-filter-fan@example.com";
     const stranger = "quotes-list-filter-other@example.com";
     const silenced = "quotes-list-filter-silenced@example.com";
-    const privately = "quotes-list-filter-private@example.com";
     const silencedAccount = await signedInAccount(silenced);
     await signedInAccount(stranger);
     await act(fan, `/api/v1/accounts/${silencedAccount.id}/follow`);
     const original = await post(author, { status: "quote me" });
     const fromSilenced = await quote(silenced, original);
-    const fromPrivate = await quote(privately, original, "private");
     const fromBlockedDomain = (
       await remoteQuote("quotes-list-filter-remote", "quote-blocked.example", original)
     ).statusId;
@@ -173,12 +186,43 @@ describe("the quotes of a status", () => {
 
     // The quoted author skips the filter, its own domain block included.
     expect((await quotes(author, original)).ids.toSorted()).toEqual(
-      [fromSilenced, fromPrivate, fromBlockedDomain].toSorted(),
+      [fromSilenced, fromBlockedDomain].toSorted(),
     );
     expect((await quotes(fan, original)).ids.toSorted()).toEqual(
       [fromSilenced, fromBlockedDomain].toSorted(),
     );
     expect((await quotes(stranger, original)).ids).toEqual([]);
+  });
+
+  // Mastodon's quoted author passes `StatusPolicy#show?` through the silent
+  // mention each quote gives it (`Quote#ensure_quoted_access`); tstodon gives
+  // none, so the quoted author sees only the quotes it may open (DM-11).
+  it("leaves out for the quoted author a quote it may not see", async () => {
+    const author = "quotes-list-hidden-author@example.com";
+    const bob = "quotes-list-hidden-bob@example.com";
+    const bobAccount = await signedInAccount(bob);
+    const original = await post(author, { status: "quote me" });
+    const shown = await quote("quotes-list-hidden-public@example.com", original);
+    const hidden = [
+      await quote("quotes-list-hidden-private@example.com", original, "private"),
+      (await remoteQuote("quotes-list-hidden-followers", "remote.example", original, "followers"))
+        .statusId,
+      (
+        await remoteQuote("quotes-list-hidden-direct", "remote.example", original, {
+          direct: bobAccount.username,
+        })
+      ).statusId,
+    ];
+
+    expect((await quotes(author, original)).ids).toEqual([shown]);
+    for (const id of hidden) {
+      const response = await request(`/api/v1/statuses/${id}`, {
+        headers: await authHeaders(author),
+      });
+      expect(response.status, id).toBe(404);
+    }
+    // Bob, whom the direct note addresses, may see it.
+    expect((await quotes(bob, original)).ids).toContain(hidden[2]);
   });
 
   it("pages by quote id, with the next link from the page before the filter", async () => {
