@@ -19,11 +19,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
@@ -74,7 +75,7 @@ export const getV1AdminDomainBlocks = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.adminDomainRules);
   const blocks = await listDomainBlocks(
     c.env.DB,
     limit,

@@ -6,8 +6,8 @@ import {
   jsonRepositoryError,
   queryLimit,
   queryOffset,
-  queryTrendsLimit,
   requireAdmin,
+  PageSize,
 } from "../../http";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
@@ -51,7 +51,7 @@ export const getV1AdminTrendsTags = async (
   if (states.isErr()) {
     return jsonRepositoryError(c, states.error.message);
   }
-  const tags = await listTrendingTags(c.env.DB, queryTrendsLimit(c.req.query("limit")), {
+  const tags = await listTrendingTags(c.env.DB, queryLimit(c, PageSize.trends), {
     offset: queryOffset(c.req.query("offset")),
   });
   if (tags.isErr()) {
@@ -116,7 +116,7 @@ export const getV1AdminTrendsLinks = async (
     return jsonAuthError(c, admin.error);
   }
   const links = await listTrendingLinks(c.env.DB, {
-    limit: queryTrendsLimit(c.req.query("limit")),
+    limit: queryLimit(c, PageSize.trends),
     offset: queryOffset(c.req.query("offset")),
   });
   if (links.isErr()) {
@@ -156,7 +156,7 @@ export const getV1AdminTrendsStatuses = async (
     return jsonAuthError(c, admin.error);
   }
   // The admin list keeps rejected statuses so a moderator can approve them.
-  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(c.req.query("limit")), {
+  const statuses = await listTrendingStatuses(c.env.DB, queryLimit(c, PageSize.statuses), {
     includeRejected: true,
     offset: queryOffset(c.req.query("offset")),
   });
@@ -253,7 +253,8 @@ export const getV1AdminTrendsLinksPublishers = async (
     ]),
   ];
   const offset = queryOffset(c.req.query("offset"));
-  const limit = queryTrendsLimit(c.req.query("limit"));
+  // `Admin::Trends::Links::PreviewCardProvidersController::LIMIT`
+  const limit = queryLimit(c, PageSize.admin);
   return c.json(
     domains
       .slice(offset, offset + limit)

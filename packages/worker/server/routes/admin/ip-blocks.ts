@@ -6,11 +6,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { forgetIpBlocks } from "../../ip-access";
 import {
@@ -130,7 +131,7 @@ export const getV1AdminIpBlocks = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.admin);
   const blocks = await listIpBlockPage(c.env.DB, queryCursor(c), limit);
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);

@@ -34,12 +34,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
+  queryLimit,
   queryCursor,
-  queryNotificationsLimit,
   setLinkHeader,
   setPaginationLinks,
   requireUser,
+  PageSize,
 } from "../http";
 import { getMarkers } from "../marker-store";
 import { accountDocumentsByIds } from "../account-documents";
@@ -113,7 +113,7 @@ export const getV1Notifications = async (
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const limit = queryNotificationsLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.accounts);
   const rows = await listNotifications(c.env.DB, user.value.id, limit, {
     types: nonBlank(params.value.types),
     excludeTypes: nonBlank(params.value.exclude_types),
@@ -168,6 +168,9 @@ export const getV1Notifications = async (
     c,
     rows.value.map((row) => row.id),
     limit,
+    {
+      filters: ["account_id", "types", "exclude_types", "include_filtered", "supported_types"],
+    },
   );
   return c.json(documents);
 };
@@ -288,7 +291,7 @@ const groupedQuery = (
       includeFiltered: params.include_filtered ?? false,
       ...paramsCursor(params),
     },
-    limit: queryNotificationsLimit(params.limit),
+    limit: queryLimit(c, PageSize.accounts),
   };
 };
 
@@ -531,7 +534,13 @@ export const getV2Notifications = async (
   if (envelope.isErr()) {
     return jsonRepositoryError(c, envelope.error.message);
   }
-  setLinkHeader(c, { next: page.oldestId, prev: page.newestId });
+  setLinkHeader(c, { next: page.oldestId, prev: page.newestId }, [
+    "include_filtered",
+    "types",
+    "exclude_types",
+    "grouped_types",
+    "supported_types",
+  ]);
   return c.json(envelope.value);
 };
 
@@ -574,7 +583,7 @@ export const getV2NotificationsByGroupKeyAccounts = async (
   }
   // As Mastodon's `Notifications::AccountsController`: one sender per
   // notification of the group, newest first, paged by notification id.
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   const cursor = queryCursor(c);
   const target = groupTarget(c.req.param("groupKey"));
   const rows = target

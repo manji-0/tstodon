@@ -13,11 +13,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readOptionalBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 
 const domainAllowDocument = (row: DomainAllowRow): ApiAdminDomainAllowJSON => ({
@@ -38,7 +39,7 @@ export const getV1AdminDomainAllows = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.adminDomainRules);
   const allows = await listDomainAllows(c.env.DB, limit, queryCursor(c));
   if (allows.isErr()) {
     return jsonRepositoryError(c, allows.error.message);

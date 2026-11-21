@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { ApiGetDirectoryParamsSchema } from "@tstodon/api";
 import { listDirectoryAccounts } from "../account-store";
-import { jsonRepositoryError, jsonValidationError, queryAccountsLimit } from "../http";
+import { jsonRepositoryError, jsonValidationError, queryLimit, PageSize } from "../http";
 import { documentsInOrder, mastodonAccountDocuments } from "../account-documents";
 import { readQueryParams } from "../request-params";
 import { parseInstanceIdentity } from "../runtime-config";
@@ -16,7 +16,7 @@ export const getV1Directory = async (c: Context<{ Bindings: Env }, "/api/v1/dire
     return jsonValidationError(c);
   }
   const order = (params.value.order ?? "active").toLowerCase() === "new" ? "new" : "active";
-  const limit = queryAccountsLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.accounts);
   const offset = Math.max(0, params.value.offset ?? 0);
   // Only local accounts are listed, so `local` changes nothing.
   const accounts = await listDirectoryAccounts(c.env.DB, { order, limit, offset });

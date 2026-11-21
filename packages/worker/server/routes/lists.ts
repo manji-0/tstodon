@@ -6,6 +6,7 @@ import {
   jsonValidationError,
   queryLimit,
   requireUser,
+  PageSize,
 } from "../http";
 import {
   addListMembers,
@@ -280,7 +281,7 @@ export const getV1TimelinesListById = async (
     identity.value,
     user.value.id,
     list.value,
-    queryLimit(params.value.limit),
+    queryLimit(c, PageSize.statuses),
     paramsCursor(params.value),
   );
   writeTimelineMetric(

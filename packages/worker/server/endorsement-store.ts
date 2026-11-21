@@ -34,12 +34,16 @@ export const unendorseAccount = async (
     return rows.length > 0;
   });
 
+/** Which endorsements a list reads: one page, or every one of them. */
+export type EndorsementPage =
+  | Readonly<{ kind: "Page"; limit: number; cursor: IdCursor }>
+  | Readonly<{ kind: "All" }>;
+
 /** Endorsed targets, newest first, as local account ids or remote actor URIs. */
 export const listEndorsements = async (
   db: D1Database,
   viewerId: string,
-  limit: number = 40,
-  cursor: IdCursor = {},
+  page: EndorsementPage,
 ): Promise<
   Result<
     ReadonlyArray<Readonly<{ id: string; accountId: string | null; actorUri: string }>>,
@@ -47,14 +51,16 @@ export const listEndorsements = async (
   >
 > =>
   runD1(async () => {
-    const { where, order, binds } = idCursorFragment(cursor);
-    const { results } = await db
-      .prepare(
-        `SELECT id, target_account_id, target_actor_uri FROM endorsements
-         WHERE account_id = ? ${where} ${order} LIMIT ?`,
-      )
-      .bind(viewerId, ...binds, limit)
-      .all();
+    const { where, order, binds } = idCursorFragment(page.kind === "Page" ? page.cursor : {});
+    const statement = db.prepare(
+      `SELECT id, target_account_id, target_actor_uri FROM endorsements
+       WHERE account_id = ? ${where} ${order}${page.kind === "Page" ? " LIMIT ?" : ""}`,
+    );
+    const { results } = await (
+      page.kind === "Page"
+        ? statement.bind(viewerId, ...binds, page.limit)
+        : statement.bind(viewerId, ...binds)
+    ).all();
     const rows = parseRows(
       z.object({
         id: z.string(),

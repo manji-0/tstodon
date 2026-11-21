@@ -20,8 +20,9 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryNotificationsLimit,
+  queryLimit,
   requireUser,
+  PageSize,
 } from "../http";
 import { err, ok, type Result } from "neverthrow";
 import { accountDocumentsByIds, availableAccountDocumentsByIds } from "../account-documents";
@@ -293,7 +294,7 @@ export const getV1NotificationsRequests = async (
   const requests = await listNotificationRequests(
     c.env.DB,
     user.value.id,
-    queryNotificationsLimit(params.value.limit),
+    queryLimit(c, PageSize.accounts),
     paramsCursor(params.value),
   );
   if (requests.isErr()) {
