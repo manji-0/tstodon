@@ -8,10 +8,15 @@ import { err, ok, type Result } from "neverthrow";
 import { browserFacingOrigin } from "./browser-session";
 import {
   parseSfDictionary,
+  type SfBareItem,
   type SfInnerList,
   type SfItem,
+  type SfParameters,
+  serializeSfBareItem,
+  serializeSfDictionary,
   serializeSfInnerList,
   serializeSfItem,
+  serializeSfMember,
   sfLookup,
 } from "./structured-field";
 
@@ -33,7 +38,12 @@ export type MessageSignature = Readonly<{
 export type MessageSignatureParseError = Readonly<{
   kind:
     | "MalformedSignatureInput"
-    /** `linzer` takes one signature, or the one a verifier names; Mastodon names none. */
+    /**
+     * `linzer` takes one signature, or the one a verifier names. Mastodon
+     * names none, so `Linzer::Signature.build` raises a `Linzer::Error` it
+     * does not rescue (a 500); this server refuses it as unsigned (a 401),
+     * as it refuses a `Signature-Input` that does not parse.
+     */
     | "MultipleSignatures"
     /** No string `keyid` or integer `created` (Mastodon's `REQUIRED_PARAMETERS`). */
     | "MissingParameters"
@@ -169,8 +179,94 @@ const targetUri = (request: Request): URL => {
   );
 };
 
+/** A string's characters as bytes, as Rack holds a header or a query; `undefined` past U+00FF. */
+const latin1Bytes = (text: string): Uint8Array | undefined => {
+  const bytes = new Uint8Array(text.length);
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code > 0xff) {
+      return undefined;
+    }
+    bytes[index] = code;
+  }
+  return bytes;
+};
+
+const BAD_ESCAPE = /%(?![0-9A-Fa-f]{2})/;
+
+/**
+ * Ruby's `URI.decode_www_form_component` (`plus`) or
+ * `URI.decode_uri_component`, one character per byte: `undefined` for a `%`
+ * without two hex digits, where Ruby raises.
+ */
+const percentDecode = (text: string, plus: boolean): string | undefined =>
+  BAD_ESCAPE.test(text)
+    ? undefined
+    : (plus ? text.replaceAll("+", " ") : text).replace(/%([0-9A-Fa-f]{2})/g, (_, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, 16)),
+      );
+
+/** Ruby's `URI.encode_uri_component` over one character per byte: all but `*-.0-9A-Z_a-z` escaped. */
+const percentEncode = (bytes: string): string =>
+  bytes.replace(
+    /[^*\-.0-9A-Z_a-z]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+  );
+
+/** Rack's `QueryParser` limits: past them `params` raises, and `linzer` reads no parameter. */
+const QUERY_PARAMS_LIMIT = 4096;
+const QUERY_BYTESIZE_LIMIT = 4_194_304;
+
+/**
+ * The query's parameters as Rack's `Request#GET` reads them
+ * (`parse_nested_query`): pairs split at `&` and the spaces after it, names
+ * and values form-decoded, a name without `=` given an empty value, and the
+ * last of a repeated name kept. `undefined` where Rack raises (a bad escape,
+ * past its limits), and for a query with a name Rack nests (`a[b]`, `a[]`),
+ * which this server does not read.
+ */
+const rackQueryParams = (query: string): ReadonlyMap<string, string> | undefined => {
+  const params = new Map<string, string>();
+  const pairs = query === "" ? [] : query.split(/& */);
+  if (pairs.length > QUERY_PARAMS_LIMIT || query.length > QUERY_BYTESIZE_LIMIT) {
+    return undefined;
+  }
+  for (const pair of pairs) {
+    if (pair === "") {
+      continue;
+    }
+    const equals = pair.indexOf("=");
+    const name = percentDecode(equals < 0 ? pair : pair.slice(0, equals), true);
+    const value = equals < 0 ? "" : percentDecode(pair.slice(equals + 1), true);
+    if (name === undefined || value === undefined || name.indexOf("[", 1) >= 0) {
+      return undefined;
+    }
+    if (name !== "") {
+      params.set(name, value);
+    }
+  }
+  return params;
+};
+
+/**
+ * `@query-param` (RFC 9421 section 2.2.8) as `linzer` derives it: the `name`
+ * parameter percent-decoded (`+` kept), looked up among the query's
+ * parameters as Rack reads them, and the value percent-encoded as
+ * `URI.encode_uri_component` does, a space as `%20`.
+ */
+const queryParam = (url: URL, name: SfBareItem | undefined): string | undefined => {
+  const wanted = name?.kind === "String" ? percentDecode(name.value, false) : undefined;
+  const value =
+    wanted === undefined ? undefined : rackQueryParams(url.search.slice(1))?.get(wanted);
+  return value === undefined ? undefined : percentEncode(value);
+};
+
 /** A derived component's value (RFC 9421 section 2.2), for the ones a request has. */
-const derivedComponent = (request: Request, name: string): string | undefined => {
+const derivedComponent = (
+  request: Request,
+  name: string,
+  params: SfParameters,
+): string | undefined => {
   const url = targetUri(request);
   switch (name) {
     case "@method":
@@ -187,6 +283,8 @@ const derivedComponent = (request: Request, name: string): string | undefined =>
       return url.pathname;
     case "@query":
       return url.search === "" ? "?" : url.search;
+    case "@query-param":
+      return queryParam(url, sfLookup(params, "name"));
     default:
       return undefined;
   }
@@ -195,39 +293,125 @@ const derivedComponent = (request: Request, name: string): string | undefined =>
 /** An HTTP field name (a `token`), which `Headers.get` would otherwise throw on. */
 const FIELD_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
 
+/**
+ * A field's value. `Headers` strips its leading and trailing whitespace and
+ * joins a field sent on several lines with ", ", as Puma does.
+ */
+const fieldValue = (request: Request, name: string): string | undefined =>
+  FIELD_NAME.test(name) ? (request.headers.get(name) ?? undefined) : undefined;
+
+/** The component parameters RFC 9421 registers (section 6.5.2); `linzer` refuses any other. */
+const COMPONENT_PARAMETERS: ReadonlySet<string> = new Set(["sf", "key", "bs", "req", "tr", "name"]);
+
+/** Whether a parameter is set as Ruby reads it: present, and not `?0`. */
+const isSet = (params: SfParameters, key: string): boolean => {
+  const value = sfLookup(params, key);
+  return value !== undefined && !(value.kind === "Boolean" && !value.value);
+};
+
+/**
+ * `;sf` and `;key` (RFC 9421 sections 2.1.1 and 2.1.2): the field read as a
+ * dictionary, as `linzer` reads every such field, and reserialized whole, or
+ * the member `key` names. Undefined when it does not parse, is empty, or has
+ * no such member. A string member stays a string: behind Puma, whose header
+ * values are binary strings, `starry` serializes it as a byte sequence.
+ */
+const structuredValue = (value: string, key: SfBareItem | undefined): string | undefined => {
+  const dictionary = parseSfDictionary(value);
+  if (dictionary.isErr()) {
+    return undefined;
+  }
+  if (key === undefined) {
+    return dictionary.value.length === 0 ? undefined : serializeSfDictionary(dictionary.value);
+  }
+  const member = key.kind === "String" ? sfLookup(dictionary.value, key.value) : undefined;
+  return member === undefined ? undefined : serializeSfMember(member);
+};
+
+/**
+ * A covered component's value as `linzer` 0.8.0's `Adapter::Abstract#retrieve`
+ * derives it on a request. A parameter RFC 9421 does not register, `name` on
+ * any component but `@query-param`, `;sf` or `;key` with `;bs`, `;tr` (no
+ * trailers here) and `;req` (a response's) leave it undefined. `;bs` wraps
+ * the value as one byte sequence: `Headers`, as Puma, joins a field's lines
+ * before it is read, so a field sent on two lines is wrapped as one, where
+ * RFC 9421 wraps each line.
+ */
 const componentValue = (request: Request, item: SfItem): string | undefined => {
-  if (item.value.kind !== "String" || item.params.length > 0) {
+  if (item.value.kind !== "String") {
     return undefined;
   }
   const name = item.value.value;
-  if (name.startsWith("@")) {
-    return derivedComponent(request, name);
-  }
-  if (!FIELD_NAME.test(name)) {
+  const { params } = item;
+  const structured = isSet(params, "sf") || sfLookup(params, "key") !== undefined;
+  const binary = isSet(params, "bs");
+  if (
+    params.some(([key]) => !COMPONENT_PARAMETERS.has(key)) ||
+    (isSet(params, "name") && name !== "@query-param") ||
+    (structured && binary) ||
+    isSet(params, "tr") ||
+    isSet(params, "req")
+  ) {
     return undefined;
   }
-  // `Headers` already strips a value's leading and trailing whitespace.
-  return request.headers.get(name) ?? undefined;
+  const value = name.startsWith("@")
+    ? derivedComponent(request, name, params)
+    : fieldValue(request, name);
+  if (value === undefined || !(structured || binary)) {
+    return value;
+  }
+  if (structured) {
+    return structuredValue(value, sfLookup(params, "key"));
+  }
+  const bytes = latin1Bytes(value);
+  return bytes === undefined ? undefined : `:${base64(bytes)}:`;
 };
+
+/** A parameter value as Ruby's `==` compares it: an integer equals the same decimal. */
+const comparable = (value: SfBareItem): string => {
+  switch (value.kind) {
+    case "Integer":
+    case "Decimal":
+      return `n${value.value}`;
+    case "String":
+      return `s${value.value}`;
+    case "ByteSequence":
+      return `s${String.fromCharCode(...value.value)}`;
+    case "Token":
+      return `t${value.value}`;
+    case "Boolean":
+      return `b${value.value}`;
+  }
+};
+
+/**
+ * A component as `linzer`'s `validate_uniqueness` tells one from another:
+ * its name and its parameters, in any order.
+ */
+const componentIdentity = (item: SfItem): string =>
+  JSON.stringify([
+    serializeSfBareItem(item.value),
+    item.params.map(([key, value]) => `${key}=${comparable(value)}`).sort(),
+  ]);
 
 /**
  * The signature base (RFC 9421 section 2.5): one line per covered
  * component, then `@signature-params`, the input as it was sent. Undefined
- * when a component is missing from the request, repeated, or one this
- * server does not derive: a parameterized one (`;sf`, `;key`, `;bs`,
- * `@query-param;name`), or `@status` on a request.
+ * when a component is missing from the request, repeated (its parameters in
+ * any order), or one `linzer` does not derive on a request
+ * ({@link componentValue}, `@status`).
  */
 export const messageSignatureBase = (request: Request, input: SfInnerList): string | undefined => {
   const lines: string[] = [];
   const seen = new Set<string>();
   for (const item of input.items) {
-    const identifier = serializeSfItem(item);
     const value = componentValue(request, item);
-    if (value === undefined || seen.has(identifier)) {
+    const identity = componentIdentity(item);
+    if (value === undefined || seen.has(identity)) {
       return undefined;
     }
-    seen.add(identifier);
-    lines.push(`${identifier}: ${value}`);
+    seen.add(identity);
+    lines.push(`${serializeSfItem(item)}: ${value}`);
   }
   lines.push(`"@signature-params": ${serializeSfInnerList(input)}`);
   return lines.join("\n");
