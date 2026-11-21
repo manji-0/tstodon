@@ -207,6 +207,25 @@ describe("an instance suspension of a parent domain", () => {
   });
 });
 
+describe("a domain block row written by hand", () => {
+  // The Worker reads a block's domain as `Hostname.ofAuthority`; SQL must read it the same way.
+  it.each([
+    ["with a port", "Port-Parent.Example:8443", "a.port-parent.example"],
+    ["with a trailing dot", "dot-parent.example.", "a.dot-parent.example"],
+  ])("covers the same hosts in the Worker and in SQL %s", async (_, domain, actorHost) => {
+    await rule(domain, "suspend");
+    const remote = await remoteActor("hand", actorHost);
+
+    expect(CoveredHosts.covers(await suspendedDomains(env.DB), host(actorHost))).toBe(true);
+    const { results } = await env.DB.prepare(
+      "SELECT actor_uri FROM remote_actor_domain_rules WHERE actor_uri = ? AND severity = 'suspend'",
+    )
+      .bind(remote.actorUri)
+      .all();
+    expect(results.length).toBeGreaterThan(0);
+  });
+});
+
 describe("an instance reject_media of a parent domain", () => {
   it("covers its subdomains, most specific rule first", async () => {
     await rule("media-parent.example", "noop", { rejectMedia: true });
