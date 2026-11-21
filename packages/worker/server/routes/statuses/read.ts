@@ -10,6 +10,7 @@ import { statusDocumentsByIds } from "../../status-documents";
 import {
   listThreadAncestors,
   listThreadDescendants,
+  promoteSelfReplies,
   visibleThreadStatusIds,
 } from "../../thread-context";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
@@ -19,7 +20,7 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../../d1";
 import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-status-store";
-import { requestRemoteThreadBackfill } from "../../remote-thread-backfill";
+import { findThreadRefresh, requestRemoteThreadBackfill } from "../../remote-thread-backfill";
 import { requestQuoteRefresh } from "../../quote-retry-queue";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
 import {
@@ -186,11 +187,16 @@ export const getV1StatusesByIdContext = async (
     found.value.kind === "LocalStatus"
       ? { kind: "Local", status: found.value.status }
       : { kind: "Remote", status: found.value.status };
+  // As Mastodon, only a signed-in reader starts a fetch, and any reader is told of a running one.
   const refresh =
-    start.kind === "Remote" ? await requestRemoteThreadBackfill(c.env, start.status) : undefined;
+    start.kind !== "Remote"
+      ? undefined
+      : viewerId
+        ? await requestRemoteThreadBackfill(c.env, start.status)
+        : (await findThreadRefresh(c.env.DB, start.status.id)).unwrapOr(undefined);
   const limits = viewerId ? ContextLimits.authenticated : ContextLimits.anonymous;
   const [ancestors, descendants] = await Promise.all([
-    listThreadAncestors(c.env.DB, identity.value, start, limits.depth),
+    listThreadAncestors(c.env.DB, identity.value, start, limits.ancestors),
     listThreadDescendants(c.env.DB, identity.value, start, limits.descendants, limits.depth),
   ]);
   if (ancestors.isErr()) {
@@ -199,13 +205,16 @@ export const getV1StatusesByIdContext = async (
   if (descendants.isErr()) {
     return jsonRepositoryError(c, descendants.error.message);
   }
+  // As Mastodon, each level is limited first, then filtered for the viewer.
   const visible = await visibleThreadStatusIds(
     c.env.DB,
-    [...ancestors.value, ...descendants.value],
+    [...ancestors.value, ...descendants.value.map((reply) => reply.node)],
     viewerId,
   );
   const visibleAncestors = ancestors.value.filter((node) => visible.has(node.status.id));
-  const visibleDescendants = descendants.value.filter((node) => visible.has(node.status.id));
+  const visibleDescendants = promoteSelfReplies(
+    descendants.value.filter((reply) => visible.has(reply.node.status.id)),
+  ).map((reply) => reply.node);
   const documents = await statusDocumentsByIds(
     c.env,
     identity.value,
@@ -217,8 +226,7 @@ export const getV1StatusesByIdContext = async (
   }
   const render = (nodes: ReadonlyArray<ThreadStatus>) =>
     nodes.flatMap((node) => documents.value.get(node.status.id) ?? []);
-  // As Mastodon, only a signed-in reader is told to poll: the refresh endpoint needs a user.
-  const asyncRefresh = viewerId ? contextAsyncRefreshHeader(start.status.id, refresh) : undefined;
+  const asyncRefresh = contextAsyncRefreshHeader(start.status.id, refresh);
   if (asyncRefresh) {
     c.header("Mastodon-Async-Refresh", asyncRefresh);
   }

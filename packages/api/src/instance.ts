@@ -146,6 +146,13 @@ export const ApiInstanceActivity = z.object({
 export type ApiInstanceActivityJSON = z.infer<typeof ApiInstanceActivity>;
 
 /**
+ * `/api/v1/peers/search`: up to ten known domains that start with `q`, or
+ * `null` when `q` is blank (Mastodon renders its unset `@domains`).
+ */
+export const ApiPeerSearch = z.array(z.string()).nullable();
+export type ApiPeerSearchJSON = z.infer<typeof ApiPeerSearch>;
+
+/**
  * `REST::V1::InstanceSerializer` (`/api/v1/instance`, deprecated in favour of
  * the v2 document but still read by older clients).
  */

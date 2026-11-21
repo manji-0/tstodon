@@ -62,7 +62,7 @@ On cfwdon's base, `GET /api/v1/statuses/:id/context` answered 500 for every stat
 
 Both servers used to walk a thread's descendants one level at a time. tstodon spent about 3 serial rounds per level and cfwdon spent 3. Both now run one recursive CTE that walks local replies (by `in_reply_to_id`) and remote replies (by `in_reply_to_uri`) together. The statuses then load in one concurrent round.
 
-- tstodon. `prisma/sql/listThreadDescendantIds.sql` keeps the old breadth-first order, sorted by id within each level. Ancestors and descendants now load concurrently. A plan test checks that the query seeks `statuses` and `remote_statuses`.
+- tstodon. `prisma/sql/listThreadDescendantIds.sql` kept the old breadth-first order, sorted by id within each level, at the time; it now walks Mastodon's depth-first `ORDER BY path` order and stops at the limit (DM-8 in `docs/planning/open-todos.md`). Ancestors and descendants now load concurrently. A plan test checks that the query seeks `statuses` and `remote_statuses`.
 - cfwdon. `LOCAL_REPLY_TREE_CTE` lives in `statuses/store_local.rs`. The existing level-by-level walk now runs in memory, so a hidden status still hides its replies. `scripts/check_query_plans.py` runs the ancestor and tree queries as they appear in the source file, on a mixed local and remote thread.
 
 ### Taken by tstodon from cfwdon

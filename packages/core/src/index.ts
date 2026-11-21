@@ -22,3 +22,4 @@ export {
 export { Sensitive, type Sensitive as SensitiveValue } from "./sensitive";
 export { unitKind } from "./unit-kind";
 export type { ValidationError } from "./validation-error";
+export { toAscii } from "./idna";
