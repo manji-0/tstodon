@@ -21,7 +21,7 @@ import { StatusAuthors } from "./account-presentation";
 import { parseLocalStatusId } from "./activitypub";
 import type { RepositoryError } from "./d1";
 import { cardDocument, parseCardJson } from "./link-card";
-import { RemoteAccountId } from "./remote-account-id";
+import { inReplyToAccountId, RemoteAccountId } from "./remote-account-id";
 import { mastodonShallowStatuses } from "./local-status-documents";
 import {
   isQuotedStatusShown,
@@ -61,9 +61,11 @@ type ReplyRefs = {
 
 /**
  * Fill `in_reply_to_id` and `in_reply_to_account_id` on remote status
- * documents from the `inReplyTo` stored with them: a local parent by its id
- * and author, a cached remote one by its id and `r_…` author. A parent that
- * is not stored here stays null, as Mastodon renders an unfetched parent.
+ * documents from the `inReplyTo` stored with them: the parent's id, local or
+ * cached remote, and whom the reply answers as stored when it was linked
+ * (Mastodon's `in_reply_to_account_id`, which outlives the parent). A parent
+ * that is not stored here leaves the id null, as Mastodon renders an
+ * unfetched parent.
  * Other documents in the list are left alone.
  */
 export const attachRemoteReplyRefs = async (
@@ -99,22 +101,20 @@ export const attachRemoteReplyRefs = async (
   for (const document of documents) {
     const target = targets.value.get(document.id);
     const uri = target?.inReplyToUri;
-    if (!uri) {
+    if (!target || !uri) {
       continue;
     }
+    document.in_reply_to_account_id = inReplyToAccountId(target.replyLink);
     const localId = localParents.get(uri);
-    if (localId) {
-      const parent = locals.isOk() ? locals.value.get(localId) : undefined;
-      if (parent) {
-        document.in_reply_to_id = parent.id;
-        document.in_reply_to_account_id = parent.accountId;
-      }
-      continue;
-    }
-    const parent = remotes.isOk() ? remotes.value.get(uri) : undefined;
+    const parent = localId
+      ? locals.isOk()
+        ? locals.value.get(localId)
+        : undefined
+      : remotes.isOk()
+        ? remotes.value.get(uri)
+        : undefined;
     if (parent) {
       document.in_reply_to_id = parent.id;
-      document.in_reply_to_account_id = RemoteAccountId.encode(parent.actorUri);
     }
   }
 };

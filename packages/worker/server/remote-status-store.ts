@@ -15,6 +15,7 @@ import {
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import type { NoteReplyTo } from "./activitypub";
 import { nowIso } from "./clock";
 import { rerollEntityId } from "./ids";
 import {
@@ -451,7 +452,7 @@ const remoteStatusRowOf = (status: RemoteStatus): RemoteStatusRow => ({
 const remoteStatusRowStatement = (
   db: D1Database,
   status: RemoteStatus,
-  inReplyToUri: string | undefined,
+  inReplyTo: NoteReplyTo | undefined,
   write: "Insert" | "Replace",
 ): D1PreparedStatement => {
   const row = remoteStatusRowOf(status);
@@ -472,11 +473,12 @@ const remoteStatusRowStatement = (
       row.media_json,
       nowIso(),
       nowIso(),
-      inReplyToUri ?? null,
+      inReplyTo?.uri ?? null,
       row.edited_at,
       row.poll_json,
       row.emojis_json,
       row.quote_policy_json,
+      inReplyTo?.localStatusId ?? null,
     ),
   );
 };
@@ -700,8 +702,8 @@ export const upsertRemoteStatus = async (
   status: RemoteStatus,
   /** The note's hashtags (`noteHashtags`), which replace the ones stored. */
   tags: ReadonlyArray<string>,
-  /** The note's `inReplyTo`, kept to group direct conversations. */
-  inReplyToUri?: string,
+  /** The note's `inReplyTo`, kept to link the note to its parent. */
+  inReplyTo?: NoteReplyTo,
   /** The caller's read of this URI, which spares reading it again. */
   known?: KnownRemoteStatus,
   /** Writes that commit or fail with the row, run before it. */
@@ -751,12 +753,7 @@ export const upsertRemoteStatus = async (
           d1PrepareTyped(db, refuseBuriedRemoteStatusSql(persisted.objectUri)),
           ...unreplaced,
           ...alongside,
-          remoteStatusRowStatement(
-            db,
-            persisted,
-            inReplyToUri,
-            existing.value ? "Replace" : "Insert",
-          ),
+          remoteStatusRowStatement(db, persisted, inReplyTo, existing.value ? "Replace" : "Insert"),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
           ...settled,
           ...after.map((statement) => statement(persisted.id)),

@@ -1,3 +1,4 @@
+import type { ReplyLink } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 
 /**
@@ -46,3 +47,14 @@ export const RemoteAccountId = {
     return ok(actorUri);
   },
 } as const;
+
+/** The REST `in_reply_to_account_id` of a stored reply link: a local id, an `r_…` id, or null. */
+export const inReplyToAccountId = (link: ReplyLink): string | null => {
+  if (link.kind !== "Answers") {
+    return null;
+  }
+  const { account } = link;
+  return account.kind === "LocalAccount"
+    ? account.accountId
+    : RemoteAccountId.encode(account.actorUri);
+};

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { ReplyAccount } from "./reply-account";
 import {
   NoteThread,
   type NotifiedNote,
@@ -53,9 +54,17 @@ describe("StatusNotificationAudience.recipients", () => {
 });
 
 describe("NoteThread.of", () => {
-  it("is a self-reply only when the author's own statuses lead up to a root", () => {
-    expect(NoteThread.of({ kind: "NoParent" })).toEqual({ kind: "Root" });
-    expect(NoteThread.of({ kind: "ReachesRoot" })).toEqual({ kind: "SelfReply" });
-    expect(NoteThread.of({ kind: "LeavesAuthor" })).toEqual({ kind: "ReplyToOther" });
+  const alice: ReplyAccount = { kind: "RemoteActor", actorUri: "https://a.example/users/alice" };
+  const bob: ReplyAccount = { kind: "LocalAccount", accountId: "1" };
+
+  it("is a self-reply only when the reply answers its own author", () => {
+    expect(NoteThread.of({ kind: "NotReply" }, alice)).toEqual({ kind: "Root" });
+    expect(NoteThread.of({ kind: "Answers", account: alice }, alice)).toEqual({
+      kind: "SelfReply",
+    });
+    expect(NoteThread.of({ kind: "Answers", account: bob }, alice)).toEqual({
+      kind: "ReplyToOther",
+    });
+    expect(NoteThread.of({ kind: "NoAccount" }, alice)).toEqual({ kind: "ReplyToOther" });
   });
 });

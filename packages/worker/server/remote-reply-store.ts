@@ -1,3 +1,4 @@
+import { ReplyLink } from "@tstodon/domain";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
@@ -14,6 +15,8 @@ export type RemoteReplyTarget = Readonly<{
   objectUri: string;
   direct: boolean;
   inReplyToUri: string | undefined;
+  /** Who it answers, Mastodon's `in_reply_to_account_id`. */
+  replyLink: ReplyLink;
 }>;
 
 const ReplyTargetRowSchema = z.object({
@@ -21,6 +24,8 @@ const ReplyTargetRowSchema = z.object({
   object_uri: z.string(),
   visibility: z.string(),
   in_reply_to_uri: z.string().nullable(),
+  in_reply_to_account_id: z.string().nullable(),
+  in_reply_to_actor_uri: z.string().nullable(),
 });
 
 type ReplyTargetRow = z.infer<typeof ReplyTargetRowSchema>;
@@ -30,6 +35,11 @@ const replyTargetFromRow = (row: ReplyTargetRow): RemoteReplyTarget => ({
   objectUri: row.object_uri,
   direct: row.visibility === "direct",
   inReplyToUri: row.in_reply_to_uri ?? undefined,
+  replyLink: ReplyLink.fromColumns(
+    row.in_reply_to_uri !== null,
+    row.in_reply_to_account_id,
+    row.in_reply_to_actor_uri,
+  ),
 });
 
 export const findRemoteStatusReplyTargets = async (

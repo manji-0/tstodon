@@ -20,17 +20,29 @@ type Note = Readonly<{ id: string; author: Remote; parent?: string; visibility?:
 /** Store remote notes straight into D1, each replying to `parent` (an id among them). */
 const store = async (notes: ReadonlyArray<Note>): Promise<void> => {
   const byId = new Map(notes.map((note) => [note.id, note]));
+  // Whom a reply answers, as the store sets it: a reply to its author's own
+  // reply carries that one's over (Mastodon's `carried_over_reply_to_account_id`).
+  const answered = (note: Note): string | null => {
+    const parent = note.parent === undefined ? undefined : byId.get(note.parent);
+    if (parent === undefined) {
+      return null;
+    }
+    return parent.author === note.author && parent.parent !== undefined
+      ? answered(parent)
+      : parent.author.actorUri;
+  };
   const statements = notes.map((note) => {
     const parent = note.parent === undefined ? undefined : byId.get(note.parent);
     return env.DB.prepare(
-      `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, in_reply_to_uri)
-       VALUES (?, ?, ?, '<p>note</p>', ?, '2024-01-01T00:00:00.000Z', ?)`,
+      `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, in_reply_to_uri, in_reply_to_actor_uri)
+       VALUES (?, ?, ?, '<p>note</p>', ?, '2024-01-01T00:00:00.000Z', ?, ?)`,
     ).bind(
       note.id,
       note.author.actorUri,
       noteUri(note.author, note.id),
       note.visibility ?? "public",
       parent ? noteUri(parent.author, parent.id) : null,
+      answered(note),
     );
   });
   for (let start = 0; start < statements.length; start += 500) {
@@ -101,14 +113,13 @@ describe("an anonymous reader's context limits, as Mastodon's ContextsController
 });
 
 describe("context descendants", () => {
-  it("promote a reply to its author's own status when that status does not load", async () => {
-    const [root, other, self] = await Promise.all([
-      remoteActor("promote-unloaded-root", "promote.example"),
+  it("promote a reply that answers its own author when its parent does not load", async () => {
+    const [other, self] = await Promise.all([
       remoteActor("promote-unloaded-other", "promote.example"),
       remoteActor("promote-unloaded-self", "promote.example"),
     ]);
     const notes: Note[] = [
-      { id: statusId(913, 0), author: root },
+      { id: statusId(913, 0), author: self },
       { id: statusId(913, 1), author: other, parent: statusId(913, 0) },
       // A row that does not read as a status: the context leaves it out.
       { id: statusId(913, 2), author: self, parent: statusId(913, 0), visibility: "unknown" },

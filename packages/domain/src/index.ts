@@ -73,10 +73,10 @@ export { Hostname, type Hostname as HostnameValue } from "./hostname";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
 export { RealtimeWindow } from "./realtime-window";
+export { ReplyAccount, ReplyLink } from "./reply-account";
 export {
   NoteThread,
   type NotifiedNote,
-  type OwnAncestry,
   type NotifyingFollower,
   StatusNotificationAudience,
 } from "./status-notification-audience";
