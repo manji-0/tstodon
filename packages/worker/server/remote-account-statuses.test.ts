@@ -158,7 +158,12 @@ describe("a remote account's statuses", () => {
       direct,
       open,
     ]);
-    expect(await uris(actor, "?exclude_replies=true", follower)).toEqual([followersOnly, open]);
+    // The reply answers the actor itself, so it stays (`Status.without_replies`).
+    expect(await uris(actor, "?exclude_replies=true", follower)).toEqual([
+      reply,
+      followersOnly,
+      open,
+    ]);
   });
 
   it("is empty for a viewer who blocks the actor and 404 for an unknown one", async () => {

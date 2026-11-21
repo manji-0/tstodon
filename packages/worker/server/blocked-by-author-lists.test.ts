@@ -170,7 +170,8 @@ describe("a remote actor that blocks the viewer", () => {
         ).body,
       ).descendants.map((entry) => entry.id);
     expect(await idsAt(profile, viewer)).toEqual([replyId, noteId]);
-    expect(await idsAt(publicRemote, viewer)).toEqual(expect.arrayContaining([replyId, noteId]));
+    // The reply answers the viewer, so the public timeline leaves it out (`without_replies`).
+    expect(await idsAt(publicRemote, viewer)).toEqual(expect.arrayContaining([noteId]));
     expect(await descendants(viewer)).toEqual([replyId]);
 
     await remoteBlocks(remote, username);
@@ -178,10 +179,9 @@ describe("a remote actor that blocks the viewer", () => {
     expect(await idsAt(profile, viewer)).toEqual([]);
     expect(await idsAt(`${profile}?pinned=true`, viewer)).toEqual([]);
     expect(await idsAt(publicRemote, viewer)).not.toEqual(expect.arrayContaining([noteId]));
-    expect(await idsAt(publicRemote, viewer)).not.toEqual(expect.arrayContaining([replyId]));
     expect(await descendants(viewer)).toEqual([]);
     expect(await idsAt(profile, other)).toEqual([replyId, noteId]);
-    expect(await idsAt(publicRemote, other)).toEqual(expect.arrayContaining([replyId, noteId]));
+    expect(await idsAt(publicRemote, other)).toEqual(expect.arrayContaining([noteId]));
     expect(await descendants(other)).toEqual([replyId]);
   });
 
