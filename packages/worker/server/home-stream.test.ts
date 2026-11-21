@@ -338,6 +338,56 @@ describe("home streams of followers of a remote actor", () => {
     }
   });
 
+  // Mastodon's `Create#distribute` runs `DistributionWorker` for a status
+  // `FetchRemoteStatusService` stores within the real-time window, and
+  // `FanOutOnWriteService` puts it on its author's followers' home feeds.
+  it("hear its note a boost made this server fetch, only when it was published within six hours", async () => {
+    const actor = await remoteActor("hs-remote-fetched");
+    const booster = await remoteActor("hs-remote-fetched-booster", "hs-booster.example");
+    const follower = await openStream("hs-remote-fetched-follower@example.com");
+    await followRemote("hs-remote-fetched-follower@example.com", actor);
+    const old = remoteNote(actor, "hs-remote-fetched-old", {
+      published: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+    });
+    const recent = remoteNote(actor, "hs-remote-fetched-recent", {
+      published: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    });
+    const documents = new Map<string, unknown>([old, recent].map((note) => [note.id, note]));
+    const original = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const document = documents.get(href);
+      return document === undefined
+        ? new Response("not found", { status: 404 })
+        : new Response(JSON.stringify(document), {
+            headers: { "content-type": "application/activity+json" },
+          });
+    };
+    try {
+      for (const note of [old, recent]) {
+        expect(
+          await booster.send({
+            id: `${booster.actorUri}/announces/${note.id.split("/").at(-1)}`,
+            type: "Announce",
+            object: note.id,
+            published: new Date().toISOString(),
+            to: [PUBLIC],
+            cc: [`${booster.actorUri}/followers`],
+          }),
+        ).toBe(202);
+      }
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    const heard = await follower.next();
+    expect(heard.event).toBe("update");
+    expect(statusOf(heard)).toMatchObject({ uri: recent.id, reblog: null });
+    expect(await follower.heardNothing()).toBe(true);
+    follower.close();
+  });
+
   it("do not hear a note published over six hours ago or a redelivered one", async () => {
     const actor = await remoteActor("hs-remote-late");
     const follower = await openStream("hs-remote-late-follower@example.com");

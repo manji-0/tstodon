@@ -129,7 +129,7 @@ const fetchedUrls: string[] = [];
  * `failing`, and 404s anything else.
  */
 const serving = async <T>(
-  documents: ReadonlyArray<NoteDocument>,
+  documents: ReadonlyArray<Readonly<{ id: string }>>,
   body: () => Promise<T>,
   faults: Readonly<{ unreachable?: ReadonlyArray<string>; failing?: ReadonlyArray<string> }> = {},
 ): Promise<T> => {
@@ -565,6 +565,77 @@ describe("a remote reply whose parent this server does not hold", () => {
     expect(resolveJobs(held)).toEqual([
       { kind: RESOLVE, statusId: await storedId(instrument.id), hop: 1 },
     ]);
+  });
+
+  // `FetchRemoteStatusService` runs the status as a `Create`, whose
+  // `resolve_thread` does not look at when it was published.
+  it("queues the job of a reply a boost made this server fetch, however old", async () => {
+    const author = await remoteActor("rtrfetched", "rtr-fetched.example");
+    const booster = await remoteActor("rtrfetchedbooster", "rtr-fetched-booster.example");
+    const reply = note(author, "reply", {
+      inReplyTo: note(author, "root").id,
+      published: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+    });
+    const held = holdQueue();
+
+    await serving([reply], async () => {
+      expect(
+        await booster.send({
+          id: `${booster.actorUri}/announces/1`,
+          type: "Announce",
+          object: reply.id,
+          published: new Date().toISOString(),
+          to: [PUBLIC],
+        }),
+      ).toBe(202);
+    });
+    await settle();
+
+    expect(resolveJobs(held)).toEqual([
+      { kind: RESOLVE, statusId: await storedId(reply.id), hop: 1 },
+    ]);
+  });
+
+  // Mastodon reads no outbox, so nothing it stores comes from one.
+  it("queues no job for a reply an outbox backfill stores", async () => {
+    const author = await remoteActor("rtroutbox", "rtr-outbox.example");
+    const reply = note(author, "reply", { inReplyTo: note(author, "root").id });
+    const outbox = `${author.actorUri}/outbox`;
+    const documents = [
+      {
+        id: author.actorUri,
+        type: "Person",
+        preferredUsername: "rtroutbox",
+        inbox: `${author.actorUri}/inbox`,
+        outbox,
+        publicKey: {
+          id: `${author.actorUri}#main-key`,
+          owner: author.actorUri,
+          publicKeyPem: author.publicKeyPem,
+        },
+      },
+      { id: outbox, type: "OrderedCollection", first: `${outbox}?page=true` },
+      {
+        id: `${outbox}?page=true`,
+        type: "OrderedCollectionPage",
+        orderedItems: [
+          { id: `${reply.id}/create`, type: "Create", actor: author.actorUri, object: reply },
+        ],
+      },
+    ];
+    const job = OutboxJob.parse({ kind: "BackfillRemoteOutbox", actorUri: author.actorUri });
+    if (job.isErr()) {
+      throw new Error("backfill job rejected");
+    }
+    const held = holdQueue();
+
+    await serving(documents, async () => {
+      expect(await processOutboxJob(env, job.value)).toBe("ok");
+    });
+    await settle();
+
+    expect(await storedId(reply.id)).toBeDefined();
+    expect(resolveJobs(held)).toEqual([]);
   });
 
   it("queues one job when the sender delivers the Create again after a 5xx", async () => {

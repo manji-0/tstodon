@@ -813,15 +813,22 @@ const writeLateSteps = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  // `Create#resolve_thread`: a note an inbox activity brought that replies to
-  // a status not stored queues the job that fetches it.
+  // `Create#resolve_thread`: a new note that replies to a status not stored
+  // queues the job that fetches it, whether an inbox activity brought it or
+  // this server fetched it, as Mastodon runs every status it stores through
+  // `Create`. An outbox backfill queues none: Mastodon reads no outbox.
   if (
     late.kind === "Created" &&
-    inboxDelivery(options) &&
+    options.delivery !== "Backfilled" &&
     late.inReplyTo !== undefined &&
     fetchableParent(identity, late.inReplyTo)
   ) {
-    const resolving = await queueRemoteThreadResolve(env, identity, status.id, 1);
+    const resolving = await queueRemoteThreadResolve(
+      env,
+      identity,
+      status.id,
+      options.threadHop ?? 1,
+    );
     if (resolving.isErr()) {
       return err(resolving.error);
     }
@@ -874,13 +881,14 @@ const writeLateSteps = async (
 
 /**
  * The stream event the finished note is sent with, if any. An edit is
- * `status.update`. A new note is `update` when an inbox activity stored it
- * (it has a marker) and it was published recently, as Mastodon's
- * `Status::REAL_TIME_WINDOW`: an old note arriving late would show up in
- * clients as a new status. A `QuoteRequest` streams the note it stores as a
- * `Create` does: Mastodon runs its instrument as a `Create`
- * (`FetchRemoteStatusService`), which distributes it, and the `Create` that
- * follows finds the status and distributes nothing. A marker read back on a
+ * `status.update`. A new note is `update` when it is distributed
+ * ({@link distributed}): Mastodon's `DistributionWorker` streams it to the
+ * home, list, public and hashtag streams, for an inbox `Create`, a
+ * `QuoteRequest`'s instrument and a note this server fetched first alike,
+ * as `FetchRemoteStatusService` runs the last two as a `Create`. Only a note
+ * whose marker this delivery holds streams, and only one published
+ * recently, as Mastodon's `Status::REAL_TIME_WINDOW`: an old note arriving
+ * late would show up in clients as a new status. A marker read back on a
  * redelivery counts as stored now: the delivery that wrote it never got
  * this far, so the note was not streamed.
  */
@@ -888,8 +896,8 @@ const streamEvent = (late: LateSteps): "update" | "status.update" | undefined =>
   if (late.kind === "Updated") {
     return late.edit ? "status.update" : undefined;
   }
-  return inboxDelivery(late.options) &&
-    late.marker !== undefined &&
+  return late.marker !== undefined &&
+    distributed(late) &&
     RealtimeWindow.contains(late.status.publishedAt, nowInstant())
     ? "update"
     : undefined;
@@ -908,6 +916,12 @@ type PersistOptions = FederatedFetchOptions &
     delivery?: "Create" | "QuoteRequest" | "Fetched" | "Backfilled";
     /** Which instant a newly stored note's id sorts at; `Received` by default. */
     idClock?: IdClock;
+    /**
+     * The hop of the thread job ({@link queueRemoteThreadResolve}) a newly
+     * stored reply queues; 1 by default. A note a thread job fetches sits one
+     * hop further up that job's chain, so the chain stops at the limit.
+     */
+    threadHop?: number;
     /**
      * How many quotes deep this note sits below the note that arrived (0 by
      * default); a note fetched as a quoted one is one deeper than its quoting
