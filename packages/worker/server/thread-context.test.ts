@@ -375,6 +375,30 @@ describe("thread context for silenced authors", () => {
     expect((await context(root.id)).descendants).toEqual([]);
   });
 
+  // `StatusPolicy#show?` refuses an `unavailable?` author, followed or not.
+  it.each([
+    ["its domain", "suspended-domain-thread.example"],
+    ["the actor itself", "suspended-actor-thread.example"],
+  ] as const)("hides a reply from followers once %s is suspended", async (_, host) => {
+    const owner = `thread-suspend-owner@${host}`;
+    const follower = `thread-suspend-follower@${host}`;
+    const author = await remoteActor("thread-suspended", host);
+    await followAccepted(follower, author, `thread-suspended-${host}`);
+    const root = await post(owner, "replies before a suspension");
+    const reply = await receiveReply(author, `thread-suspended-1-${host}`, root.uri);
+    expect((await context(root.id, follower)).descendants).toEqual([reply.id]);
+    expect(await batchIds([reply.id], follower)).toEqual([reply.id]);
+
+    if (host.startsWith("suspended-domain")) {
+      await asAdmin("/api/v1/admin/domain_blocks", { domain: host, severity: "suspend" });
+    } else {
+      await asAdmin(`/api/v1/admin/accounts/${RemoteAccountId.encode(author.actorUri)}/suspend`);
+    }
+
+    expect((await context(root.id, follower)).descendants).toEqual([]);
+    expect(await batchIds([reply.id], follower)).toEqual([]);
+  });
+
   it("shows a silenced local account's statuses to its followers and itself", async () => {
     const owner = "thread-silence-local-owner@example.com";
     const follower = "thread-silence-local-follower@example.com";
