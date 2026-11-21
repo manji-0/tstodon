@@ -162,6 +162,54 @@ describe("a local note of an account many local accounts follow with notificatio
       { kind: PAGE_JOB, statusId: id, step: { kind: "Follower", accountId: namedAccount.id } },
     ]);
   });
+
+  // Nobody is notified of a reply to someone else, and only the accounts a
+  // direct note names can be, so neither pages through every follower.
+  it(
+    "reads no page of followers for a reply to someone else or a direct note",
+    { timeout: 300_000 },
+    async () => {
+      const author = await signedInAccount("lnf-narrow-author@example.com");
+      await signedInAccount("lnf-narrow-other@example.com");
+      const followers = await notifyingFollowers(
+        "lnf-narrow",
+        author.id,
+        NOTIFYING_FOLLOWER_PAGE_SIZE + 1,
+      );
+      const named = await signedInAccount(followers[0] ?? "");
+      const others = await post("lnf-narrow-other@example.com", { status: "a thread" });
+      const queued = holdQueue();
+
+      await post("lnf-narrow-author@example.com", { status: "a reply", in_reply_to_id: others });
+      expect(queued.bodies.filter((body) => kindOf(body) === PAGE_JOB)).toEqual([]);
+
+      const direct = await post("lnf-narrow-author@example.com", {
+        status: `@${named.username} just for you`,
+        visibility: "direct",
+      });
+      expect(queued.bodies.filter((body) => kindOf(body) === PAGE_JOB)).toEqual([
+        { kind: PAGE_JOB, statusId: direct, step: { kind: "Follower", accountId: named.id } },
+      ]);
+    },
+  );
+
+  // The note is stored before the notifications are queued: a failed send
+  // must not fail the publish, which the client would then post again.
+  it("publishes the note when its notifications cannot be queued", async () => {
+    const author = await signedInAccount("lnf-unqueued-author@example.com");
+    await notifyingFollowers("lnf-unqueued", author.id, 1);
+    vi.spyOn(Object.getPrototypeOf(env.OUTBOX_PROCESS_QUEUE), "sendBatch").mockRejectedValue(
+      new Error("queue unavailable"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const id = await post("lnf-unqueued-author@example.com", { status: "still posted" });
+
+    const shown = await SELF.fetch(`https://example.com/api/v1/statuses/${id}`, {
+      headers: await authHeaders("lnf-unqueued-author@example.com"),
+    });
+    expect(shown.status).toBe(200);
+  });
 });
 
 describe("a scheduled local note of an account with notifying followers", () => {

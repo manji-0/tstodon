@@ -5,6 +5,8 @@ import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, requestsSettled, resetMeter, seedNoise, settle } from "../test/meter";
 import { drainHeld, holdQueue, QUEUE_BATCH, QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { parseRows } from "./d1";
+import { insertScheduledStatus } from "./scheduled-status-store";
 import { HOME_HORIZON_STEPS } from "./timeline-documents";
 import { ACTIVITY_JSON } from "../test/activity-json";
 
@@ -559,6 +561,52 @@ describe("D1 statements do not grow with how many things a request names", () =>
         mostPerInvocation,
         `one queue invocation of ${QUEUE_BATCH} jobs made ${mostPerInvocation} statements`,
       ).toBeLessThan(QUEUE_INVOCATION_BUDGET);
+    },
+  );
+
+  it(
+    "publishes a backlog of scheduled posts in queue runs that stay within budget",
+    { timeout: 120_000 },
+    async () => {
+      const author = await signedInAccount("budget-scheduled@example.com");
+      const backlog = 20;
+      for (let n = 0; n < backlog; n += 1) {
+        const stored = await insertScheduledStatus(env.DB, {
+          accountId: author.id,
+          scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+          params: {
+            text: `scheduled ${n}`,
+            visibility: "public",
+            spoiler_text: "",
+            sensitive: false,
+            language: null,
+            media_ids: [],
+            media_attributes: [],
+            poll: null,
+            in_reply_to_id: null,
+          },
+        });
+        expect(stored.isOk()).toBe(true);
+      }
+      patchD1();
+      const queued = holdQueue();
+      queued.bodies.push({ kind: "PublishScheduledStatuses" });
+
+      const mostPerInvocation = await drainHeld(queued, ["PublishScheduledStatuses"]);
+
+      expect(
+        mostPerInvocation,
+        `one queue invocation publishing scheduled posts made ${mostPerInvocation} statements`,
+      ).toBeLessThan(QUEUE_INVOCATION_BUDGET);
+      const [published] = parseRows(
+        z.object({ n: z.number() }),
+        (
+          await env.DB.prepare("SELECT COUNT(*) AS n FROM statuses WHERE account_id = ?")
+            .bind(author.id)
+            .all()
+        ).results,
+      );
+      expect(published?.n).toBe(backlog);
     },
   );
 
