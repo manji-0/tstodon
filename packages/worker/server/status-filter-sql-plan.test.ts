@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { StatusId, StatusTarget } from "@tstodon/domain";
 import { listQuotePage } from "./quote-store";
 import { searchStatuses } from "./status-timeline-store";
 
@@ -59,7 +60,7 @@ describe("the status filter's plans", () => {
   // The page sorts the one status's quotes, as Mastodon's does, but reads only those.
   it("seeks the quotes of one status and each quoting status by key", async () => {
     const details = await planOf("status_quotes", () =>
-      listQuotePage(env.DB, { kind: "LocalStatus", statusId: "1" }, "viewer", 20, {
+      listQuotePage(env.DB, StatusTarget.local(StatusId.schema.parse("1")), "viewer", 20, {
         maxId: "9",
         sinceId: "0",
       }),
