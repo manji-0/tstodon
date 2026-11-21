@@ -26,7 +26,24 @@ import { queryTyped, runTypedBatch } from "./typed-sql";
 const MAX_REMEMBERED = 10_000;
 const remembered = new Set<string>();
 
+const DAY_MS = 86_400_000;
+
 const utcDay = (now: Date): string => now.toISOString().slice(0, 10);
+
+/**
+ * How long a user counts as signed in recently, Mastodon's
+ * `User::ACTIVE_DURATION` (`USER_ACTIVE_DAYS`, 7 by default).
+ */
+const ACTIVE_DAYS = 7;
+
+/**
+ * The first UTC day an account must have made an authenticated request on
+ * to count as signed in recently (`User.signed_in_recently`). Mastodon
+ * compares `current_sign_in_at`, which it moves at most once a day, with
+ * the instant a week ago; this counts that whole day.
+ */
+export const signedInRecentlySinceDay = (now: Date = new Date()): string =>
+  utcDay(new Date(now.getTime() - ACTIVE_DAYS * DAY_MS));
 
 export const recordAccountActivity = async (
   db: D1Database,
@@ -106,8 +123,6 @@ export const allAccountIps = async (
   );
 
 const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
-
-const DAY_MS = 86_400_000;
 
 /**
  * Local accounts that made an authenticated request on any of the last `days`
