@@ -8,10 +8,9 @@ import {
   type StreamEventValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { afterResponse } from "./after-response";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
-import { runOrQueue } from "./inline-job";
+import { type JobStart, startJob } from "./inline-job";
 import { findListForAccount } from "./list-store";
 import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -42,7 +41,8 @@ export const HOME_FAN_OUT_PAGE_SIZE = 20;
  * Mastodon's `FanOutOnWriteService` and `RemoveStatusService` do for the
  * `user` and `list` streams. Nothing is done when no hub holds a `user` or
  * `list` stream (one cached read); otherwise the first page of followers is
- * told once the response is ready, and the queue takes later pages and a page to retry.
+ * told once the response is ready, or by the queue when `start` is
+ * `Queued`, and the queue takes later pages and a page to retry.
  * Best effort: the entry is stored either way, and a follower who misses the
  * event still sees the entry on the next home timeline fetch.
  */
@@ -55,6 +55,7 @@ export const startHomeFanOut = async (
       | Readonly<{ kind: "LocalAccount"; accountId: string }>
       | Readonly<{ kind: "RemoteActor"; actorUri: string }>;
   }>,
+  start: JobStart = "Inline",
 ): Promise<void> => {
   const job = OutboxJob.parse({ kind: "FanOutHome", ...fanOut, afterAccountId: "" });
   if (job.isErr() || job.value.kind !== "FanOutHome") {
@@ -63,8 +64,7 @@ export const startHomeFanOut = async (
   if (!(await streamListeners(env.DB)).home) {
     return;
   }
-  const fanOutJob = job.value;
-  afterResponse(fanOutJob.kind, () => runOrQueue(env, fanOutJob, processFanOutHomeJob));
+  await startJob(env, job.value, processFanOutHomeJob, start);
 };
 
 /**

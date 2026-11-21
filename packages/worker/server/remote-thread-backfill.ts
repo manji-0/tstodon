@@ -28,6 +28,7 @@ import {
 } from "./generated/prisma/sql";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
 import { storeFetchedNote, storeNoteDocument } from "./remote-status-persist";
+import { queueRemoteThreadResolve, threadResolveExhausted } from "./remote-thread-resolve";
 import {
   claimRemoteThreadBackfill,
   findRemoteStatusById,
@@ -168,12 +169,12 @@ export const findThreadRefresh = async (
  * Queue fetching the thread of a remote status the reader opened, unless one
  * was queued within the TTL. Only public and unlisted statuses, whose origin
  * serves them to anyone. Mastodon's `should_fetch_replies?`, without its
- * five-minute initial wait: Mastodon resolves the parent of every status it
- * stores (`ThreadResolveWorker`), tstodon only of a note an inbox `Create` or
- * `QuoteRequest` stores (`ResolveRemoteThread`), so a note found by search or
- * through a boost gets its parents only here, and waiting would leave a fresh
- * one's parents missing (INT-4). Best effort and off the request path: the thread renders what is
- * cached, and the refresh this resolves to tells a client when to read it again.
+ * five-minute initial wait, which would hold back the replies of a fresh
+ * root and leave missing the parents of a note no thread job resolves
+ * (`ResolveRemoteThread`): one an outbox backfill stored, a quoted note or
+ * a listed reply (INT-4). Best effort
+ * and off the request path: the thread renders what is cached, and the
+ * refresh this resolves to tells a client when to read it again.
  */
 export const requestRemoteThreadBackfill = async (
   env: Env,
@@ -218,6 +219,13 @@ const parseRepliesHolder = schemaResult(RepliesHolderSchema);
  * Store the notes above `status` that are not cached yet, nearest first, up to
  * the limit, each fetched from its URI and stored under an author on that
  * host. Resolves to how many it stored.
+ *
+ * The walk is one chain of parents, as a thread job's
+ * ({@link queueRemoteThreadResolve}): the notes it stores queue no job of
+ * their own, and when it stops at its limit below a parent not stored, the
+ * topmost note's job goes on at the hop past the notes the walk stored. It
+ * stops below a reply whose chain reached the hop limit, which nothing
+ * starts again.
  */
 const backfillAncestors = async (
   env: Env,
@@ -227,6 +235,7 @@ const backfillAncestors = async (
 ): Promise<number> => {
   const own = await findRemoteStatusReplyTargetByObjectUri(env.DB, status.objectUri);
   let parentUri = own.isOk() ? own.value?.inReplyToUri : undefined;
+  let child: Readonly<{ id: string; objectUri: string }> = status;
   let stored = 0;
   for (let step = 0; step < THREAD_BACKFILL_ANCESTOR_LIMIT && parentUri; step += 1) {
     if (parseLocalStatusId(identity, parentUri)) {
@@ -234,9 +243,15 @@ const backfillAncestors = async (
     }
     let parent = await findRemoteStatusReplyTargetByObjectUri(env.DB, parentUri);
     if (parent.isOk() && !parent.value) {
+      const exhausted = await threadResolveExhausted(env.DB, child.objectUri);
+      if (exhausted.isErr() || exhausted.value) {
+        return stored;
+      }
       const persisted = await storeFetchedNote(env, identity, parentUri, {
         ...options,
         idClock: "Published",
+        thread: { kind: "Skip" },
+        fanOut: "Queued",
       });
       if (persisted.isErr() || !persisted.value) {
         return stored;
@@ -244,7 +259,16 @@ const backfillAncestors = async (
       stored += 1;
       parent = await findRemoteStatusReplyTargetByObjectUri(env.DB, parentUri);
     }
-    parentUri = parent.isOk() ? parent.value?.inReplyToUri : undefined;
+    if (parent.isErr() || !parent.value) {
+      return stored;
+    }
+    child = { id: parent.value.id, objectUri: parent.value.objectUri };
+    parentUri = parent.value.inReplyToUri;
+  }
+  if (parentUri !== undefined) {
+    // Best effort: the walk's notes are stored, and a reply whose job is not
+    // queued gets its parent when the thread is opened again.
+    await queueRemoteThreadResolve(env, identity, child.id, stored + 1);
   }
   return stored;
 };
@@ -370,7 +394,12 @@ const storeListedReplies = async (
   if (cached.isErr()) {
     return err(cached.error);
   }
-  const replyOptions = { ...options, idClock: "Published" } as const;
+  const replyOptions = {
+    ...options,
+    idClock: "Published",
+    thread: { kind: "Skip" },
+    fanOut: "Queued",
+  } as const;
   const origin = URL.parse(objectUri)?.origin;
   let fetched = 0;
   let stored = 0;

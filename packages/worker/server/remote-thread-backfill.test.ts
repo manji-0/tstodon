@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { openStream } from "../test/stream-fixture";
 import { processOutboxJob } from "./outbox-job";
 import { findRemoteStatusById } from "./remote-status-store";
 import {
@@ -519,6 +520,51 @@ describe("opening a remote status", () => {
 
     await serving(documents, () => drain(recording));
     expect(await storedCount()).toBe(1 + count);
+  });
+
+  // Each recent public reply is distributed, so each owes a public stream
+  // fan-out: a pass that stored twenty would run twenty first pages in its
+  // own invocation.
+  it("queues the stream fan-out of each recent reply it stores instead of running it", async () => {
+    const stream = await openStream({
+      email: "thread-fan-out-viewer@example.com",
+      query: "?stream=public",
+    });
+    const author = await remoteActor("thread-fan-out", "thread.example");
+    const now = new Date().toISOString();
+    const replyUris = Array.from({ length: THREAD_BACKFILL_REPLY_LIMIT }, (_, index) =>
+      noteUri(author, `fan-out-reply-${index}`),
+    );
+    const opened = noteDocument(author, "fan-out-opened", {
+      published: now,
+      replies: { type: "Collection", first: { type: "CollectionPage", items: replyUris } },
+    });
+    await deliver(author, opened);
+    const documents = new Map<string, unknown>([
+      [opened.id, opened],
+      ...replyUris.map(
+        (uri, index) =>
+          [
+            uri,
+            noteDocument(author, `fan-out-reply-${index}`, {
+              inReplyTo: opened.id,
+              published: now,
+            }),
+          ] as const,
+      ),
+    ]);
+    const recording = recordingEnv();
+
+    await requested(await statusIdOf(opened.id), recording.env);
+    await serving(documents, () => runQueued(recording));
+
+    const queued = recording.sent.map((body) =>
+      z.object({ kind: z.string(), entryId: z.string().optional() }).parse(body),
+    );
+    expect(queued.filter((job) => job.kind === "FanOutPublic")).toHaveLength(
+      THREAD_BACKFILL_REPLY_LIMIT,
+    );
+    stream.close();
   });
 
   it(`keeps at most ${THREAD_COLLECTION_REPLY_LIMIT} of the replies one collection lists`, async () => {

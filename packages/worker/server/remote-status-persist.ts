@@ -46,7 +46,12 @@ import {
   releaseOwed,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
-import { fetchableParent, queueRemoteThreadResolve } from "./remote-thread-resolve";
+import {
+  fetchableParent,
+  queueRemoteThreadResolve,
+  type ThreadResolve,
+} from "./remote-thread-resolve";
+import type { JobStart } from "./inline-job";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
@@ -552,7 +557,8 @@ export const processNotifyRemoteNoteFollowersJob = async (
  * still sends the `status` notification, which a reply now known to answer
  * its own author gets. The home and public streams are told again; a client
  * drops a status it already holds. Sending it twice notifies once
- * (`notifyFromRemoteOnce`).
+ * (`notifyFromRemoteOnce`). A thread job runs it, so its fan-outs are
+ * queued, not run in that job's invocation.
  */
 export const redistributeRemoteNote = async (
   env: Env,
@@ -576,13 +582,17 @@ export const redistributeRemoteNote = async (
   if (reached.isErr()) {
     return err(reached.error);
   }
-  await startHomeFanOut(env, {
-    event: "update",
-    entryId: status.id,
-    author: { kind: "RemoteActor", actorUri: status.actorUri },
-  });
+  await startHomeFanOut(
+    env,
+    {
+      event: "update",
+      entryId: status.id,
+      author: { kind: "RemoteActor", actorUri: status.actorUri },
+    },
+    "Queued",
+  );
   if (status.visibility.kind === "Public") {
-    await startPublicFanOut(env, { event: "update", entryId: status.id });
+    await startPublicFanOut(env, { event: "update", entryId: status.id }, "Queued");
   }
   return ok(undefined);
 };
@@ -634,19 +644,20 @@ const runLateSteps = async (
   }
   // The stream events come last. A redelivery that got this far before it
   // failed sends them again, and a client drops a status it already holds.
-  // They are started here and run once the response is ready, best effort:
-  // a page that fails goes to the queue, and nothing they do can fail the
-  // delivery. So the marker stands for their start, not their end, and is
-  // deleted below without waiting for them.
+  // They are started here and run once the response is ready, or queued
+  // (`fanOut`), best effort: a page that fails goes to the queue, and
+  // nothing they do can fail the delivery. So the marker stands for their
+  // start, not their end, and is deleted below without waiting for them.
   const event = streamEvent(late);
+  const start = late.options.fanOut ?? "Inline";
   if (event !== undefined) {
-    await startHomeFanOut(env, {
-      event,
-      entryId: status.id,
-      author: { kind: "RemoteActor", actorUri: actor.actorUri },
-    });
+    await startHomeFanOut(
+      env,
+      { event, entryId: status.id, author: { kind: "RemoteActor", actorUri: actor.actorUri } },
+      start,
+    );
     if (status.visibility.kind === "Public") {
-      await startPublicFanOut(env, { event, entryId: status.id });
+      await startPublicFanOut(env, { event, entryId: status.id }, start);
     }
   }
   return clearOwed(env.DB, status.id, held ? [held] : []);
@@ -813,15 +824,19 @@ const writeLateSteps = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  // `Create#resolve_thread`: a note an inbox activity brought that replies to
-  // a status not stored queues the job that fetches it.
+  // `Create#resolve_thread`: a new note that replies to a status not stored
+  // queues the job that fetches it, whether an inbox activity brought it or
+  // this server fetched it, as Mastodon runs every status it stores through
+  // `Create`. An outbox backfill queues none: Mastodon reads no outbox.
+  const thread = options.thread ?? { kind: "Queue", hop: 1 };
   if (
     late.kind === "Created" &&
-    inboxDelivery(options) &&
+    options.delivery !== "Backfilled" &&
+    thread.kind === "Queue" &&
     late.inReplyTo !== undefined &&
     fetchableParent(identity, late.inReplyTo)
   ) {
-    const resolving = await queueRemoteThreadResolve(env, identity, status.id, 1);
+    const resolving = await queueRemoteThreadResolve(env, identity, status.id, thread.hop);
     if (resolving.isErr()) {
       return err(resolving.error);
     }
@@ -874,13 +889,14 @@ const writeLateSteps = async (
 
 /**
  * The stream event the finished note is sent with, if any. An edit is
- * `status.update`. A new note is `update` when an inbox activity stored it
- * (it has a marker) and it was published recently, as Mastodon's
- * `Status::REAL_TIME_WINDOW`: an old note arriving late would show up in
- * clients as a new status. A `QuoteRequest` streams the note it stores as a
- * `Create` does: Mastodon runs its instrument as a `Create`
- * (`FetchRemoteStatusService`), which distributes it, and the `Create` that
- * follows finds the status and distributes nothing. A marker read back on a
+ * `status.update`. A new note is `update` when it is distributed
+ * ({@link distributed}): Mastodon's `DistributionWorker` streams it to the
+ * home, list, public and hashtag streams, for an inbox `Create`, a
+ * `QuoteRequest`'s instrument and a note this server fetched first alike,
+ * as `FetchRemoteStatusService` runs the last two as a `Create`. Only a note
+ * whose marker this delivery holds streams, and only one published
+ * recently, as Mastodon's `Status::REAL_TIME_WINDOW`: an old note arriving
+ * late would show up in clients as a new status. A marker read back on a
  * redelivery counts as stored now: the delivery that wrote it never got
  * this far, so the note was not streamed.
  */
@@ -888,8 +904,8 @@ const streamEvent = (late: LateSteps): "update" | "status.update" | undefined =>
   if (late.kind === "Updated") {
     return late.edit ? "status.update" : undefined;
   }
-  return inboxDelivery(late.options) &&
-    late.marker !== undefined &&
+  return late.marker !== undefined &&
+    distributed(late) &&
     RealtimeWindow.contains(late.status.publishedAt, nowInstant())
     ? "update"
     : undefined;
@@ -908,6 +924,24 @@ type PersistOptions = FederatedFetchOptions &
     delivery?: "Create" | "QuoteRequest" | "Fetched" | "Backfilled";
     /** Which instant a newly stored note's id sorts at; `Received` by default. */
     idClock?: IdClock;
+    /**
+     * Whether a newly stored reply whose parent is not stored queues its
+     * thread job ({@link queueRemoteThreadResolve}), and at which hop of its
+     * chain; hop 1 by default. A note a thread job fetches sits one hop
+     * further up that job's chain. A note fetched under another one, as a
+     * quoted note or a reply a thread fetch finds listed, or a parent the
+     * thread fetch walks to itself, starts no chain: each chain stays one line
+     * of parents, which its hop bounds, where Mastodon bounds every fetch a
+     * request sets off with one counter (`DISCOVERIES_PER_REQUEST`).
+     */
+    thread?: ThreadResolve;
+    /**
+     * How the stream fan-outs of a note this stores start: `Inline` by
+     * default, their first page run once the response is ready; `Queued`
+     * for a background job that stores many notes, whose invocation could
+     * not afford a first page for each.
+     */
+    fanOut?: JobStart;
     /**
      * How many quotes deep this note sits below the note that arrived (0 by
      * default); a note fetched as a quoted one is one deeper than its quoting
@@ -1270,6 +1304,7 @@ export const remoteQuoteContext = (
     ...fetchOnly,
     delivery: options.delivery === "Backfilled" ? "Backfilled" : "Fetched",
     quoteDepth: depth + 1,
+    thread: { kind: "Skip" },
   };
   return {
     fetchOptions: options,

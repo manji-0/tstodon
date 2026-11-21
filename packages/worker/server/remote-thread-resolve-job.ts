@@ -26,6 +26,7 @@ const resolveParent = async (
   identity: InstanceIdentity,
   uri: string,
   options: FederatedFetchOptions,
+  hop: number,
 ): Promise<ResolvedParent> => {
   const stored = await findStoredNote(env, identity, uri);
   if (stored.isErr()) {
@@ -46,6 +47,8 @@ const resolveParent = async (
   const note = await storeNoteDocument(env, identity, uri, raw.value, {
     ...options,
     idClock: "Published",
+    thread: { kind: "Queue", hop },
+    fanOut: "Queued",
   });
   if (note.isErr()) {
     return { kind: "Retry" };
@@ -91,7 +94,7 @@ export const processResolveRemoteThreadJob = async (
     blockedHosts: await suspendedDomains(env.DB),
     fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
-  const parent = await resolveParent(env, identity.value, parentUri, options);
+  const parent = await resolveParent(env, identity.value, parentUri, options, job.hop + 1);
   switch (parent.kind) {
     case "Retry":
       return "retry";
