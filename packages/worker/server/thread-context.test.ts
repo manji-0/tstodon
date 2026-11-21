@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -287,5 +287,205 @@ describe("thread context across local and remote statuses", () => {
       .bind(second.uri, first.id)
       .run();
     expect((await context(leaf.id)).ancestors).toEqual([first.id, second.id]);
+  });
+});
+
+const asAdmin = async (path: string, body: unknown = {}) => {
+  const response = await json(path, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(await authHeaders("thread-silence-admin@example.com", { admin: true })),
+    },
+    body: JSON.stringify(body),
+  });
+  expect(response.status, path).toBe(200);
+};
+
+const follow = async (email: string, accountId: string) => {
+  const response = await json(`/api/v1/accounts/${accountId}/follow`, {
+    method: "POST",
+    headers: await authHeaders(email),
+  });
+  expect(response.status).toBe(200);
+};
+
+const followAccepted = async (email: string, remote: Remote, slug: string) => {
+  await follow(email, RemoteAccountId.encode(remote.actorUri));
+  const viewer = await signedInAccount(email);
+  const row = await env.DB.prepare(
+    "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",
+  )
+    .bind(viewer.id, remote.actorUri)
+    .first<{ follow_activity_id: string }>();
+  expect(
+    await remote.send({
+      id: `${remote.actorUri}/accepts/${slug}`,
+      type: "Accept",
+      object: row?.follow_activity_id,
+    }),
+  ).toBe(202);
+};
+
+const batchIds = async (ids: ReadonlyArray<string>, email?: string): Promise<string[]> => {
+  const query = ids.map((id) => `id[]=${id}`).join("&");
+  const response = await json(
+    `/api/v1/statuses?${query}`,
+    email ? { headers: await authHeaders(email) } : undefined,
+  );
+  expect(response.status).toBe(200);
+  return read(z.array(z.object({ id: z.string() })), response.body).map((status) => status.id);
+};
+
+// Mastodon's `StatusFilter#silenced_account?`: a silenced account's status is
+// left out for a reader who does not follow the account, whether the account
+// or its domain is silenced, and never for the account itself.
+describe("thread context for silenced authors", () => {
+  it("shows a limited domain's reply only to readers who follow its author", async () => {
+    const owner = "thread-silence-domain-owner@example.com";
+    const follower = "thread-silence-domain-follower@example.com";
+    const stranger = "thread-silence-domain-stranger@example.com";
+    const limited = await remoteActor("thread-limited", "limited-thread.example");
+    await followAccepted(follower, limited, "thread-limited");
+    const root = await post(owner, "limited replies");
+    const reply = await receiveReply(limited, "thread-limited-1", root.uri);
+    await asAdmin("/api/v1/admin/domain_blocks", {
+      domain: "limited-thread.example",
+      severity: "silence",
+    });
+
+    expect((await context(root.id, follower)).descendants).toEqual([reply.id]);
+    expect((await context(root.id, stranger)).descendants).toEqual([]);
+    expect((await context(root.id, owner)).descendants).toEqual([]);
+    expect((await context(root.id)).descendants).toEqual([]);
+  });
+
+  it("shows a silenced remote actor's reply only to readers who follow it", async () => {
+    const owner = "thread-silence-actor-owner@example.com";
+    const follower = "thread-silence-actor-follower@example.com";
+    const stranger = "thread-silence-actor-stranger@example.com";
+    const silenced = await remoteActor("thread-silenced-actor");
+    await followAccepted(follower, silenced, "thread-silenced-actor");
+    const root = await post(owner, "silenced actor replies");
+    const reply = await receiveReply(silenced, "thread-silenced-actor-1", root.uri);
+    await asAdmin(`/api/v1/admin/accounts/${RemoteAccountId.encode(silenced.actorUri)}/silence`);
+
+    expect((await context(root.id, follower)).descendants).toEqual([reply.id]);
+    expect((await context(root.id, stranger)).descendants).toEqual([]);
+    expect((await context(root.id)).descendants).toEqual([]);
+  });
+
+  // `StatusPolicy#show?` refuses an `unavailable?` author, followed or not.
+  it.each([
+    ["its domain", "suspended-domain-thread.example"],
+    ["the actor itself", "suspended-actor-thread.example"],
+  ] as const)("hides a reply from followers once %s is suspended", async (_, host) => {
+    const owner = `thread-suspend-owner@${host}`;
+    const follower = `thread-suspend-follower@${host}`;
+    const author = await remoteActor("thread-suspended", host);
+    await followAccepted(follower, author, `thread-suspended-${host}`);
+    const root = await post(owner, "replies before a suspension");
+    const reply = await receiveReply(author, `thread-suspended-1-${host}`, root.uri);
+    expect((await context(root.id, follower)).descendants).toEqual([reply.id]);
+    expect(await batchIds([reply.id], follower)).toEqual([reply.id]);
+
+    if (host.startsWith("suspended-domain")) {
+      await asAdmin("/api/v1/admin/domain_blocks", { domain: host, severity: "suspend" });
+    } else {
+      await asAdmin(`/api/v1/admin/accounts/${RemoteAccountId.encode(author.actorUri)}/suspend`);
+    }
+
+    expect((await context(root.id, follower)).descendants).toEqual([]);
+    expect(await batchIds([reply.id], follower)).toEqual([]);
+  });
+
+  // `following?` reads accepted follows only, not a request waiting for an answer.
+  it("does not count a follow request that is not accepted yet", async () => {
+    const owner = "tsp-owner@example.com";
+    const requester = "tsp-requester@example.com";
+    const locked = "tsp-locked@example.com";
+    const lockedId = (await signedInAccount(locked)).id;
+    const requesterId = (await signedInAccount(requester)).id;
+    const remote = await remoteActor("thread-silenced-pending");
+    const locking = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...(await authHeaders(locked)) },
+      body: JSON.stringify({ locked: true }),
+    });
+    expect(locking.status).toBe(200);
+    await follow(requester, lockedId);
+    await follow(requester, RemoteAccountId.encode(remote.actorUri));
+    const states = await env.DB.prepare(
+      `SELECT kind AS state FROM follows WHERE follower_account_id = ?1
+       UNION ALL SELECT state FROM outbound_follows WHERE account_id = ?1`,
+    )
+      .bind(requesterId)
+      .all<{ state: string }>();
+    expect(states.results.map((row) => row.state).sort()).toEqual(["Pending", "Requested"]);
+
+    const root = await post(owner, "pending followers");
+    const local = await post(locked, "a locked reply", root.id);
+    const reply = await receiveReply(remote, "thread-silenced-pending-1", root.uri);
+    await asAdmin(`/api/v1/admin/accounts/${lockedId}/silence`);
+    await asAdmin(`/api/v1/admin/accounts/${RemoteAccountId.encode(remote.actorUri)}/silence`);
+
+    expect((await context(root.id, locked)).descendants).toEqual([local.id]);
+    expect((await context(root.id, requester)).descendants).toEqual([]);
+    expect(await batchIds([local.id, reply.id], requester)).toEqual([]);
+  });
+
+  it("shows a silenced local account's statuses to its followers and itself", async () => {
+    const owner = "thread-silence-local-owner@example.com";
+    const follower = "thread-silence-local-follower@example.com";
+    const stranger = "thread-silence-local-stranger@example.com";
+    const silenced = "thread-silence-local-author@example.com";
+    const silencedId = (await signedInAccount(silenced)).id;
+    await follow(follower, silencedId);
+    const root = await post(silenced, "a silenced root");
+    const answer = await post(owner, "an answer", root.id);
+    const reply = await post(silenced, "a silenced reply", answer.id);
+    await asAdmin(`/api/v1/admin/accounts/${silencedId}/silence`);
+
+    for (const reader of [follower, silenced]) {
+      expect(await context(answer.id, reader)).toEqual({
+        ancestors: [root.id],
+        descendants: [reply.id],
+      });
+    }
+    for (const reader of [stranger, owner, undefined]) {
+      expect(await context(answer.id, reader)).toEqual({ ancestors: [], descendants: [] });
+    }
+    // `permitted_statuses_from_ids` filters a batch lookup the same way.
+    expect(await batchIds([root.id, answer.id], follower)).toEqual([root.id, answer.id]);
+    expect(await batchIds([root.id, answer.id], stranger)).toEqual([answer.id]);
+    expect(await batchIds([root.id, answer.id])).toEqual([answer.id]);
+    // A status fetched by id answers to `StatusPolicy#show?` alone.
+    expect((await json(`/api/v1/statuses/${root.id}`)).status).toBe(200);
+  });
+});
+
+describe("a batch lookup by id", () => {
+  it("leaves out statuses by authors the reader blocks, mutes, or domain-blocks", async () => {
+    const reader = "batch-filter-reader@example.com";
+    const muted = "batch-filter-muted@example.com";
+    const blocked = "batch-filter-blocked@example.com";
+    const kept = await post("batch-filter-kept@example.com", "kept");
+    const mutedStatus = await post(muted, "muted");
+    const blockedStatus = await post(blocked, "blocked");
+    const elsewhere = await remoteActor("batch-filter-elsewhere", "batch-blocked.example");
+    const remoteStatus = await receiveReply(elsewhere, "batch-filter-remote", kept.uri);
+    const headers = { "content-type": "application/json", ...(await authHeaders(reader)) };
+    for (const [path, body] of [
+      [`/api/v1/accounts/${(await signedInAccount(muted)).id}/mute`, {}],
+      [`/api/v1/accounts/${(await signedInAccount(blocked)).id}/block`, {}],
+      ["/api/v1/domain_blocks", { domain: "batch-blocked.example" }],
+    ] as const) {
+      const response = await json(path, { method: "POST", headers, body: JSON.stringify(body) });
+      expect(response.status, path).toBe(200);
+    }
+
+    const ids = [kept.id, mutedStatus.id, blockedStatus.id, remoteStatus.id];
+    expect(await batchIds(ids, reader)).toEqual([kept.id]);
+    expect(await batchIds(ids)).toEqual(ids);
   });
 });
