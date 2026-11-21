@@ -92,7 +92,8 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   { kind: "Inline", job: { kind: "ResumeSuspendedActorSeverances" } },
   // A page tells up to 50 voters and announces up to 50 polls.
   { kind: "Queued", job: { kind: "ProcessExpiredPolls" }, due: hasExpiredPollWork },
-  // Publish the scheduled posts whose time has come, up to 20 posts a page.
+  // Publish the scheduled posts whose time has come, 5 a run, chained while
+  // a full run publishes any.
   { kind: "Queued", job: { kind: "PublishScheduledStatuses" }, due: hasDueScheduledStatuses },
   // Send the activities local statuses owe whose retry is due, up to 20 a
   // page: those whose own queued retry was lost, too.

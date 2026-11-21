@@ -2,6 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import migration from "../app/db/migrations/0159_direct_status_notifications.sql?raw";
 import { parseRows } from "./d1";
 
@@ -20,8 +21,15 @@ const call = async (email: string, path: string, body?: object): Promise<unknown
   return response.json();
 };
 
+/** Post as `email`, and run the jobs that send the post's `status` notifications. */
 const post = async (email: string, body: object): Promise<string> =>
-  z.object({ id: z.string() }).parse(await call(email, "/api/v1/statuses", body)).id;
+  z
+    .object({ id: z.string() })
+    .parse(
+      await withQueueDrained(["NotifyLocalNoteFollowers"], () =>
+        call(email, "/api/v1/statuses", body),
+      ),
+    ).id;
 
 /** The `status` notifications stored for `email`'s account about `statusId`. */
 const statusNotifications = async (email: string, statusId: string): Promise<number> => {

@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { withQueueDrained } from "../test/queue-hold";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { notifyAccount } from "./notify";
@@ -36,8 +37,11 @@ const read = <T>(schema: z.ZodType<T>, body: unknown): T => {
   return parsed.value;
 };
 
+/** Post as `email`, and run the jobs that send the post's `status` notifications. */
 const post = async (email: string, body: Record<string, unknown>): Promise<string> => {
-  const response = await call(email, "/api/v1/statuses", { method: "POST", body });
+  const response = await withQueueDrained(["NotifyLocalNoteFollowers"], () =>
+    call(email, "/api/v1/statuses", { method: "POST", body }),
+  );
   expect(response.status).toBe(200);
   return read(z.object({ id: z.string() }), response.body).id;
 };
