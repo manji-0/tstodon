@@ -8,17 +8,19 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param actorUri
  * @param now
+ * @param statusId
  */
 export const findNotifyingRemoteFollow = $runtime.makeTypedQueryFactory(
-  "SELECT 1 AS found FROM outbound_follows f\nWHERE f.account_id = $1 AND f.actor_uri = $2 AND f.state = 'Accepted' AND f.notify != 0\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = $1 AND m.target_actor_uri = $2\nAND (m.expires_at IS NULL OR m.expires_at > $3)\n)",
+  "SELECT 1 AS found FROM outbound_follows f\nWHERE f.account_id = $1 AND f.actor_uri = $2 AND f.state = 'Accepted' AND f.notify != 0\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = $1 AND m.target_actor_uri = $2\nAND (m.expires_at IS NULL OR m.expires_at > $3)\n)\nAND NOT EXISTS (\nSELECT 1 FROM remote_status_mentions sm\nWHERE sm.status_id = $4 AND sm.silent = 0\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = $1 AND +b.target_account_id = sm.account_id\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = $1 AND +m.target_account_id = sm.account_id\nAND (m.expires_at IS NULL OR m.expires_at > $3)\n)\n)\n)\nAND NOT EXISTS (\nSELECT 1 FROM remote_status_remote_mentions sm\nWHERE sm.status_id = $4\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = $1 AND b.target_actor_uri = sm.actor_uri\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = $1 AND m.target_actor_uri = sm.actor_uri\nAND (m.expires_at IS NULL OR m.expires_at > $3)\n)\n)\n)",
 ) as (
   accountId: string,
   actorUri: string,
   now: string,
+  statusId: string,
 ) => $runtime.TypedSql<findNotifyingRemoteFollow.Parameters, findNotifyingRemoteFollow.Result>;
 
 export namespace findNotifyingRemoteFollow {
-  export type Parameters = [accountId: string, actorUri: string, now: string];
+  export type Parameters = [accountId: string, actorUri: string, now: string, statusId: string];
   export type Result = {
     found: null | null;
   };

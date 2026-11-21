@@ -7,16 +7,25 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param accountId
  * @param now
+ * @param statusId
+ * @param activeSinceDay
  */
 export const listNotifyingFollowers = $runtime.makeTypedQueryFactory(
-  "SELECT f.follower_account_id, f.languages_json FROM follows f\nWHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Accepted' AND f.notify != 0\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND m.target_account_id = $1\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)",
+  "SELECT f.follower_account_id, f.languages_json FROM follows f\nWHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Accepted' AND f.notify != 0\nAND EXISTS (\nSELECT 1 FROM account_activity_days d\nWHERE d.account_id = f.follower_account_id AND d.day >= $4\n)\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND +m.target_account_id = $1\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\nAND NOT EXISTS (\nSELECT 1 FROM status_mentions sm\nWHERE sm.status_id = $3\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.follower_account_id AND +b.target_account_id = sm.account_id\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND +m.target_account_id = sm.account_id\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)\nAND NOT EXISTS (\nSELECT 1 FROM status_remote_mentions sm\nWHERE sm.status_id = $3\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.follower_account_id AND b.target_actor_uri = sm.actor_uri\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND m.target_actor_uri = sm.actor_uri\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)",
 ) as (
   accountId: string,
   now: string,
+  statusId: string,
+  activeSinceDay: string,
 ) => $runtime.TypedSql<listNotifyingFollowers.Parameters, listNotifyingFollowers.Result>;
 
 export namespace listNotifyingFollowers {
-  export type Parameters = [accountId: string, now: string];
+  export type Parameters = [
+    accountId: string,
+    now: string,
+    statusId: string,
+    activeSinceDay: string,
+  ];
   export type Result = {
     follower_account_id: string;
     languages_json: string;

@@ -760,7 +760,11 @@ describe("two inbox activities that carry one note", () => {
     ).toEqual([{ id }]);
     expect(await status(id)).toMatchObject({ tags: [{ name: "raced" }] });
     expect(await owedKinds(id)).toEqual([]);
-    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(1);
+    // The QuoteRequest stored the note, so it is distributed as a status
+    // Mastodon fetched: this one was published before the real-time window,
+    // and its mention notifies nobody. The Create that follows finds it
+    // stored and distributes nothing.
+    expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
   });
 
   // A smoke test, not the proof of the race: the test runtime does not run

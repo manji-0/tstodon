@@ -15,7 +15,9 @@ import {
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
-import { INLINE_NOTE_RECIPIENTS } from "./remote-status-persist";
+import { INLINE_NOTE_RECIPIENTS, NOTIFYING_FOLLOWER_PAGE_SIZE } from "./remote-status-persist";
+import { OutboxJob } from "@tstodon/domain";
+import { processOutboxJob } from "./outbox-job";
 
 // Mastodon sends the `status` notification ("notify me when this account
 // posts") for a remote note as for a local one: `FeedInsertWorker#notify?`,
@@ -92,6 +94,36 @@ const statusNotifications = async (email: string, statusId: string): Promise<num
   );
   return row?.n ?? 0;
 };
+
+/** The notifications of `kind` stored for `email`'s account about `statusId`. */
+const notificationsOf = async (email: string, statusId: string, kind: string): Promise<number> => {
+  const account = await signedInAccount(email);
+  const [row] = parseRows(
+    z.object({ n: z.number() }),
+    (
+      await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM notifications WHERE account_id = ? AND status_id = ? AND kind = ?",
+      )
+        .bind(account.id, statusId, kind)
+        .all()
+    ).results,
+  );
+  return row?.n ?? 0;
+};
+
+/** Serve each of `documents` by URL to the worker's fetches, and 404 anything else. */
+const serve = (documents: ReadonlyMap<string, unknown>): void => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const document = documents.get(new Request(input, init).url);
+    return document === undefined
+      ? new Response("not found", { status: 404 })
+      : new Response(JSON.stringify(document), {
+          headers: { "content-type": "application/activity+json" },
+        });
+  });
+};
+
+const HOUR_MS = 60 * 60 * 1000;
 
 const actorOf = async (email: string): Promise<string> =>
   `https://example.com/users/${(await signedInAccount(email)).username}`;
@@ -265,6 +297,64 @@ describe("the status notification of a followed remote actor's note", () => {
     expect(await statusNotifications("rsn-mute-follower@example.com", id)).toBe(0);
   });
 
+  // `filter_from_home` filters a status whose active mentions name an
+  // account the follower blocks or mutes (`crutches[:active_mentions]`).
+  it("goes to no follower who blocks or mutes an account or actor the note mentions", async () => {
+    const author = await remoteActor("rsnmentions", "rsn-mentions.example");
+    const muted = await remoteActor("rsnmentionsmuted", "rsn-mentions-muted.example");
+    const blocked = await signedInAccount("rsn-mentions-blocked@example.com");
+    await followRemote("rsn-mentions-blocker@example.com", author, { notify: true });
+    await followRemote("rsn-mentions-muter@example.com", author, { notify: true });
+    await call("rsn-mentions-blocker@example.com", `/api/v1/accounts/${blocked.id}/block`, {});
+    await call(
+      "rsn-mentions-muter@example.com",
+      `/api/v1/accounts/${RemoteAccountId.encode(muted.actorUri)}/mute`,
+      { notifications: false },
+    );
+    const blockedActor = await actorOf("rsn-mentions-blocked@example.com");
+
+    const naming = await create(author, "https://rsn-mentions.example/notes/naming", {
+      cc: [`${author.actorUri}/followers`, blockedActor, muted.actorUri],
+      tag: [
+        { type: "Mention", href: blockedActor },
+        { type: "Mention", href: muted.actorUri },
+      ],
+    });
+    const plain = await create(author, "https://rsn-mentions.example/notes/plain", {});
+
+    expect(await statusNotifications("rsn-mentions-blocker@example.com", naming)).toBe(0);
+    expect(await statusNotifications("rsn-mentions-muter@example.com", naming)).toBe(0);
+    expect(await statusNotifications("rsn-mentions-blocker@example.com", plain)).toBe(1);
+    expect(await statusNotifications("rsn-mentions-muter@example.com", plain)).toBe(1);
+  });
+
+  // `followers_for_local_distribution` keeps the followers whose user signed
+  // in within `User::ACTIVE_DURATION` (7 days).
+  it("goes to no follower who has not signed in for a week", async () => {
+    const author = await remoteActor("rsninactive", "rsn-inactive.example");
+    await followRemote("rsn-inactive-away@example.com", author, { notify: true });
+    await followRemote("rsn-inactive-recent@example.com", author, { notify: true });
+    const away = await signedInAccount("rsn-inactive-away@example.com");
+    const recent = await signedInAccount("rsn-inactive-recent@example.com");
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
+        daysAgo(8),
+        away.id,
+      ),
+      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
+        daysAgo(6),
+        recent.id,
+      ),
+    ]);
+
+    const id = await create(author, "https://rsn-inactive.example/notes/1", {});
+
+    expect(await statusNotifications("rsn-inactive-away@example.com", id)).toBe(0);
+    expect(await statusNotifications("rsn-inactive-recent@example.com", id)).toBe(1);
+  });
+
   it("goes to each notifying follower for a quote request's recent note, not for an old one", async () => {
     const author = await remoteActor("rsnquote", "rsn-quote.example");
     await followRemote("rsn-quote-notify@example.com", author, { notify: true });
@@ -338,6 +428,46 @@ describe("the status notification of a followed remote actor's note", () => {
 });
 
 describe("a remote note of an actor many local accounts follow with notifications", () => {
+  // As Mastodon's `find_in_batches`, the followers are read a page at a
+  // time: the inbox request reads the first and queues the next, so what it
+  // sends the queue stays flat with the number of followers.
+  it(
+    "reads its notifying followers a page at a time through the queue",
+    { timeout: 600_000 },
+    async () => {
+      const author = await remoteActor("rsnpages", "rsn-pages.example");
+      const followers = Array.from(
+        { length: 2 * NOTIFYING_FOLLOWER_PAGE_SIZE + 5 },
+        (_, n) => `rsn-pages-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const sent = new Map<string, number>();
+      const push = queued.bodies.push.bind(queued.bodies);
+      queued.bodies.push = (...bodies: unknown[]) => {
+        for (const body of bodies) {
+          const kind = z.object({ kind: z.string() }).parse(body).kind;
+          sent.set(kind, (sent.get(kind) ?? 0) + 1);
+        }
+        return push(...bodies);
+      };
+      const id = await create(author, "https://rsn-pages.example/notes/1", {});
+      expect(sent.get("FinishRemoteNoteRecipient")).toBe(
+        NOTIFYING_FOLLOWER_PAGE_SIZE - INLINE_NOTE_RECIPIENTS,
+      );
+
+      await drainHeld(queued, ["FinishRemoteNoteRecipient", "NotifyRemoteNoteFollowers"]);
+
+      expect(sent.get("FinishRemoteNoteRecipient")).toBe(followers.length - INLINE_NOTE_RECIPIENTS);
+      expect(sent.get("NotifyRemoteNoteFollowers")).toBe(2);
+      for (const email of followers) {
+        expect(await statusNotifications(email, id), email).toBe(1);
+      }
+    },
+  );
+
   it(
     "notifies each one, past what the inbox request serves, within the D1 budgets",
     { timeout: 120_000 },
@@ -409,4 +539,374 @@ describe("a remote note of an actor many local accounts follow with notification
       expect(notified).toBe(INLINE_NOTE_RECIPIENTS);
     },
   );
+
+  it(
+    "notifies a queued follower only if it does not mute an actor the note mentions when its job runs",
+    { timeout: 120_000 },
+    async () => {
+      const author = await remoteActor("rsnlatemute", "rsn-late-mute.example");
+      const named = await remoteActor("rsnlatemutenamed", "rsn-late-mute-named.example");
+      const followers = Array.from(
+        { length: INLINE_NOTE_RECIPIENTS + 4 },
+        (_, n) => `rsn-late-mute-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const id = await create(author, "https://rsn-late-mute.example/notes/1", {
+        cc: [`${author.actorUri}/followers`, named.actorUri],
+        tag: [{ type: "Mention", href: named.actorUri }],
+      });
+      for (const email of followers) {
+        await call(email, `/api/v1/accounts/${RemoteAccountId.encode(named.actorUri)}/mute`, {});
+      }
+      await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
+
+      let notified = 0;
+      for (const email of followers) {
+        notified += await statusNotifications(email, id);
+      }
+      expect(notified).toBe(INLINE_NOTE_RECIPIENTS);
+    },
+  );
+});
+
+// Mastodon's `Create#distribute` fans out a status it fetched (a boosted
+// one, a reply's parent, a quoted one, a search result) when it was
+// published within `Status::REAL_TIME_WINDOW` (6 hours), so its notifying
+// followers and the local accounts it mentions are notified as for one an
+// inbox `Create` delivered.
+describe("the accounts a remote note names, for its status notification", () => {
+  // `crutches[:active_mentions]` reads `Mention.active`: an account a note
+  // only addresses (a silent mention) filters nobody.
+  it("filters no follower for blocking an account the note only addresses", async () => {
+    const author = await remoteActor("rsnsilent", "rsn-silent.example");
+    const silent = await signedInAccount("rsn-silent-addressed@example.com");
+    await followRemote("rsn-silent-follower@example.com", author, { notify: true });
+    await call("rsn-silent-follower@example.com", `/api/v1/accounts/${silent.id}/block`, {});
+    const addressed = await actorOf("rsn-silent-addressed@example.com");
+
+    const id = await create(author, "https://rsn-silent.example/notes/1", {
+      cc: [`${author.actorUri}/followers`, addressed],
+    });
+
+    expect(await statusNotifications("rsn-silent-follower@example.com", id)).toBe(1);
+  });
+
+  it(
+    "notifies a queued follower only if it does not block an account the note mentions when its job runs",
+    { timeout: 120_000 },
+    async () => {
+      const author = await remoteActor("rsnlateblock", "rsn-late-block.example");
+      const named = await signedInAccount("rsn-late-block-named@example.com");
+      const namedActor = await actorOf("rsn-late-block-named@example.com");
+      const followers = Array.from(
+        { length: INLINE_NOTE_RECIPIENTS + 4 },
+        (_, n) => `rsn-late-block-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const id = await create(author, "https://rsn-late-block.example/notes/1", {
+        cc: [`${author.actorUri}/followers`, namedActor],
+        tag: [{ type: "Mention", href: namedActor }],
+      });
+      for (const email of followers) {
+        await call(email, `/api/v1/accounts/${named.id}/block`, {});
+      }
+      await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
+
+      let notified = 0;
+      for (const email of followers) {
+        notified += await statusNotifications(email, id);
+      }
+      // The mentioned account takes one of the slots the request serves.
+      expect(notified).toBe(INLINE_NOTE_RECIPIENTS - 1);
+    },
+  );
+
+  // A later page of followers is read by a queued job, which must tell the
+  // followers a limited note names from the ones it does not.
+  it("queues from a page of followers only the ones a limited note names", async () => {
+    const author = await remoteActor("rsnpagelimited", "rsn-page-limited.example");
+    await followRemote("rsn-page-limited-named@example.com", author, { notify: true });
+    await followRemote("rsn-page-limited-other@example.com", author, { notify: true });
+    const named = await signedInAccount("rsn-page-limited-named@example.com");
+    const namedActor = await actorOf("rsn-page-limited-named@example.com");
+    const id = await create(author, "https://rsn-page-limited.example/notes/1", {
+      to: [namedActor],
+      cc: [],
+    });
+    const queued = holdQueue();
+
+    const job = OutboxJob.parse({
+      kind: "NotifyRemoteNoteFollowers",
+      statusId: id,
+      actorUri: author.actorUri,
+      afterFollowId: " ",
+    });
+    if (job.isErr()) {
+      throw new Error("page job rejected");
+    }
+    expect(await processOutboxJob(env, job.value)).toBe("ok");
+
+    expect(
+      queued.bodies.map((body) =>
+        z.object({ kind: z.string(), accountId: z.string().optional() }).parse(body),
+      ),
+    ).toEqual([{ kind: "FinishRemoteNoteRecipient", accountId: named.id }]);
+  });
+});
+
+describe("a followed remote actor's note this server fetches", () => {
+  const boostedNote = async (slug: string, published: string) => {
+    const author = await remoteActor(`rsnfetch${slug}`, `rsn-fetch-${slug}.example`);
+    const booster = await remoteActor(
+      `rsnfetchbooster${slug}`,
+      `rsn-fetch-booster-${slug}.example`,
+    );
+    const follower = `rsn-fetch-${slug}-follower@example.com`;
+    const mentioned = `rsn-fetch-${slug}-mentioned@example.com`;
+    await followRemote(follower, author, { notify: true });
+    await followRemote(follower, booster, {});
+    const mentionedActor = await actorOf(mentioned);
+    const uri = `https://rsn-fetch-${slug}.example/notes/1`;
+    serve(
+      new Map([
+        [
+          uri,
+          {
+            id: uri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: "<p>boost me</p>",
+            published,
+            to: [PUBLIC],
+            cc: [`${author.actorUri}/followers`, mentionedActor],
+            tag: [{ type: "Mention", href: mentionedActor }],
+          },
+        ],
+      ]),
+    );
+    expect(
+      await booster.send({
+        id: `https://rsn-fetch-booster-${slug}.example/announces/1`,
+        type: "Announce",
+        actor: booster.actorUri,
+        object: uri,
+        published: new Date().toISOString(),
+        to: [PUBLIC],
+        cc: [`${booster.actorUri}/followers`],
+      }),
+    ).toBe(202);
+    await settle();
+    return { id: await storedId(uri), follower, mentioned };
+  };
+
+  it("notifies when it was published within the real-time window", async () => {
+    const { id, follower, mentioned } = await boostedNote(
+      "recent",
+      new Date(Date.now() - HOUR_MS).toISOString(),
+    );
+
+    expect(await statusNotifications(follower, id)).toBe(1);
+    expect(await notificationsOf(mentioned, id, "mention")).toBe(1);
+  });
+
+  it("notifies nobody when it was published before the real-time window", async () => {
+    const { id, follower, mentioned } = await boostedNote(
+      "old",
+      new Date(Date.now() - 7 * HOUR_MS).toISOString(),
+    );
+
+    expect(await statusNotifications(follower, id)).toBe(0);
+    expect(await notificationsOf(mentioned, id, "mention")).toBe(0);
+  });
+
+  // Mastodon reads no outbox: the notes a profile view backfills from one
+  // are never distributed there.
+  it("notifies nobody when an outbox backfill stored it", async () => {
+    const author = await remoteActor("rsnoutbox", "rsn-outbox.example");
+    await followRemote("rsn-outbox-follower@example.com", author, { notify: true });
+    const uri = "https://rsn-outbox.example/notes/1";
+    const outbox = `${author.actorUri}/outbox`;
+    serve(
+      new Map<string, unknown>([
+        [
+          author.actorUri,
+          {
+            id: author.actorUri,
+            type: "Person",
+            preferredUsername: "rsnoutbox",
+            inbox: `${author.actorUri}/inbox`,
+            outbox,
+            publicKey: {
+              id: `${author.actorUri}#main-key`,
+              owner: author.actorUri,
+              publicKeyPem: author.publicKeyPem,
+            },
+          },
+        ],
+        [outbox, { id: outbox, type: "OrderedCollection", first: `${outbox}?page=true` }],
+        [
+          `${outbox}?page=true`,
+          {
+            id: `${outbox}?page=true`,
+            type: "OrderedCollectionPage",
+            orderedItems: [
+              {
+                id: `${uri}/activity`,
+                type: "Create",
+                actor: author.actorUri,
+                to: [PUBLIC],
+                cc: [`${author.actorUri}/followers`],
+                object: {
+                  id: uri,
+                  type: "Note",
+                  attributedTo: author.actorUri,
+                  content: "<p>from the outbox</p>",
+                  published: new Date(Date.now() - HOUR_MS).toISOString(),
+                  to: [PUBLIC],
+                  cc: [`${author.actorUri}/followers`],
+                },
+              },
+            ],
+          },
+        ],
+      ]),
+    );
+    const job = OutboxJob.parse({ kind: "BackfillRemoteOutbox", actorUri: author.actorUri });
+    if (job.isErr()) {
+      throw new Error("backfill job rejected");
+    }
+    expect(await processOutboxJob(env, job.value)).toBe("ok");
+    await settle();
+
+    expect(await statusNotifications("rsn-outbox-follower@example.com", await storedId(uri))).toBe(
+      0,
+    );
+  });
+});
+
+/**
+ * Makes D1 refuse to store a notification for `accountId` until the returned
+ * function is called. `name` is the trigger's, one per test.
+ */
+const refuseNotifications = async (
+  name: string,
+  accountId: string,
+): Promise<() => Promise<void>> => {
+  await env.DB.prepare(
+    `CREATE TRIGGER ${name} BEFORE INSERT ON notifications
+     WHEN NEW.account_id = '${accountId}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+  ).run();
+  return async () => {
+    await env.DB.prepare(`DROP TRIGGER ${name}`).run();
+  };
+};
+
+// A distributed note's notifications are owed until they are sent, as an
+// inbox `Create`'s are (`remote_status_owed`): a step that fails once is
+// finished by the next activity that brings the note.
+describe("a distributed note whose notifications failed once", () => {
+  it("notifies when the boost that fetched it is delivered again", async () => {
+    const author = await remoteActor("rsnretryfetch", "rsn-retry-fetch.example");
+    const booster = await remoteActor("rsnretrybooster", "rsn-retry-booster.example");
+    const email = "rsn-retry-fetch-follower@example.com";
+    await followRemote(email, author, { notify: true });
+    await followRemote(email, booster, {});
+    const uri = "https://rsn-retry-fetch.example/notes/1";
+    serve(
+      new Map([
+        [
+          uri,
+          {
+            id: uri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: "<p>boost me</p>",
+            published: new Date(Date.now() - HOUR_MS).toISOString(),
+            to: [PUBLIC],
+            cc: [`${author.actorUri}/followers`],
+          },
+        ],
+      ]),
+    );
+    const announce = {
+      id: "https://rsn-retry-booster.example/announces/1",
+      type: "Announce",
+      actor: booster.actorUri,
+      object: uri,
+      published: new Date().toISOString(),
+      to: [PUBLIC],
+      cc: [`${booster.actorUri}/followers`],
+    };
+    const allow = await refuseNotifications("rsn_retry_fetch", (await signedInAccount(email)).id);
+    expect(await booster.send(announce)).toBeGreaterThanOrEqual(500);
+    await settle();
+    await allow();
+    const id = await storedId(uri);
+    expect(await statusNotifications(email, id)).toBe(0);
+
+    expect(await booster.send(announce)).toBe(202);
+    await settle();
+
+    expect(await statusNotifications(email, id)).toBe(1);
+  });
+
+  // Mastodon decides once, when it creates the status, whether it is within
+  // the real-time window; a retry hours later does not decide again.
+  it("notifies when a quote request stored within the window is finished after it", async () => {
+    const author = await remoteActor("rsnretryquote", "rsn-retry-quote.example");
+    const email = "rsn-retry-quote-follower@example.com";
+    await followRemote(email, author, { notify: true });
+    const quoted = z.object({ uri: z.string() }).parse(
+      await call("rsn-retry-quote-quoted@example.com", "/api/v1/statuses", {
+        status: "quote me",
+      }),
+    );
+    // Stored five hours after it was published, then finished two hours
+    // later, past the window: the row and its marker are moved back after
+    // the first delivery, as the clock cannot be.
+    const published = new Date(Date.now() - 5 * HOUR_MS);
+    const uri = "https://rsn-retry-quote.example/notes/1";
+    const request = {
+      id: "https://rsn-retry-quote.example/quote_requests/1",
+      type: "QuoteRequest",
+      object: quoted.uri,
+      instrument: {
+        id: uri,
+        type: "Note",
+        attributedTo: author.actorUri,
+        content: "<p>quoting</p>",
+        published: published.toISOString(),
+        to: [PUBLIC],
+        cc: [`${author.actorUri}/followers`],
+        quote: quoted.uri,
+      },
+    };
+    const allow = await refuseNotifications("rsn_retry_quote", (await signedInAccount(email)).id);
+    expect(await author.send(request)).toBeGreaterThanOrEqual(500);
+    await settle();
+    await allow();
+    const id = await storedId(uri);
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * HOUR_MS).toISOString();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE remote_statuses SET published_at = ? WHERE id = ?").bind(
+        hoursAgo(7),
+        id,
+      ),
+      env.DB.prepare("UPDATE remote_status_owed SET created_at = ? WHERE status_id = ?").bind(
+        hoursAgo(2),
+        id,
+      ),
+    ]);
+
+    expect(await author.send(request)).toBe(202);
+    await settle();
+
+    expect(await statusNotifications(email, id)).toBe(1);
+  });
 });
