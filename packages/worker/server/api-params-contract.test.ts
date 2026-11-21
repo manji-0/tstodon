@@ -565,7 +565,11 @@ describe("REST request params of the account and interaction actions", () => {
     const account = await credentials(email);
     const pinned = await postStatus(email, { status: "pin me" });
     const original = await postStatus(email, { status: "a thread" });
-    const reply = await postStatus(email, { status: "a reply", in_reply_to_id: original.id });
+    // A reply to someone else's status, which `exclude_replies` leaves out.
+    const other = "params-account-statuses-other@example.com";
+    await credentials(other);
+    const otherThread = await postStatus(other, { status: "their thread" });
+    const reply = await postStatus(email, { status: "a reply", in_reply_to_id: otherThread.id });
     accepted(
       ApiStatus,
       await sendJson(email, "POST", `/api/v1/statuses/${pinned.id}/pin`),
