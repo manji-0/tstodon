@@ -149,6 +149,48 @@ describe("visibility checks over many statuses", () => {
   });
 });
 
+describe("a block, mute or domain block lookup that fails", () => {
+  it.each([
+    ["blocks and mutes", "target_actor_uri AS uri FROM"],
+    ["domain blocks", "FROM account_domain_blocks"],
+  ])("keeps only the reader's own statuses when %s do not load", async (_, failingSql) => {
+    const email = `vbq-filter-failing-${failingSql.length}@example.com`;
+    const viewer = await signedInAccount(email);
+    const others = await statuses(`vbq-filter-failing-${failingSql.length}`, 1, "public", viewer);
+    const own = (
+      await findStatusesByIds(env.DB, [await posted(email, "mine", "public")])
+    )._unsafeUnwrap();
+    const nodes: ThreadStatus[] = [
+      ...[...own.values(), ...others.locals].map((status): ThreadStatus => ({
+        kind: "Local",
+        status,
+      })),
+      ...others.remotes.map((status): ThreadStatus => ({ kind: "Remote", status })),
+    ];
+    const failing = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key === "prepare") {
+          return (sql: string) => {
+            if (sql.includes(failingSql)) {
+              throw new Error("D1 unavailable");
+            }
+            return target.prepare(sql);
+          };
+        }
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    expect((await permittedStatusIds(env.DB, nodes, viewer.id)).size).toBe(3);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect([...(await permittedStatusIds(failing, nodes, viewer.id))]).toEqual([...own.keys()]);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+});
+
 describe("a visibility lookup that fails", () => {
   it("hides the statuses it decides, and logs why", async () => {
     const viewer = await signedInAccount("vbq-failing-viewer@example.com");
