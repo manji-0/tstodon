@@ -44,6 +44,8 @@ export * from "./sql/claimRemotePollRefresh";
 
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
+export * from "./sql/claimRemoteStatusThreadResolve";
+
 export * from "./sql/clearLegacyMediaKey";
 
 export * from "./sql/clearNotifications";
@@ -919,6 +921,8 @@ export * from "./sql/releaseRemoteOutboxBackfill";
 export * from "./sql/releaseRemotePollRefresh";
 
 export * from "./sql/releaseRemoteStatusThreadBackfill";
+
+export * from "./sql/releaseRemoteStatusThreadResolve";
 
 export * from "./sql/releaseStaleInboxClaims";
 

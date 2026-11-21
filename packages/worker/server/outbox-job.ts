@@ -21,6 +21,7 @@ import { processSeverBlockedDomainFollowsJob } from "./account-domain-block";
 import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
+import { processResolveRemoteThreadJob } from "./remote-thread-resolve";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { vacuumMediaAttachments } from "./media-vacuum";
@@ -380,6 +381,8 @@ export const processOutboxJob = async (
       return processBackfillRemoteOutboxJob(env, job);
     case "BackfillRemoteThread":
       return processBackfillRemoteThreadJob(env, job);
+    case "ResolveRemoteThread":
+      return processResolveRemoteThreadJob(env, job);
     case "RefetchAndVerifyQuote":
       return processRefetchAndVerifyQuoteJob(env, job);
     case "RefreshQuote":

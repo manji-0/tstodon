@@ -55,6 +55,7 @@ import {
 import { publishConversationUpdate } from "./conversation-stream";
 import {
   listActiveRemoteStatusMentionAccountIds,
+  listRemoteStatusMentions,
   listShownRemoteStatusMentions,
   recordRemoteStatusMentions,
 } from "./mention-store";
@@ -380,28 +381,83 @@ const statusNotified = async (
   ) {
     return ok([]);
   }
-  const followers = await notifyingRemoteFollowers(env.DB, late.status.actorUri);
+  return statusAudience(env, identity, late.status, addressed);
+};
+
+/**
+ * The local followers the stored note `status` sends its `status`
+ * notification to as it stands now: its thread is read only when someone asked.
+ */
+const statusAudience = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+  addressed: ReadonlySet<string>,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  const followers = await notifyingRemoteFollowers(env.DB, status.actorUri);
   if (followers.isErr()) {
     return err(followers.error);
   }
   if (followers.value.length === 0) {
     return ok([]);
   }
-  const thread = await remoteNoteThread(env.DB, identity, late.status);
+  const thread = await remoteNoteThread(env.DB, identity, status);
   if (thread.isErr()) {
     return err(thread.error);
   }
   return ok(
     StatusNotificationAudience.recipients(
       {
-        visibility: late.status.visibility,
+        visibility: status.visibility,
         thread: thread.value,
-        language: late.status.language,
+        language: status.language,
         addressed,
       },
       followers.value,
     ),
   );
+};
+
+/**
+ * Distribute the stored note `status` again once its thread is resolved, as
+ * Mastodon's `ThreadResolveWorker` runs `DistributionWorker` with
+ * `skip_notifications`: no mention notification, but `FeedInsertWorker`
+ * still sends the `status` notification, which a reply now known to answer
+ * its own author gets. The home and public streams are told again; a client
+ * drops a status it already holds. Sending it twice notifies once
+ * (`notifyFromRemoteOnce`).
+ */
+export const redistributeRemoteNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+): Promise<Result<void, RepositoryError>> => {
+  const mentions = await listRemoteStatusMentions(env.DB, [status.id]);
+  if (mentions.isErr()) {
+    return err(mentions.error);
+  }
+  const addressed = new Set<string>(mentions.value.get(status.id)?.accountIds ?? []);
+  const notified = await statusAudience(env, identity, status, addressed);
+  if (notified.isErr()) {
+    return err(notified.error);
+  }
+  const reached = await reachRecipients(env, identity, status.actorUri, status, {
+    status: notified.value,
+    mention: [],
+    conversation: [],
+  });
+  if (reached.isErr()) {
+    return err(reached.error);
+  }
+  await startHomeFanOut(env, {
+    event: "update",
+    entryId: status.id,
+    author: { kind: "RemoteActor", actorUri: status.actorUri },
+  });
+  if (status.visibility.kind === "Public") {
+    await startPublicFanOut(env, { event: "update", entryId: status.id });
+  }
+  return ok(undefined);
 };
 
 /**
@@ -483,7 +539,7 @@ type RecipientStep = "Mention" | "Conversation" | "Status";
 const reachRecipients = async (
   env: Env,
   identity: InstanceIdentity,
-  actor: RemoteActor,
+  actorUri: string,
   status: RemoteStatusValue,
   recipients: Readonly<{
     mention: ReadonlyArray<string>;
@@ -501,7 +557,7 @@ const reachRecipients = async (
   const ordered = [...steps];
   const inline = ordered.slice(0, INLINE_NOTE_RECIPIENTS);
   const queued = ordered.slice(INLINE_NOTE_RECIPIENTS);
-  const served = await serveRecipients(env, identity, actor.actorUri, status, inline);
+  const served = await serveRecipients(env, identity, actorUri, status, inline);
   if (served.isErr()) {
     return err(served.error);
   }
@@ -511,7 +567,7 @@ const reachRecipients = async (
     queued.map(([accountId, accountSteps]): OutboxJob => ({
       kind: "FinishRemoteNoteRecipient",
       statusId: status.id,
-      actorUri: actor.actorUri,
+      actorUri,
       accountId,
       steps: accountSteps,
     })),
@@ -632,7 +688,7 @@ const writeLateSteps = async (
   // Mention rows exist before the notifications that point at them. They are
   // sent before the later writes: an `Update` that edits nothing owes no
   // marker, so its redelivery finds the rows and would notify nobody.
-  const reached = await reachRecipients(env, identity, actor, status, {
+  const reached = await reachRecipients(env, identity, actor.actorUri, status, {
     status: notified.value,
     mention: mentionsToNotify(late, mentioned),
     // Everyone a new direct note reaches here: the conversation lists it for
