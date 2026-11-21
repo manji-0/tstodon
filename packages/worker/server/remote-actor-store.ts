@@ -343,9 +343,19 @@ export const findRemoteActorKey = async (
 
 /**
  * The statements that make `keys` the keys `actorUri` publishes, as
- * Mastodon's `set_fetchable_key!`: each is stored, unless another actor
- * holds its id, and the actor's others are dropped. They run after the
- * actor's own row is written, in the same batch.
+ * Mastodon's `set_fetchable_key!`: each is stored, and the actor's others
+ * are dropped. They run after the actor's own row is written, in the same
+ * batch.
+ *
+ * A key id another actor holds moves to `actorUri`, as `upsert_all(...,
+ * unique_by: :uri)` moves it. Taking a key from an actor is safe only because
+ * every key here is one the actor's own host vouches for
+ * (`resolvePublishedKeys`, Mastodon's `public_keys`): given in the actor's
+ * document under its URI or a fragment of it, so no other actor's document
+ * could have given it; or read from the key's own document, on the actor's
+ * host, whose `owner` (`controller`) is `actorUri`. That host serves both
+ * actors, so it can already speak for either; a document on another host,
+ * or one that names another owner, never reaches this write.
  */
 const replaceRemoteActorKeysStatements = (
   actorUri: string,

@@ -255,6 +255,12 @@ const applyNoteUpdate = async (
 };
 
 /**
+ * Why an `Update` was not applied and should be delivered again: storage
+ * failed, or a server it had to read did not answer (`Unavailable`).
+ */
+export type RemoteUpdateError = RepositoryError | Readonly<{ kind: "Unavailable" }>;
+
+/**
  * Refresh the cached profile of the actor that signed the Update; nobody
  * else's. The handle stays as stored, without a WebFinger round trip, as
  * Mastodon's `Update` passes the account's own username and domain to
@@ -272,7 +278,7 @@ const applyActorUpdate = async (
   signer: RemoteActor,
   target: Extract<UpdateTarget, { kind: "ActorUpdate" }>,
   options: FederatedFetchOptions,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<void, RemoteUpdateError>> => {
   const refreshed = remoteActorFromDocument(target.raw, signer.actorUri, signer.username);
   if (refreshed.isErr()) {
     return ok(undefined);
@@ -281,7 +287,16 @@ const applyActorUpdate = async (
     kind: "KeepStored",
   });
   if (stored.isErr()) {
-    return stored.error.kind === "RepositoryError" ? err(stored.error) : ok(undefined);
+    switch (stored.error.kind) {
+      case "RepositoryError":
+        return err(stored.error);
+      // A key the document names did not answer: Mastodon raises and its
+      // job is retried, so the sender is asked to deliver it again.
+      case "VerificationUnavailable":
+        return err({ kind: "Unavailable" });
+      default:
+        return ok(undefined);
+    }
   }
   const movedTo = actorMovedTo(target.raw);
   if (movedTo === signer.movedTo) {
@@ -310,7 +325,7 @@ export const applyRemoteUpdate = async (
   signer: RemoteActor,
   object: string | Readonly<Record<string, unknown>>,
   options: ForwardingFetchOptions,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<void, RemoteUpdateError>> => {
   let raw: unknown = object;
   if (typeof object === "string") {
     const fetched = await fetchActivityJson(identity, object, options);

@@ -44,7 +44,10 @@ export type InboxRefusalReason =
   | "KeyRejected"
   /** 401: the signature does not verify with the signer's key. */
   | "SignatureMismatch"
-  /** 503: the key's server did not answer (`Retry-After` sent). */
+  /**
+   * 503: the key's server did not answer, or one a verified actor `Update`
+   * names (`detail` is the activity's kind) (`Retry-After` sent).
+   */
   | "KeyUnavailable"
   /** 503: another delivery of the activity is being applied (`Retry-After` sent). */
   | "ActivityInFlight"

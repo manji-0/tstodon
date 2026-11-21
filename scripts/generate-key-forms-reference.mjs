@@ -157,6 +157,16 @@ const multikeys = {
   badCharacter: "z6Mk0000",
   // A base Mastodon does not read (`f`, hex).
   badBase: "fed01",
+  // Base64url `Base64.urlsafe_decode64` refuses: a character it lacks, a
+  // padded value of the wrong length, and bits left over after the last byte.
+  badBase64Url: "u!!!!",
+  badBase64UrlPadding: "uAA=",
+  badBase64UrlTrailingBits: "u7QHaixYIunaqSxV7zm3RdF6ztjt-G4A2mE4C-kr4XiH77B",
+  // `+` and `/`, which `urlsafe_decode64` reads too.
+  base64UrlStandardAlphabet: "u7QHaixYIunaqSxV7zm3RdF6ztjt+G4A2mE4C+kr4XiH77A",
+  // Nothing after the base.
+  emptyBase58: "z",
+  empty: "",
 };
 
 const run = spawnSync(

@@ -24,8 +24,7 @@ import {
   isFederatedHostRefused,
 } from "./federated-fetch";
 import { ActorDocumentSchema, refId } from "./activitypub-wire";
-import { actorKeys } from "./actor-keys";
-import { multibaseKey } from "./multibase";
+import { type PublishedKey, publishedKeys, resolvePublishedKeys } from "./actor-keys";
 import { actorFields } from "./remote-actor-fields";
 import { actorEmojis } from "./remote-emoji-document";
 import {
@@ -205,12 +204,13 @@ const ownCollectionUri = (value: unknown, actorUri: URL): string | undefined => 
 };
 
 /**
- * An actor read from its own document, with the keys it publishes, and the
- * handle its FEP-2c59 `webfinger` property declares, when that names one.
+ * An actor read from its own document, with the keys it publishes (those it
+ * names by id not fetched yet), and the handle its FEP-2c59 `webfinger`
+ * property declares, when that names one.
  */
 export type FetchedRemoteActor = Readonly<{
   actor: RemoteActor;
-  keys: ReadonlyArray<RemoteActorKey>;
+  publishedKeys: ReadonlyArray<PublishedKey>;
   declaredHandle?: AccountHandle | undefined;
 }>;
 
@@ -237,8 +237,8 @@ const declaredHandleOf = (raw: unknown): AccountHandle | undefined => {
 
 /**
  * An actor document that describes `actorUri`, and the keys it publishes
- * ({@link actorKeys}). `storedUsername` is the username the actor is cached
- * under, when it is.
+ * ({@link publishedKeys}). `storedUsername` is the username the actor is
+ * cached under, when it is.
  */
 export const remoteActorFromDocument = (
   raw: unknown,
@@ -297,12 +297,13 @@ export const remoteActorFromDocument = (
     followersUri: ownCollectionUri(document.value.followers, parsedUri),
     followingUri: ownCollectionUri(document.value.following, parsedUri),
   });
-  if (actor.isErr()) {
+  const keys = publishedKeys(raw, actorUri);
+  if (actor.isErr() || keys.isErr()) {
     return err({ kind: "InvalidSignature" });
   }
   return ok({
     actor: actor.value,
-    keys: actorKeys(raw, actorUri),
+    publishedKeys: keys.value,
     declaredHandle: declaredHandleOf(raw),
   });
 };
@@ -490,14 +491,15 @@ export type HandleCheck =
   | Readonly<{ kind: "RoundTrip"; answered?: AccountHandle }>
   | Readonly<{ kind: "KeepStored" }>;
 
-export type CacheFetchedActorError = RepositoryError | WebfingerRefusal;
+export type CacheFetchedActorError = RepositoryError | WebfingerRefusal | FederatedFetchError;
 
 /**
- * Cache an actor read from its own document, and the keys it publishes, under
+ * Cache an actor read from its own document, and the keys it publishes
+ * ({@link resolvePublishedKeys}, which fetches those it names by id), under
  * the handle the round trip settles (`WebfingerConfirmation.handleWrite`). A
  * confirmed handle is taken from any other row that held it. An actor whose
  * claimed account domain is refused is not cached, nor is one not cached yet
- * that WebFinger does not vouch for.
+ * that WebFinger does not vouch for, nor one whose keys could not be read.
  */
 export const cacheFetchedActor = async (
   db: D1Database,
@@ -506,7 +508,27 @@ export const cacheFetchedActor = async (
   options: FederatedFetchOptions,
   check: HandleCheck = { kind: "RoundTrip" },
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
-  const { actor, keys, declaredHandle } = fetched;
+  const keys = await resolvePublishedKeys(
+    identity,
+    fetched.actor.actorUri,
+    fetched.publishedKeys,
+    options,
+  );
+  return keys.isErr()
+    ? err(keys.error)
+    : cacheActorWithKeys(db, identity, fetched, keys.value, options, check);
+};
+
+/** {@link cacheFetchedActor} once its keys are read. */
+const cacheActorWithKeys = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  fetched: FetchedRemoteActor,
+  keys: ReadonlyArray<RemoteActorKey>,
+  options: FederatedFetchOptions,
+  check: HandleCheck = { kind: "RoundTrip" },
+): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
+  const { actor, declaredHandle } = fetched;
   const now = IsoInstant.parse(nowIso());
   if (now.isErr()) {
     return err(toRepositoryError("invalid clock"));
@@ -567,10 +589,10 @@ export type KeyResolveOptions = FederatedFetchOptions &
  * actor rotated under the same key id takes effect on its next request. The
  * refreshed actor and its keys are cached (under its stored handle, as an
  * `Update` of it is), and the key is returned when the actor still publishes
- * it, or read as an unknown key is ({@link fetchKeyOwner}) when its document
- * does not give it; the caller verifies the request with it. When the refetch is not due,
- * fails, or returns the same key, the cached key is returned and the request
- * fails to verify.
+ * it; the caller verifies the request with it. When the refetch is not due,
+ * fails, returns the same key or none under its id, the cached key is
+ * returned and the request fails to verify, as Mastodon looks the key up
+ * among the refetched actor's own.
  */
 const refetchRotatedKey = async (
   db: D1Database,
@@ -598,11 +620,20 @@ const refetchRotatedKey = async (
   if (refreshed.isErr()) {
     return ok(cached);
   }
-  const key = refreshed.value.keys.find((candidate) => candidate.keyId === cached.key.keyId);
+  const keys = await resolvePublishedKeys(
+    identity,
+    actorUri,
+    refreshed.value.publishedKeys,
+    options,
+  );
+  if (keys.isErr()) {
+    return ok(cached);
+  }
+  const key = keys.value.find((candidate) => candidate.keyId === cached.key.keyId);
   if (key?.kind === cached.key.kind && key.publicKeyPem === cached.key.publicKeyPem) {
     return ok(cached);
   }
-  const stored = await cacheFetchedActor(db, identity, refreshed.value, options, {
+  const stored = await cacheActorWithKeys(db, identity, refreshed.value, keys.value, options, {
     kind: "KeepStored",
   });
   if (stored.isErr()) {
@@ -611,11 +642,7 @@ const refetchRotatedKey = async (
   console.log(
     JSON.stringify({ kind: "RemoteKeyRefetched", actorUri, keyIdKept: key !== undefined }),
   );
-  // A key the actor's document does not give in full (GoToSocial's
-  // `/main-key`) is read again from its own URL.
-  return key === undefined
-    ? fetchKeyOwner(db, identity, cached.key.keyId, options)
-    : ok({ actor: stored.value, key });
+  return ok(key === undefined ? cached : { actor: stored.value, key });
 };
 
 /**
@@ -661,7 +688,7 @@ export const resolveRemoteActor = async (
 /**
  * A key fetched on its own (not inside its actor's document): a FEP-521a
  * `Multikey` with its `controller`, or a `publicKey` object with its `owner`,
- * as Mastodon's `FetchRemoteKeyService` reads one.
+ * as Mastodon's `FetchRemoteKeyService#public_key?` tells one.
  */
 const KeyDocumentSchema = z.object({
   id: z.string(),
@@ -674,169 +701,78 @@ const KeyDocumentSchema = z.object({
 });
 
 /**
- * The key a key document holds, whose it says it is, and the list of the
- * owner's document that must name it; `undefined` for any other document.
+ * The id a key document gives itself and the actor it says owns it;
+ * `undefined` for any other document.
  */
-const keyDocumentKey = (
-  raw: unknown,
-):
-  | Readonly<{ ownerUri: string; key: RemoteActorKey; listedIn: "assertionMethod" | "publicKey" }>
-  | undefined => {
+const keyDocumentOwner = (raw: unknown): Readonly<{ id: string; ownerUri: string }> | undefined => {
   const parsed = KeyDocumentSchema.safeParse(raw);
   if (!parsed.success) {
     return undefined;
   }
   const document = parsed.data;
-  if (document.type === "Multikey") {
-    const ownerUri = refId(document.controller);
-    const key =
-      document.publicKeyMultibase === undefined
-        ? undefined
-        : multibaseKey(document.publicKeyMultibase);
-    return ownerUri === undefined || key === undefined
-      ? undefined
-      : { ownerUri, key: { ...key, keyId: document.id }, listedIn: "assertionMethod" };
-  }
-  const ownerUri = refId(document.owner);
-  return ownerUri === undefined || document.publicKeyPem === undefined
-    ? undefined
-    : {
-        ownerUri,
-        key: { kind: "Rsa", keyId: document.id, publicKeyPem: document.publicKeyPem },
-        listedIn: "publicKey",
-      };
-};
-
-/** Whether an actor document's `list` names `keyId`, given in full or by id (`confirmed_owner?`). */
-const listsKey = (raw: unknown, list: "assertionMethod" | "publicKey", keyId: string): boolean => {
-  const listed: unknown = typeof raw === "object" && raw !== null ? Reflect.get(raw, list) : [];
-  return (Array.isArray(listed) ? listed : [listed]).some((value) => refId(value) === keyId);
+  const multikey = document.type === "Multikey";
+  const ownerUri = refId(multikey ? document.controller : document.owner);
+  const key = multikey ? document.publicKeyMultibase : document.publicKeyPem;
+  return ownerUri === undefined || key === undefined ? undefined : { id: document.id, ownerUri };
 };
 
 const DocumentIdSchema = z.object({ id: z.string() });
 
-/** An actor and the key a signature names, read from what was fetched for the key. */
-type FetchedKey = Readonly<{ actor: FetchedRemoteActor; key: RemoteActorKey }>;
-
-const ServedPublicKeySchema = z.object({
-  id: z.string(),
-  owner: z.string(),
-  publicKeyPem: z.string().min(1),
-});
-
 /**
- * The `publicKey` the document served at `keyId` gives for `keyId` and
- * `actorUri`: the document itself, or the first of its `publicKey` (what
- * GoToSocial serves at its `/main-key`), as Mastodon's
- * `ProcessAccountService#legacy_public_keys` reads a key it fetches.
- */
-const publicKeyServedAt = (
-  raw: unknown,
-  keyId: string,
-  actorUri: string,
-): RemoteActorKey | undefined => {
-  const listed: unknown =
-    typeof raw === "object" && raw !== null && "publicKey" in raw ? raw.publicKey : raw;
-  const value: unknown = Array.isArray(listed) ? listed[0] : listed;
-  const parsed = ServedPublicKeySchema.safeParse(value);
-  return parsed.success && parsed.data.id === keyId && parsed.data.owner === actorUri
-    ? { kind: "Rsa", keyId, publicKeyPem: parsed.data.publicKeyPem }
-    : undefined;
-};
-
-/**
- * The actor whose document was served at `keyId`, and the key. A document
- * whose `id` is not `keyId` without its fragment is read again from that
- * `id`, and only that copy counts, as Mastodon's `fetch_resource` with
+ * The actor whose document was served at `keyId`. A document whose `id` is
+ * not `keyId` without its fragment is read again from that `id`, on the same
+ * host, and only that copy counts, as Mastodon's `fetch_resource` with
  * `allow_redirects` takes a document only from its own URL: a document served
- * at some other path of a host cannot speak for an actor there. The key is
- * one the actor's document gives under its URI or a fragment of it; or,
- * for a key id elsewhere on the actor's host (GoToSocial's `/main-key`), the
- * key served at `keyId` itself, when the actor's own document lists it.
+ * at some other path of a host cannot speak for an actor there.
  */
-const keyFromActorDocument = async (
+const actorServedAt = async (
   identity: InstanceIdentity,
   keyId: string,
   raw: unknown,
   options: KeyResolveOptions,
-): Promise<Result<FetchedKey, RemoteActorResolveError>> => {
+): Promise<Result<FetchedRemoteActor, RemoteActorResolveError>> => {
   const named = DocumentIdSchema.safeParse(raw);
   if (!named.success) {
     return err({ kind: "InvalidSignature" });
   }
   const actorUri = named.data.id;
-  let document = raw;
-  if (actorUri !== keyId.split("#")[0]) {
-    if (Hostname.ofUri(actorUri) !== Hostname.ofUri(keyId)) {
-      return err({ kind: "InvalidSignature" });
-    }
-    const own = await fetchActivityJson(identity, actorUri, options);
-    if (own.isErr()) {
-      return err(own.error);
-    }
-    document = own.value;
+  if (actorUri === keyId.split("#")[0]) {
+    return remoteActorFromDocument(raw, actorUri);
   }
-  const read = remoteActorFromDocument(document, actorUri);
-  if (read.isErr()) {
-    return err(read.error);
-  }
-  const given = read.value.keys.find((candidate) => candidate.keyId === keyId);
-  if (given !== undefined) {
-    return ok({ actor: read.value, key: given });
-  }
-  const served = publicKeyServedAt(raw, keyId, actorUri);
-  if (served === undefined || !listsKey(document, "publicKey", keyId)) {
+  if (Hostname.ofUri(actorUri) !== Hostname.ofUri(keyId)) {
     return err({ kind: "InvalidSignature" });
   }
-  return ok({ actor: { ...read.value, keys: [...read.value.keys, served] }, key: served });
+  const own = await fetchActivityJson(identity, actorUri, options);
+  return own.isErr() ? err(own.error) : remoteActorFromDocument(own.value, actorUri);
 };
 
 /**
- * The owner of a key fetched as its own document, which must list it, as
- * Mastodon's `FetchRemoteKeyService#confirmed_owner?`. The owner is on the
- * key's host.
+ * The actor a key document says owns it, read from its own document on the
+ * key's host, as Mastodon's `FetchRemoteKeyService` fetches the `owner`
+ * (`controller` for a Multikey).
  */
-const keyFromKeyDocument = async (
+const keyDocumentActor = async (
   identity: InstanceIdentity,
   keyId: string,
-  keyDocument: NonNullable<ReturnType<typeof keyDocumentKey>>,
+  keyDocument: Readonly<{ id: string; ownerUri: string }>,
   options: KeyResolveOptions,
-): Promise<Result<FetchedKey, RemoteActorResolveError>> => {
-  if (
-    keyDocument.key.keyId !== keyId ||
-    Hostname.ofUri(keyDocument.ownerUri) !== Hostname.ofUri(keyId)
-  ) {
+): Promise<Result<FetchedRemoteActor, RemoteActorResolveError>> => {
+  if (keyDocument.id !== keyId || Hostname.ofUri(keyDocument.ownerUri) !== Hostname.ofUri(keyId)) {
     return err({ kind: "InvalidSignature" });
   }
-  const ownerDocument = await fetchActivityJson(identity, keyDocument.ownerUri, options);
-  if (ownerDocument.isErr()) {
-    return err(ownerDocument.error);
-  }
-  const read = remoteActorFromDocument(ownerDocument.value, keyDocument.ownerUri);
-  if (read.isErr()) {
-    return err(read.error);
-  }
-  if (!listsKey(ownerDocument.value, keyDocument.listedIn, keyId)) {
-    return err({ kind: "InvalidSignature" });
-  }
-  // A key the owner names only by its id is the key document's.
-  const given = read.value.keys.find((candidate) => candidate.keyId === keyId);
-  return ok(
-    given
-      ? { actor: read.value, key: given }
-      : {
-          actor: { ...read.value, keys: [...read.value.keys, keyDocument.key] },
-          key: keyDocument.key,
-        },
-  );
+  const own = await fetchActivityJson(identity, keyDocument.ownerUri, options);
+  return own.isErr() ? err(own.error) : remoteActorFromDocument(own.value, keyDocument.ownerUri);
 };
 
 /**
  * Fetch `keyId` and the actor that owns it, and cache that actor once the key
  * is its own and passes `checkSignature`, as Mastodon's
  * `FetchRemoteKeyService`: the document at `keyId` is the actor's own (see
- * {@link keyFromActorDocument}), or a key document whose owner (`controller`
- * for a Multikey) is fetched and must list it.
+ * {@link actorServedAt}), or a key document whose owner (`controller` for a
+ * Multikey) is fetched. Either way the key is taken only when it is among the
+ * keys the actor's document publishes ({@link resolvePublishedKeys}), as
+ * Mastodon looks it up among the keys `ProcessAccountService` stored; the
+ * document already fetched at `keyId` is not fetched again.
  */
 const fetchKeyOwner = async (
   db: D1Database,
@@ -848,24 +784,35 @@ const fetchKeyOwner = async (
   if (fetched.isErr()) {
     return err(fetched.error);
   }
-  const keyDocument = keyDocumentKey(fetched.value);
+  const keyDocument = keyDocumentOwner(fetched.value);
   const read =
     keyDocument === undefined
-      ? await keyFromActorDocument(identity, keyId, fetched.value, options)
-      : await keyFromKeyDocument(identity, keyId, keyDocument, options);
+      ? await actorServedAt(identity, keyId, fetched.value, options)
+      : await keyDocumentActor(identity, keyId, keyDocument, options);
   if (read.isErr()) {
     return err(read.error);
   }
-  const { actor, key } = read.value;
+  const actor = read.value;
   // A document speaks only for its own host: one served at a key URL on
   // another host than the actor it describes could rewrite that actor's key.
   if (Hostname.ofUri(actor.actor.actorUri) !== Hostname.ofUri(keyId)) {
     return err({ kind: "InvalidSignature" });
   }
-  if (options.checkSignature && !(await options.checkSignature(key))) {
+  const keys = await resolvePublishedKeys(
+    identity,
+    actor.actor.actorUri,
+    actor.publishedKeys,
+    options,
+    new Map([[keyId, fetched.value]]),
+  );
+  if (keys.isErr()) {
+    return err(keys.error);
+  }
+  const key = keys.value.find((candidate) => candidate.keyId === keyId);
+  if (key === undefined || (options.checkSignature && !(await options.checkSignature(key)))) {
     return err({ kind: "InvalidSignature" });
   }
-  const stored = await cacheFetchedActor(db, identity, actor, options);
+  const stored = await cacheActorWithKeys(db, identity, actor, keys.value, options);
   return stored.map((cached) => ({ actor: cached, key }));
 };
 
