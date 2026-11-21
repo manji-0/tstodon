@@ -1,9 +1,12 @@
+import type { ApiAdminExistingDomainBlockErrorJSON } from "@tstodon/api";
+import { schemaResult } from "@tstodon/core";
 import type { Context } from "hono";
 import { z } from "zod";
 import { changeDomainBlock, createDomainBlock } from "../../admin-actions";
 import {
   deleteDomainBlock,
   domainBlockDocument,
+  type DomainBlockSeverity,
   DomainBlockSeveritySchema,
   findDomainBlockById,
   listDomainBlocks,
@@ -22,14 +25,25 @@ import { parseInstanceIdentity } from "../../runtime-config";
 import { parseBool, validation } from "./shared";
 
 const AdminDomainBlockBodySchema = z.object({
-  domain: z.string().min(1).optional(),
-  severity: DomainBlockSeveritySchema.optional(),
+  domain: z.string().optional(),
+  severity: z.string().optional(),
   reject_media: z.union([z.boolean(), z.string(), z.number()]).optional(),
   reject_reports: z.union([z.boolean(), z.string(), z.number()]).optional(),
   obfuscate: z.union([z.boolean(), z.string(), z.number()]).optional(),
   private_comment: z.string().nullable().optional(),
   public_comment: z.string().nullable().optional(),
 });
+
+/** The severity a body names, or `fallback` without one; `undefined` when it names none Mastodon knows. */
+const severityOf = (
+  value: string | undefined,
+  fallback: DomainBlockSeverity,
+): DomainBlockSeverity | undefined =>
+  value === undefined
+    ? fallback
+    : schemaResult(DomainBlockSeveritySchema)(value).unwrapOr(undefined);
+
+const INVALID_SEVERITY = "Validation failed: Severity is not included in the list";
 
 const optionalComment = (value: string | null | undefined): string | null | undefined => {
   if (value === undefined) {
@@ -96,11 +110,15 @@ export const postV1AdminDomainBlocks = async (
     return jsonAuthError(c, admin.error);
   }
   const body = await readBody(c, AdminDomainBlockBodySchema);
-  if (body.isErr() || body.value.domain === undefined) {
-    return validation(c, "domain is required");
+  if (body.isErr()) {
+    return validation(c, "Validation failed");
   }
-  const created = await createDomainBlock(c.env, identity.value.domain, body.value.domain, {
-    severity: body.value.severity ?? "silence",
+  const severity = severityOf(body.value.severity, "silence");
+  if (severity === undefined) {
+    return validation(c, INVALID_SEVERITY);
+  }
+  const created = await createDomainBlock(c.env, identity.value.domain, body.value.domain ?? "", {
+    severity,
     rejectMedia: parseBool(body.value.reject_media, false),
     rejectReports: parseBool(body.value.reject_reports, false),
     obfuscate: parseBool(body.value.obfuscate, false),
@@ -110,11 +128,18 @@ export const postV1AdminDomainBlocks = async (
   if (created.isErr()) {
     switch (created.error.kind) {
       case "DomainRequired":
-        return validation(c, "domain is required");
+        return validation(c, "Validation failed: Domain can't be blank");
+      case "InvalidDomain":
+        return validation(c, "Validation failed: Domain is invalid");
       case "OwnDomain":
         return validation(c, "You cannot block your own domain");
-      case "AlreadyBlocked":
-        return validation(c, "domain has already been blocked");
+      case "ExistingDomainBlock": {
+        const answer: ApiAdminExistingDomainBlockErrorJSON = {
+          error: `You have already imposed stricter limits on ${created.error.existing.domain}.`,
+          existing_domain_block: await domainBlockDocument(created.error.existing),
+        };
+        return c.json(answer, 422);
+      }
       case "RepositoryError":
         return jsonRepositoryError(c, created.error.message);
     }
@@ -143,10 +168,14 @@ export const putV1AdminDomainBlocksById = async (
   if (body.isErr()) {
     return jsonValidationError(c);
   }
+  const severity = severityOf(body.value.severity, existing.value.severity);
+  if (severity === undefined) {
+    return validation(c, INVALID_SEVERITY);
+  }
   const privateComment = optionalComment(body.value.private_comment);
   const publicComment = optionalComment(body.value.public_comment);
   const updated = await changeDomainBlock(c.env, id, {
-    severity: body.value.severity ?? existing.value.severity,
+    severity,
     rejectMedia:
       body.value.reject_media === undefined
         ? existing.value.reject_media !== 0

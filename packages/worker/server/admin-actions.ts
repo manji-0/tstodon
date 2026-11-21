@@ -9,6 +9,7 @@ import {
   type RemoteActorValue,
   RemoteActorModeration,
   type RemoteActorModerationAction,
+  DomainBlockPolicy,
   Hostname,
   ReportResolution,
 } from "@tstodon/domain";
@@ -37,8 +38,8 @@ import {
   clearRemoteMediaForDomain,
   type DomainBlockInput,
   type DomainBlockRow,
-  findDomainBlockByDomain,
   findDomainBlockById,
+  findDomainBlockRule,
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
@@ -335,8 +336,10 @@ export type DomainBlockSettings = Omit<DomainBlockInput, "domain">;
 
 export type CreateDomainBlockError =
   | Readonly<{ kind: "DomainRequired" }>
+  | Readonly<{ kind: "InvalidDomain" }>
   | Readonly<{ kind: "OwnDomain" }>
-  | Readonly<{ kind: "AlreadyBlocked" }>
+  /** The rule already covering the domain is on it, or is not weaker. */
+  | Readonly<{ kind: "ExistingDomainBlock"; existing: DomainBlockRow }>
   | RepositoryError;
 
 /**
@@ -369,7 +372,18 @@ const savedBlock = async (
   return block;
 };
 
-/** Block a domain this server has not blocked yet; never its own. */
+const policyOf = (row: DomainBlockRow): DomainBlockPolicy => ({
+  severity: row.severity,
+  rejectMedia: row.reject_media !== 0,
+  rejectReports: row.reject_reports !== 0,
+});
+
+/**
+ * Block a domain, never this server's own. As Mastodon's
+ * `Api::V1::Admin::DomainBlocksController#create`, refused when the rule
+ * already covering the domain (`DomainBlock.rule_for`) names it or is not
+ * weaker than the new block (`stricter_than?`).
+ */
 export const createDomainBlock = async (
   env: Env,
   ownDomain: string,
@@ -383,12 +397,19 @@ export const createDomainBlock = async (
   if (domain === ownDomain.toLowerCase()) {
     return err({ kind: "OwnDomain" });
   }
-  const existing = await findDomainBlockByDomain(env.DB, domain);
+  const existing = await findDomainBlockRule(env.DB, domain);
   if (existing.isErr()) {
     return err(existing.error);
   }
-  if (existing.value) {
-    return err({ kind: "AlreadyBlocked" });
+  if (
+    existing.value &&
+    (existing.value.domain === domain ||
+      !DomainBlockPolicy.stricterThan(settings, policyOf(existing.value)))
+  ) {
+    return err({ kind: "ExistingDomainBlock", existing: existing.value });
+  }
+  if (!Hostname.isValidDomain(domain)) {
+    return err({ kind: "InvalidDomain" });
   }
   const created = await insertDomainBlock(env.DB, { domain, ...settings });
   if (created.isErr()) {

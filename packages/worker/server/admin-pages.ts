@@ -415,6 +415,8 @@ export const remoteActorPage = (
     actorUri: string;
     acct: string;
     domain: string | undefined;
+    /** Whether a domain block applies to `domain` (`DomainBlock.rule_for`). */
+    domainBlocked: boolean;
     /** Absent once the actor was purged from this server's cache. */
     moderation: RemoteActorModerationValue | undefined;
     openReports: ReadonlyArray<string>;
@@ -435,8 +437,12 @@ ${messageLine(message)}
         <li><a href="${escapeHtml(action)}/statuses">Posts</a></li>${
           view.domain === undefined
             ? ""
-            : `
-        <li><a href="/admin/instances/${escapeHtml(view.domain)}">Moderate ${escapeHtml(view.domain)}</a> as a whole</li>`
+            : view.domainBlocked
+              ? `
+        <li><a href="/admin/instances/${escapeHtml(view.domain)}">View domain block</a></li>`
+              : `
+        <li><a href="/admin/instances/${escapeHtml(view.domain)}">View summary for domain</a></li>
+        <li><a href="/admin/instances/${escapeHtml(view.domain)}">Add new domain block</a></li>`
         }
       </ul>
       <h2>Open reports</h2>${
@@ -538,6 +544,8 @@ export const instancePage = (
     blocked: boolean;
     form: DomainBlockForm;
     health?: DeliveryDomainHealthValue | undefined;
+    /** The domain of the block that refused a new one, to unblock first. */
+    existingBlock?: string | undefined;
   }>,
   message?: PageMessage,
 ): string => {
@@ -547,7 +555,12 @@ export const instancePage = (
     view.domain,
     "/admin/instances",
     `      <h1>${escapeHtml(view.domain)}</h1>
-${messageLine(message)}
+${messageLine(message)}${
+      view.existingBlock === undefined
+        ? ""
+        : `
+      <p><a href="/admin/instances/${escapeHtml(view.existingBlock)}">The block on ${escapeHtml(view.existingBlock)}</a></p>`
+    }
       <p>${
         view.blocked
           ? `This server blocks <strong>${escapeHtml(view.domain)}</strong>: ${escapeHtml(SEVERITY_LABELS[view.form.severity].toLowerCase())}.`
