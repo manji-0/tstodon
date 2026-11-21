@@ -11,10 +11,10 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
-  queryCursor,
   queryLimit,
+  queryCursor,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { accountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { mastodonStatuses } from "../../local-status-documents";
@@ -144,7 +144,7 @@ export const getV1AccountsByIdStatuses = async (
   }
   const pinned = params.value.pinned === true;
   const filters: AccountStatusFilters = {
-    limit: queryLimit(params.value.limit),
+    limit: queryLimit(c, PageSize.statuses),
     excludeReplies: params.value.exclude_replies === true,
     excludeReblogs: params.value.exclude_reblogs === true,
     excludeDirect: params.value.exclude_direct === true,
@@ -211,7 +211,7 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   if (presentation.isErr()) {
     return jsonRepositoryError(c, presentation.error.message);
   }
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   // `hide_collections` clears the lists for everyone but the account itself.
   if (
     !AccountPresentation.available(presentation.value) ||

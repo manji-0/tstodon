@@ -6,10 +6,11 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
+  queryLimit,
   queryCursor,
   requireUser,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
 import { accountRefPresentation } from "../../account-presentation";
@@ -115,7 +116,7 @@ const endorsementDocuments = async (
   identity: InstanceIdentity,
   ownerId: string,
 ): Promise<Response> => {
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   const rows = await listEndorsements(c.env.DB, ownerId, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);

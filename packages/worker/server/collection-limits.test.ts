@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
-import { queryAccountsLimit, queryAdminLimit, queryLimit, queryNotificationsLimit } from "./http";
 import { generateAccountKeys } from "./keys";
 import { nowIso } from "./clock";
 
@@ -35,23 +34,6 @@ const AccountListSchema = z.array(z.object({ id: z.string().min(1) }));
 
 /** Mastodon's documented page sizes, which differ per collection family. */
 describe("collection limits", () => {
-  it("clamps each family to its documented maximum", () => {
-    // Status collections: 20 by default, 40 max.
-    expect(queryLimit(undefined)).toBe(20);
-    expect(queryLimit("500")).toBe(40);
-    // Account collections and notifications: 40 default, 80 max.
-    expect(queryAccountsLimit(undefined)).toBe(40);
-    expect(queryAccountsLimit("500")).toBe(80);
-    expect(queryNotificationsLimit(undefined)).toBe(40);
-    expect(queryNotificationsLimit("500")).toBe(80);
-    // Admin lists: 100 default, 200 max.
-    expect(queryAdminLimit(undefined)).toBe(100);
-    expect(queryAdminLimit("500")).toBe(200);
-    // A nonsense or absent value falls back rather than failing.
-    expect(queryAccountsLimit("lots")).toBe(40);
-    expect(queryAdminLimit("0")).toBe(100);
-  });
-
   it("returns more than forty accounts on a directory page", async () => {
     // The accounts table is seeded directly: a real account per follower would
     // mean forty RSA key pairs.

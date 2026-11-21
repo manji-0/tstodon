@@ -7,8 +7,8 @@ import {
   jsonValidationError,
   queryLimit,
   queryOffset,
-  queryTrendsLimit,
   setOffsetPaginationLinks,
+  PageSize,
 } from "../http";
 import { readQueryParams } from "../request-params";
 import { listTrendingLinks } from "../trend-store";
@@ -34,7 +34,7 @@ export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/tr
   if (publishers.isErr()) {
     return jsonRepositoryError(c, publishers.error.message);
   }
-  const limit = queryTrendsLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.trends);
   const offset = queryOffset(params.value.offset);
   const links = await listTrendingLinks(c.env.DB, {
     limit,
@@ -87,7 +87,7 @@ const trendingTagsResponse = async (c: Context<{ Bindings: Env }>): Promise<Resp
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
-  const limit = queryTrendsLimit(params.value.limit);
+  const limit = queryLimit(c, PageSize.trends);
   const offset = queryOffset(params.value.offset);
   const tags = await listTrendingTags(c.env.DB, limit, { excluded: rejected.value, offset });
   if (tags.isErr()) {
@@ -117,7 +117,7 @@ export const getV1TrendsStatuses = async (
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const limit = queryLimit(params.value.limit, 20);
+  const limit = queryLimit(c, PageSize.statuses);
   const offset = queryOffset(params.value.offset);
   const statuses = await listTrendingStatuses(c.env.DB, limit, { offset });
   if (statuses.isErr()) {

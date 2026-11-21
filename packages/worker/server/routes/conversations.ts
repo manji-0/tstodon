@@ -15,6 +15,7 @@ import {
   queryLimit,
   requireUser,
   setPaginationLinks,
+  PageSize,
 } from "../http";
 import { markConversationRead, markConversationUnread } from "../marker-store";
 import { readQueryParams } from "../request-params";
@@ -35,7 +36,7 @@ export const getV1Conversations = async (
   if (params.isErr()) {
     return jsonValidationError(c);
   }
-  const limit = queryLimit(params.value.limit, 20);
+  const limit = queryLimit(c, PageSize.statuses);
   const conversations = await listConversationsForAccount(c.env.DB, identity.value, user.value.id, {
     limit,
     maxId: params.value.max_id || undefined,

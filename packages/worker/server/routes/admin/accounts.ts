@@ -38,11 +38,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
 import { findRemoteActorsByUris } from "../../remote-actor-store";
@@ -397,7 +398,7 @@ const adminAccountsResponse = async (
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.admin);
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
   if (filters.origin === "remote") {
     const remote = await remoteAdminAccounts(c.env, identity.value, { ...filters, limit, offset });

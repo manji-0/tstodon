@@ -13,6 +13,8 @@ import {
   jsonValidationError,
   queryLimit,
   queryOffset,
+  PageSize,
+  rubyToI,
 } from "../http";
 import {
   documentsInOrder,
@@ -72,7 +74,7 @@ const search = async (c: Context<{ Bindings: Env }>) => {
   // Mastodon's `blank?`: an empty `type` is no type.
   const requestedType = (params.value.type ?? "").trim();
   const type = requestedType.length === 0 ? "all" : requestedType;
-  const limit = queryLimit(params.value.limit, 5);
+  const limit = queryLimit(c, PageSize.statuses);
   if (params.value.offset !== undefined && viewerId === undefined) {
     return c.json(
       { error: "Search queries pagination is not supported without authentication" },
@@ -90,9 +92,14 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       401,
     );
   }
+  // `Api::Pagination#require_valid_pagination_options!`
+  if (["limit", "offset"].some((name) => rubyToI(c.req.query(name) ?? "") < 0)) {
+    return c.json({ error: "Pagination values for `offset` and `limit` must be positive" }, 400);
+  }
   // Mastodon pages by `offset` only when one result `type` is asked for.
   const offset = requestedType.length === 0 ? 0 : queryOffset(params.value.offset);
-  if (query.length === 0) {
+  // As `SearchService`, a `limit` of 0 finds nothing, an exact match included.
+  if (query.length === 0 || limit === 0) {
     return c.json({ accounts: [], statuses: [], hashtags: [], collections: [] });
   }
   const fetchOptions = () => resolveFetchOptions(c.env, identity.value);

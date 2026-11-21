@@ -21,11 +21,12 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAdminLimit,
+  queryLimit,
   queryCursor,
   readOptionalBody,
   requireAdmin,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 
 /** A non-blank `email`, wrapped; a blank or missing one reads as `undefined`. */
@@ -60,7 +61,7 @@ export const getV1AdminCanonicalEmailBlocks = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.admin);
   const blocks = await listCanonicalEmailBlocks(c.env.DB, limit, queryCursor(c));
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);
@@ -189,7 +190,7 @@ export const getV1AdminEmailDomainBlocks = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const limit = queryAdminLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.admin);
   const blocks = await listEmailDomainBlocks(c.env.DB, limit, queryCursor(c));
   if (blocks.isErr()) {
     return jsonRepositoryError(c, blocks.error.message);

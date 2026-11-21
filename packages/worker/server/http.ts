@@ -13,40 +13,59 @@ import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
 import { bodyCapExceeded } from "./body-limit";
 
-/** Read a `limit` query parameter, defaulted to `fallback` and clamped to `max`. */
-const queryLimitMax = (raw: string | number | undefined, fallback: number, max: number): number => {
-  const parsed = typeof raw === "number" ? Math.trunc(raw) : Number.parseInt(raw ?? "", 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return fallback;
-  }
-  return Math.min(parsed, max);
+/**
+ * A list's page size: what a Mastodon controller passes to
+ * `Api::BaseController#limit_param(default_limit, max_limit = default_limit * 2)`.
+ */
+export type PageSize = Readonly<{ default: number; max: number }>;
+
+const pageSize = (fallback: number, max = fallback * 2): PageSize => ({ default: fallback, max });
+
+/** Mastodon v4.7.5's page sizes, named after the controller constants. */
+export const PageSize = {
+  /**
+   * `DEFAULT_STATUSES_LIMIT`, and the same 20 as `ConversationsController::LIMIT`
+   * and `Api::V2::SearchController::RESULTS_LIMIT`.
+   */
+  statuses: pageSize(20),
+  /** `DEFAULT_ACCOUNTS_LIMIT`, and the same 40 as `DEFAULT_NOTIFICATIONS_LIMIT`. */
+  accounts: pageSize(40),
+  /** The trends' `DEFAULT_TAGS_LIMIT` and `DEFAULT_LINKS_LIMIT`. */
+  trends: pageSize(10),
+  /** The admin lists' `LIMIT`. */
+  admin: pageSize(100),
+  /** `LIMIT` and `MAX_LIMIT` of the admin domain blocks and domain allows. */
+  adminDomainRules: pageSize(100, 500),
+} satisfies Record<string, PageSize>;
+
+const RUBY_INTEGER_PREFIX = /^[\t\n\v\f\r ]*([+-]?\d+(?:_\d+)*)/;
+
+/**
+ * Ruby's `String#to_i`: the integer the string starts with, after ASCII
+ * whitespace and with `_` between digits; 0 when it starts with none.
+ */
+export const rubyToI = (raw: string): number => {
+  const digits = RUBY_INTEGER_PREFIX.exec(raw)?.[1];
+  return digits === undefined ? 0 : Number.parseInt(digits.replaceAll("_", ""), 10);
 };
 
-/** Status collections: 20 by default, capped at 40. */
-export const queryLimit = (raw: string | number | undefined, fallback = 20): number =>
-  queryLimitMax(raw, fallback, 40);
+/**
+ * Mastodon's `limit_param`: the default without a `limit`, else
+ * `[params[:limit].to_i.abs, max].min`, so a `limit` that reads as 0 (`0`,
+ * `abc`, or empty) asks for an empty page.
+ */
+export const limitParam = (raw: string | undefined, size: PageSize): number =>
+  raw === undefined ? size.default : Math.min(Math.abs(rubyToI(raw)), size.max);
 
-/** Trends: tags and links default to 10 and cap at 20, as Mastodon does. */
-export const queryTrendsLimit = (raw: string | number | undefined): number =>
-  queryLimitMax(raw, 10, 20);
+/** The request's `limit` query parameter, read as {@link limitParam}. */
+export const queryLimit = (c: Context<{ Bindings: Env }>, size: PageSize): number =>
+  limitParam(c.req.query("limit"), size);
 
 /** Mastodon's `offset` for paged lists, kept to a value SQLite can bind as an integer. */
 export const queryOffset = (raw: string | number | undefined): number => {
   const parsed = typeof raw === "number" ? Math.trunc(raw) : Number.parseInt(raw ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, Number.MAX_SAFE_INTEGER) : 0;
 };
-
-/** Account collections (followers, blocks, directory…): 40 by default, capped at 80. */
-export const queryAccountsLimit = (raw: string | number | undefined, fallback = 40): number =>
-  queryLimitMax(raw, fallback, 80);
-
-/** Notifications and notification requests: 40 by default, capped at 80. */
-export const queryNotificationsLimit = (raw: string | number | undefined, fallback = 40): number =>
-  queryLimitMax(raw, fallback, 80);
-
-/** Admin lists (accounts, reports, domain blocks): 100 by default, capped at 200. */
-export const queryAdminLimit = (raw: string | undefined, fallback = 100): number =>
-  queryLimitMax(raw, fallback, 200);
 
 /**
  * Mastodon's `Link` pagination headers for a collection of row ids: a full page

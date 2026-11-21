@@ -4,10 +4,11 @@ import {
   jsonAuthError,
   jsonRepositoryError,
   jsonValidationError,
-  queryAccountsLimit,
+  queryLimit,
   queryCursor,
   requireUser,
   setPaginationLinks,
+  PageSize,
 } from "../../http";
 import { mastodonRelationship } from "../../relationship-document";
 import { availableAccountDocumentsByIds } from "../../account-documents";
@@ -147,7 +148,7 @@ export const getV1Blocks = async (c: Context<{ Bindings: Env }, "/api/v1/blocks"
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   const rows = await listBlockedAccounts(c.env.DB, user.value.id, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
@@ -178,7 +179,7 @@ export const getV1Mutes = async (c: Context<{ Bindings: Env }, "/api/v1/mutes">)
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const limit = queryAccountsLimit(c.req.query("limit"));
+  const limit = queryLimit(c, PageSize.accounts);
   const rows = await listMutedAccounts(c.env.DB, user.value.id, limit, queryCursor(c));
   if (rows.isErr()) {
     return jsonRepositoryError(c, rows.error.message);
