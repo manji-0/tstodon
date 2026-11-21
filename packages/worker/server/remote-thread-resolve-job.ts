@@ -47,7 +47,8 @@ const resolveParent = async (
   const note = await storeNoteDocument(env, identity, uri, raw.value, {
     ...options,
     idClock: "Published",
-    threadHop: hop,
+    thread: { kind: "Queue", hop },
+    fanOut: "Queued",
   });
   if (note.isErr()) {
     return { kind: "Retry" };

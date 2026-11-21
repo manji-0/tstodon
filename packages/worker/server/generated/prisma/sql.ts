@@ -402,6 +402,8 @@ export * from "./sql/findRemoteStatusThreadRefresh";
 
 export * from "./sql/findRemoteStatusesByIds";
 
+export * from "./sql/findRemoteThreadResolveExhausted";
+
 export * from "./sql/findSignupIntent";
 
 export * from "./sql/findSilencingOfAnyJson";

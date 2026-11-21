@@ -9,6 +9,7 @@ import { settle } from "../test/meter";
 import { parseRows } from "./d1";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
+import { THREAD_BACKFILL_ANCESTOR_LIMIT } from "./remote-thread-backfill";
 import { queueRemoteThreadResolve, THREAD_RESOLVE_HOP_LIMIT } from "./remote-thread-resolve";
 import { parseInstanceIdentity } from "./runtime-config";
 
@@ -165,6 +166,15 @@ const resolveJob = (statusId: string, hop: number) => {
   const job = OutboxJob.parse({ kind: RESOLVE, statusId, hop });
   if (job.isErr()) {
     throw new Error("thread job rejected");
+  }
+  return job.value;
+};
+
+/** The first job of the thread fetch opening the status `statusId` queues. */
+const threadFetch = (statusId: string) => {
+  const job = OutboxJob.parse({ kind: "BackfillRemoteThread", statusId, from: { kind: "Root" } });
+  if (job.isErr()) {
+    throw new Error("thread fetch rejected");
   }
   return job.value;
 };
@@ -635,6 +645,106 @@ describe("a remote reply whose parent this server does not hold", () => {
     await settle();
 
     expect(await storedId(reply.id)).toBeDefined();
+    expect(resolveJobs(held)).toEqual([]);
+  });
+
+  // Mastodon shares one discovery counter across every fetch a request sets
+  // off. tstodon's chains carry only their hop, so a chain stays one line of
+  // parents: a note fetched as a quoted one, or as a listed reply, starts none.
+  it("starts no chain from a quoted note, in a delivery or a thread step", async () => {
+    const author = await remoteActor("rtrquoted", "rtr-quoted.example");
+    const quoted = note(author, "quoted", { inReplyTo: note(author, "quoted-parent").id });
+    const quotedAgain = note(author, "quoted-again", {
+      inReplyTo: note(author, "quoted-again-parent").id,
+    });
+    const parent = note(author, "root", { quote: quotedAgain.id });
+    const held = holdQueue();
+
+    await serving([quoted], () => deliver(author, note(author, "quoting", { quote: quoted.id })));
+    expect(await storedId(quoted.id)).toBeDefined();
+    expect(resolveJobs(held)).toEqual([]);
+    const reply = await deliver(author, note(author, "reply", { inReplyTo: parent.id }));
+    held.bodies.splice(0);
+    await serving([parent, quotedAgain], async () => {
+      expect(await processOutboxJob(env, resolveJob(reply, 1))).toBe("ok");
+    });
+
+    expect(await storedId(quotedAgain.id)).toBeDefined();
+    expect(resolveJobs(held)).toEqual([]);
+  });
+
+  it("starts no chain from a reply a thread fetch finds listed", async () => {
+    const author = await remoteActor("rtrlisted", "rtr-listed.example");
+    const listed = [1, 2, 3].map((n) =>
+      note(author, `listed-${n}`, { inReplyTo: note(author, `elsewhere-${n}`).id }),
+    );
+    const opened = note(author, "opened", {
+      replies: {
+        id: `${note(author, "opened").id}/replies`,
+        type: "Collection",
+        first: { type: "CollectionPage", items: listed.map((item) => item.id) },
+      },
+    });
+    const openedId = await deliver(author, opened);
+    const held = holdQueue();
+
+    await serving([opened, ...listed], async () => {
+      expect(await processOutboxJob(env, threadFetch(openedId))).toBe("ok");
+    });
+
+    for (const item of listed) {
+      expect(await storedId(item.id)).toBeDefined();
+    }
+    expect(resolveJobs(held)).toEqual([]);
+  });
+
+  it("walks the parents of an opened status with one job, at the hop past the notes it stored", async () => {
+    const author = await remoteActor("rtrwalk", "rtr-walk.example");
+    const depth = THREAD_BACKFILL_ANCESTOR_LIMIT + 2;
+    const above = Array.from({ length: depth }, (_, level) =>
+      note(
+        author,
+        `above-${level + 1}`,
+        level + 1 < depth ? { inReplyTo: note(author, `above-${level + 2}`).id } : {},
+      ),
+    );
+    const held = holdQueue();
+    const opened = await deliver(author, note(author, "opened", { inReplyTo: above[0]?.id }));
+    held.bodies.splice(0);
+
+    await serving(above, async () => {
+      expect(await processOutboxJob(env, threadFetch(opened))).toBe("ok");
+    });
+
+    const topmost = above[THREAD_BACKFILL_ANCESTOR_LIMIT - 1];
+    expect(resolveJobs(held)).toEqual([
+      {
+        kind: RESOLVE,
+        statusId: await storedId(topmost?.id ?? ""),
+        hop: THREAD_BACKFILL_ANCESTOR_LIMIT + 1,
+      },
+    ]);
+  });
+
+  it("does not walk on above a chain stopped at the limit when its top status is opened", async () => {
+    const author = await remoteActor("rtrhalted", "rtr-halted.example");
+    const aboveTail = note(author, "above-tail");
+    const tail = note(author, "tail", { inReplyTo: aboveTail.id });
+    holdQueue();
+    const top = await deliver(author, note(author, "top", { inReplyTo: tail.id }));
+    await serving([tail], async () => {
+      expect(await processOutboxJob(env, resolveJob(top, THREAD_RESOLVE_HOP_LIMIT))).toBe("ok");
+    });
+    const tailId = await storedId(tail.id);
+    const held = holdQueue();
+    fetchedUrls.splice(0);
+
+    await serving([aboveTail], async () => {
+      expect(await processOutboxJob(env, threadFetch(tailId ?? ""))).toBe("ok");
+    });
+
+    expect(fetchedUrls).not.toContain(aboveTail.id);
+    expect(await storedId(aboveTail.id)).toBeUndefined();
     expect(resolveJobs(held)).toEqual([]);
   });
 
