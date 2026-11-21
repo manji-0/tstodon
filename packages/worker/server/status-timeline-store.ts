@@ -245,9 +245,33 @@ export const listAccountStatusesFiltered = async (
   });
 
 /**
+ * Mastodon's `StatusFilter` on a local author, for a statement over
+ * `statuses`: a suspended author's status is left out, and a silenced
+ * author's unless the viewer is that author or follows it (accepted). Each
+ * row seeks its author's moderation, and a silenced one the follow, by key.
+ * Bind order: (viewerId, viewerId), `''` when anonymous.
+ */
+const SILENCED_UNFOLLOWED_OR_SUSPENDED_SQL = `AND NOT EXISTS (
+  SELECT 1 FROM account_moderation AS m
+  WHERE m.account_id = statuses.account_id
+    AND (
+      m.moderation = 'Suspended'
+      OR (
+        m.account_id <> ?
+        AND NOT EXISTS (
+          SELECT 1 FROM follows AS f
+          WHERE f.follower_account_id = ? AND f.target_account_id = m.account_id
+            AND f.kind = 'Accepted'
+        )
+      )
+    )
+)`;
+
+/**
  * Local notes whose text contains `query`, newest first, kept in SQL to the
  * ones `viewerId` may see (as `canViewStatus`, without its direct reply
- * chains) so that `offset` skips only visible results.
+ * chains) and that Mastodon's `StatusFilter` keeps (blocks, mutes, and
+ * moderated authors), so that `offset` skips only visible results.
  */
 export const searchStatuses = async (
   db: D1Database,
@@ -261,7 +285,8 @@ export const searchStatuses = async (
     const { results } = await db
       .prepare(
         `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' ${MODERATED_ACCOUNTS_SQL} AND ${containsFolded("content_text")}
+         WHERE kind = 'LocalNote' ${SILENCED_UNFOLLOWED_OR_SUSPENDED_SQL}
+           AND ${containsFolded("content_text")}
            AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
            AND (
              visibility IN ('public', 'unlisted')
@@ -275,7 +300,17 @@ export const searchStatuses = async (
            )
          ORDER BY id DESC LIMIT ? OFFSET ?`,
       )
-      .bind(query, ...suppressedBinds(viewerId), viewer, viewer, viewer, limit, offset)
+      .bind(
+        viewer,
+        viewer,
+        query,
+        ...suppressedBinds(viewerId),
+        viewer,
+        viewer,
+        viewer,
+        limit,
+        offset,
+      )
       .all();
     return hydrateStatusRows(db, results ?? []);
   });

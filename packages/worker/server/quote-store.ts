@@ -10,7 +10,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, parseRows, runD1, sqlInJsonEach, type RepositoryError } from "./d1";
-import { idCursorFragment, type IdCursor } from "./id-cursor";
+import { SUPPRESSED_ACCOUNT_IDS_SQL, SUPPRESSED_ACTOR_URIS_SQL } from "./block-mute-store";
 import { statusTargetColumns } from "./status-store";
 
 /** Who may quote a status, as Mastodon's `quote_approval_policy` names it. */
@@ -270,29 +270,66 @@ export const findQuotesByApprovalUri = (
   uri: string,
 ): Promise<Result<QuoteValue[], RepositoryError>> => findQuotesWhere(db, "approval_uri", uri);
 
-/** The statuses that quote one status with an accepted quote, by quoting status id under the cursor. */
-export const listQuotingTargets = async (
+/** One accepted quote of a status: the quote row's id, which pages the list, and the quoting status. */
+export type QuotePageEntry = Readonly<{ quoteId: string; quoting: StatusTargetValue }>;
+
+/** Mastodon's `paginate_by_max_id` over quote ids: both bounds apply, `min_id` is not read. */
+export type QuoteCursor = Readonly<{ maxId?: string | undefined; sinceId?: string | undefined }>;
+
+const QuotePageRow = TargetRow.extend({ quote_id: z.string() });
+
+/**
+ * Mastodon's `QuotesController#set_statuses` up to its `LIMIT`: the accepted
+ * quotes of one status whose quoting status exists, without those by an
+ * author `viewerId` blocks, mutes, or is blocked by (`not_excluded_by_account`;
+ * none for `undefined`), newest quoting status first, the cursor on quote ids.
+ */
+export const listQuotePage = async (
   db: D1Database,
   quoted: StatusTargetValue,
+  viewerId: string | undefined,
   limit: number,
-  cursor: IdCursor = {},
-): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+  cursor: QuoteCursor = {},
+): Promise<Result<ReadonlyArray<QuotePageEntry>, RepositoryError>> =>
   runD1(async () => {
-    const { where, order, binds } = idCursorFragment(cursor);
+    const viewer = viewerId ?? "";
+    const now = nowIso();
+    const bounds = [
+      ...(cursor.maxId ? [{ sql: "AND q.id < ?", bind: cursor.maxId }] : []),
+      ...(cursor.sinceId ? [{ sql: "AND q.id > ?", bind: cursor.sinceId }] : []),
+    ];
     const { results } = await db
       .prepare(
-        `SELECT status_id, remote_status_id FROM (
-           SELECT COALESCE(status_id, remote_status_id) AS id, status_id, remote_status_id
-           FROM status_quotes
-           WHERE ${quoted.kind === "LocalStatus" ? "quoted_status_id" : "quoted_remote_status_id"} = ?
-             AND state = 'accepted'
-         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
+        `SELECT q.id AS quote_id, q.status_id, q.remote_status_id
+         FROM status_quotes AS q
+         LEFT JOIN statuses AS s ON s.id = q.status_id
+         LEFT JOIN remote_statuses AS r ON r.id = q.remote_status_id
+         WHERE q.${quoted.kind === "LocalStatus" ? "quoted_status_id" : "quoted_remote_status_id"} = ?
+           AND q.state = 'accepted'
+           AND (s.id IS NOT NULL OR r.id IS NOT NULL)
+           AND COALESCE(s.account_id, '') NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+           AND COALESCE(r.actor_uri, '') NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
+           ${bounds.map((bound) => bound.sql).join(" ")}
+         ORDER BY COALESCE(q.status_id, q.remote_status_id) DESC, q.id DESC
+         LIMIT ?`,
       )
-      .bind(quoted.statusId, ...binds, limit)
+      .bind(
+        quoted.statusId,
+        viewer,
+        viewer,
+        viewer,
+        now,
+        viewer,
+        viewer,
+        viewer,
+        now,
+        ...bounds.map((bound) => bound.bind),
+        limit,
+      )
       .all();
-    return parseRows(TargetRow, results).flatMap((row) => {
+    return parseRows(QuotePageRow, results).flatMap((row) => {
       const target = StatusTarget.parse(targetOf(row.status_id, row.remote_status_id));
-      return target.isOk() ? [target.value] : [];
+      return target.isOk() ? [{ quoteId: row.quote_id, quoting: target.value }] : [];
     });
   });
 

@@ -115,4 +115,46 @@ describe("status search", () => {
     const anonymous = await json("/api/v2/search?q=insiderstatusq&type=statuses&limit=10");
     expect(read(SearchResultsSchema, anonymous.body).statuses).toEqual([]);
   });
+
+  // Mastodon's `StatusFilter`: a silenced account's status is left out only
+  // for a reader who neither follows nor is that account; a suspended
+  // account's status is left out for every reader (`StatusPolicy#show?`).
+  it("shows a silenced account's statuses only to the account and its followers", async () => {
+    const silenced = "search-silenced@example.com";
+    const follower = "search-silenced-fan@example.com";
+    const stranger = "search-silenced-other@example.com";
+    const suspended = "search-suspended@example.com";
+    const other = "search-silenced-third@example.com";
+    const silencedAccount = await accountOf(silenced);
+    const suspendedAccount = await accountOf(suspended);
+    await accountOf(stranger);
+    await act(follower, `/api/v1/accounts/${silencedAccount.id}/follow`);
+    const kept = await post(other, "silencedstatusq from someone else");
+    const hidden = [
+      await post(silenced, "silencedstatusq silenced one"),
+      await post(silenced, "silencedstatusq silenced two"),
+    ];
+    await post(suspended, "silencedstatusq suspended");
+    const admin = await authHeaders("search-silence-admin@example.com", { admin: true });
+    for (const path of [
+      `/api/v1/admin/accounts/${silencedAccount.id}/silence`,
+      `/api/v1/admin/accounts/${suspendedAccount.id}/suspend`,
+    ]) {
+      const response = await json(path, { method: "POST", headers: admin });
+      expect(response.status, path).toBe(200);
+    }
+
+    const found = async (email: string, offset = 0, limit = 10) =>
+      (
+        await search(email, `q=silencedstatusq&type=statuses&limit=${limit}&offset=${offset}`)
+      ).statuses.map((status) => status.id);
+    for (const reader of [silenced, follower]) {
+      expect(await found(reader), reader).toEqual([hidden[1], hidden[0], kept]);
+    }
+    expect(await found(stranger)).toEqual([kept]);
+    // The filter runs before `offset`, so a page skips only what its reader sees.
+    expect(await found(stranger, 0, 1)).toEqual([kept]);
+    expect(await found(stranger, 1, 1)).toEqual([]);
+    expect(await found(follower, 2, 1)).toEqual([kept]);
+  });
 });
