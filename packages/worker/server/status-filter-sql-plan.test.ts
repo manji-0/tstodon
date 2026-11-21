@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { listQuotePage } from "./quote-store";
 import { searchStatuses } from "./status-timeline-store";
 
 const PlanRow = z.object({ detail: z.string() });
@@ -53,5 +54,23 @@ describe("the status filter's plans", () => {
     expect(
       details.filter((detail) => /^SCAN (m|f|account_moderation|follows)\b/.test(detail)),
     ).toEqual([]);
+  });
+
+  // The page sorts the one status's quotes, as Mastodon's does, but reads only those.
+  it("seeks the quotes of one status and each quoting status by key", async () => {
+    const details = await planOf("status_quotes", () =>
+      listQuotePage(env.DB, { kind: "LocalStatus", statusId: "1" }, "viewer", 20, {
+        maxId: "9",
+        sinceId: "0",
+      }),
+    );
+    expect(details).toContainEqual(
+      expect.stringMatching(
+        /^SEARCH q USING INDEX idx_status_quotes_quoted \(quoted_status_id=\? AND state=\?\)/,
+      ),
+    );
+    expect(details).toContainEqual(expect.stringMatching(/^SEARCH s USING .*\(id=\?\)/));
+    expect(details).toContainEqual(expect.stringMatching(/^SEARCH r USING .*\(id=\?\)/));
+    expect(details.filter((detail) => detail.startsWith("SCAN "))).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { StatusAuthors } from "../../account-presentation";
-import { type InstanceIdentity, Quote } from "@tstodon/domain";
+import { type InstanceIdentity, Quote, type ThreadStatus } from "@tstodon/domain";
 import type { Context } from "hono";
 import { authenticate } from "../../auth";
 import {
@@ -9,6 +9,7 @@ import {
   queryCursor,
   queryLimit,
   requireUser,
+  setLinkHeader,
   setPaginationLinks,
 } from "../../http";
 import { availableAccountDocumentsByIds, documentsInOrder } from "../../account-documents";
@@ -26,8 +27,8 @@ import { findRemoteStatusesByIds } from "../../remote-status-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { RemoteAccountId } from "../../remote-account-id";
 import { findStatusById, findStatusesByIds } from "../../status-store";
-import { viewableStatusIds } from "../../visibility-guard";
-import { findQuoteByQuoting, listQuotingTargets, saveQuoteState } from "../../quote-store";
+import { permittedStatusIds } from "../../status-filter";
+import { findQuoteByQuoting, listQuotePage, saveQuoteState } from "../../quote-store";
 import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
 import { nowIso } from "../../clock";
@@ -89,7 +90,14 @@ export const getV1StatusesByIdRebloggedBy = (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/reblogged_by">,
 ) => statusEngagementAccounts(c, "reblogged_by");
 
-/** Quotes of a status: accepted quotes, local or remote, the viewer may see, newest first. */
+/**
+ * Mastodon's `QuotesController#index`: the accepted quotes of a status the
+ * reader may see, newest quoting status first, for a token with a read scope
+ * (an app's own included). Quotes by authors the reader blocks, mutes, or is
+ * blocked by are left out before the limit; the rest go through
+ * `StatusFilter` unless the reader wrote the quoted status. The `Link`
+ * cursors are quote ids, taken from the page before that filter.
+ */
 export const getV1StatusesByIdQuotes = async (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/quotes">,
 ) => {
@@ -109,18 +117,21 @@ export const getV1StatusesByIdQuotes = async (
   if (!status.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  // Mastodon's `set_status` runs before `doorkeeper_authorize!`, so a status
+  // the reader may not see answers 404 even without a token.
+  if (auth.value.kind === "Anonymous") {
+    return jsonAuthError(c, { kind: "MissingToken" });
+  }
   const limit = queryLimit(c.req.query("limit"));
-  const quoting = await listQuotingTargets(
-    c.env.DB,
-    foundStatusTarget(status.value),
-    limit,
-    queryCursor(c),
-  );
-  if (quoting.isErr()) {
-    return jsonRepositoryError(c, quoting.error.message);
+  const page = await listQuotePage(c.env.DB, foundStatusTarget(status.value), viewerId, limit, {
+    maxId: c.req.query("max_id"),
+    sinceId: c.req.query("since_id"),
+  });
+  if (page.isErr()) {
+    return jsonRepositoryError(c, page.error.message);
   }
   const idsOf = (kind: "LocalStatus" | "RemoteStatus") =>
-    quoting.value.flatMap((target) => (target.kind === kind ? [target.statusId] : []));
+    page.value.flatMap((entry) => (entry.quoting.kind === kind ? [entry.quoting.statusId] : []));
   const [locals, remotes] = await Promise.all([
     findStatusesByIds(c.env.DB, idsOf("LocalStatus")),
     findRemoteStatusesByIds(c.env.DB, idsOf("RemoteStatus")),
@@ -131,17 +142,30 @@ export const getV1StatusesByIdQuotes = async (
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  const viewable = await viewableStatusIds(
-    c.env.DB,
-    [...locals.value.values()],
-    [...remotes.value.values()],
-    viewerId,
-  );
-  const visibleLocals = [...locals.value.values()].filter((local) => viewable.has(local.id));
-  const visibleRemotes = [...remotes.value.values()].filter((remote) => viewable.has(remote.id));
+  const quoting = [
+    ...[...locals.value.values()].map((local): ThreadStatus => ({ kind: "Local", status: local })),
+    ...[...remotes.value.values()].map((remote): ThreadStatus => ({
+      kind: "Remote",
+      status: remote,
+    })),
+  ];
+  const wroteQuoted =
+    status.value.kind === "LocalStatus" && status.value.status.accountId === viewerId;
+  const permitted = wroteQuoted ? undefined : await permittedStatusIds(c.env.DB, quoting, viewerId);
+  const kept = quoting.filter((node) => permitted === undefined || permitted.has(node.status.id));
   const [localDocuments, remoteDocuments] = await Promise.all([
-    mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
-    mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
+    mastodonStatuses(
+      c.env,
+      identity.value,
+      kept.flatMap((node) => (node.kind === "Local" ? [node.status] : [])),
+      viewerId,
+    ),
+    mastodonRemoteStatuses(
+      c.env,
+      identity.value,
+      kept.flatMap((node) => (node.kind === "Remote" ? [node.status] : [])),
+      viewerId,
+    ),
   ]);
   if (localDocuments.isErr()) {
     return jsonRepositoryError(c, localDocuments.error.message);
@@ -149,14 +173,16 @@ export const getV1StatusesByIdQuotes = async (
   if (remoteDocuments.isErr()) {
     return jsonRepositoryError(c, remoteDocuments.error.message);
   }
-  const quotingIds = quoting.value.map((target) => target.statusId);
-  setPaginationLinks(c, quotingIds, limit, { prev: "since_id" });
-  return c.json(
-    documentsInOrder(
-      quotingIds,
-      documentsById([...localDocuments.value, ...remoteDocuments.value]),
-    ),
+  const documents = documentsInOrder(
+    page.value.map((entry) => entry.quoting.statusId),
+    documentsById([...localDocuments.value, ...remoteDocuments.value]),
   );
+  setLinkHeader(c, {
+    next: page.value.length === limit ? page.value.at(-1)?.quoteId : undefined,
+    prev: documents.length > 0 ? page.value[0]?.quoteId : undefined,
+    prevCursor: "since_id",
+  });
+  return c.json(documents);
 };
 
 /**
