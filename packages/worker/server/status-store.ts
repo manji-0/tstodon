@@ -7,6 +7,7 @@ import {
   type LocalStatus as LocalStatusValue,
   MediaId,
   type RemovedBoost,
+  ReplyLink,
   StatusId,
   StatusQuoteTarget,
   StatusTarget,
@@ -45,6 +46,7 @@ import {
   insertLocalNote as insertLocalNoteSql,
   insertLocalReblog as insertLocalReblogSql,
   listMediaIdsForStatus as listMediaIdsForStatusSql,
+  listStatusReplyLinks as listStatusReplyLinksSql,
   listStatusReplyUris as listStatusReplyUrisSql,
   setStatusReplyUri as setStatusReplyUriSql,
   updateLocalNote as updateLocalNoteSql,
@@ -237,14 +239,14 @@ export const findStatusesByIds = async (
   return ok(new Map(hydrated.map((status) => [status.id, status])));
 };
 
-/** Record the remote status a local note replies to, by its object URI. */
+/** Record the remote status a local note replies to, by its object URI, and its author as the one the note answers. */
 export const setStatusReplyUri = async (
   db: D1Database,
   statusId: string,
-  inReplyToUri: string,
+  parent: Readonly<{ objectUri: string; actorUri: string }>,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(db, setStatusReplyUriSql(statusId, inReplyToUri));
+    await runTyped(db, setStatusReplyUriSql(statusId, parent.objectUri, parent.actorUri));
   });
 
 /** Remote parents' object URIs of local notes, keyed by status id; local replies are absent. */
@@ -262,6 +264,46 @@ export const listStatusReplyUris = async (
   return rows.isErr()
     ? err(rows.error)
     : ok(new Map(rows.value.map((row) => [row.id, row.in_reply_to_uri])));
+};
+
+const ReplyLinkRow = z.object({
+  id: z.string(),
+  in_reply_to_uri: z.string().nullable(),
+  in_reply_to_account_id: z.string().nullable(),
+  in_reply_to_actor_uri: z.string().nullable(),
+});
+
+/** How a local reply is linked: its remote parent's URI, if any, and whom it answers. */
+export type StatusReplyLink = Readonly<{ inReplyToUri: string | undefined; link: ReplyLink }>;
+
+/** The links of the replies among `statusIds`, keyed by status id; a status that is no reply is absent. */
+export const listStatusReplyLinks = async (
+  db: D1Database,
+  statusIds: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, StatusReplyLink>, RepositoryError>> => {
+  const unique = [...new Set(statusIds)];
+  if (unique.length === 0) {
+    return ok(new Map());
+  }
+  const rows = await runD1(async () =>
+    queryTyped(db, listStatusReplyLinksSql(jsonStringArray(unique)), ReplyLinkRow),
+  );
+  return rows.map(
+    (found) =>
+      new Map(
+        found.map((row) => [
+          row.id,
+          {
+            inReplyToUri: row.in_reply_to_uri ?? undefined,
+            link: ReplyLink.fromColumns(
+              true,
+              row.in_reply_to_account_id,
+              row.in_reply_to_actor_uri,
+            ),
+          },
+        ]),
+      ),
+  );
 };
 
 export const insertLocalNote = async (

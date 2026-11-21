@@ -29,7 +29,7 @@ import { findPollsByStatusIds, type PollRecord } from "./poll-store";
 import { findQuotesByQuoting, findStatusQuotePolicies, type QuotePolicy } from "./quote-store";
 import { mentionEntities } from "./mention-documents";
 import { listStatusMentions } from "./mention-store";
-import { RemoteAccountId } from "./remote-account-id";
+import { inReplyToAccountId } from "./remote-account-id";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { mastodonRemoteStatuses, mastodonShallowRemoteStatuses } from "./remote-status-documents";
 import {
@@ -40,7 +40,7 @@ import {
 } from "./quote-document";
 import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds, findRemoteStatusRefsByObjectUris } from "./remote-status-store";
-import { findStatusesByIds, listStatusReplyUris } from "./status-store";
+import { findStatusesByIds, listStatusReplyLinks } from "./status-store";
 import { listStatusCards } from "./status-card-store";
 import {
   NO_STATUS_INTERACTIONS,
@@ -107,7 +107,7 @@ const buildLocalNoteDocument = (
   interactions: StatusInteractionCounts,
   poll: PollRecord | undefined,
   mediaById: ReadonlyMap<string, MediaRow>,
-  parentAccountId: string | null,
+  answeredAccountId: string | null,
   emojis: ReadonlyArray<CustomEmoji>,
   muted: boolean,
   sensitized: boolean,
@@ -119,7 +119,7 @@ const buildLocalNoteDocument = (
     id: status.id,
     created_at: status.createdAt,
     in_reply_to_id: status.inReplyToId,
-    in_reply_to_account_id: parentAccountId,
+    in_reply_to_account_id: answeredAccountId,
     sensitive: status.sensitive || (sensitized && attachments.length > 0),
     spoiler_text: status.spoilerText,
     visibility: Visibility.toMastodon(status.visibility),
@@ -340,7 +340,7 @@ const renderLocalStatuses = async (
     policiesResult,
     viewerFollowing,
     mutedRoots,
-    replyUris,
+    replyLinks,
     mentionsResult,
   ] = await Promise.all([
     findAccountsByIds(env.DB, accountIds),
@@ -358,7 +358,7 @@ const renderLocalStatuses = async (
         )
       : undefined,
     viewerId ? listStatusMuteRoots(env.DB, viewerId) : undefined,
-    listStatusReplyUris(env.DB, noteIds),
+    listStatusReplyLinks(env.DB, noteIds),
     listStatusMentions(env.DB, noteIds),
   ]);
 
@@ -383,6 +383,15 @@ const renderLocalStatuses = async (
   const quotePolicies = policiesResult.isOk()
     ? policiesResult.value
     : new Map<string, QuotePolicy>();
+  // A reply to a cached remote status names it by URI.
+  const replyUris = replyLinks.map(
+    (links) =>
+      new Map(
+        [...links].flatMap(([statusId, entry]) =>
+          entry.inReplyToUri === undefined ? [] : [[statusId, entry.inReplyToUri] as const],
+        ),
+      ),
+  );
   const followedByIds = viewerFollowing?.isOk() ? viewerFollowing.value : new Set<string>();
   const mutedSet = mutedRoots?.isOk() ? mutedRoots.value : new Set<string>();
   const mentions = mentionsResult.isOk()
@@ -424,7 +433,6 @@ const renderLocalStatuses = async (
     if (!account || !author) {
       continue;
     }
-    const parent = status.inReplyToId ? byId.get(status.inReplyToId) : undefined;
     const root = rootById?.get(status.id);
     noteDocs.set(
       status.id,
@@ -436,7 +444,11 @@ const renderLocalStatuses = async (
         interactions.get(status.id) ?? NO_STATUS_INTERACTIONS,
         polls.get(status.id),
         mediaById,
-        parent?.accountId ?? null,
+        inReplyToAccountId(
+          (replyLinks.isOk() ? replyLinks.value.get(status.id)?.link : undefined) ?? {
+            kind: "NotReply",
+          },
+        ),
         emojisInTexts([status.text, status.spoilerText], instanceEmojis),
         root !== undefined && mutedSet.has(root),
         sensitizedIds.has(status.accountId),
@@ -445,14 +457,13 @@ const renderLocalStatuses = async (
     );
   }
 
-  // A reply to a cached remote status names it by URI; render its id and author.
+  // A reply to a cached remote status names it by URI; render its id.
   if (replyUris.isOk()) {
     for (const [statusId, uri] of replyUris.value) {
       const parent = replyParents?.isOk() ? replyParents.value.get(uri) : undefined;
       const document = noteDocs.get(statusId);
       if (parent && document) {
         document.in_reply_to_id = parent.id;
-        document.in_reply_to_account_id = RemoteAccountId.encode(parent.actorUri);
       }
     }
   }

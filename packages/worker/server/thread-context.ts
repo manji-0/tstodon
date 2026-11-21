@@ -249,11 +249,11 @@ export const listThreadAncestors = async (
 const DescendantIdRow = z.object({
   kind: z.literal(["Local", "Remote"]),
   id: z.string(),
-  /** 1 when the reply's author wrote the status it answers, Mastodon's `in_reply_to_account_id == account_id`. */
+  /** 1 when the reply answers its own author, Mastodon's `in_reply_to_account_id == account_id`. */
   self_reply: z.number(),
 });
 
-/** A reply below the opened status, and whether it answers its own author's status. */
+/** A reply below the opened status, and whether it answers its own author. */
 export type ThreadReply = Readonly<{ node: ThreadStatus; selfReply: boolean }>;
 
 /**

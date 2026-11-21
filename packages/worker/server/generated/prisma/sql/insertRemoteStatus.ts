@@ -23,9 +23,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param pollJson
  * @param emojisJson
  * @param quotePolicyJson
+ * @param inReplyToLocalId
  */
 export const insertRemoteStatus = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json, emojis_json, quote_policy_json\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)",
+  "INSERT INTO remote_statuses (\nid, actor_uri, object_uri, url, content_html, spoiler_text,\nvisibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json, emojis_json, quote_policy_json,\nin_reply_to_account_id, in_reply_to_actor_uri\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,\nCASE WHEN $19 IS NOT NULL\nTHEN (SELECT l.account_id FROM statuses l WHERE l.id = $19)\nELSE (SELECT p.in_reply_to_account_id FROM remote_statuses p\nWHERE p.object_uri = $14 AND p.actor_uri = $2 AND p.in_reply_to_uri IS NOT NULL)\nEND,\nCASE WHEN $19 IS NULL\nTHEN (SELECT CASE WHEN p.actor_uri = $2 AND p.in_reply_to_uri IS NOT NULL\nTHEN p.in_reply_to_actor_uri ELSE p.actor_uri END\nFROM remote_statuses p WHERE p.object_uri = $14)\nEND\n)",
 ) as (
   id: string,
   actorUri: string,
@@ -45,6 +46,7 @@ export const insertRemoteStatus = $runtime.makeTypedQueryFactory(
   pollJson: string | null,
   emojisJson: string,
   quotePolicyJson: string | null,
+  inReplyToLocalId: string | null,
 ) => $runtime.TypedSql<insertRemoteStatus.Parameters, insertRemoteStatus.Result>;
 
 export namespace insertRemoteStatus {
@@ -67,6 +69,7 @@ export namespace insertRemoteStatus {
     pollJson: string | null,
     emojisJson: string,
     quotePolicyJson: string | null,
+    inReplyToLocalId: string | null,
   ];
   export type Result = {};
 }
