@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { z } from "zod";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, requestsSettled, resetMeter, seedNoise, settle } from "../test/meter";
+import { drainHeld, holdQueue, QUEUE_BATCH, QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { HOME_HORIZON_STEPS } from "./timeline-documents";
 import { ACTIVITY_JSON } from "../test/activity-json";
@@ -299,6 +300,7 @@ describe("D1 statements do not grow with how many things a request names", () =>
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   /** The D1 statements, and the rows they read, of one request. */
@@ -503,6 +505,60 @@ describe("D1 statements do not grow with how many things a request names", () =>
           `${action}: ${many?.statements} statements for more requests or notifications, ${few?.statements} for one`,
         ).toBe(few?.statements);
       }
+    },
+  );
+
+  it(
+    "publishes a note in a fixed number of queries, however many followers it notifies",
+    { timeout: 300_000 },
+    async () => {
+      /** An author followed with notifications on by `count` accounts, and its token. */
+      const followed = async (name: string, count: number) => {
+        const author = await signedInAccount(`budget-publish-${name}@example.com`);
+        for (let start = 0; start < count; start += 10) {
+          await Promise.all(
+            Array.from({ length: Math.min(10, count - start) }, async (_, n) => {
+              const follower = await signedInAccount(
+                `budget-publish-${name}-${start + n}@example.com`,
+              );
+              await post(
+                await accessTokenFor(follower.id),
+                `/api/v1/accounts/${author.id}/follow`,
+                {
+                  notify: true,
+                },
+              );
+            }),
+          );
+        }
+        return accessTokenFor(author.id);
+      };
+      const publish = (token: string, status: string) =>
+        metered(() =>
+          SELF.fetch("https://example.com/api/v1/statuses", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          }),
+        );
+      const [twoToken, manyToken] = [await followed("two", 2), await followed("many", 60)];
+      patchD1();
+      const queued = holdQueue();
+      await publish(twoToken, "warm");
+      await publish(manyToken, "warm");
+      const two = await publish(twoToken, "for two");
+      const many = await publish(manyToken, "for sixty");
+      expect([two.status, many.status]).toEqual([200, 200]);
+      expect(
+        many.statements,
+        `publishing for 60 notifying followers made ${many.statements} statements, for 2 ${two.statements}`,
+      ).toBe(two.statements);
+
+      const mostPerInvocation = await drainHeld(queued, ["NotifyLocalNoteFollowers"]);
+      expect(
+        mostPerInvocation,
+        `one queue invocation of ${QUEUE_BATCH} jobs made ${mostPerInvocation} statements`,
+      ).toBeLessThan(QUEUE_INVOCATION_BUDGET);
     },
   );
 

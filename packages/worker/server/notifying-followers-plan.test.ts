@@ -37,3 +37,25 @@ describe("the notifying-follower queries' plans", () => {
     }
   });
 });
+
+// A local note's notifying followers are read a page at a time after a
+// follow id, so each page must seek the author's follows from that id in id
+// order, not read and sort all of them.
+describe("the local notifying-follower page's plan", () => {
+  it("seeks the author's follows from the page's follow id, in id order", async () => {
+    const params = new Set(listNotifyingFollowers.match(/\$\d+/g) ?? []);
+    const { results } = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN ${listNotifyingFollowers.replace(/\$(\d+)/g, "?$1")}`,
+    )
+      .bind(...Array.from({ length: params.size }, (_, n) => (n === params.size - 1 ? 50 : "x")))
+      .all();
+    const plan = z
+      .array(PlanRow)
+      .parse(results)
+      .map((row) => row.detail);
+    expect(plan).toContain(
+      "SEARCH f USING INDEX idx_follows_target_id (target_account_id=? AND id>?)",
+    );
+    expect(plan.filter((detail) => detail.includes("TEMP B-TREE"))).toEqual([]);
+  });
+});

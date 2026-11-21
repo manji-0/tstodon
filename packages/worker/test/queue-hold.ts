@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { vi } from "vite-plus/test";
 import { z } from "zod";
 import { handleQueue } from "../server/queue-handler";
-import { meter, meterWork, resetMeter } from "./meter";
+import { meter, meterWork, resetMeter, settle } from "./meter";
 
 /** D1's queries per Worker invocation (Workers Paid). */
 export const QUERIES_PER_INVOCATION = 1000;
@@ -81,6 +81,9 @@ export const drainHeld = async (held: HeldQueue, kinds: ReadonlyArray<string>): 
           env,
         ),
       );
+      // The work the jobs put off (a notification's stream render and push)
+      // runs in the same invocation; count it too.
+      await settle();
       most = Math.max(most, meter.tally.statements);
     }
   }
