@@ -6,7 +6,7 @@ import {
   type RemoteStatus as RemoteStatusValue,
   RemoteVisibility,
   type MentionedPost,
-  type NoteThread,
+  NoteThread,
   type OutboxJob,
   StatusNotificationAudience,
 } from "@tstodon/domain";
@@ -46,6 +46,8 @@ import {
   releaseOwed,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
+import { remoteOwnAncestry } from "./own-ancestry";
+import { fetchableParent, queueRemoteThreadResolve } from "./remote-thread-resolve";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
@@ -64,7 +66,6 @@ import {
 import { measureJobPage } from "./metrics";
 import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
 import { isNotifyingRemoteFollower, notifyingRemoteFollowersPage } from "./outbound-follow-store";
-import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
 import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
@@ -269,7 +270,8 @@ const storedMentions = async (
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, or one another delivery wrote whose steps this one finishes; this
  * delivery holds its lease. Absent for a note that owes nothing (one that
- * was fetched and is not distributed, or one whose row existed).
+ * was fetched and is not distributed, or one whose row existed). `inReplyTo`
+ * is the status `raw` replies to, as read when it was parsed.
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
@@ -290,7 +292,7 @@ export type LateSteps = Readonly<{
   addressees?: LocalAddressees;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined }>
+    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined; inReplyTo: string | undefined }>
     | Readonly<{
         kind: "Updated";
         added: ReadonlyArray<string>;
@@ -390,32 +392,16 @@ const distributed = (late: LateSteps): boolean => {
 };
 
 /**
- * Where the stored note `status` sits in its thread: a reply to a parent
- * that is not stored, or does not read, replies to someone else, as Mastodon
- * leaves its `in_reply_to_account_id` unset.
+ * Where the stored note `status` sits in its thread, as Mastodon's
+ * `in_reply_to_account_id` reads: a reply to a parent that is not stored
+ * replies to someone else, and a reply to its author's own reply carries that
+ * reply's answer over ({@link NoteThread.of}).
  */
 const remoteNoteThread = async (
   db: D1Database,
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
-): Promise<Result<NoteThread, RepositoryError>> => {
-  const targets = await findRemoteStatusReplyTargets(db, [status.id]);
-  if (targets.isErr()) {
-    return err(targets.error);
-  }
-  if (targets.value.get(status.id)?.inReplyToUri === undefined) {
-    return ok({ kind: "Root" });
-  }
-  const parent = await findThreadParent(db, identity, { kind: "Remote", status });
-  if (parent.isErr()) {
-    return err(parent.error);
-  }
-  return ok(
-    parent.value?.kind === "Remote" && parent.value.status.actorUri === status.actorUri
-      ? { kind: "SelfReply" }
-      : { kind: "ReplyToOther" },
-  );
-};
+): Promise<Result<NoteThread, RepositoryError>> =>
+  (await remoteOwnAncestry(db, status.id)).map(NoteThread.of);
 
 /**
  * The followers of a page of the author's notifying followers that a note
@@ -435,7 +421,6 @@ const NOTHING_NOTIFIED: NotifiedPage = { recipients: [], next: undefined };
  */
 const notifiedPage = async (
   env: Env,
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
   addressed: ReadonlySet<string>,
   afterFollowId: string,
@@ -453,7 +438,7 @@ const notifiedPage = async (
   if (page.value.followers.length === 0) {
     return ok(NOTHING_NOTIFIED);
   }
-  const thread = await remoteNoteThread(env.DB, identity, status);
+  const thread = await remoteNoteThread(env.DB, status);
   if (thread.isErr()) {
     return err(thread.error);
   }
@@ -476,13 +461,26 @@ const notifiedPage = async (
  */
 const statusNotified = (
   env: Env,
-  identity: InstanceIdentity,
   late: LateSteps,
   addressed: ReadonlySet<string>,
 ): Promise<Result<NotifiedPage, RepositoryError>> =>
   distributed(late)
-    ? notifiedPage(env, identity, late.status, addressed, "")
+    ? notifiedPage(env, late.status, addressed, "")
     : Promise.resolve(ok(NOTHING_NOTIFIED));
+
+/**
+ * The local accounts a stored note names, silently or not, which a limited
+ * or direct note reaches; none is read for any other note.
+ */
+const namedAccounts = async (
+  db: D1Database,
+  status: RemoteStatusValue,
+): Promise<Result<ReadonlySet<string>, RepositoryError>> =>
+  status.visibility.kind === "Limited" || status.visibility.kind === "Direct"
+    ? (await listRemoteStatusMentions(db, [status.id])).map(
+        (mentions) => new Set(mentions.get(status.id)?.accountIds ?? []),
+      )
+    : ok(new Set<string>());
 
 /** The job that reads the page of `status`'s notifying followers after `afterFollowId`. */
 const followerPageJob = (status: RemoteStatusValue, afterFollowId: string): OutboxJob => ({
@@ -516,17 +514,11 @@ export const processNotifyRemoteNoteFollowersJob = async (
     if (status === undefined) {
       return { outcome: "ok", size: 0, chained: false };
     }
-    // A limited or direct note reaches the followers it names, silently or not.
-    const named =
-      status.visibility.kind === "Limited" || status.visibility.kind === "Direct"
-        ? (await listRemoteStatusMentions(env.DB, [status.id])).map(
-            (mentions) => new Set(mentions.get(status.id)?.accountIds ?? []),
-          )
-        : ok(new Set<string>());
+    const named = await namedAccounts(env.DB, status);
     if (named.isErr()) {
       return retry;
     }
-    const page = await notifiedPage(env, identity.value, status, named.value, job.afterFollowId);
+    const page = await notifiedPage(env, status, named.value, job.afterFollowId);
     if (page.isErr()) {
       return retry;
     }
@@ -548,6 +540,48 @@ export const processNotifyRemoteNoteFollowersJob = async (
         }
       : retry;
   });
+
+/**
+ * Distribute the stored note `status` again once its thread is resolved, as
+ * Mastodon's `ThreadResolveWorker` runs `DistributionWorker` with
+ * `skip_notifications`: no mention notification, but `FeedInsertWorker`
+ * still sends the `status` notification, which a reply now known to answer
+ * its own author gets. The home and public streams are told again; a client
+ * drops a status it already holds. Sending it twice notifies once
+ * (`notifyFromRemoteOnce`).
+ */
+export const redistributeRemoteNote = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: RemoteStatusValue,
+): Promise<Result<void, RepositoryError>> => {
+  const named = await namedAccounts(env.DB, status);
+  if (named.isErr()) {
+    return err(named.error);
+  }
+  const notified = await notifiedPage(env, status, named.value, "");
+  if (notified.isErr()) {
+    return err(notified.error);
+  }
+  const reached = await reachRecipients(env, identity, status.actorUri, status, {
+    status: notified.value.recipients,
+    nextFollowers: notified.value.next,
+    mention: [],
+    conversation: [],
+  });
+  if (reached.isErr()) {
+    return err(reached.error);
+  }
+  await startHomeFanOut(env, {
+    event: "update",
+    entryId: status.id,
+    author: { kind: "RemoteActor", actorUri: status.actorUri },
+  });
+  if (status.visibility.kind === "Public") {
+    await startPublicFanOut(env, { event: "update", entryId: status.id });
+  }
+  return ok(undefined);
+};
 
 /**
  * The steps of storing or updating a remote note that run after the batch
@@ -629,7 +663,7 @@ type RecipientStep = "Mention" | "Conversation" | "Status";
 const reachRecipients = async (
   env: Env,
   identity: InstanceIdentity,
-  actor: RemoteActor,
+  actorUri: string,
   status: RemoteStatusValue,
   recipients: Readonly<{
     mention: ReadonlyArray<string>;
@@ -648,7 +682,7 @@ const reachRecipients = async (
   const ordered = [...steps];
   const inline = ordered.slice(0, INLINE_NOTE_RECIPIENTS);
   const queued = ordered.slice(INLINE_NOTE_RECIPIENTS);
-  const served = await serveRecipients(env, identity, actor.actorUri, status, inline);
+  const served = await serveRecipients(env, identity, actorUri, status, inline);
   if (served.isErr()) {
     return err(served.error);
   }
@@ -657,7 +691,7 @@ const reachRecipients = async (
     ...queued.map(([accountId, accountSteps]): OutboxJob => ({
       kind: "FinishRemoteNoteRecipient",
       statusId: status.id,
-      actorUri: actor.actorUri,
+      actorUri,
       accountId,
       steps: accountSteps,
     })),
@@ -775,14 +809,27 @@ const writeLateSteps = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  const notified = await statusNotified(env, identity, late, new Set([...mentioned, ...addressed]));
+  // `Create#resolve_thread`: a note an inbox activity brought that replies to
+  // a status not stored queues the job that fetches it.
+  if (
+    late.kind === "Created" &&
+    inboxDelivery(options) &&
+    late.inReplyTo !== undefined &&
+    fetchableParent(identity, late.inReplyTo)
+  ) {
+    const resolving = await queueRemoteThreadResolve(env, identity, status.id, 1);
+    if (resolving.isErr()) {
+      return err(resolving.error);
+    }
+  }
+  const notified = await statusNotified(env, late, new Set([...mentioned, ...addressed]));
   if (notified.isErr()) {
     return err(notified.error);
   }
   // Mention rows exist before the notifications that point at them. They are
   // sent before the later writes: an `Update` that edits nothing owes no
   // marker, so its redelivery finds the rows and would notify nobody.
-  const reached = await reachRecipients(env, identity, actor, status, {
+  const reached = await reachRecipients(env, identity, actor.actorUri, status, {
     status: notified.value.recipients,
     nextFollowers: notified.value.next,
     mention: mentionsToNotify(late, mentioned),
@@ -1344,6 +1391,7 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
+    inReplyTo,
     addressees: addressees.value,
   });
   return finished.map(() => stored.value);
@@ -1491,6 +1539,7 @@ const resumeCreated = async (
         )
       : ok(undefined);
   }
+  const note = parseNoteDocument(raw);
   return finishRemoteNote(env, identity, {
     kind: "Created",
     actor,
@@ -1498,5 +1547,6 @@ const resumeCreated = async (
     status,
     options,
     marker: held.value,
+    inReplyTo: note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined,
   });
 };

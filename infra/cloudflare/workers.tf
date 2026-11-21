@@ -32,6 +32,15 @@ resource "cloudflare_queue" "outbox_dlq" {
   queue_name = var.outbox_dlq_name
 }
 
+# Fetch work kept off the outbox queue (a reply's thread job); what it gives
+# up on goes to the outbox dead-letter queue.
+resource "cloudflare_queue" "pull" {
+  count = var.create_queue ? 1 : 0
+
+  account_id = var.account_id
+  queue_name = var.pull_queue_name
+}
+
 # Attach after the Worker script exists (first `wrangler deploy`). These
 # mirror what `wrangler deploy` writes from `packages/worker/app/queues/*.ts`;
 # keep the settings equal to the exports there.
@@ -65,5 +74,22 @@ resource "cloudflare_queue_consumer" "outbox_dlq" {
     max_retries      = var.dlq_consumer_max_retries
     max_concurrency  = 1
     max_wait_time_ms = var.dlq_consumer_max_wait_time_ms
+  }
+}
+
+resource "cloudflare_queue_consumer" "pull" {
+  count = var.create_queue && var.attach_queue_consumer ? 1 : 0
+
+  account_id        = var.account_id
+  queue_id          = cloudflare_queue.pull[0].id
+  script_name       = var.worker_script_name
+  type              = "worker"
+  dead_letter_queue = cloudflare_queue.outbox_dlq[0].queue_name
+
+  settings = {
+    batch_size       = var.pull_consumer_batch_size
+    max_retries      = var.pull_consumer_max_retries
+    max_concurrency  = var.pull_consumer_max_concurrency
+    max_wait_time_ms = var.pull_consumer_max_wait_time_ms
   }
 }

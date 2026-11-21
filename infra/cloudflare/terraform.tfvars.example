@@ -11,6 +11,7 @@ d1_primary_location_hint = "apac" # matches wrangler placement aws:ap-southeast-
 r2_media_bucket_name = "tstodon-media"
 outbox_queue_name    = "tstodon-outbox-process"
 outbox_dlq_name      = "tstodon-outbox-dlq"
+pull_queue_name      = "tstodon-pull"
 
 worker_script_name     = "tstodon"
 attach_queue_consumer  = false # set true after the first wrangler deploy

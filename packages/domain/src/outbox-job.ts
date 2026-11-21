@@ -316,6 +316,20 @@ const BackfillRemoteOutboxSchema = z.object({
 });
 
 /**
+ * Fetch the parent of the stored remote reply `statusId`, which this server
+ * did not hold when the reply arrived, and finish the reply as linked, as
+ * Mastodon's `ThreadResolveWorker`. `hop` counts the statuses this chain of
+ * jobs fetches, the reply's parent being 1: a fetched parent that is itself a
+ * reply to a status not held queues the next hop, up to Mastodon's
+ * `DISCOVERIES_PER_REQUEST`.
+ */
+const ResolveRemoteThreadSchema = z.object({
+  kind: z.literal("ResolveRemoteThread"),
+  statusId: StatusId.schema,
+  hop: z.number().int().min(1),
+});
+
+/**
  * Store the notes above a cached remote status in its thread (`Root`), then
  * walk its reply tree one level at a time (`Level`): the cached statuses
  * `depth` levels below it (0 is the status itself), after the one with id
@@ -483,6 +497,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   FanOutPublicSchema,
   BackfillRemoteOutboxSchema,
   BackfillRemoteThreadSchema,
+  ResolveRemoteThreadSchema,
   ProcessCsvImportSchema,
   SeverBlockedDomainFollowsSchema,
   AuthorizeFollowRequestsSchema,
