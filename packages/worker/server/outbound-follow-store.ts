@@ -2,6 +2,7 @@ import { type NotifyingFollower, OutboundFollow, type OutboundFollowAnswer } fro
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import type { FollowOptions } from "./follow-store";
@@ -23,7 +24,11 @@ import {
 
 const FollowActivityIdRow = z.object({ follow_activity_id: z.string() });
 const ActorUriRow = z.object({ actor_uri: z.string() });
-const NotifyingFollowerRow = z.object({ account_id: z.string(), languages_json: z.string() });
+const NotifyingFollowerRow = z.object({
+  id: z.string(),
+  account_id: z.string(),
+  languages_json: z.string(),
+});
 const FoundRow = z.object({ found: z.number() });
 
 const OutboundFollowRowSchema = z.object({
@@ -216,33 +221,64 @@ export const deleteOutboundFollow = async (
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.
 warmSchemas([OutboundFollowRowSchema]);
 
-/** The local accounts following `actorUri` (accepted) that asked for a notification on each new note and do not mute it. */
-export const notifyingRemoteFollowers = async (
+/** A page of {@link notifyingRemoteFollowersPage}. */
+export type NotifyingFollowerPage = Readonly<{
+  followers: ReadonlyArray<NotifyingFollower>;
+  /** The follow id the next page starts after; absent on the last page. */
+  next: string | undefined;
+}>;
+
+/**
+ * A page of the local accounts following `actorUri` (accepted) that signed
+ * in recently, asked for a notification on each new note, do not mute it,
+ * and do not block or mute an account or actor its note `statusId` actively
+ * mentions: up to `limit` of them, after the follow `afterFollowId` (empty
+ * for the first page), in follow id order.
+ */
+export const notifyingRemoteFollowersPage = async (
   db: D1Database,
   actorUri: string,
-): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
+  statusId: string,
+  afterFollowId: string,
+  limit: number,
+): Promise<Result<NotifyingFollowerPage, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingRemoteFollowersSql(actorUri, nowIso()),
+      listNotifyingRemoteFollowersSql(
+        actorUri,
+        nowIso(),
+        statusId,
+        signedInRecentlySinceDay(),
+        afterFollowId,
+        limit,
+      ),
       NotifyingFollowerRow,
     );
-    return rows.map((row) => ({
-      accountId: row.account_id,
-      languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
-    }));
+    return {
+      followers: rows.map((row) => ({
+        accountId: row.account_id,
+        languages: parseJsonColumn(z.array(z.string()), row.languages_json).unwrapOr([]),
+      })),
+      next: rows.length === limit ? rows.at(-1)?.id : undefined,
+    };
   });
 
-/** Whether `accountId` still follows `actorUri` (accepted) with notifications on, and does not mute it. */
+/**
+ * Whether `accountId` still follows `actorUri` (accepted) with notifications
+ * on, does not mute it, and does not block or mute an account or actor its
+ * note `statusId` actively mentions.
+ */
 export const isNotifyingRemoteFollower = async (
   db: D1Database,
   accountId: string,
   actorUri: string,
+  statusId: string,
 ): Promise<Result<boolean, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      findNotifyingRemoteFollowSql(accountId, actorUri, nowIso()),
+      findNotifyingRemoteFollowSql(accountId, actorUri, nowIso(), statusId),
       FoundRow,
     );
     return rows.length > 0;

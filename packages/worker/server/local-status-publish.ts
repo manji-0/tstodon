@@ -318,7 +318,7 @@ export const publishLocalNote = async (
   // Followers who asked for notifications on this account's posts get a
   // `status` notification when the note reaches their home. The
   // notification policy still decides delivery.
-  const notifying = await notifyingFollowers(env.DB, user.id);
+  const notifying = await notifyingFollowers(env.DB, user.id, note.id);
   if (notifying.isErr()) {
     return err(notifying.error);
   }

@@ -10,7 +10,10 @@ import { ensureOutboxTarget, findOutboundActivity } from "./outbox-store";
 import { processExpiredPolls } from "./poll-expiry";
 import { measureJobPage } from "./metrics";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
-import { processFinishRemoteNoteRecipientJob } from "./remote-status-persist";
+import {
+  processFinishRemoteNoteRecipientJob,
+  processNotifyRemoteNoteFollowersJob,
+} from "./remote-status-persist";
 import { processNotifyRemoteNoteBoostersJob } from "./remote-note-booster-updates";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
@@ -353,6 +356,8 @@ export const processOutboxJob = async (
       return processLinkCardJob(env, job);
     case "FinishRemoteNoteRecipient":
       return processFinishRemoteNoteRecipientJob(env, job);
+    case "NotifyRemoteNoteFollowers":
+      return processNotifyRemoteNoteFollowersJob(env, job);
     case "NotifyRemoteNoteBoosters":
       return processNotifyRemoteNoteBoostersJob(env, job);
     case "DistributePollUpdate":

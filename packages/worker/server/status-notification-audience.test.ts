@@ -152,6 +152,57 @@ describe("the status notification of a followed account's post", () => {
     expect(await statusNotifications("sna-language-ja@example.com", id)).toBe(0);
     expect(await statusNotifications("sna-language-en@example.com", id)).toBe(1);
   });
+
+  // `filter_from_home` filters a status whose active mentions name an
+  // account the follower blocks or mutes (`crutches[:active_mentions]`).
+  it("goes to no follower who blocks or mutes an account the note mentions", async () => {
+    const author = await signedInAccount("sna-mentions-author@example.com");
+    const blocked = await signedInAccount("sna-mentions-blocked@example.com");
+    const muted = await signedInAccount("sna-mentions-muted@example.com");
+    await notifyingFollower("sna-mentions-blocker@example.com", author.id);
+    await notifyingFollower("sna-mentions-muter@example.com", author.id);
+    await call("sna-mentions-blocker@example.com", `/api/v1/accounts/${blocked.id}/block`, {});
+    await call("sna-mentions-muter@example.com", `/api/v1/accounts/${muted.id}/mute`, {
+      notifications: false,
+    });
+
+    const naming = await post("sna-mentions-author@example.com", {
+      status: `hello @${blocked.username} and @${muted.username}`,
+    });
+    const plain = await post("sna-mentions-author@example.com", { status: "hello" });
+
+    expect(await statusNotifications("sna-mentions-blocker@example.com", naming)).toBe(0);
+    expect(await statusNotifications("sna-mentions-muter@example.com", naming)).toBe(0);
+    expect(await statusNotifications("sna-mentions-blocker@example.com", plain)).toBe(1);
+    expect(await statusNotifications("sna-mentions-muter@example.com", plain)).toBe(1);
+  });
+
+  // `followers_for_local_distribution` keeps the followers whose user signed
+  // in within `User::ACTIVE_DURATION` (7 days).
+  it("goes to no follower who has not signed in for a week", async () => {
+    const author = await signedInAccount("sna-inactive-author@example.com");
+    await notifyingFollower("sna-inactive-follower@example.com", author.id);
+    await notifyingFollower("sna-inactive-recent@example.com", author.id);
+    const away = await signedInAccount("sna-inactive-follower@example.com");
+    const recent = await signedInAccount("sna-inactive-recent@example.com");
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
+        daysAgo(8),
+        away.id,
+      ),
+      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
+        daysAgo(6),
+        recent.id,
+      ),
+    ]);
+
+    const id = await post("sna-inactive-author@example.com", { status: "anyone there?" });
+
+    expect(await statusNotifications("sna-inactive-follower@example.com", id)).toBe(0);
+    expect(await statusNotifications("sna-inactive-recent@example.com", id)).toBe(1);
+  });
 });
 
 describe("migration 0159", () => {

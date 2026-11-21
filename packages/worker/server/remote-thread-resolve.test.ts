@@ -216,8 +216,8 @@ describe("a remote reply whose parent this server does not hold", () => {
       in_reply_to_account_id: RemoteAccountId.encode(author.actorUri),
     });
     expect(await statusNotifications(email, reply)).toBe(1);
-    // A fetched root is not distributed here (FED-16).
-    expect(await statusNotifications(email, parentId ?? "")).toBe(0);
+    // The fetched root is recent, so its own `Create` distributes it too.
+    expect(await statusNotifications(email, parentId ?? "")).toBe(1);
 
     // The queue delivers a job again: nothing is fetched or sent twice.
     held.bodies.push(resolveJob(reply, 1));

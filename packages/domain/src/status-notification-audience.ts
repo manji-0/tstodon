@@ -80,9 +80,10 @@ export const StatusNotificationAudience = {
    * followers-only note, the named ones for a limited or direct note) whose
    * follow keeps the note's language (`FeedManager#filter_from_home`), and
    * none for a reply to someone else. `followers` leaves out the ones who
-   * mute the author, whether or not the mute hides notifications, as
-   * `filter_from_home` filters a muted author's status; blocks and muted
-   * conversations are screened when the notification is delivered.
+   * mute the author, whether or not the mute hides notifications, and the
+   * ones who block or mute an account the note actively mentions, as
+   * `filter_from_home` filters such a status; blocks of the author and
+   * muted conversations are screened when the notification is delivered.
    */
   recipients: (
     note: NotifiedNote,
