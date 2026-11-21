@@ -39,6 +39,7 @@ import { backfillStoredMediaSizesPage, logBackfillStoredMediaSizesDone } from ".
 import { backfillLocalNoteTags } from "./local-tag-backfill";
 import { foldTagNames } from "./tag-name-fold";
 import { asciiDomainNames } from "./domain-name-ascii";
+import { applyDomainBlockEffects } from "./admin-actions";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import {
@@ -233,7 +234,7 @@ export const processOutboxJob = async (
       });
     case "AsciiDomainNames":
       return measureJobPage(env, job.kind, async () => {
-        const page = await asciiDomainNames(env.DB);
+        const page = await asciiDomainNames(env);
         if (page.isErr()) {
           return { outcome: "retry", size: 0, chained: false };
         }
@@ -241,6 +242,11 @@ export const processOutboxJob = async (
           await env.OUTBOX_PROCESS_QUEUE.send({ kind: "AsciiDomainNames" });
         }
         return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
+      });
+    case "ApplyDomainBlockEffects":
+      return measureJobPage(env, job.kind, async () => {
+        const applied = await applyDomainBlockEffects(env, job.domain);
+        return { outcome: applied.isErr() ? "retry" : "ok", size: 1, chained: false };
       });
     case "RekeyLegacyMedia":
       return measureJobPage(env, job.kind, async () => {

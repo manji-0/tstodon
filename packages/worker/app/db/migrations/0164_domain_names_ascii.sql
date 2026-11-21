@@ -20,4 +20,10 @@
 --   - `domain_allows`, `email_domain_blocks`: the earlier `created_at`;
 --   - `account_domain_blocks`: one block per account, the earlier
 --     `created_at`.
+--
+-- Remote hosts are ASCII, so a block stored in Unicode applied to no actor,
+-- and making it severed and cleared nothing. Once a page commits, the job
+-- queues what making each moved block does: `ApplyDomainBlockEffects` for an
+-- instance block (its media clear and severance, from its row as it stands)
+-- and `SeverBlockedDomainFollows` for a user's block.
 INSERT OR IGNORE INTO backfill_cursors (name) VALUES ('domain_name_ascii');

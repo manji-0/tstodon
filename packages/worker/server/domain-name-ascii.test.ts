@@ -1,8 +1,10 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult, Sensitive } from "@tstodon/core";
+import { OutboxJob, type OutboxJobValue } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
+import { remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { asciiDomainNames } from "./domain-name-ascii";
 import { processOutboxJob } from "./outbox-job";
@@ -113,9 +115,9 @@ describe("asciiDomainNames", () => {
     ).toEqual([["beide-ü.example"], ["konto-ü.example"], ["xn--beide--8ya.example"]]);
 
     // Three a page puts both spellings of `doppel-ü.example` in the first one.
-    let page = await asciiDomainNames(env.DB, 3);
+    let page = await asciiDomainNames(env, 3);
     while (page.isOk() && page.value.chained) {
-      page = await asciiDomainNames(env.DB, 3);
+      page = await asciiDomainNames(env, 3);
     }
     expect(page.isOk()).toBe(true);
 
@@ -182,8 +184,108 @@ describe("asciiDomainNames", () => {
 
     // Once complete, a run reads the cursor and stops.
     expect(await processOutboxJob(env, { kind: "AsciiDomainNames" })).toBe("ok");
-    expect(await asciiDomainNames(env.DB)).toMatchObject({
+    expect(await asciiDomainNames(env)).toMatchObject({
       value: { scanned: 0, renamed: 0, chained: false },
     });
+  });
+});
+
+const QUEUED: QueueSendResponse = {
+  metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** Run the rename from the start, then the jobs it queued, as the queue would. */
+const renameAndRunQueued = async (): Promise<ReadonlyArray<OutboxJobValue>> => {
+  await env.DB.prepare(
+    "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'domain_name_ascii'",
+  ).run();
+  vi.restoreAllMocks();
+  const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+  let page = await asciiDomainNames(env);
+  while (page.isOk() && page.value.chained) {
+    page = await asciiDomainNames(env);
+  }
+  expect(page.isOk()).toBe(true);
+  const queued = send.mock.calls.flatMap(([body]) => {
+    const job = OutboxJob.parse(body);
+    return job.isOk() && job.value.kind !== "AsciiDomainNames" ? [job.value] : [];
+  });
+  for (const job of queued) {
+    expect(await processOutboxJob(env, job)).toBe("ok");
+  }
+  return queued;
+};
+
+const follows = async (account: string, actorUri: string): Promise<unknown[][]> =>
+  rows(
+    "SELECT state FROM outbound_follows WHERE account_id = ?1 AND actor_uri = ?2",
+    account,
+    actorUri,
+  );
+
+describe("asciiDomainNames switching a stored block on", () => {
+  it("severs the local follows under a Unicode suspension once it names the ASCII host", async () => {
+    const remote = await remoteActor("fern", "xn--fern--ova.example");
+    const account = await accountId("idn-fern-follower@example.com");
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO domain_blocks (id, domain, severity, reject_media, reject_reports, obfuscate, created_at)
+         VALUES ('idn-fern', 'fern-ü.example', 'suspend', 0, 0, 0, '2020-01-01T00:00:00.000Z')`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
+         VALUES ('idn-fern-follow', ?1, ?2, ?2 || '#follows/idn', 'Accepted')`,
+      ).bind(account, remote.actorUri),
+    ]);
+    expect(await follows(account, remote.actorUri)).toEqual([["Accepted"]]);
+
+    await renameAndRunQueued();
+
+    expect(await follows(account, remote.actorUri)).toEqual([]);
+    expect(
+      await rows(
+        "SELECT type, target_name FROM relationship_severance_events WHERE target_name = 'xn--fern--ova.example'",
+      ),
+    ).toEqual([["domain_block", "xn--fern--ova.example"]]);
+
+    // A second run finds nothing to rename and severs nothing again.
+    const again = await renameAndRunQueued();
+    expect(again).toEqual([]);
+    expect(
+      await rows(
+        "SELECT count(*) FROM relationship_severance_events WHERE target_name = 'xn--fern--ova.example'",
+      ),
+    ).toEqual([[1]]);
+  });
+
+  it("severs a user's follows under their own Unicode domain block once it is renamed", async () => {
+    const remote = await remoteActor("nutzer", "xn--nutzer--t2a.example");
+    const account = await accountId("idn-nutzer@example.com");
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO account_domain_blocks (account_id, domain, created_at)
+         VALUES (?1, 'nutzer-ü.example', '2020-01-01T00:00:00.000Z')`,
+      ).bind(account),
+      env.DB.prepare(
+        `INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
+         VALUES ('idn-nutzer-follow', ?1, ?2, ?2 || '#follows/idn', 'Accepted')`,
+      ).bind(account, remote.actorUri),
+    ]);
+
+    const queued = await renameAndRunQueued();
+
+    expect(queued).toEqual([
+      expect.objectContaining({
+        kind: "SeverBlockedDomainFollows",
+        accountId: account,
+        domain: "xn--nutzer--t2a.example",
+      }),
+    ]);
+    expect(await follows(account, remote.actorUri)).toEqual([]);
   });
 });

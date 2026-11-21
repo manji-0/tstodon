@@ -38,6 +38,7 @@ import {
   clearRemoteMediaForDomain,
   type DomainBlockInput,
   type DomainBlockRow,
+  findDomainBlockByDomain,
   findDomainBlockById,
   findDomainBlockRule,
   insertDomainBlock,
@@ -361,21 +362,43 @@ const savedBlock = async (
   if (block.isErr() || !block.value) {
     return block;
   }
-  const host = Hostname.ofAuthority(block.value.domain);
-  if (block.value.reject_media !== 0) {
+  const applied = await blockEffects(env, block.value);
+  return applied.map(() => block.value);
+};
+
+/**
+ * What making a block does to what is stored: the media of `reject_media`
+ * cleared, the follows of a suspension severed. Both find nothing the second
+ * time, so a block can be applied again.
+ */
+const blockEffects = async (
+  env: Env,
+  block: DomainBlockRow,
+): Promise<Result<void, RepositoryError>> => {
+  const host = Hostname.ofAuthority(block.domain);
+  if (block.reject_media !== 0) {
     await clearRemoteMediaForDomain(env.DB, host);
   }
-  if (block.value.severity === "suspend") {
-    const severed = await severAndNotify(env, {
+  if (block.severity === "suspend") {
+    return severAndNotify(env, {
       scope: { kind: "Domain", domain: host },
       type: "domain_block",
-      targetName: block.value.domain,
+      targetName: block.domain,
     });
-    if (severed.isErr()) {
-      return err(severed.error);
-    }
   }
-  return block;
+  return ok(undefined);
+};
+
+/** Apply the instance domain block on `domain` as it stands now, as making it would; nothing when there is none. */
+export const applyDomainBlockEffects = async (
+  env: Env,
+  domain: Hostname,
+): Promise<Result<void, RepositoryError>> => {
+  const block = await findDomainBlockByDomain(env.DB, domain);
+  if (block.isErr()) {
+    return err(block.error);
+  }
+  return block.value ? blockEffects(env, block.value) : ok(undefined);
 };
 
 const policyOf = (row: DomainBlockRow): DomainBlockPolicy => ({

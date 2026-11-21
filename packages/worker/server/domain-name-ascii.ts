@@ -1,4 +1,10 @@
-import { Hostname } from "@tstodon/domain";
+import {
+  AccountId,
+  type AccountIdValue,
+  Hostname,
+  type OutboxJob as OutboxJobValue,
+} from "@tstodon/domain";
+import { newEntityId } from "./ids";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
@@ -131,9 +137,10 @@ const pageRenames = (
  * concurrent page leaves the same rows.
  */
 export const asciiDomainNames = async (
-  db: D1Database,
+  env: Env,
   pageSize: number = DOMAIN_NAME_ASCII_PAGE,
 ): Promise<Result<DomainNameAsciiPage, RepositoryError>> => {
+  const db = env.DB;
   const read = await runD1(async () => {
     const cursor = (await queryTyped(db, readBackfillCursorSql(CURSOR), CursorRow))[0];
     if (cursor === undefined || cursor.completed_at !== null) {
@@ -156,6 +163,10 @@ export const asciiDomainNames = async (
   const cutShort = page.read.length < names.length;
   const full = names.length === pageSize || cutShort;
   const pairs = JSON.stringify(page.renames);
+  const moving = page.renames.length === 0 ? ok(NOTHING_MOVING) : await movingBlocks(db, pairs);
+  if (moving.isErr()) {
+    return err(moving.error);
+  }
   const advanced = await runD1Batch(db, [
     ...(page.renames.length === 0 ? [] : RENAMES.map((sql) => db.prepare(sql).bind(pairs))),
     d1PrepareTyped(
@@ -172,5 +183,89 @@ export const asciiDomainNames = async (
     return err(advanced.error);
   }
   const moved = (advanced.value.at(-1)?.results ?? []).length > 0;
+  if (moved) {
+    await queueBlockEffects(env, moving.value);
+  }
   return ok({ scanned: page.read.length, renamed: page.renames.length, chained: moved && full });
+};
+
+/** The blocks a page moves onto an ASCII name, by that name: they start applying once renamed. */
+type MovingBlocks = Readonly<{
+  instance: ReadonlyArray<Hostname>;
+  account: ReadonlyArray<Readonly<{ accountId: AccountIdValue; domain: Hostname }>>;
+}>;
+
+const NOTHING_MOVING: MovingBlocks = { instance: [], account: [] };
+
+const NewDomainRow = z.object({ domain: Hostname.schema });
+const AccountBlockRow = z.object({ account_id: AccountId.schema, domain: Hostname.schema });
+
+/**
+ * Read, before the renames, the instance and user domain blocks they move:
+ * each is renamed to its ASCII name or merged into the row stored there.
+ * Remote hosts are ASCII, so a block stored in Unicode applied to no actor;
+ * making it severed and cleared nothing.
+ */
+const movingBlocks = async (
+  db: D1Database,
+  pairs: string,
+): Promise<Result<MovingBlocks, RepositoryError>> =>
+  runD1(async () => {
+    const [instance, account] = await db.batch([
+      db
+        .prepare(
+          `SELECT DISTINCT ${NEW} AS domain FROM json_each(?1) e JOIN domain_blocks d ON d.domain = ${OLD}`,
+        )
+        .bind(pairs),
+      db
+        .prepare(
+          `SELECT DISTINCT r.account_id, ${NEW} AS domain
+           FROM json_each(?1) e JOIN account_domain_blocks r ON r.domain = ${OLD}`,
+        )
+        .bind(pairs),
+    ]);
+    return {
+      instance: parseRows(NewDomainRow, instance?.results).map((row) => row.domain),
+      account: parseRows(AccountBlockRow, account?.results).map((row) => ({
+        accountId: row.account_id,
+        domain: row.domain,
+      })),
+    };
+  });
+
+/**
+ * Queue what making each moved block does, now that it applies: an instance
+ * block's media clear and severance (`ApplyDomainBlockEffects`, from its row
+ * as it stands), and a user block's severance of the account's follows
+ * there (`SeverBlockedDomainFollows`). Each finds nothing it already did, so
+ * a block merged into one that applied already severs nothing again. The
+ * renames are committed when this runs, and a page renames a row once.
+ */
+const queueBlockEffects = async (env: Env, moving: MovingBlocks): Promise<void> => {
+  const jobs: OutboxJobValue[] = [
+    ...moving.instance.map((domain): OutboxJobValue => ({
+      kind: "ApplyDomainBlockEffects",
+      domain,
+    })),
+    ...moving.account.map(({ accountId, domain }): OutboxJobValue => ({
+      kind: "SeverBlockedDomainFollows",
+      accountId,
+      domain,
+      eventId: newEntityId(),
+      afterActorUri: "",
+    })),
+  ];
+  for (const job of jobs) {
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.send(job);
+    } catch {
+      console.error(
+        JSON.stringify({
+          kind: "AsciiDomainEffectsNotQueued",
+          job: job.kind,
+          domain: "domain" in job ? job.domain : undefined,
+        }),
+      );
+    }
+  }
 };
