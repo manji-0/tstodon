@@ -1,7 +1,6 @@
 import {
   InstanceIdentity,
   type LocalStatus,
-  RemoteActor,
   type RemoteStatus,
   type ThreadStatus,
 } from "@tstodon/domain";
@@ -30,11 +29,6 @@ import {
   StatusRowSchema,
 } from "./status-store";
 import { queryTyped } from "./typed-sql";
-import { viewableStatusIds } from "./visibility-guard";
-import { restrictedDomains } from "./admin-domain-block-store";
-import { listBlockedDomains } from "./domain-block-store";
-import { findRemoteActorsByUris } from "./remote-actor-store";
-import { listSuppressedAuthors } from "./block-mute-store";
 
 /** The D1 lookup behind `FindThreadParent`. */
 export const findThreadParent = async (
@@ -342,50 +336,3 @@ export const promoteSelfReplies = (replies: ReadonlyArray<ThreadReply>): ThreadR
   ...replies.filter((reply) => reply.selfReply),
   ...replies.filter((reply) => !reply.selfReply),
 ];
-
-/**
- * The ids of the thread statuses the viewer may see, without authors they
- * block or mute (or who block them), remote actors on domains they block, or
- * domains the instance limits or suspends — as remote timelines leave them out.
- */
-export const visibleThreadStatusIds = async (
-  db: D1Database,
-  statuses: ReadonlyArray<ThreadStatus>,
-  viewerId: string | undefined,
-): Promise<ReadonlySet<string>> => {
-  const [suppressed, restricted, own, actors, viewable] = await Promise.all([
-    viewerId ? listSuppressedAuthors(db, viewerId) : undefined,
-    restrictedDomains(db),
-    viewerId ? listBlockedDomains(db, viewerId) : undefined,
-    findRemoteActorsByUris(
-      db,
-      statuses.flatMap((node) => (node.kind === "Remote" ? [node.status.actorUri] : [])),
-    ),
-    viewableStatusIds(
-      db,
-      statuses.flatMap((node) => (node.kind === "Local" ? [node.status] : [])),
-      statuses.flatMap((node) => (node.kind === "Remote" ? [node.status] : [])),
-      viewerId,
-    ),
-  ]);
-  const blockedDomains = new Set(own?.isOk() ? own.value : []);
-  const hidden = (node: ThreadStatus): boolean => {
-    if (node.kind === "Local") {
-      return suppressed?.isOk() === true && suppressed.value.accountIds.has(node.status.accountId);
-    }
-    if (suppressed?.isOk() && suppressed.value.actorUris.has(node.status.actorUri)) {
-      return true;
-    }
-    const actor = actors.isOk() ? actors.value.get(node.status.actorUri) : undefined;
-    return (
-      !actor ||
-      RemoteActor.onAnyHost(actor, blockedDomains) ||
-      RemoteActor.onAnyHost(actor, restricted)
-    );
-  };
-  return new Set(
-    statuses.flatMap((node) =>
-      !hidden(node) && viewable.has(node.status.id) ? [node.status.id] : [],
-    ),
-  );
-};

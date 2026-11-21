@@ -11,8 +11,8 @@ import {
   listThreadAncestors,
   listThreadDescendants,
   promoteSelfReplies,
-  visibleThreadStatusIds,
 } from "../../thread-context";
+import { permittedStatusIds } from "../../status-filter";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../../http";
 import { mastodonRemoteStatuses } from "../../remote-status-documents";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
@@ -23,12 +23,7 @@ import { findRemoteStatusById, findRemoteStatusesByIds } from "../../remote-stat
 import { findThreadRefresh, requestRemoteThreadBackfill } from "../../remote-thread-backfill";
 import { requestQuoteRefresh } from "../../quote-retry-queue";
 import { ContextLimits, findStatusById, findStatusesByIds } from "../../status-store";
-import {
-  canViewRemoteBoost,
-  canViewRemoteStatus,
-  canViewStatus,
-  viewableStatusIds,
-} from "../../visibility-guard";
+import { canViewRemoteBoost, canViewRemoteStatus, canViewStatus } from "../../visibility-guard";
 import { findRemoteBoostById } from "../../remote-boost-store";
 import { remoteBoostDocuments } from "../../remote-boost-documents";
 import { documentsById } from "../../documents-by-id";
@@ -119,14 +114,16 @@ export const getV1Statuses = async (c: Context<{ Bindings: Env }, "/api/v1/statu
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  const viewable = await viewableStatusIds(
+  const permitted = await permittedStatusIds(
     c.env.DB,
-    [...locals.value.values()],
-    [...remotes.value.values()],
+    [
+      ...[...locals.value.values()].map((status): ThreadStatus => ({ kind: "Local", status })),
+      ...[...remotes.value.values()].map((status): ThreadStatus => ({ kind: "Remote", status })),
+    ],
     viewerId,
   );
-  const visibleLocals = [...locals.value.values()].filter((status) => viewable.has(status.id));
-  const visibleRemotes = [...remotes.value.values()].filter((status) => viewable.has(status.id));
+  const visibleLocals = [...locals.value.values()].filter((status) => permitted.has(status.id));
+  const visibleRemotes = [...remotes.value.values()].filter((status) => permitted.has(status.id));
   const [localDocuments, remoteDocuments] = await Promise.all([
     mastodonStatuses(c.env, identity.value, visibleLocals, viewerId),
     mastodonRemoteStatuses(c.env, identity.value, visibleRemotes, viewerId),
@@ -206,7 +203,7 @@ export const getV1StatusesByIdContext = async (
     return jsonRepositoryError(c, descendants.error.message);
   }
   // As Mastodon, each level is limited first, then filtered for the viewer.
-  const visible = await visibleThreadStatusIds(
+  const visible = await permittedStatusIds(
     c.env.DB,
     [...ancestors.value, ...descendants.value.map((reply) => reply.node)],
     viewerId,

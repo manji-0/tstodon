@@ -14,7 +14,6 @@ import {
   clearRemoteMediaForDomain as clearRemoteMediaForDomainSql,
   listMediaRejectedDomains as listMediaRejectedDomainsSql,
   listPublicDomainBlocks as listPublicDomainBlocksSql,
-  listRestrictedDomains as listRestrictedDomainsSql,
   listSuspendedDomains as listSuspendedDomainsSql,
   updateDomainBlock as updateDomainBlockSql,
 } from "./generated/prisma/sql";
@@ -153,12 +152,6 @@ export const deleteDomainBlock = async (
     const rows = await queryTyped(db, deleteDomainBlockSql(id), IdRow);
     return rows.length > 0;
   });
-
-/** Domains hidden from public surfaces (silence + suspend). */
-export const restrictedDomains = async (db: D1Database): Promise<ReadonlySet<Hostname>> => {
-  const rows = await runD1(async () => queryTyped(db, listRestrictedDomainsSql(), DomainRow));
-  return new Set((rows.isOk() ? rows.value : []).map((row) => Hostname.ofAuthority(row.domain)));
-};
 
 const hostnames = (rows: ReadonlyArray<unknown>): ReadonlySet<Hostname> =>
   new Set(parseRows(DomainRow, rows).map((row) => Hostname.ofAuthority(row.domain)));

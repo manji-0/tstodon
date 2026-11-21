@@ -7,8 +7,8 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds } from "./remote-status-store";
+import { permittedStatusIds } from "./status-filter";
 import { findStatusesByIds } from "./status-store";
-import { visibleThreadStatusIds } from "./thread-context";
 import { viewableStatusIds } from "./visibility-guard";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -126,7 +126,7 @@ const queriesFor = async (prefix: string, count: number, visibility: Audience, v
   return {
     viewable: await measure((db) => viewableStatusIds(db, locals, remotes, viewer.id)),
     quotes: await measure((db) => quotedStatusAccess(db, locals, remotes, viewer.id)),
-    thread: await measure((db) => visibleThreadStatusIds(db, nodes, viewer.id)),
+    permitted: await measure((db) => permittedStatusIds(db, nodes, viewer.id)),
     shown: (await viewableStatusIds(env.DB, locals, remotes, viewer.id)).size,
   };
 };
@@ -144,7 +144,7 @@ describe("visibility checks over many statuses", () => {
 
     expect(many.viewable).toBe(one.viewable);
     expect(many.quotes).toBe(one.quotes);
-    expect(many.thread).toBe(one.thread);
+    expect(many.permitted).toBe(one.permitted);
     expect([one.shown, many.shown]).toEqual([2, count * 2]);
   });
 });

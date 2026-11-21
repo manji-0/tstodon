@@ -760,8 +760,6 @@ export * from "./sql/listRemoteThreadAncestors";
 
 export * from "./sql/listRemoteThreadLevel";
 
-export * from "./sql/listRestrictedDomains";
-
 export * from "./sql/listRestrictedTagNames";
 
 export * from "./sql/listSensitizedAccountIds";
@@ -799,6 +797,8 @@ export * from "./sql/listTagModerationsByNamesJson";
 export * from "./sql/listThreadDescendantIds";
 
 export * from "./sql/listUnavailableDeliveryDomains";
+
+export * from "./sql/listUnfollowedSilencedAuthorsJson";
 
 export * from "./sql/listUnindexedRemoteStatuses";
 
