@@ -4,7 +4,6 @@ import { afterResponse } from "./after-response";
 import type {
   LocalAccount,
   LocalNote,
-  NoteThread,
   RemoteActor,
   StatusTargetValue,
   ThreadStatus,
@@ -13,6 +12,7 @@ import type {
 import {
   InstanceIdentity,
   LocalStatus,
+  NoteThread,
   StatusId,
   StatusNotificationAudience,
   StatusTarget,
@@ -42,6 +42,7 @@ import { startHomeFanOut } from "./home-fan-out";
 import { startPublicFanOut } from "./public-fan-out";
 import { publishConversationUpdate } from "./conversation-stream";
 import { publishToAccount } from "./stream-publish";
+import { localOwnAncestryOfParent } from "./own-ancestry";
 
 /** Inline media metadata accepted on create (`media_attributes`). */
 export type PublishMediaAttributes = ReadonlyArray<MediaAttribute>;
@@ -133,18 +134,22 @@ export const writeMediaAttributes = async (
 };
 
 /**
- * Publish a validated local note: row, poll, preview card, inline media
- * metadata, mentions and their notifications, `notify` followers, the
- * ActivityPub `Create`, and the streaming event. Shared by `POST
- * /api/v1/statuses` and the scheduled-status publisher so both behave the same.
+ * Where a new local note sits in its thread, as Mastodon's
+ * `in_reply_to_account_id` reads: a reply to its author's own status carries
+ * that status's answer over ({@link NoteThread.of}).
  */
-const noteThread = (replyTo: ThreadStatus | null, authorId: string): NoteThread => {
+const noteThread = async (
+  db: D1Database,
+  replyTo: ThreadStatus | null,
+  authorId: string,
+): Promise<Result<NoteThread, RepositoryError>> => {
   if (replyTo === null) {
-    return { kind: "Root" };
+    return ok({ kind: "Root" });
   }
-  return replyTo.kind === "Local" && replyTo.status.accountId === authorId
-    ? { kind: "SelfReply" }
-    : { kind: "ReplyToOther" };
+  if (replyTo.kind !== "Local" || replyTo.status.accountId !== authorId) {
+    return ok({ kind: "ReplyToOther" });
+  }
+  return (await localOwnAncestryOfParent(db, replyTo.status.id)).map(NoteThread.of);
 };
 
 /** A published note and its author's view of it (as `GET /api/v1/statuses/:id` renders it). */
@@ -153,6 +158,12 @@ export type PublishedNote = Readonly<{
   document: Result<ApiStatusJSON | undefined, RepositoryError>;
 }>;
 
+/**
+ * Publish a validated local note: row, poll, preview card, inline media
+ * metadata, mentions and their notifications, `notify` followers, the
+ * ActivityPub `Create`, and the streaming event. Shared by `POST
+ * /api/v1/statuses` and the scheduled-status publisher so both behave the same.
+ */
 export const publishLocalNote = async (
   env: Env,
   identity: InstanceIdentity,
@@ -311,10 +322,14 @@ export const publishLocalNote = async (
   if (notifying.isErr()) {
     return err(notifying.error);
   }
+  const thread = await noteThread(env.DB, input.replyTo, user.id);
+  if (thread.isErr()) {
+    return err(thread.error);
+  }
   const notified = StatusNotificationAudience.recipients(
     {
       visibility: note.visibility,
-      thread: noteThread(input.replyTo, user.id),
+      thread: thread.value,
       language: note.language,
       addressed: new Set(mentionedAccounts.map((account) => account.id)),
     },

@@ -5,7 +5,7 @@ import {
   type RemoteStatus as RemoteStatusValue,
   RemoteVisibility,
   type MentionedPost,
-  type NoteThread,
+  NoteThread,
   type OutboxJob,
   StatusNotificationAudience,
 } from "@tstodon/domain";
@@ -44,6 +44,7 @@ import {
   releaseOwed,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
+import { remoteOwnAncestry } from "./own-ancestry";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
@@ -61,7 +62,6 @@ import {
 } from "./mention-store";
 import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
 import { isNotifyingRemoteFollower, notifyingRemoteFollowers } from "./outbound-follow-store";
-import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
 import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
@@ -332,32 +332,16 @@ const deliveredNew = (late: LateSteps): boolean =>
   late.kind === "Created" && (late.options.delivery ?? "Fetched") !== "Fetched";
 
 /**
- * Where the stored note `status` sits in its thread: a reply to a parent
- * that is not stored, or does not read, replies to someone else, as Mastodon
- * leaves its `in_reply_to_account_id` unset.
+ * Where the stored note `status` sits in its thread, as Mastodon's
+ * `in_reply_to_account_id` reads: a reply to a parent that is not stored
+ * replies to someone else, and a reply to its author's own reply carries that
+ * reply's answer over ({@link NoteThread.of}).
  */
 const remoteNoteThread = async (
   db: D1Database,
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
-): Promise<Result<NoteThread, RepositoryError>> => {
-  const targets = await findRemoteStatusReplyTargets(db, [status.id]);
-  if (targets.isErr()) {
-    return err(targets.error);
-  }
-  if (targets.value.get(status.id)?.inReplyToUri === undefined) {
-    return ok({ kind: "Root" });
-  }
-  const parent = await findThreadParent(db, identity, { kind: "Remote", status });
-  if (parent.isErr()) {
-    return err(parent.error);
-  }
-  return ok(
-    parent.value?.kind === "Remote" && parent.value.status.actorUri === status.actorUri
-      ? { kind: "SelfReply" }
-      : { kind: "ReplyToOther" },
-  );
-};
+): Promise<Result<NoteThread, RepositoryError>> =>
+  (await remoteOwnAncestry(db, status.id)).map(NoteThread.of);
 
 /**
  * The local followers a new note sends its `status` notification to
@@ -367,7 +351,6 @@ const remoteNoteThread = async (
  */
 const statusNotified = async (
   env: Env,
-  identity: InstanceIdentity,
   late: LateSteps,
   addressed: ReadonlySet<string>,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
@@ -381,7 +364,7 @@ const statusNotified = async (
   ) {
     return ok([]);
   }
-  return statusAudience(env, identity, late.status, addressed);
+  return statusAudience(env, late.status, addressed);
 };
 
 /**
@@ -390,7 +373,6 @@ const statusNotified = async (
  */
 const statusAudience = async (
   env: Env,
-  identity: InstanceIdentity,
   status: RemoteStatusValue,
   addressed: ReadonlySet<string>,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
@@ -401,7 +383,7 @@ const statusAudience = async (
   if (followers.value.length === 0) {
     return ok([]);
   }
-  const thread = await remoteNoteThread(env.DB, identity, status);
+  const thread = await remoteNoteThread(env.DB, status);
   if (thread.isErr()) {
     return err(thread.error);
   }
@@ -437,7 +419,7 @@ export const redistributeRemoteNote = async (
     return err(mentions.error);
   }
   const addressed = new Set<string>(mentions.value.get(status.id)?.accountIds ?? []);
-  const notified = await statusAudience(env, identity, status, addressed);
+  const notified = await statusAudience(env, status, addressed);
   if (notified.isErr()) {
     return err(notified.error);
   }
@@ -681,7 +663,7 @@ const writeLateSteps = async (
   if (recorded.isErr()) {
     return err(recorded.error);
   }
-  const notified = await statusNotified(env, identity, late, new Set([...mentioned, ...addressed]));
+  const notified = await statusNotified(env, late, new Set([...mentioned, ...addressed]));
   if (notified.isErr()) {
     return err(notified.error);
   }

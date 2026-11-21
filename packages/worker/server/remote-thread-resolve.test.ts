@@ -262,6 +262,45 @@ describe("a remote reply whose parent this server does not hold", () => {
     expect(await statusNotifications(email, reply)).toBe(0);
   });
 
+  it("carries the parent's reply account over a self-reply, as Mastodon's in_reply_to_account_id", async () => {
+    const alice = await remoteActor("rtrcarry", "rtr-carry.example");
+    const bob = await remoteActor("rtrcarrybob", "rtr-carry-bob.example");
+    const email = "rtr-carry@example.com";
+    await followNotifying(email, alice);
+    const held = holdQueue();
+    const theirs = note(bob, "theirs");
+    await deliver(bob, theirs);
+    const answer = note(alice, "answer", { inReplyTo: theirs.id });
+    await deliver(alice, answer);
+    const unlinked = note(alice, "unlinked", { inReplyTo: "https://rtr-carry-gone.example/n/1" });
+    await deliver(alice, unlinked);
+    const root = note(alice, "root");
+    await deliver(alice, root);
+    const second = note(alice, "second", { inReplyTo: root.id });
+    await deliver(alice, second);
+
+    // A → A → B, delivered with its parent stored.
+    const underAnswer = await deliver(alice, note(alice, "under-answer", { inReplyTo: answer.id }));
+    // A → A → (a parent not linked): Mastodon's in_reply_to_account_id is nil.
+    const underUnlinked = await deliver(
+      alice,
+      note(alice, "under-unlinked", { inReplyTo: unlinked.id }),
+    );
+    // A → A → A.
+    const third = await deliver(alice, note(alice, "third", { inReplyTo: second.id }));
+    // A → A → B, its parent fetched by the thread job.
+    const lateAnswer = note(alice, "late-answer", { inReplyTo: theirs.id });
+    const underLate = await deliver(alice, note(alice, "under-late", { inReplyTo: lateAnswer.id }));
+    held.bodies.splice(0, held.bodies.length, resolveJob(underLate, 1));
+    await serving([lateAnswer], () => drain(held));
+
+    expect(await statusNotifications(email, underAnswer)).toBe(0);
+    expect(await statusNotifications(email, underUnlinked)).toBe(0);
+    expect(await statusNotifications(email, third)).toBe(1);
+    expect((await replyRefs(email, underLate)).in_reply_to_id).toBe(await storedId(lateAnswer.id));
+    expect(await statusNotifications(email, underLate)).toBe(0);
+  });
+
   it("queues no job when the parent is held", async () => {
     const author = await remoteActor("rtrheld", "rtr-held.example");
     const parent = note(author, "root");

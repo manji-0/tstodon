@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  NoteThread,
   type NotifiedNote,
   type NotifyingFollower,
   StatusNotificationAudience,
@@ -48,5 +49,13 @@ describe("StatusNotificationAudience.recipients", () => {
       "any",
     ]);
     expect(recipients(note(), followers)).toEqual(["ja", "en", "any"]);
+  });
+});
+
+describe("NoteThread.of", () => {
+  it("is a self-reply only when the author's own statuses lead up to a root", () => {
+    expect(NoteThread.of({ kind: "NoParent" })).toEqual({ kind: "Root" });
+    expect(NoteThread.of({ kind: "ReachesRoot" })).toEqual({ kind: "SelfReply" });
+    expect(NoteThread.of({ kind: "LeavesAuthor" })).toEqual({ kind: "ReplyToOther" });
   });
 });

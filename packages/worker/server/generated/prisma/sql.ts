@@ -326,6 +326,8 @@ export * from "./sql/findLinkCard";
 
 export * from "./sql/findListForAccount";
 
+export * from "./sql/findLocalOwnAncestryTop";
+
 export * from "./sql/findLocalReblog";
 
 export * from "./sql/findMediaById";
@@ -385,6 +387,8 @@ export * from "./sql/findRemoteBoostById";
 export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteFollowsJson";
+
+export * from "./sql/findRemoteOwnAncestryTop";
 
 export * from "./sql/findRemotePollFetchedAt";
 
