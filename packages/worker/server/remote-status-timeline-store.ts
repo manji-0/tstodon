@@ -44,11 +44,13 @@ export const listRemoteDirectStatusesForAccount = async (
     binds.push(limit);
     // Driven from the account's mentions in status id order, so a page reads
     // the notes that address it, not every one of theirs or every direct note.
+    // A silent mention makes no conversation, as Mastodon's
+    // `participants_from_status` reads `active_mentions`.
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_status_mentions m
          CROSS JOIN remote_statuses s ON s.id = m.status_id
-         WHERE m.account_id = ?
+         WHERE m.account_id = ? AND m.silent = 0
            AND s.visibility = 'direct'
            AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}

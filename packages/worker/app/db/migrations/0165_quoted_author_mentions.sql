@@ -9,11 +9,10 @@ ALTER TABLE status_mentions ADD COLUMN silent INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE status_remote_mentions ADD COLUMN silent INTEGER NOT NULL DEFAULT 0;
 
 -- The quotes stored before this migration get the silent mention their
--- quoted author would have now. Each statement walks the local quoting
--- notes once by `status_quotes`' unique `status_id` index, or the remote
--- ones by `activity_uri`'s, and seeks the quoted note by primary key, so it
--- reads each quote once however many there are. A mention already stored is
--- kept as it is.
+-- quoted author would have now. Each statement walks `status_quotes` once,
+-- by its unique `status_id` index or `activity_uri`'s, and seeks the quoted
+-- note by primary key, so the three together read each quote three times. A
+-- mention already stored is kept as it is.
 INSERT OR IGNORE INTO status_mentions (status_id, account_id, silent)
 SELECT q.status_id, s.account_id, 1
 FROM status_quotes q

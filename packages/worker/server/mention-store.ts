@@ -237,8 +237,8 @@ export const listShownRemoteStatusMentions = (
 
 /**
  * Local accounts and remote actors each cached remote note addresses, keyed
- * by status id: every mention, the silent ones included, as a direct note's
- * conversation counts them (Mastodon's `participants_from_status`).
+ * by status id: every mention, the silent ones included, as a limited or
+ * direct note reaches them (Mastodon's `mentions`).
  */
 export const listRemoteStatusMentions = (
   db: D1Database,
