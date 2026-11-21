@@ -577,6 +577,89 @@ describe("a remote note of an actor many local accounts follow with notification
 // published within `Status::REAL_TIME_WINDOW` (6 hours), so its notifying
 // followers and the local accounts it mentions are notified as for one an
 // inbox `Create` delivered.
+describe("the accounts a remote note names, for its status notification", () => {
+  // `crutches[:active_mentions]` reads `Mention.active`: an account a note
+  // only addresses (a silent mention) filters nobody.
+  it("filters no follower for blocking an account the note only addresses", async () => {
+    const author = await remoteActor("rsnsilent", "rsn-silent.example");
+    const silent = await signedInAccount("rsn-silent-addressed@example.com");
+    await followRemote("rsn-silent-follower@example.com", author, { notify: true });
+    await call("rsn-silent-follower@example.com", `/api/v1/accounts/${silent.id}/block`, {});
+    const addressed = await actorOf("rsn-silent-addressed@example.com");
+
+    const id = await create(author, "https://rsn-silent.example/notes/1", {
+      cc: [`${author.actorUri}/followers`, addressed],
+    });
+
+    expect(await statusNotifications("rsn-silent-follower@example.com", id)).toBe(1);
+  });
+
+  it(
+    "notifies a queued follower only if it does not block an account the note mentions when its job runs",
+    { timeout: 120_000 },
+    async () => {
+      const author = await remoteActor("rsnlateblock", "rsn-late-block.example");
+      const named = await signedInAccount("rsn-late-block-named@example.com");
+      const namedActor = await actorOf("rsn-late-block-named@example.com");
+      const followers = Array.from(
+        { length: INLINE_NOTE_RECIPIENTS + 4 },
+        (_, n) => `rsn-late-block-${n}@example.com`,
+      );
+      for (const email of followers) {
+        await followRemote(email, author, { notify: true });
+      }
+      const queued = holdQueue();
+      const id = await create(author, "https://rsn-late-block.example/notes/1", {
+        cc: [`${author.actorUri}/followers`, namedActor],
+        tag: [{ type: "Mention", href: namedActor }],
+      });
+      for (const email of followers) {
+        await call(email, `/api/v1/accounts/${named.id}/block`, {});
+      }
+      await drainHeld(queued, ["FinishRemoteNoteRecipient"]);
+
+      let notified = 0;
+      for (const email of followers) {
+        notified += await statusNotifications(email, id);
+      }
+      // The mentioned account takes one of the slots the request serves.
+      expect(notified).toBe(INLINE_NOTE_RECIPIENTS - 1);
+    },
+  );
+
+  // A later page of followers is read by a queued job, which must tell the
+  // followers a limited note names from the ones it does not.
+  it("queues from a page of followers only the ones a limited note names", async () => {
+    const author = await remoteActor("rsnpagelimited", "rsn-page-limited.example");
+    await followRemote("rsn-page-limited-named@example.com", author, { notify: true });
+    await followRemote("rsn-page-limited-other@example.com", author, { notify: true });
+    const named = await signedInAccount("rsn-page-limited-named@example.com");
+    const namedActor = await actorOf("rsn-page-limited-named@example.com");
+    const id = await create(author, "https://rsn-page-limited.example/notes/1", {
+      to: [namedActor],
+      cc: [],
+    });
+    const queued = holdQueue();
+
+    const job = OutboxJob.parse({
+      kind: "NotifyRemoteNoteFollowers",
+      statusId: id,
+      actorUri: author.actorUri,
+      afterFollowId: " ",
+    });
+    if (job.isErr()) {
+      throw new Error("page job rejected");
+    }
+    expect(await processOutboxJob(env, job.value)).toBe("ok");
+
+    expect(
+      queued.bodies.map((body) =>
+        z.object({ kind: z.string(), accountId: z.string().optional() }).parse(body),
+      ),
+    ).toEqual([{ kind: "FinishRemoteNoteRecipient", accountId: named.id }]);
+  });
+});
+
 describe("a followed remote actor's note this server fetches", () => {
   const boostedNote = async (slug: string, published: string) => {
     const author = await remoteActor(`rsnfetch${slug}`, `rsn-fetch-${slug}.example`);
