@@ -7,8 +7,8 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { quotedStatusAccess } from "./quoted-status-access";
 import { findRemoteStatusesByIds } from "./remote-status-store";
+import { permittedStatusIds } from "./status-filter";
 import { findStatusesByIds } from "./status-store";
-import { visibleThreadStatusIds } from "./thread-context";
 import { viewableStatusIds } from "./visibility-guard";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -126,7 +126,7 @@ const queriesFor = async (prefix: string, count: number, visibility: Audience, v
   return {
     viewable: await measure((db) => viewableStatusIds(db, locals, remotes, viewer.id)),
     quotes: await measure((db) => quotedStatusAccess(db, locals, remotes, viewer.id)),
-    thread: await measure((db) => visibleThreadStatusIds(db, nodes, viewer.id)),
+    permitted: await measure((db) => permittedStatusIds(db, nodes, viewer.id)),
     shown: (await viewableStatusIds(env.DB, locals, remotes, viewer.id)).size,
   };
 };
@@ -144,8 +144,50 @@ describe("visibility checks over many statuses", () => {
 
     expect(many.viewable).toBe(one.viewable);
     expect(many.quotes).toBe(one.quotes);
-    expect(many.thread).toBe(one.thread);
+    expect(many.permitted).toBe(one.permitted);
     expect([one.shown, many.shown]).toEqual([2, count * 2]);
+  });
+});
+
+describe("a block, mute or domain block lookup that fails", () => {
+  it.each([
+    ["blocks and mutes", "target_actor_uri AS uri FROM"],
+    ["domain blocks", "FROM account_domain_blocks"],
+  ])("keeps only the reader's own statuses when %s do not load", async (_, failingSql) => {
+    const email = `vbq-filter-failing-${failingSql.length}@example.com`;
+    const viewer = await signedInAccount(email);
+    const others = await statuses(`vbq-filter-failing-${failingSql.length}`, 1, "public", viewer);
+    const own = (
+      await findStatusesByIds(env.DB, [await posted(email, "mine", "public")])
+    )._unsafeUnwrap();
+    const nodes: ThreadStatus[] = [
+      ...[...own.values(), ...others.locals].map((status): ThreadStatus => ({
+        kind: "Local",
+        status,
+      })),
+      ...others.remotes.map((status): ThreadStatus => ({ kind: "Remote", status })),
+    ];
+    const failing = new Proxy(env.DB, {
+      get: (target, key) => {
+        if (key === "prepare") {
+          return (sql: string) => {
+            if (sql.includes(failingSql)) {
+              throw new Error("D1 unavailable");
+            }
+            return target.prepare(sql);
+          };
+        }
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    expect((await permittedStatusIds(env.DB, nodes, viewer.id)).size).toBe(3);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect([...(await permittedStatusIds(failing, nodes, viewer.id))]).toEqual([...own.keys()]);
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
 
