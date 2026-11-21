@@ -217,6 +217,9 @@ describe("a scheduled local note of an account with notifying followers", () => 
         return { statements, id: row?.id ?? "" };
       };
 
+      // An account's first post also stores what later ones read back.
+      await publish(few.id, "warm");
+      await publish(many.id, "warm");
       const one = await publish(few.id, "scheduled for one");
       const fifty = await publish(many.id, "scheduled for many");
       expect(

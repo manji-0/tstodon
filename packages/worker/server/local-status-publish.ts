@@ -9,14 +9,7 @@ import type {
   ThreadStatus,
   ValidatedStatusDraft,
 } from "@tstodon/domain";
-import {
-  InstanceIdentity,
-  LocalStatus,
-  NoteThread,
-  StatusId,
-  StatusNotificationAudience,
-  StatusTarget,
-} from "@tstodon/domain";
+import { InstanceIdentity, LocalStatus, NoteThread, StatusId, StatusTarget } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
@@ -34,7 +27,7 @@ import { mentionedPost, notifyAccount } from "./notify";
 import { insertPoll } from "./poll-store";
 import { startLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
-import { notifyingFollowers } from "./follow-store";
+import { notifyLocalNoteFollowers } from "./local-note-follower-notifications";
 import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
 import { insertLocalNote, listStatusReplyLinks, setStatusReplyUri } from "./status-store";
@@ -166,8 +159,9 @@ export type PublishedNote = Readonly<{
 
 /**
  * Publish a validated local note: row, poll, preview card, inline media
- * metadata, mentions and their notifications, `notify` followers, the
- * ActivityPub `Create`, and the streaming event. Shared by `POST
+ * metadata, mentions and their notifications, the queued notifications of
+ * `notify` followers, the ActivityPub `Create`, and the streaming event.
+ * Shared by `POST
  * /api/v1/statuses` and the scheduled-status publisher so both behave the same.
  */
 export const publishLocalNote = async (
@@ -322,32 +316,21 @@ export const publishLocalNote = async (
     );
   }
   // Followers who asked for notifications on this account's posts get a
-  // `status` notification when the note reaches their home. The
-  // notification policy still decides delivery.
-  const notifying = await notifyingFollowers(env.DB, user.id, note.id);
-  if (notifying.isErr()) {
-    return err(notifying.error);
-  }
+  // `status` notification when the note reaches their home, from queued
+  // jobs a page of followers at a time. The notification policy still
+  // decides delivery.
   const thread = await noteThread(env.DB, note.id, input.replyTo, user.id);
   if (thread.isErr()) {
     return err(thread.error);
   }
-  const notified = StatusNotificationAudience.recipients(
-    {
-      visibility: note.visibility,
-      thread: thread.value,
-      language: note.language,
-      addressed: new Set(mentionedAccounts.map((account) => account.id)),
-    },
-    notifying.value,
-  );
-  for (const followerId of notified) {
-    await notifyAccount(env, {
-      accountId: followerId,
-      fromAccountId: user.id,
-      kind: "status",
-      statusId: note.id,
-    });
+  const followersNotified = await notifyLocalNoteFollowers(env, note, {
+    visibility: note.visibility,
+    thread: thread.value,
+    language: note.language,
+    addressed: new Set(mentionedAccounts.map((account) => account.id)),
+  });
+  if (followersNotified.isErr()) {
+    return err(followersNotified.error);
   }
   // A direct note goes only to the remote accounts it mentions or quotes; with
   // none, nothing leaves the instance.

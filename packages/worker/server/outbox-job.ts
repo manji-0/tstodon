@@ -14,6 +14,7 @@ import {
   processFinishRemoteNoteRecipientJob,
   processNotifyRemoteNoteFollowersJob,
 } from "./remote-status-persist";
+import { processNotifyLocalNoteFollowersJob } from "./local-note-follower-notifications";
 import { processNotifyRemoteNoteBoostersJob } from "./remote-note-booster-updates";
 import { processDistributePollUpdateJob } from "./poll-update";
 import { processPushJob } from "./push-delivery";
@@ -376,6 +377,8 @@ export const processOutboxJob = async (
       return processFinishRemoteNoteRecipientJob(env, job);
     case "NotifyRemoteNoteFollowers":
       return processNotifyRemoteNoteFollowersJob(env, job);
+    case "NotifyLocalNoteFollowers":
+      return processNotifyLocalNoteFollowersJob(env, job);
     case "NotifyRemoteNoteBoosters":
       return processNotifyRemoteNoteBoostersJob(env, job);
     case "DistributePollUpdate":

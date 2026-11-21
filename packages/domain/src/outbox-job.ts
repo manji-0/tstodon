@@ -198,6 +198,23 @@ const NotifyRemoteNoteFollowersSchema = z.object({
 });
 
 /**
+ * Send a local note's `status` notification to its author's notifying
+ * followers, as Mastodon's `FanOutOnWriteService` reads them with
+ * `find_in_batches` and queues a worker for each. `Page` reads the followers
+ * whose follow id sorts after `afterFollowId`, queues a `Follower` job for
+ * each one the note reaches and the next page; `Follower` notifies one
+ * account.
+ */
+const NotifyLocalNoteFollowersSchema = z.object({
+  kind: z.literal("NotifyLocalNoteFollowers"),
+  statusId: StatusId.schema,
+  step: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("Page"), afterFollowId: z.string().min(1) }),
+    z.object({ kind: z.literal("Follower"), accountId: z.string().min(1) }),
+  ]),
+});
+
+/**
  * Tell the local accounts that boosted a remote note that it was edited, as
  * Mastodon's `FanOutOnWriteService#notify_about_update!`: an `update`
  * notification from `actorUri` about `statusId`, stored once per account
@@ -506,6 +523,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ProcessLinkCardSchema,
   FinishRemoteNoteRecipientSchema,
   NotifyRemoteNoteFollowersSchema,
+  NotifyLocalNoteFollowersSchema,
   NotifyRemoteNoteBoostersSchema,
   DistributePollUpdateSchema,
   DeliverPushSchema,

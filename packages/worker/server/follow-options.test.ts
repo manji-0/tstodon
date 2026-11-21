@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { withQueueDrained } from "../test/queue-hold";
 import { ApiAccount } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
@@ -42,12 +43,12 @@ const accountFor = async (email: string): Promise<z.infer<typeof ApiAccount>> =>
   return read(ApiAccount, response.body);
 };
 
+/** Post as `email`, and run the jobs that send the post's `status` notifications. */
 const post = async (email: string, body: Record<string, unknown>): Promise<string> => {
-  const response = await json("/api/v1/statuses", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...(await auth(email)) },
-    body: JSON.stringify(body),
-  });
+  const headers = { "content-type": "application/json", ...(await auth(email)) };
+  const response = await withQueueDrained(["NotifyLocalNoteFollowers"], () =>
+    json("/api/v1/statuses", { method: "POST", headers, body: JSON.stringify(body) }),
+  );
   expect(response.status).toBe(200);
   return read(z.object({ id: z.string().min(1) }), response.body).id;
 };
