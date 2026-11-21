@@ -117,6 +117,45 @@ describe("POST /api/v1/admin/domain_blocks under an existing rule", () => {
         error: "Validation failed: Severity is not included in the list",
       }),
     });
+    // `enum :severity, validate: true` is declared before `validates :domain`.
+    expect(await create({ domain: "", severity: "bar" })).toEqual({
+      status: 422,
+      body: expect.objectContaining({
+        error: "Validation failed: Severity is not included in the list, Domain can't be blank",
+      }),
+    });
+    expect(await create({ domain: "foo bar", severity: "bar" })).toEqual({
+      status: 422,
+      body: expect.objectContaining({
+        error: "Validation failed: Severity is not included in the list, Domain is invalid",
+      }),
+    });
+  });
+
+  it("checks the covering rule before the validations, as Mastodon's create", async () => {
+    const parent = await created({
+      domain: "order-parent.example",
+      severity: "suspend",
+      reject_media: true,
+    });
+    // An unknown severity is compared by its rejections only: dropping the
+    // parent's `reject_media` is the conflict answered first.
+    expect(
+      (await refused({ domain: "sub.order-parent.example", severity: "bar" })).existing_domain_block
+        .id,
+    ).toBe(parent.id);
+    expect(
+      await create({ domain: "sub.order-parent.example", severity: "bar", reject_media: true }),
+    ).toEqual({
+      status: 422,
+      body: expect.objectContaining({
+        error: "Validation failed: Severity is not included in the list",
+      }),
+    });
+    expect(
+      (await refused({ domain: "under_score.order-parent.example", severity: "silence" }))
+        .existing_domain_block.id,
+    ).toBe(parent.id);
   });
 
   it("updates a block under a stricter parent without comparing them, as Mastodon's update", async () => {
@@ -177,6 +216,10 @@ describe("the admin pages under an existing rule", () => {
     expect(open).toContain(
       '<a href="/admin/instances/open-host.example">View summary for domain</a>',
     );
-    expect(open).toContain('<a href="/admin/instances/open-host.example">Add new domain block</a>');
+    expect(open).toContain(
+      '<a href="/admin/instances/open-host.example#new-domain-block">Add new domain block</a>',
+    );
+    const form = await page(await admin.fetcher("/admin/instances/open-host.example"));
+    expect(form).toContain('id="new-domain-block"');
   });
 });

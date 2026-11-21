@@ -334,9 +334,15 @@ export const purgeAccount = async (
 
 export type DomainBlockSettings = Omit<DomainBlockInput, "domain">;
 
+/** A new block's settings; `severity` is `undefined` when the request named none Mastodon knows. */
+export type DomainBlockRequest = Omit<DomainBlockSettings, "severity"> &
+  Readonly<{ severity: DomainBlockSettings["severity"] | undefined }>;
+
+/** A failed validation of a new block, in the order `DomainBlock` declares them. */
+export type DomainBlockInvalidity = "SeverityNotIncluded" | "DomainBlank" | "DomainInvalid";
+
 export type CreateDomainBlockError =
-  | Readonly<{ kind: "DomainRequired" }>
-  | Readonly<{ kind: "InvalidDomain" }>
+  | Readonly<{ kind: "ValidationFailed"; invalidities: ReadonlyArray<DomainBlockInvalidity> }>
   | Readonly<{ kind: "OwnDomain" }>
   /** The rule already covering the domain is on it, or is not weaker. */
   | Readonly<{ kind: "ExistingDomainBlock"; existing: DomainBlockRow }>
@@ -388,30 +394,46 @@ export const createDomainBlock = async (
   env: Env,
   ownDomain: string,
   rawDomain: string,
-  settings: DomainBlockSettings,
+  request: DomainBlockRequest,
 ): Promise<Result<DomainBlockRow | undefined, CreateDomainBlockError>> => {
   const domain = Hostname.fromInput(rawDomain);
-  if (domain === undefined) {
-    return err({ kind: "DomainRequired" });
-  }
   if (domain === ownDomain.toLowerCase()) {
     return err({ kind: "OwnDomain" });
   }
-  const existing = await findDomainBlockRule(env.DB, domain);
-  if (existing.isErr()) {
-    return err(existing.error);
+  if (domain !== undefined) {
+    const existing = await findDomainBlockRule(env.DB, domain);
+    if (existing.isErr()) {
+      return err(existing.error);
+    }
+    if (
+      existing.value &&
+      (existing.value.domain === domain ||
+        !DomainBlockPolicy.stricterThan(request, policyOf(existing.value)))
+    ) {
+      return err({ kind: "ExistingDomainBlock", existing: existing.value });
+    }
   }
-  if (
-    existing.value &&
-    (existing.value.domain === domain ||
-      !DomainBlockPolicy.stricterThan(settings, policyOf(existing.value)))
-  ) {
-    return err({ kind: "ExistingDomainBlock", existing: existing.value });
+  const domainInvalidity: DomainBlockInvalidity | undefined =
+    domain === undefined
+      ? "DomainBlank"
+      : Hostname.isValidDomain(domain)
+        ? undefined
+        : "DomainInvalid";
+  if (request.severity === undefined || domain === undefined || domainInvalidity !== undefined) {
+    const invalidities: DomainBlockInvalidity[] = [];
+    if (request.severity === undefined) {
+      invalidities.push("SeverityNotIncluded");
+    }
+    if (domainInvalidity !== undefined) {
+      invalidities.push(domainInvalidity);
+    }
+    return err({ kind: "ValidationFailed", invalidities });
   }
-  if (!Hostname.isValidDomain(domain)) {
-    return err({ kind: "InvalidDomain" });
-  }
-  const created = await insertDomainBlock(env.DB, { domain, ...settings });
+  const created = await insertDomainBlock(env.DB, {
+    ...request,
+    domain,
+    severity: request.severity,
+  });
   if (created.isErr()) {
     return err(created.error);
   }

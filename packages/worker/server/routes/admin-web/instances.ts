@@ -92,9 +92,7 @@ const domainBlockError = (
   error: Exclude<CreateDomainBlockError, Readonly<{ kind: "RepositoryError" }>>,
 ): string => {
   switch (error.kind) {
-    case "DomainRequired":
-      return "Enter a domain.";
-    case "InvalidDomain":
+    case "ValidationFailed":
       return "This is not a valid domain name.";
     case "OwnDomain":
       return "You cannot block this server's own domain.";

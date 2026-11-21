@@ -2,7 +2,11 @@ import type { ApiAdminExistingDomainBlockErrorJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import type { Context } from "hono";
 import { z } from "zod";
-import { changeDomainBlock, createDomainBlock } from "../../admin-actions";
+import {
+  changeDomainBlock,
+  createDomainBlock,
+  type DomainBlockInvalidity,
+} from "../../admin-actions";
 import {
   deleteDomainBlock,
   domainBlockDocument,
@@ -43,7 +47,14 @@ const severityOf = (
     ? fallback
     : schemaResult(DomainBlockSeveritySchema)(value).unwrapOr(undefined);
 
-const INVALID_SEVERITY = "Validation failed: Severity is not included in the list";
+/** ActiveModel's full messages for `DomainBlock`'s validations. */
+const INVALIDITY_MESSAGES = {
+  SeverityNotIncluded: "Severity is not included in the list",
+  DomainBlank: "Domain can't be blank",
+  DomainInvalid: "Domain is invalid",
+} as const satisfies Record<DomainBlockInvalidity, string>;
+
+const INVALID_SEVERITY = `Validation failed: ${INVALIDITY_MESSAGES.SeverityNotIncluded}`;
 
 const optionalComment = (value: string | null | undefined): string | null | undefined => {
   if (value === undefined) {
@@ -113,12 +124,8 @@ export const postV1AdminDomainBlocks = async (
   if (body.isErr()) {
     return validation(c, "Validation failed");
   }
-  const severity = severityOf(body.value.severity, "silence");
-  if (severity === undefined) {
-    return validation(c, INVALID_SEVERITY);
-  }
   const created = await createDomainBlock(c.env, identity.value.domain, body.value.domain ?? "", {
-    severity,
+    severity: severityOf(body.value.severity, "silence"),
     rejectMedia: parseBool(body.value.reject_media, false),
     rejectReports: parseBool(body.value.reject_reports, false),
     obfuscate: parseBool(body.value.obfuscate, false),
@@ -127,10 +134,11 @@ export const postV1AdminDomainBlocks = async (
   });
   if (created.isErr()) {
     switch (created.error.kind) {
-      case "DomainRequired":
-        return validation(c, "Validation failed: Domain can't be blank");
-      case "InvalidDomain":
-        return validation(c, "Validation failed: Domain is invalid");
+      case "ValidationFailed":
+        return validation(
+          c,
+          `Validation failed: ${created.error.invalidities.map((invalidity) => INVALIDITY_MESSAGES[invalidity]).join(", ")}`,
+        );
       case "OwnDomain":
         return validation(c, "You cannot block your own domain");
       case "ExistingDomainBlock": {

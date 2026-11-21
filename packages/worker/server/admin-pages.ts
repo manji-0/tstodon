@@ -442,7 +442,7 @@ ${messageLine(message)}
         <li><a href="/admin/instances/${escapeHtml(view.domain)}">View domain block</a></li>`
               : `
         <li><a href="/admin/instances/${escapeHtml(view.domain)}">View summary for domain</a></li>
-        <li><a href="/admin/instances/${escapeHtml(view.domain)}">Add new domain block</a></li>`
+        <li><a href="/admin/instances/${escapeHtml(view.domain)}#new-domain-block">Add new domain block</a></li>`
         }
       </ul>
       <h2>Open reports</h2>${
@@ -566,7 +566,7 @@ ${messageLine(message)}${
           ? `This server blocks <strong>${escapeHtml(view.domain)}</strong>: ${escapeHtml(SEVERITY_LABELS[view.form.severity].toLowerCase())}.`
           : `This server does not block <strong>${escapeHtml(view.domain)}</strong>.`
       }</p>
-      <h2>${view.blocked ? "Change the block" : "Block this domain"}</h2>
+      <h2 id="new-domain-block">${view.blocked ? "Change the block" : "Block this domain"}</h2>
       <form method="post" action="${escapeHtml(action)}">
         <input type="hidden" name="do" value="save" />
         <label for="severity">Severity</label>
