@@ -44,13 +44,18 @@ describe("remote usernames", () => {
 describe("multibase keys (FEP-521a)", () => {
   it.each(Object.entries(MASTODON_MULTIKEYS))(
     "reads %s as Mastodon's Multibase.decode_key_to_pem does",
-    (_name, { multibase, type, pem }) => {
-      const key = multibaseKey(multibase);
-      if (type === undefined) {
-        expect(key).toBeUndefined();
+    (_name, { multibase, type, pem, error }) => {
+      const read = multibaseKey(multibase);
+      // `Multibase::Error` skips the key (`key_from_multikey` rescues it);
+      // any other error, such as base58's `ArgumentError`, refuses the actor.
+      if (error !== undefined) {
+        expect(read).toEqual({ kind: error === "Multibase::Error" ? "NoKey" : "Malformed" });
         return;
       }
-      expect(key).toEqual({ kind: type === "ed25519" ? "Ed25519" : "Rsa", publicKeyPem: pem });
+      expect(read).toEqual({
+        kind: "Key",
+        key: { kind: type === "ed25519" ? "Ed25519" : "Rsa", publicKeyPem: pem },
+      });
     },
   );
 

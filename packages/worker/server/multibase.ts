@@ -5,6 +5,7 @@
  */
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /** Joins byte arrays without spreading them into arguments. */
 const concat = (...parts: ReadonlyArray<Uint8Array>): Uint8Array => {
@@ -17,19 +18,34 @@ const concat = (...parts: ReadonlyArray<Uint8Array>): Uint8Array => {
   return joined;
 };
 
+/**
+ * What `Multibase.decode` makes of a value: its bytes; `Unread` where it
+ * raises `Multibase::Error` (no value, a base it does not read); `Malformed`
+ * where the base's own decoder raises `ArgumentError` (`base58` and Ruby's
+ * `Base64`), which nothing in Mastodon rescues.
+ */
+type Decoded =
+  | Readonly<{ kind: "Bytes"; bytes: Uint8Array }>
+  | Readonly<{ kind: "Unread" }>
+  | Readonly<{ kind: "Malformed" }>;
+
+const UNREAD: Decoded = { kind: "Unread" };
+const MALFORMED: Decoded = { kind: "Malformed" };
+
 const base58Digits: ReadonlyMap<string, number> = new Map(
   BASE58_ALPHABET.split("").map((char, index) => [char, index]),
 );
 
+const isBase58 = (text: string): boolean => /^[1-9A-HJ-NP-Za-km-z]*$/.test(text);
+
 /** Bitcoin-alphabet base58, as the `base58` gem decodes it: each leading `1` is a zero byte. */
-const decodeBase58 = (text: string): Uint8Array | undefined => {
+const decodeBase58 = (text: string): Decoded => {
+  if (!isBase58(text)) {
+    return MALFORMED;
+  }
   let value = 0n;
   for (const char of text) {
-    const digit = base58Digits.get(char);
-    if (digit === undefined) {
-      return undefined;
-    }
-    value = value * 58n + BigInt(digit);
+    value = value * 58n + BigInt(base58Digits.get(char) ?? 0);
   }
   const bytes: number[] = [];
   while (value > 0n) {
@@ -37,44 +53,68 @@ const decodeBase58 = (text: string): Uint8Array | undefined => {
     value >>= 8n;
   }
   const zeros = /^1*/.exec(text)?.[0].length ?? 0;
-  return concat(new Uint8Array(zeros), Uint8Array.from(bytes));
+  return { kind: "Bytes", bytes: concat(new Uint8Array(zeros), Uint8Array.from(bytes)) };
 };
 
-/** Base64url with or without padding, as Ruby's `Base64.urlsafe_decode64` reads it. */
-const decodeBase64Url = (text: string): Uint8Array | undefined => {
-  if (!/^[A-Za-z0-9_-]*={0,2}$/.test(text)) {
-    return undefined;
+const STRICT_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+/**
+ * Ruby's `Base64.urlsafe_decode64`: a value that does not end in `=` is
+ * padded to a multiple of four, `-` and `_` read as `+` and `/` (which it
+ * also takes), then `strict_decode64` refuses anything but whole groups,
+ * padding only at the end, and bits left over after the last byte.
+ */
+const decodeBase64Url = (text: string): Decoded => {
+  const padded =
+    !text.endsWith("=") && text.length % 4 !== 0
+      ? text.padEnd(text.length + 4 - (text.length % 4), "=")
+      : text;
+  const standard = padded.replaceAll("-", "+").replaceAll("_", "/");
+  if (!STRICT_BASE64.test(standard)) {
+    return MALFORMED;
   }
-  const unpadded = text.replace(/=+$/, "");
-  if (unpadded.length % 4 === 1) {
-    return undefined;
+  const digit = (offset: number): number =>
+    BASE64_ALPHABET.indexOf(standard.charAt(standard.length - offset));
+  const leftover = standard.endsWith("==")
+    ? digit(3) & 0x0f
+    : standard.endsWith("=")
+      ? digit(2) & 0x03
+      : 0;
+  if (leftover !== 0) {
+    return MALFORMED;
   }
-  try {
-    const binary = atob(unpadded.replaceAll("-", "+").replaceAll("_", "/"));
-    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  } catch {
-    return undefined;
+  const binary = atob(standard);
+  return { kind: "Bytes", bytes: Uint8Array.from(binary, (char) => char.charCodeAt(0)) };
+};
+
+/**
+ * `Multibase.decode` of a value at most `maxLength` characters long. Base58
+ * decoding is quadratic in the length, so a longer value is not decoded: it
+ * reads as `Unread`, or as `Malformed` when a linear pass finds a character
+ * not of its base, as Mastodon would.
+ */
+const decode = (text: string, maxLength: number): Decoded => {
+  const tooLong = text.length > maxLength;
+  const rest = text.slice(1);
+  switch (text[0]) {
+    case "z":
+      return tooLong ? (isBase58(rest) ? UNREAD : MALFORMED) : decodeBase58(rest);
+    case "u": {
+      const decoded = decodeBase64Url(rest);
+      return tooLong && decoded.kind === "Bytes" ? UNREAD : decoded;
+    }
+    default:
+      return UNREAD;
   }
 };
 
 /**
- * `Multibase.decode`: the bytes of a `z` or `u` multibase string, when it is
- * at most `maxLength` characters long. Base58 decoding is quadratic in the
- * length, so the caller caps it at what the value it reads can be (a key, a
- * signature) before anything is decoded.
+ * The bytes of a `z` or `u` multibase string at most `maxLength` characters
+ * long (see {@link decode}); `undefined` when Mastodon reads none from it.
  */
 export const decodeMultibase = (text: string, maxLength: number): Uint8Array | undefined => {
-  if (text.length > maxLength) {
-    return undefined;
-  }
-  switch (text[0]) {
-    case "z":
-      return decodeBase58(text.slice(1));
-    case "u":
-      return decodeBase64Url(text.slice(1));
-    default:
-      return undefined;
-  }
+  const decoded = decode(text, maxLength);
+  return decoded.kind === "Bytes" ? decoded.bytes : undefined;
 };
 
 /** A public key read from a `publicKeyMultibase`, as SPKI PEM. */
@@ -201,17 +241,35 @@ const wrappedPem = (spki: Uint8Array): string =>
   `-----BEGIN PUBLIC KEY-----\n${(base64(spki).match(/.{1,64}/g) ?? []).join("\n")}\n-----END PUBLIC KEY-----\n`;
 
 /**
+ * What `ProcessAccountService#key_from_multikey` makes of a
+ * `publicKeyMultibase`: the key; `NoKey` where `Multibase.decode_key_to_pem`
+ * raises `Multibase::Error`, which it rescues, so the key is skipped;
+ * `Malformed` where the value is not of its base (an `ArgumentError` it does
+ * not rescue), so Mastodon refuses the whole actor.
+ */
+export type MultibaseKeyRead =
+  | Readonly<{ kind: "Key"; key: MultibaseKey }>
+  | Readonly<{ kind: "NoKey" }>
+  | Readonly<{ kind: "Malformed" }>;
+
+/**
  * `Multibase.decode_key_to_pem`: the RSA or Ed25519 key a
  * `publicKeyMultibase` holds, as SPKI PEM written as Mastodon writes it.
  * Anything else (another codec, an Ed25519 key not 32 bytes long, an RSA key
  * that is not DER) reads as no key. Mastodon also reads `mldsa-44-pub`; no
  * Workers API verifies ML-DSA, so it is read as no key here.
  */
-export const multibaseKey = (text: string): MultibaseKey | undefined => {
-  try {
-    return keyFromBytes(decodeMultibase(text, MAX_KEY_LENGTH));
-  } catch {
-    return undefined;
+export const multibaseKey = (text: string): MultibaseKeyRead => {
+  const decoded = decode(text, MAX_KEY_LENGTH);
+  switch (decoded.kind) {
+    case "Malformed":
+      return { kind: "Malformed" };
+    case "Unread":
+      return { kind: "NoKey" };
+    case "Bytes": {
+      const key = keyFromBytes(decoded.bytes);
+      return key === undefined ? { kind: "NoKey" } : { kind: "Key", key };
+    }
   }
 };
 
@@ -221,10 +279,7 @@ export const multibaseKey = (text: string): MultibaseKey | undefined => {
  */
 const MAX_KEY_LENGTH = 2048;
 
-const keyFromBytes = (bytes: Uint8Array | undefined): MultibaseKey | undefined => {
-  if (bytes === undefined) {
-    return undefined;
-  }
+const keyFromBytes = (bytes: Uint8Array): MultibaseKey | undefined => {
   if (startsWith(bytes, ED25519_PUB)) {
     const key = bytes.subarray(ED25519_PUB.length);
     return key.length === 32

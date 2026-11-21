@@ -781,9 +781,7 @@ describe("an actor URI whose host SQL would read differently", () => {
         continue;
       }
       accepted.push(uri);
-      expect((await upsertRemoteActor(env.DB, actor.value.actor, actor.value.keys)).isOk()).toBe(
-        true,
-      );
+      expect((await upsertRemoteActor(env.DB, actor.value.actor, [])).isOk()).toBe(true);
       const row = await env.DB.prepare(
         "SELECT uri_host, lower(uri_authority) AS authority FROM remote_actors WHERE actor_uri = ?",
       )

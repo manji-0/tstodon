@@ -16,7 +16,12 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { refreshRemoteActor } from "./remote-actor-fetch";
 import { multibaseKey } from "./multibase";
-import { findRemoteActorKey, LEGACY_PUBLIC_KEY_PEM, upsertRemoteActor } from "./remote-actor-store";
+import {
+  findRemoteActorByUri,
+  findRemoteActorKey,
+  LEGACY_PUBLIC_KEY_PEM,
+  upsertRemoteActor,
+} from "./remote-actor-store";
 import { postInbox } from "./routes/activitypub";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -49,13 +54,19 @@ const refusalsDuring = async (run: () => Promise<Response>) => {
  * `fetch` answering `documents` by URL (the fragment dropped), and WebFinger
  * for the actors among them; 404 for anything else.
  */
-const serve = (documents: Readonly<Record<string, Readonly<Record<string, unknown>>>>) =>
+const serve = (
+  documents: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  unreachable: ReadonlyArray<string> = [],
+) =>
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(new Request(input, init).url);
     if (url.pathname === "/.well-known/webfinger") {
       return webfingerAnswer(documents, url);
     }
     url.hash = "";
+    if (unreachable.includes(url.href)) {
+      throw new TypeError("connection refused");
+    }
     const document = documents[url.href];
     return document === undefined
       ? new Response(null, { status: 404 })
@@ -407,14 +418,18 @@ describe("forwards with FEP-8b32 integrity proofs", () => {
   });
 });
 
+/** The URLs `fetch` was asked for. */
+const fetchedUrls = (spy: ReturnType<typeof serve>): ReadonlyArray<string> =>
+  spy.mock.calls.map(([input, init]) => new Request(input, init).url);
+
 const options = () => ({
   allowHosts: new Set<string>(),
   blockedHosts: CoveredHosts.none,
   fetchSigner: unsignedFetch,
 });
 
-describe("keys an actor's document cannot claim", () => {
-  it("reads GoToSocial's `/main-key` from its own URL, as Mastodon does, also after a refetch drops it", async () => {
+describe("keys an actor's document names by id (FED-8)", () => {
+  it("reads GoToSocial's `/main-key` from its own URL when it caches the actor, and keeps it on a refetch", async () => {
     const gina = await remoteActor("keys-gts-gina", "keys-gts.example", { cache: false });
     const keyId = `${gina.actorUri}/main-key`;
     const own = await generateAccountKeys();
@@ -424,24 +439,139 @@ describe("keys an actor's document cannot claim", () => {
       // What GoToSocial serves at a key id: a stub of the actor with its key.
       [keyId]: { id: gina.actorUri, type: "Person", publicKey },
     });
-    const send = (slug: string) =>
-      post(signedDelivery(create(gina, slug), keyId, own.privateKeyJwk));
-    expect((await send("first")).status).toBe(202);
     const identity = parseInstanceIdentity(env)._unsafeUnwrap();
     expect((await refreshRemoteActor(env.DB, identity, gina.actorUri, options())).isOk()).toBe(
       true,
     );
-    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()).toBeUndefined();
-    expect((await send("second")).status).toBe(202);
-    expect(await storedContent(`${gina.actorUri}/statuses/second`)).toContain("second");
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()?.key.publicKeyPem).toBe(
+      own.publicKeyPem,
+    );
+    expect((await refreshRemoteActor(env.DB, identity, gina.actorUri, options())).isOk()).toBe(
+      true,
+    );
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()?.actor.actorUri).toBe(
+      gina.actorUri,
+    );
+    const send = (slug: string) =>
+      post(signedDelivery(create(gina, slug), keyId, own.privateKeyJwk));
+    expect((await send("cached")).status).toBe(202);
+    expect(await storedContent(`${gina.actorUri}/statuses/cached`)).toContain("cached");
   });
 
-  it("does not let an actor's document take a key id on its host that is not its own", async () => {
+  it("fetches a key named only by its id from the actor's host, keeps it while that host does not answer, and drops it on a 404", async () => {
+    const dana = await remoteActor("keys-byid-dana", "keys-byid.example", { cache: false });
+    const keyId = "https://keys-byid.example/keys/dana";
+    const own = await generateAccountKeys();
+    const document = actorDocument(dana, {
+      publicKey: [
+        { id: `${dana.actorUri}#main-key`, owner: dana.actorUri, publicKeyPem: dana.publicKeyPem },
+        keyId,
+      ],
+    });
+    const keyDocument = { id: keyId, owner: dana.actorUri, publicKeyPem: own.publicKeyPem };
+    serve({ [dana.actorUri]: document, [keyId]: keyDocument });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    const refresh = () => refreshRemoteActor(env.DB, identity, dana.actorUri, options());
+    expect((await refresh()).isOk()).toBe(true);
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()?.key.publicKeyPem).toBe(
+      own.publicKeyPem,
+    );
+
+    // A connection failure stops the refetch, as it raises in Mastodon.
+    vi.restoreAllMocks();
+    serve({ [dana.actorUri]: { ...document, name: "Renamed" } }, [keyId]);
+    expect((await refresh()).isOk()).toBe(true);
+    const kept = (await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap();
+    expect(kept?.key.publicKeyPem).toBe(own.publicKeyPem);
+    expect(kept?.actor.displayName).not.toBe("Renamed");
+
+    // Any answer but a key skips it, and the refetch drops it.
+    vi.restoreAllMocks();
+    serve({ [dana.actorUri]: document });
+    expect((await refresh()).isOk()).toBe(true);
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()).toBeUndefined();
+    expect(
+      (await findRemoteActorKey(env.DB, `${dana.actorUri}#main-key`))._unsafeUnwrap(),
+    ).toBeDefined();
+  });
+
+  it("reads a Multikey named only by its id when its own document names itself and the actor", async () => {
+    const mia = await remoteActor("keys-mk-mia", "keys-mk.example", { cache: false });
+    const ed = await ed25519Signer();
+    const keyId = "https://keys-mk.example/keys/mia-ed";
+    const otherId = "https://keys-mk.example/keys/mia-other";
+    const multikey = {
+      id: keyId,
+      type: "Multikey",
+      controller: mia.actorUri,
+      publicKeyMultibase: ed.publicKeyMultibase,
+    };
+    serve({
+      [mia.actorUri]: actorDocument(mia, { assertionMethod: [keyId, otherId] }),
+      [keyId]: multikey,
+      // Served under another id: Mastodon's `fetch_resource` checks the id.
+      [otherId]: multikey,
+    });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect((await refreshRemoteActor(env.DB, identity, mia.actorUri, options())).isOk()).toBe(true);
+    expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()?.key.kind).toBe("Ed25519");
+    expect((await findRemoteActorKey(env.DB, otherId))._unsafeUnwrap()).toBeUndefined();
+  });
+
+  it("does not fetch a key id on another host than the actor's", async () => {
+    const owen = await remoteActor("keys-host-owen", "keys-host.example", { cache: false });
+    const own = await generateAccountKeys();
+    const ed = await ed25519Signer();
+    const named = "https://keys-elsewhere.example/keys/1";
+    const embedded = "https://keys-elsewhere.example/keys/2";
+    const multikey = "https://keys-elsewhere.example/keys/3";
+    const keyDocument = (id: string) => ({
+      id,
+      owner: owen.actorUri,
+      publicKeyPem: own.publicKeyPem,
+    });
+    const fetched = serve({
+      [owen.actorUri]: actorDocument(owen, {
+        publicKey: [
+          {
+            id: `${owen.actorUri}#main-key`,
+            owner: owen.actorUri,
+            publicKeyPem: owen.publicKeyPem,
+          },
+          named,
+          keyDocument(embedded),
+        ],
+        assertionMethod: [multikey],
+      }),
+      [named]: keyDocument(named),
+      [embedded]: keyDocument(embedded),
+      [multikey]: {
+        id: multikey,
+        type: "Multikey",
+        controller: owen.actorUri,
+        publicKeyMultibase: ed.publicKeyMultibase,
+      },
+    });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    expect((await refreshRemoteActor(env.DB, identity, owen.actorUri, options())).isOk()).toBe(
+      true,
+    );
+    expect(fetchedUrls(fetched).map((url) => new URL(url).host)).not.toContain(
+      "keys-elsewhere.example",
+    );
+    for (const keyId of [named, embedded, multikey]) {
+      expect((await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap()).toBeUndefined();
+    }
+  });
+
+  it("takes no key whose own document names another owner, and fetches none the actor's document gives to another", async () => {
     const victim = await remoteActor("keys-take-victim", "keys-take.example");
     const attacker = await remoteActor("keys-take-attacker", "keys-take.example", {
       cache: false,
     });
-    serve({
+    const notMine = "https://keys-take.example/keys/1";
+    const givenAway = "https://keys-take.example/keys/2";
+    const fetched = serve({
       [attacker.actorUri]: actorDocument(attacker, {
         publicKey: [
           {
@@ -449,18 +579,21 @@ describe("keys an actor's document cannot claim", () => {
             owner: attacker.actorUri,
             publicKeyPem: attacker.publicKeyPem,
           },
+          // Under the victim's URI: fetched, and the victim's document owns it.
           {
             id: `${victim.actorUri}#main-key`,
             owner: attacker.actorUri,
             publicKeyPem: attacker.publicKeyPem,
           },
-          {
-            id: "https://keys-take.example/keys/1",
-            owner: attacker.actorUri,
-            publicKeyPem: attacker.publicKeyPem,
-          },
+          // Its own document names the victim.
+          notMine,
+          // Given to the victim here: Mastodon reads no further.
+          { id: givenAway, owner: victim.actorUri, publicKeyPem: attacker.publicKeyPem },
         ],
       }),
+      [victim.actorUri]: actorDocument(victim),
+      [notMine]: { id: notMine, owner: victim.actorUri, publicKeyPem: attacker.publicKeyPem },
+      [givenAway]: { id: givenAway, owner: attacker.actorUri, publicKeyPem: attacker.publicKeyPem },
     });
     const identity = parseInstanceIdentity(env)._unsafeUnwrap();
     expect((await refreshRemoteActor(env.DB, identity, attacker.actorUri, options())).isOk()).toBe(
@@ -471,29 +604,72 @@ describe("keys an actor's document cannot claim", () => {
     )._unsafeUnwrap();
     expect(victimKey?.actor.actorUri).toBe(victim.actorUri);
     expect(victimKey?.key.publicKeyPem).toBe(victim.publicKeyPem);
-    expect(
-      (await findRemoteActorKey(env.DB, "https://keys-take.example/keys/1"))._unsafeUnwrap(),
-    ).toBeUndefined();
+    expect((await findRemoteActorKey(env.DB, notMine))._unsafeUnwrap()).toBeUndefined();
+    expect((await findRemoteActorKey(env.DB, givenAway))._unsafeUnwrap()).toBeUndefined();
+    expect(fetchedUrls(fetched)).not.toContain(givenAway);
     expect((await post(victim.delivery(create(victim, "still-mine")))).status).toBe(202);
   });
 
-  it("leaves a key with the actor that holds it when another actor's keys are written", async () => {
-    const holder = await remoteActor("keys-move-holder", "keys-move.example");
-    const other = await remoteActor("keys-move-other", "keys-move.example");
-    const otherActor = (
-      await findRemoteActorKey(env.DB, `${other.actorUri}#main-key`)
-    )._unsafeUnwrap();
-    if (otherActor === undefined) {
-      throw new Error("fixture actor not cached");
-    }
-    const written = await upsertRemoteActor(env.DB, otherActor.actor, [
-      otherActor.key,
-      { kind: "Rsa", keyId: `${holder.actorUri}#main-key`, publicKeyPem: other.publicKeyPem },
-    ]);
-    expect(written.isOk()).toBe(true);
-    const held = (await findRemoteActorKey(env.DB, `${holder.actorUri}#main-key`))._unsafeUnwrap();
-    expect(held?.actor.actorUri).toBe(holder.actorUri);
-    expect(held?.key.publicKeyPem).toBe(holder.publicKeyPem);
+  it("moves a key id to another actor of its host only when the key's own document names that actor", async () => {
+    const keyId = "https://keys-move.example/keys/shared";
+    const holder = await remoteActor("keys-move-holder", "keys-move.example", { cache: false });
+    const taker = await remoteActor("keys-move-taker", "keys-move.example", { cache: false });
+    const claimant = await remoteActor("keys-move-claimant", "keys-move.example", {
+      cache: false,
+    });
+    const outsider = await remoteActor("keys-move-outsider", "keys-move-other.example", {
+      cache: false,
+    });
+    const first = await generateAccountKeys();
+    const second = await generateAccountKeys();
+    const listing = (remote: Remote) =>
+      actorDocument(remote, {
+        publicKey: [
+          {
+            id: `${remote.actorUri}#main-key`,
+            owner: remote.actorUri,
+            publicKeyPem: remote.publicKeyPem,
+          },
+          keyId,
+        ],
+      });
+    const documents = {
+      [holder.actorUri]: listing(holder),
+      [taker.actorUri]: listing(taker),
+      [claimant.actorUri]: listing(claimant),
+      [outsider.actorUri]: listing(outsider),
+    };
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    const refresh = (remote: Remote) =>
+      refreshRemoteActor(env.DB, identity, remote.actorUri, options());
+    const held = async () => (await findRemoteActorKey(env.DB, keyId))._unsafeUnwrap();
+
+    serve({
+      ...documents,
+      [keyId]: { id: keyId, owner: holder.actorUri, publicKeyPem: first.publicKeyPem },
+    });
+    expect((await refresh(holder)).isOk()).toBe(true);
+    expect((await held())?.actor.actorUri).toBe(holder.actorUri);
+    // Another actor of the host lists it, but the key names its holder.
+    expect((await refresh(claimant)).isOk()).toBe(true);
+    // An actor on another host lists it: never fetched.
+    expect((await refresh(outsider)).isOk()).toBe(true);
+    expect((await held())?.actor.actorUri).toBe(holder.actorUri);
+    expect((await held())?.key.publicKeyPem).toBe(first.publicKeyPem);
+
+    // The host now says the key is the taker's.
+    vi.restoreAllMocks();
+    serve({
+      ...documents,
+      [keyId]: { id: keyId, owner: taker.actorUri, publicKeyPem: second.publicKeyPem },
+    });
+    expect((await refresh(taker)).isOk()).toBe(true);
+    expect((await held())?.actor.actorUri).toBe(taker.actorUri);
+    expect((await held())?.key.publicKeyPem).toBe(second.publicKeyPem);
+    expect(
+      (await post(signedDelivery(create(taker, "moved"), keyId, second.privateKeyJwk))).status,
+    ).toBe(202);
+    expect(await storedContent(`${taker.actorUri}/statuses/moved`)).toContain("moved");
   });
 
   it("reads an actor only from its own id, not from a document served at another path of its host", async () => {
@@ -521,8 +697,10 @@ describe("multibase values too long to decode", () => {
   it("refuses a long publicKeyMultibase and proofValue before decoding them", async () => {
     const long = `z${"2".repeat(100_000)}`;
     const started = Date.now();
-    expect(multibaseKey(long)).toBeUndefined();
-    expect(multibaseKey(`z${"r".repeat(3000)}`)).toBeUndefined();
+    expect(multibaseKey(long)).toEqual({ kind: "NoKey" });
+    expect(multibaseKey(`z${"r".repeat(3000)}`)).toEqual({ kind: "NoKey" });
+    // A character base58 lacks still refuses the actor, however long.
+    expect(multibaseKey(`z${"0".repeat(100_000)}`)).toEqual({ kind: "Malformed" });
     const proof = await readIntegrityProof(
       {
         id: "https://long.example/1",
@@ -538,6 +716,77 @@ describe("multibase values too long to decode", () => {
     );
     expect(proof._unsafeUnwrapErr()).toEqual({ kind: "UnsupportedProof" });
     expect(Date.now() - started).toBeLessThan(200);
+  });
+});
+
+describe("a publicKeyMultibase that is not base58 (FED-8)", () => {
+  const badMultikey = (remote: Remote, id: string, controller = remote.actorUri) => ({
+    id,
+    type: "Multikey",
+    controller,
+    publicKeyMultibase: "z6Mk0000",
+  });
+
+  it("refuses the whole actor, as Multibase.decode raises ArgumentError", async () => {
+    const bea = await remoteActor("keys-b58-bea", "keys-b58.example", { cache: false });
+    serve({
+      [bea.actorUri]: actorDocument(bea, {
+        assertionMethod: [badMultikey(bea, `${bea.actorUri}#ed25519-key`)],
+      }),
+    });
+    expect((await post(bea.delivery(create(bea, "refused")))).status).toBe(401);
+    expect((await findRemoteActorByUri(env.DB, bea.actorUri))._unsafeUnwrap()).toBeUndefined();
+    expect(
+      (await findRemoteActorKey(env.DB, `${bea.actorUri}#main-key`))._unsafeUnwrap(),
+    ).toBeUndefined();
+  });
+
+  it("leaves a cached actor as it was when its document or a Multikey it names by id is not base58", async () => {
+    const cal = await remoteActor("keys-b58-cal", "keys-b58c.example", { cache: false });
+    const keyId = "https://keys-b58c.example/keys/cal";
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    const refresh = () => refreshRemoteActor(env.DB, identity, cal.actorUri, options());
+    serve({ [cal.actorUri]: actorDocument(cal) });
+    expect((await refresh()).isOk()).toBe(true);
+    const before = (await findRemoteActorByUri(env.DB, cal.actorUri))._unsafeUnwrap();
+
+    for (const document of [
+      actorDocument(cal, {
+        name: "Embedded",
+        assertionMethod: [badMultikey(cal, `${cal.actorUri}#ed25519-key`)],
+      }),
+      actorDocument(cal, { name: "Named", assertionMethod: [keyId] }),
+    ]) {
+      vi.restoreAllMocks();
+      serve({ [cal.actorUri]: document, [keyId]: badMultikey(cal, keyId) });
+      await refresh();
+      const after = (await findRemoteActorByUri(env.DB, cal.actorUri))._unsafeUnwrap();
+      expect(after?.displayName).toBe(before?.displayName);
+    }
+    expect(
+      (await findRemoteActorKey(env.DB, `${cal.actorUri}#main-key`))._unsafeUnwrap(),
+    ).toBeDefined();
+  });
+
+  it("reads no further a Multikey of another controller, and skips one Multibase::Error refuses", async () => {
+    const dot = await remoteActor("keys-b58-dot", "keys-b58d.example", { cache: false });
+    serve({
+      [dot.actorUri]: actorDocument(dot, {
+        assertionMethod: [
+          badMultikey(dot, `${dot.actorUri}#theirs`, "https://keys-b58d.example/users/other"),
+          {
+            id: `${dot.actorUri}#secp256k1`,
+            type: "Multikey",
+            controller: dot.actorUri,
+            publicKeyMultibase: "zQ3shokFTS3brHcDQrn82RUDfCZESWL1ZdCEJwekUDPQiYBme",
+          },
+        ],
+      }),
+    });
+    expect((await post(dot.delivery(create(dot, "taken")))).status).toBe(202);
+    expect(
+      (await findRemoteActorKey(env.DB, `${dot.actorUri}#secp256k1`))._unsafeUnwrap(),
+    ).toBeUndefined();
   });
 });
 

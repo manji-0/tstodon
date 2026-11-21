@@ -40,6 +40,19 @@ export const MASTODON_MULTIKEYS: Readonly<
   },
   badCharacter: { multibase: "z6Mk0000", error: "ArgumentError" },
   badBase: { multibase: "fed01", error: "Multibase::Error" },
+  badBase64Url: { multibase: "u!!!!", error: "ArgumentError" },
+  badBase64UrlPadding: { multibase: "uAA=", error: "ArgumentError" },
+  badBase64UrlTrailingBits: {
+    multibase: "u7QHaixYIunaqSxV7zm3RdF6ztjt-G4A2mE4C-kr4XiH77B",
+    error: "ArgumentError",
+  },
+  base64UrlStandardAlphabet: {
+    multibase: "u7QHaixYIunaqSxV7zm3RdF6ztjt+G4A2mE4C+kr4XiH77A",
+    type: "ed25519",
+    pem: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA2osWCLp2qksVe85t0XRes7Y7fhuANphOAvpK+F4h++w=\n-----END PUBLIC KEY-----\n",
+  },
+  emptyBase58: { multibase: "z", error: "Multibase::Error" },
+  empty: { multibase: "", error: "Multibase::Error" },
   ed25519: {
     multibase: "z6MkuAMw1ZSYyYSJmE1R7JJ7ASD8VDD1W2wJcUxEZC9mVrKM",
     type: "ed25519",
