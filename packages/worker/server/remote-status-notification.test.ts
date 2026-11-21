@@ -696,3 +696,124 @@ describe("a followed remote actor's note this server fetches", () => {
     );
   });
 });
+
+/**
+ * Makes D1 refuse to store a notification for `accountId` until the returned
+ * function is called. `name` is the trigger's, one per test.
+ */
+const refuseNotifications = async (
+  name: string,
+  accountId: string,
+): Promise<() => Promise<void>> => {
+  await env.DB.prepare(
+    `CREATE TRIGGER ${name} BEFORE INSERT ON notifications
+     WHEN NEW.account_id = '${accountId}' BEGIN SELECT RAISE(ABORT, 'write refused'); END`,
+  ).run();
+  return async () => {
+    await env.DB.prepare(`DROP TRIGGER ${name}`).run();
+  };
+};
+
+// A distributed note's notifications are owed until they are sent, as an
+// inbox `Create`'s are (`remote_status_owed`): a step that fails once is
+// finished by the next activity that brings the note.
+describe("a distributed note whose notifications failed once", () => {
+  it("notifies when the boost that fetched it is delivered again", async () => {
+    const author = await remoteActor("rsnretryfetch", "rsn-retry-fetch.example");
+    const booster = await remoteActor("rsnretrybooster", "rsn-retry-booster.example");
+    const email = "rsn-retry-fetch-follower@example.com";
+    await followRemote(email, author, { notify: true });
+    await followRemote(email, booster, {});
+    const uri = "https://rsn-retry-fetch.example/notes/1";
+    serve(
+      new Map([
+        [
+          uri,
+          {
+            id: uri,
+            type: "Note",
+            attributedTo: author.actorUri,
+            content: "<p>boost me</p>",
+            published: new Date(Date.now() - HOUR_MS).toISOString(),
+            to: [PUBLIC],
+            cc: [`${author.actorUri}/followers`],
+          },
+        ],
+      ]),
+    );
+    const announce = {
+      id: "https://rsn-retry-booster.example/announces/1",
+      type: "Announce",
+      actor: booster.actorUri,
+      object: uri,
+      published: new Date().toISOString(),
+      to: [PUBLIC],
+      cc: [`${booster.actorUri}/followers`],
+    };
+    const allow = await refuseNotifications("rsn_retry_fetch", (await signedInAccount(email)).id);
+    expect(await booster.send(announce)).toBeGreaterThanOrEqual(500);
+    await settle();
+    await allow();
+    const id = await storedId(uri);
+    expect(await statusNotifications(email, id)).toBe(0);
+
+    expect(await booster.send(announce)).toBe(202);
+    await settle();
+
+    expect(await statusNotifications(email, id)).toBe(1);
+  });
+
+  // Mastodon decides once, when it creates the status, whether it is within
+  // the real-time window; a retry hours later does not decide again.
+  it("notifies when a quote request stored within the window is finished after it", async () => {
+    const author = await remoteActor("rsnretryquote", "rsn-retry-quote.example");
+    const email = "rsn-retry-quote-follower@example.com";
+    await followRemote(email, author, { notify: true });
+    const quoted = z.object({ uri: z.string() }).parse(
+      await call("rsn-retry-quote-quoted@example.com", "/api/v1/statuses", {
+        status: "quote me",
+      }),
+    );
+    // Stored five hours after it was published, then finished two hours
+    // later, past the window: the row and its marker are moved back after
+    // the first delivery, as the clock cannot be.
+    const published = new Date(Date.now() - 5 * HOUR_MS);
+    const uri = "https://rsn-retry-quote.example/notes/1";
+    const request = {
+      id: "https://rsn-retry-quote.example/quote_requests/1",
+      type: "QuoteRequest",
+      object: quoted.uri,
+      instrument: {
+        id: uri,
+        type: "Note",
+        attributedTo: author.actorUri,
+        content: "<p>quoting</p>",
+        published: published.toISOString(),
+        to: [PUBLIC],
+        cc: [`${author.actorUri}/followers`],
+        quote: quoted.uri,
+      },
+    };
+    const allow = await refuseNotifications("rsn_retry_quote", (await signedInAccount(email)).id);
+    expect(await author.send(request)).toBeGreaterThanOrEqual(500);
+    await settle();
+    await allow();
+    const id = await storedId(uri);
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * HOUR_MS).toISOString();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE remote_statuses SET published_at = ? WHERE id = ?").bind(
+        hoursAgo(7),
+        id,
+      ),
+      env.DB.prepare("UPDATE remote_status_owed SET created_at = ? WHERE status_id = ?").bind(
+        hoursAgo(2),
+        id,
+      ),
+    ]);
+
+    expect(await author.send(request)).toBe(202);
+    await settle();
+
+    expect(await statusNotifications(email, id)).toBe(1);
+  });
+});

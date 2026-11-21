@@ -1,5 +1,6 @@
 import {
   InstanceIdentity,
+  IsoInstant,
   RealtimeWindow,
   RemoteActor,
   type RemoteStatus as RemoteStatusValue,
@@ -19,7 +20,7 @@ import { readableRow, type RepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import { resolveRemoteActor } from "./remote-actor-fetch";
-import { findRemoteActorsByUris } from "./remote-actor-store";
+import { findRemoteActorByUri, findRemoteActorsByUris } from "./remote-actor-store";
 import type { IdClock } from "./ids";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountsByUsernames } from "./account-store";
@@ -38,6 +39,7 @@ import {
   claimOwed,
   clearOwed,
   type HeldOwed,
+  type OwedMarker,
   listOwed,
   newOwedMarker,
   owedStatement,
@@ -267,8 +269,7 @@ const storedMentions = async (
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, or one another delivery wrote whose steps this one finishes; this
  * delivery holds its lease. Absent for a note that owes nothing (one that
- * was fetched, or one whose row existed). `firstStored` holds when this
- * call wrote the note's row where there was none.
+ * was fetched and is not distributed, or one whose row existed).
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
@@ -289,7 +290,7 @@ export type LateSteps = Readonly<{
   addressees?: LocalAddressees;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined; firstStored: boolean }>
+    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined }>
     | Readonly<{
         kind: "Updated";
         added: ReadonlyArray<string>;
@@ -342,28 +343,47 @@ const inboxDelivery = (options: PersistOptions): boolean =>
   options.delivery === "Create" || options.delivery === "QuoteRequest";
 
 /**
+ * Whether a note `options` store owes its late steps until they finish: a
+ * `Created` marker is written with its row, and the next delivery or fetch
+ * that finds the marker resumes them ({@link resumeCreated}). A note an
+ * inbox activity brings owes them always. A fetched note owes them when it is
+ * distributed ({@link distributed}): its notifications must not be lost to a
+ * step that fails once.
+ */
+const owesLateSteps = (options: PersistOptions, publishedAt: IsoInstant): boolean =>
+  inboxDelivery(options) ||
+  ((options.delivery ?? "Fetched") === "Fetched" &&
+    RealtimeWindow.contains(publishedAt, nowInstant()));
+
+/** When the note `marker` stands for was stored: the delivery that wrote it decided then. */
+const storedAt = (marker: OwedMarker): IsoInstant =>
+  IsoInstant.parse(marker.createdAt).unwrapOr(nowInstant());
+
+/**
  * Whether `late` finishes a new note that Mastodon's `Create#distribute`
  * fans out, notifying the local accounts it mentions and its notifying
  * followers. An inbox `Create` is distributed whenever it was published
  * (`override_timestamps`). A status Mastodon fetches is distributed when it
- * was published within the real-time window (`within_realtime_window?`): a
- * `QuoteRequest`'s instrument (`FetchRemoteStatusService`) and a note this
- * server fetched and stored first, as a boosted, quoted, replied-to, pinned
- * or searched one. A note an outbox backfill stored is not: Mastodon reads
- * no outbox.
+ * was published within the real-time window (`within_realtime_window?`) of
+ * the moment it was stored, which its marker records, as Mastodon decides
+ * once, when it creates the status: a `QuoteRequest`'s instrument
+ * (`FetchRemoteStatusService`) and a note this server fetched and stored
+ * first, as a boosted, quoted, replied-to, pinned or searched one. A note an
+ * outbox backfill stored is not: Mastodon reads no outbox.
  */
 const distributed = (late: LateSteps): boolean => {
   if (late.kind !== "Created") {
     return false;
   }
-  const recent = () => RealtimeWindow.contains(late.status.publishedAt, nowInstant());
+  const { marker } = late;
   switch (late.options.delivery ?? "Fetched") {
     case "Create":
       return true;
     case "QuoteRequest":
-      return recent();
     case "Fetched":
-      return late.firstStored && recent();
+      return (
+        marker !== undefined && RealtimeWindow.contains(late.status.publishedAt, storedAt(marker))
+      );
     case "Backfilled":
       return false;
   }
@@ -817,7 +837,9 @@ const streamEvent = (late: LateSteps): "update" | "status.update" | undefined =>
   if (late.kind === "Updated") {
     return late.edit ? "status.update" : undefined;
   }
-  return late.marker !== undefined && RealtimeWindow.contains(late.status.publishedAt, nowInstant())
+  return inboxDelivery(late.options) &&
+    late.marker !== undefined &&
+    RealtimeWindow.contains(late.status.publishedAt, nowInstant())
     ? "update"
     : undefined;
 };
@@ -1002,7 +1024,11 @@ export const persistAnnouncedObject = async (
     return healFromFetch(env, identity, announcer, objectUri, cached.value.row, options);
   }
   if (cached.value) {
-    return ok(cached.value.kind === "RemoteNote" ? cached.value : undefined);
+    if (cached.value.kind !== "RemoteNote") {
+      return ok(undefined);
+    }
+    const status = cached.value;
+    return (await resumeFetched(env, identity, announcer, status, options)).map(() => status);
   }
   if (typeof object !== "string") {
     const embedded = parseNoteDocument(object);
@@ -1263,6 +1289,12 @@ const storeRemoteNote = async (
   if (read.value && read.value.kind !== "RemoteNote") {
     return ok(undefined);
   }
+  if (read.value && !inboxDelivery(options)) {
+    const resumed = await resumeCreated(env, identity, actor, raw, read.value, options);
+    if (resumed.isErr()) {
+      return err(resumed.error);
+    }
+  }
   // Mastodon sets a note's visibility once, when it stores it
   // (`Create#process_status`): a note stored again keeps the one it has.
   const addressees = await localAddressees(env.DB, identity, raw, options.deliveredTo);
@@ -1285,7 +1317,9 @@ const storeRemoteNote = async (
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.
   const marker =
-    existing.row === undefined && inboxDelivery(options) ? newOwedMarker("Created") : undefined;
+    existing.row === undefined && owesLateSteps(options, status.publishedAt)
+      ? newOwedMarker("Created")
+      : undefined;
   const stored = await upsertRemoteStatus(
     env.DB,
     status,
@@ -1310,7 +1344,6 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
-    firstStored: existing.row === undefined,
     addressees: addressees.value,
   });
   return finished.map(() => stored.value);
@@ -1354,6 +1387,41 @@ const sameVersion = (delivered: RemoteStatusValue, stored: RemoteStatusValue): b
     : stored.editedAt.kind !== "Edited";
 
 /**
+ * Finish what the fetch that stored `status` left owed, as
+ * {@link resumeCreated} does, when another activity, `asker`'s, shares the
+ * note: the note's author, cached, vouches for the document its URI serves.
+ * The marker is read first, so a note that owes nothing costs one read.
+ */
+const resumeFetched = async (
+  env: Env,
+  identity: InstanceIdentity,
+  asker: RemoteActor,
+  status: RemoteStatusValue,
+  options: PersistOptions,
+): Promise<Result<void, RepositoryError>> => {
+  if (options.delivery === "Backfilled") {
+    return ok(undefined);
+  }
+  if (asker.actorUri === status.actorUri) {
+    return resumeCreated(env, identity, asker, status.objectUri, status, options);
+  }
+  const owed = await listOwed(env.DB, status.id);
+  if (owed.isErr()) {
+    return err(owed.error);
+  }
+  if (!owed.value.some((marker) => marker.kind === "Created")) {
+    return ok(undefined);
+  }
+  const author = await findRemoteActorByUri(env.DB, status.actorUri);
+  if (author.isErr()) {
+    return err(author.error);
+  }
+  return author.value === undefined
+    ? ok(undefined)
+    : resumeCreated(env, identity, author.value, status.objectUri, status, options);
+};
+
+/**
  * Finish what the delivery that stored `status` left owed, when `actor`
  * wrote the note and delivers it again in an inbox activity. The stored row
  * is kept as it is; only the late steps run, from the document delivered
@@ -1385,7 +1453,7 @@ const resumeCreated = async (
   status: RemoteStatusValue,
   options: PersistOptions,
 ): Promise<Result<void, RepositoryError>> => {
-  if (!inboxDelivery(options) || status.actorUri !== actor.actorUri) {
+  if (options.delivery === "Backfilled" || status.actorUri !== actor.actorUri) {
     return ok(undefined);
   }
   const owed = await listOwed(env.DB, status.id);
@@ -1430,6 +1498,5 @@ const resumeCreated = async (
     status,
     options,
     marker: held.value,
-    firstStored: false,
   });
 };
