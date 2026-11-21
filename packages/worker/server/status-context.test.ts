@@ -1,8 +1,11 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
+import { findStatusById } from "./status-store";
+import { parseInstanceIdentity } from "./runtime-config";
+import { listThreadDescendants } from "./thread-context";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -72,10 +75,9 @@ describe("status context", () => {
     expect(root).toBeDefined();
     expect(deepest).toBeDefined();
 
-    // Anonymous: depth capped at 20.
+    // Anonymous: 40 ancestors, and descendants 20 deep.
     const anonymousDeep = await contextAt(deepest ?? "");
-    expect(anonymousDeep.ancestors).toHaveLength(20);
-    expect(anonymousDeep.ancestors.map((status) => status.id)).not.toContain(root);
+    expect(anonymousDeep.ancestors.map((status) => status.id)).toEqual(chain.slice(0, 22));
     const anonymousRoot = await contextAt(root ?? "");
     expect(anonymousRoot.descendants).toHaveLength(20);
 
@@ -86,7 +88,76 @@ describe("status context", () => {
 
     const authenticatedRoot = await contextAt(root ?? "", email);
     expect(authenticatedRoot.descendants).toHaveLength(22);
-    // Descendants come back in chronological (id) order.
     expect(authenticatedRoot.descendants.map((status) => status.id)).toEqual(chain.slice(1));
   }, 60_000);
+});
+
+describe("status context descendants", () => {
+  it("come depth first, each reply's subtree before its next sibling", async () => {
+    const root = await postStatus("dfs-root@example.com", { status: "dfs root" });
+    const first = await postStatus("dfs-first@example.com", {
+      status: "dfs first",
+      in_reply_to_id: root,
+    });
+    const second = await postStatus("dfs-second@example.com", {
+      status: "dfs second",
+      in_reply_to_id: root,
+    });
+    const nested = await postStatus("dfs-second@example.com", {
+      status: "dfs nested",
+      in_reply_to_id: first,
+    });
+
+    const context = await contextAt(root);
+
+    expect(context.descendants.map((status) => status.id)).toEqual([first, nested, second]);
+  }, 30_000);
+
+  it("are limited in depth-first order, as Mastodon's ORDER BY path LIMIT", async () => {
+    const root = await postStatus("dfs-limit-root@example.com", { status: "limit root" });
+    const first = await postStatus("dfs-limit-first@example.com", {
+      status: "limit first",
+      in_reply_to_id: root,
+    });
+    await postStatus("dfs-limit-second@example.com", {
+      status: "limit second",
+      in_reply_to_id: root,
+    });
+    const nested = await postStatus("dfs-limit-second@example.com", {
+      status: "limit nested",
+      in_reply_to_id: first,
+    });
+    const start = (await findStatusById(env.DB, root))._unsafeUnwrap();
+    if (!start) {
+      throw new Error("root not stored");
+    }
+
+    const limited = await listThreadDescendants(
+      env.DB,
+      parseInstanceIdentity(env)._unsafeUnwrap(),
+      { kind: "Local", status: start },
+      2,
+      20,
+    );
+
+    expect(limited._unsafeUnwrap().map((reply) => reply.node.status.id)).toEqual([first, nested]);
+  }, 30_000);
+
+  it("bring replies to their own author's status to the top, keeping their order", async () => {
+    const author = "promote-author@example.com";
+    const root = await postStatus(author, { status: "promote root" });
+    const other = await postStatus("promote-other@example.com", {
+      status: "promote other",
+      in_reply_to_id: root,
+    });
+    const self = await postStatus(author, { status: "promote self", in_reply_to_id: root });
+    const selfNested = await postStatus(author, {
+      status: "promote self nested",
+      in_reply_to_id: self,
+    });
+
+    const context = await contextAt(root);
+
+    expect(context.descendants.map((status) => status.id)).toEqual([self, selfNested, other]);
+  }, 30_000);
 });

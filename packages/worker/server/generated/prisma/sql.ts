@@ -950,6 +950,8 @@ export * from "./sql/searchAccounts";
 
 export * from "./sql/searchFollowedAccounts";
 
+export * from "./sql/searchPeerDomains";
+
 export * from "./sql/searchRemoteActors";
 
 export * from "./sql/searchTags";

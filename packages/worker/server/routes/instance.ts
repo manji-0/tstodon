@@ -2,17 +2,20 @@ import type {
   ApiDomainBlockJSON,
   ApiInstanceActivityJSON,
   ApiInstanceJSON,
+  ApiPeerSearchJSON,
   ApiRuleJSON,
   ApiTermsOfServiceJSON,
   ApiV1InstanceJSON,
 } from "@tstodon/api";
+import { ApiPeerSearchParamsSchema } from "@tstodon/api";
 import { type Context } from "hono";
-import { InstanceLimits, Languages } from "@tstodon/core";
+import { InstanceLimits, Languages, toAscii } from "@tstodon/core";
 import { countActiveAccounts } from "../account-activity";
 import { countAccounts } from "../account-store";
 import { ACTIVE_MONTH_DAYS } from "../nodeinfo";
 import { listPublicDomainBlocks, publicDomainBlockDocument } from "../admin-domain-block-store";
-import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
+import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
+import { readQueryParams } from "../request-params";
 import {
   extendedDescription,
   instanceRules,
@@ -26,7 +29,7 @@ import {
 } from "../runtime-config";
 import { countStatuses } from "../status-store";
 import { vapidPublicKey } from "../vapid";
-import { listPeerDomains } from "../remote-actor-store";
+import { listPeerDomains, searchPeerDomains } from "../remote-actor-store";
 import { listWeeklyStatusActivity } from "../status-discovery-store";
 
 /** `INSTANCE_EXTENDED_DESCRIPTION`, when configured. */
@@ -212,6 +215,71 @@ export const getV1InstancePeers = async (
     return jsonRepositoryError(c, peers.error.message);
   }
   return c.json(peers.value);
+};
+
+/** Mastodon's `Api::V1::Peers::SearchController::LIMIT`. */
+const PEER_SEARCH_LIMIT = 10;
+
+/** Characters Addressable refuses in a host (`Addressable::URI#validate`). */
+const INVALID_HOST_CHARACTER = /[<>{}/\\?#@"\s]/u;
+
+/** Ruby's `String#strip`: only NUL and ASCII whitespace, unlike `trim()`. */
+const rubyStrip = (value: string): string =>
+  value.replace(/^[\0\t\n\v\f\r ]+|[\0\t\n\v\f\r ]+$/gu, "");
+
+/**
+ * `q` as Mastodon's `TagManager#normalize_domain` gives it: stripped, one
+ * trailing `/` dropped, lower-cased, percent-decoded, in IDNA ASCII and
+ * without a single trailing dot. `undefined` where Addressable raises.
+ */
+const normalizeDomainQuery = (q: string): string | undefined => {
+  const host = rubyStrip(q).replace(/\/$/u, "");
+  if (INVALID_HOST_CHARACTER.test(host)) {
+    return undefined;
+  }
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(host.toLowerCase());
+  } catch {
+    return undefined;
+  }
+  const ascii = toAscii(decoded);
+  if (ascii === undefined) {
+    return undefined;
+  }
+  return /[^.]\.$/u.test(ascii) ? ascii.slice(0, -1) : ascii;
+};
+
+/**
+ * Mastodon 4.7.5 `Api::V1::Peers::SearchController`: up to ten known domains
+ * that start with `q`, for anyone. Under limited federation it needs a user
+ * and then is not found, as Mastodon's callbacks run in that order.
+ */
+export const getV1PeersSearch = async (c: Context<{ Bindings: Env }, "/api/v1/peers/search">) => {
+  if (await isLimitedFederation(c.env)) {
+    const user = await requireUser(c);
+    return user.isErr() ? jsonAuthError(c, user.error) : c.body(null, 404);
+  }
+  const params = readQueryParams(c, ApiPeerSearchParamsSchema);
+  if (params.isErr()) {
+    return jsonValidationError(c);
+  }
+  const q = params.value.q;
+  if (q === undefined || q.trim() === "") {
+    const blank: ApiPeerSearchJSON = null;
+    return c.json(blank);
+  }
+  const prefix = normalizeDomainQuery(q);
+  if (prefix === undefined) {
+    const none: ApiPeerSearchJSON = [];
+    return c.json(none);
+  }
+  const domains = await searchPeerDomains(c.env.DB, prefix, PEER_SEARCH_LIMIT);
+  if (domains.isErr()) {
+    return jsonRepositoryError(c, domains.error.message);
+  }
+  const document: ApiPeerSearchJSON = domains.value;
+  return c.json(document);
 };
 
 export const getV1InstanceActivity = async (
