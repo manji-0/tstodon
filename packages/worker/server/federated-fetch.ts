@@ -8,9 +8,14 @@ import { fetchDoubleKnocking, signFetchRequest } from "./http-signature";
 import { hostsExemptFromAddressChecks } from "./federation-allow-hosts";
 import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-dns";
 
+/**
+ * Why a federated fetch failed. `VerificationUnavailable` is a server that
+ * could not be asked or did not answer; `status` is set when it did answer,
+ * with a 5xx, so a caller can tell an error answer from no answer.
+ */
 export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature" }>
-  | Readonly<{ kind: "VerificationUnavailable" }>;
+  | Readonly<{ kind: "VerificationUnavailable"; status?: number }>;
 
 /** A WebFinger lookup's failure; `NoSuchAccount` is a 404 or 410, the server's definite "no". */
 export type WebfingerFetchError = FederatedFetchError | Readonly<{ kind: "NoSuchAccount" }>;
@@ -326,7 +331,7 @@ const getActivity = async (
         continue;
       }
       if (response.status >= 500) {
-        return err({ kind: "VerificationUnavailable" });
+        return err({ kind: "VerificationUnavailable", status: response.status });
       }
       if (!response.ok) {
         await response.body?.cancel();

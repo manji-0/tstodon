@@ -70,6 +70,11 @@
         "queue": "tstodon-outbox-process",
       },
       {
+        // Fetch work kept off the delivery queue (`app/queues/tstodon-pull.ts`).
+        "binding": "PULL_QUEUE",
+        "queue": "tstodon-pull",
+      },
+      {
         // The outbox queue's dead-letter queue (`app/queues/tstodon-outbox-dlq.ts`).
         "binding": "OUTBOX_DLQ",
         "queue": "tstodon-outbox-dlq",

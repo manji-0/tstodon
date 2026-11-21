@@ -91,6 +91,36 @@ describe("the status notification of a followed account's post", () => {
     expect(await statusNotifications("sna-reply-follower@example.com", selfReply)).toBe(1);
   });
 
+  it("carries a self-reply's parent's reply account over, as Mastodon's in_reply_to_account_id", async () => {
+    const author = await signedInAccount("sna-carry-author@example.com");
+    await signedInAccount("sna-carry-other@example.com");
+    await notifyingFollower("sna-carry-follower@example.com", author.id);
+    const others = await post("sna-carry-other@example.com", { status: "their thread" });
+    const answer = await post("sna-carry-author@example.com", {
+      status: "my answer",
+      in_reply_to_id: others,
+    });
+    const own = await post("sna-carry-author@example.com", { status: "my thread" });
+    const second = await post("sna-carry-author@example.com", {
+      status: "my second",
+      in_reply_to_id: own,
+    });
+
+    // Alice's reply to her own reply to Bob answers Bob (A → A → B).
+    const underAnswer = await post("sna-carry-author@example.com", {
+      status: "more on my answer",
+      in_reply_to_id: answer,
+    });
+    // Alice's reply two deep in her own thread answers herself (A → A → A).
+    const third = await post("sna-carry-author@example.com", {
+      status: "my third",
+      in_reply_to_id: second,
+    });
+
+    expect(await statusNotifications("sna-carry-follower@example.com", underAnswer)).toBe(0);
+    expect(await statusNotifications("sna-carry-follower@example.com", third)).toBe(1);
+  });
+
   it("goes to no follower who mutes the author, even with its notifications left on", async () => {
     const author = await signedInAccount("sna-mute-author@example.com");
     await notifyingFollower("sna-mute-follower@example.com", author.id);

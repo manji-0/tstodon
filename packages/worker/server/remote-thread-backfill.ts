@@ -168,11 +168,12 @@ export const findThreadRefresh = async (
  * Queue fetching the thread of a remote status the reader opened, unless one
  * was queued within the TTL. Only public and unlisted statuses, whose origin
  * serves them to anyone. Mastodon's `should_fetch_replies?`, without its
- * five-minute initial wait: Mastodon fetches a new reply's ancestors when the
- * reply arrives (`ThreadResolveWorker`), and tstodon fetches them only here,
- * so waiting would leave a fresh reply's parent missing (INT-4). Best effort and off the request path: the thread
- * renders what is cached, and the refresh this resolves to tells a client
- * when to read it again.
+ * five-minute initial wait: Mastodon resolves the parent of every status it
+ * stores (`ThreadResolveWorker`), tstodon only of a note an inbox `Create` or
+ * `QuoteRequest` stores (`ResolveRemoteThread`), so a note found by search or
+ * through a boost gets its parents only here, and waiting would leave a fresh
+ * one's parents missing (INT-4). Best effort and off the request path: the thread renders what is
+ * cached, and the refresh this resolves to tells a client when to read it again.
  */
 export const requestRemoteThreadBackfill = async (
   env: Env,

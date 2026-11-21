@@ -44,6 +44,8 @@ export * from "./sql/claimRemotePollRefresh";
 
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
+export * from "./sql/claimRemoteStatusThreadResolve";
+
 export * from "./sql/clearLegacyMediaKey";
 
 export * from "./sql/clearNotifications";
@@ -324,6 +326,8 @@ export * from "./sql/findLinkCard";
 
 export * from "./sql/findListForAccount";
 
+export * from "./sql/findLocalOwnAncestryTop";
+
 export * from "./sql/findLocalReblog";
 
 export * from "./sql/findMediaById";
@@ -383,6 +387,8 @@ export * from "./sql/findRemoteBoostById";
 export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteFollowsJson";
+
+export * from "./sql/findRemoteOwnAncestryTop";
 
 export * from "./sql/findRemotePollFetchedAt";
 
@@ -917,6 +923,8 @@ export * from "./sql/releaseRemoteOutboxBackfill";
 export * from "./sql/releaseRemotePollRefresh";
 
 export * from "./sql/releaseRemoteStatusThreadBackfill";
+
+export * from "./sql/releaseRemoteStatusThreadResolve";
 
 export * from "./sql/releaseStaleInboxClaims";
 

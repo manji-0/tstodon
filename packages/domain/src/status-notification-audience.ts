@@ -11,6 +11,34 @@ export type NoteThread =
   | Readonly<{ kind: "SelfReply" }>
   | Readonly<{ kind: "ReplyToOther" }>;
 
+/**
+ * Where the statuses above a note by its own author lead: the note is no
+ * reply (`NoParent`), they end at a root (`ReachesRoot`), or they end at a
+ * reply to someone else, or to a status not linked (`LeavesAuthor`).
+ */
+export type OwnAncestry =
+  | Readonly<{ kind: "NoParent" }>
+  | Readonly<{ kind: "ReachesRoot" }>
+  | Readonly<{ kind: "LeavesAuthor" }>;
+
+export const NoteThread = {
+  /**
+   * Mastodon's `carried_over_reply_to_account_id`: a reply to its author's
+   * own reply takes that reply's `in_reply_to_account_id`, so only a reply
+   * whose author's own statuses lead up to a root answers its author.
+   */
+  of: (ancestry: OwnAncestry): NoteThread => {
+    switch (ancestry.kind) {
+      case "NoParent":
+        return { kind: "Root" };
+      case "ReachesRoot":
+        return { kind: "SelfReply" };
+      case "LeavesAuthor":
+        return { kind: "ReplyToOther" };
+    }
+  },
+} as const;
+
 /** What decides who gets a note's `status` notification. */
 export type NotifiedNote = Readonly<{
   visibility: RemoteVisibility;
