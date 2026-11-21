@@ -433,25 +433,35 @@ describe("a remote note of an actor many local accounts follow with notification
   // sends the queue stays flat with the number of followers.
   it(
     "reads its notifying followers a page at a time through the queue",
-    { timeout: 300_000 },
+    { timeout: 600_000 },
     async () => {
       const author = await remoteActor("rsnpages", "rsn-pages.example");
       const followers = Array.from(
-        { length: NOTIFYING_FOLLOWER_PAGE_SIZE + 5 },
+        { length: 2 * NOTIFYING_FOLLOWER_PAGE_SIZE + 5 },
         (_, n) => `rsn-pages-${n}@example.com`,
       );
       for (const email of followers) {
         await followRemote(email, author, { notify: true });
       }
       const queued = holdQueue();
+      const sent = new Map<string, number>();
+      const push = queued.bodies.push.bind(queued.bodies);
+      queued.bodies.push = (...bodies: unknown[]) => {
+        for (const body of bodies) {
+          const kind = z.object({ kind: z.string() }).parse(body).kind;
+          sent.set(kind, (sent.get(kind) ?? 0) + 1);
+        }
+        return push(...bodies);
+      };
       const id = await create(author, "https://rsn-pages.example/notes/1", {});
-      const recipientJobs = queued.bodies.filter(
-        (body) => z.object({ kind: z.string() }).parse(body).kind === "FinishRemoteNoteRecipient",
+      expect(sent.get("FinishRemoteNoteRecipient")).toBe(
+        NOTIFYING_FOLLOWER_PAGE_SIZE - INLINE_NOTE_RECIPIENTS,
       );
-      expect(recipientJobs.length).toBe(NOTIFYING_FOLLOWER_PAGE_SIZE - INLINE_NOTE_RECIPIENTS);
 
       await drainHeld(queued, ["FinishRemoteNoteRecipient", "NotifyRemoteNoteFollowers"]);
 
+      expect(sent.get("FinishRemoteNoteRecipient")).toBe(followers.length - INLINE_NOTE_RECIPIENTS);
+      expect(sent.get("NotifyRemoteNoteFollowers")).toBe(2);
       for (const email of followers) {
         expect(await statusNotifications(email, id), email).toBe(1);
       }
