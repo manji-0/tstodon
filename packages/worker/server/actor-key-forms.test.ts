@@ -1,5 +1,5 @@
 import { createExecutionContext, env } from "cloudflare:test";
-import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { CoveredHosts, IsoInstant, RemoteActor } from "@tstodon/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -266,7 +266,7 @@ describe("actor key forms (FED-8)", () => {
       (
         await refreshRemoteActor(env.DB, identity, erin.actorUri, {
           allowHosts: new Set(),
-          blockedHosts: new Set(),
+          blockedHosts: CoveredHosts.none,
           fetchSigner: unsignedFetch,
         })
       ).isOk(),
@@ -394,7 +394,7 @@ describe("forwards with FEP-8b32 integrity proofs", () => {
     const identity = parseInstanceIdentity(env)._unsafeUnwrap();
     const verdict = await verifyForwardedActivity(env.DB, identity, body, alice.remote.actorUri, {
       allowHosts: new Set(),
-      blockedHosts: new Set(),
+      blockedHosts: CoveredHosts.none,
       fetchSigner: unsignedFetch,
     });
     expect(verdict.kind).toBe("Verified");
@@ -409,7 +409,7 @@ describe("forwards with FEP-8b32 integrity proofs", () => {
 
 const options = () => ({
   allowHosts: new Set<string>(),
-  blockedHosts: new Set<never>(),
+  blockedHosts: CoveredHosts.none,
   fetchSigner: unsignedFetch,
 });
 

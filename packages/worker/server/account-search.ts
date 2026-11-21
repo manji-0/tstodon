@@ -2,7 +2,6 @@ import type { LocalAccount, RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { searchableLocalAccounts, searchableRemoteActors } from "./account-presentation";
 import { countSearchAccounts, type LocalAccountSearchScope, searchAccounts } from "./account-store";
-import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { searchRemoteActors } from "./remote-actor-store";
 import { federationAllowHosts } from "./runtime-config";
@@ -62,14 +61,10 @@ export const searchAccountsPage = async (
   if (take <= 0) {
     return ok({ local: local.value, remote: [] });
   }
-  const [allow, suspended] = await Promise.all([
-    federationAllowHosts(env),
-    suspendedDomains(env.DB),
-  ]);
   const actors = await searchRemoteActors(
     env.DB,
     query.remoteTerms,
-    { suspended, allow },
+    { allow: await federationAllowHosts(env) },
     take,
     Math.max(offset - localCount.value, 0),
   );

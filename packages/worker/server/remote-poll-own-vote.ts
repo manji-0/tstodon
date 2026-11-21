@@ -1,9 +1,10 @@
 import {
+  CoveredHosts,
+  Hostname,
   type LocalAccount,
   RemoteActor,
   RemotePoll,
   type RemotePollChoiceError,
-  Hostname,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { suspendedDomains } from "./admin-domain-block-store";
@@ -67,7 +68,7 @@ export const voteOnRemotePoll = async (
   if (
     blocked.isErr() ||
     blocked.value ||
-    hosts.some((host) => suspended.has(host) || !allowListAdmits(allowHosts, host))
+    hosts.some((host) => CoveredHosts.covers(suspended, host) || !allowListAdmits(allowHosts, host))
   ) {
     return err({ kind: "DomainBlocked" });
   }

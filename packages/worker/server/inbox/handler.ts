@@ -1,6 +1,6 @@
 import type {
   ActivityValue,
-  Hostname,
+  CoveredHosts,
   InstanceIdentity,
   LocalAccount,
   RemoteActor,
@@ -47,7 +47,7 @@ export type InboxReceipt = Readonly<{
   /** The request body as parsed JSON, before `received` narrowed a list `object` to its first entry. */
   body: unknown;
   allowHosts: ReadonlySet<string>;
-  blockedHosts: ReadonlySet<Hostname>;
+  blockedHosts: CoveredHosts;
   /** Signs the GETs handling the activity makes (the instance actor's key). */
   fetchSigner: FetchSigner;
 }>;

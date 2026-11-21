@@ -1,4 +1,5 @@
 import {
+  CoveredHosts,
   Hostname,
   type InstanceIdentity,
   type OutboxJob,
@@ -44,7 +45,7 @@ const federatesWith = (options: FederatedFetchOptions, uri: string): boolean => 
   const host = Hostname.ofUri(uri);
   return (
     host !== undefined &&
-    !(options.blockedHosts?.has(host) ?? false) &&
+    !CoveredHosts.covers(options.blockedHosts ?? CoveredHosts.none, host) &&
     allowListAdmits(options.allowHosts ?? new Set(), host)
   );
 };
@@ -103,7 +104,7 @@ export const processRefetchAndVerifyQuoteJob = async (
   const options = await federationOptions(env, identity.value);
   if (
     !actor.value ||
-    RemoteActor.onAnyHost(actor.value, options.blockedHosts ?? new Set()) ||
+    RemoteActor.onAnyHost(actor.value, options.blockedHosts ?? CoveredHosts.none) ||
     !federatesWith(options, actor.value.actorUri)
   ) {
     return "ok";

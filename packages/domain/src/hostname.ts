@@ -43,6 +43,14 @@ export const Hostname = {
     return host.length > 0 ? host : undefined;
   },
   /**
+   * The host and each domain above it, most specific first: Mastodon's
+   * `domain_variants`, which `DomainBlock.rule_for` looks a host up by.
+   */
+  variants: (host: Hostname): Hostname[] => {
+    const labels = host.split(".");
+    return labels.map((_, index) => schema.parse(labels.slice(index).join(".")));
+  },
+  /**
    * The host of an ActivityPub URI, when it parses. Not an actor's account
    * domain, which can differ: an account's domain blocks match
    * `ofAuthority(actor.domain)`, as Mastodon matches `account.domain`.

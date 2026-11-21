@@ -14,9 +14,10 @@ import {
 } from "@tstodon/api/activitypub";
 import {
   ActivityId,
-  CollectionPage,
   type CollectionCursor,
+  CollectionPage,
   type CollectionPageLinks,
+  CoveredHosts,
   FollowersSynchronization,
   Hostname,
   InboxActivity,
@@ -1039,11 +1040,13 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
    */
   const refusalOf = async (actor: RemoteActor): Promise<Response | undefined> => {
     const refusedActorHost = RemoteActor.hostnames(actor).find(
-      (host) => suspended.has(host) || !allowListAdmits(allowHosts, host),
+      (host) => CoveredHosts.covers(suspended, host) || !allowListAdmits(allowHosts, host),
     );
     if (refusedActorHost !== undefined) {
       refuse({
-        reason: suspended.has(refusedActorHost) ? "DomainSuspended" : "DomainNotAllowed",
+        reason: CoveredHosts.covers(suspended, refusedActorHost)
+          ? "DomainSuspended"
+          : "DomainNotAllowed",
         status: 403,
         actor: actorUri,
         signer: actor.actorUri,
@@ -1094,11 +1097,15 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
     // A key or actor on a suspended or not-allowed host is refused before
     // anything is fetched from it (a cached actor there is refused below).
     const refusedHost = [Hostname.ofUri(signature.keyId), Hostname.ofUri(actorUri)].find(
-      (host) => host !== undefined && (suspended.has(host) || !allowListAdmits(allowHosts, host)),
+      (host) =>
+        host !== undefined &&
+        (CoveredHosts.covers(suspended, host) || !allowListAdmits(allowHosts, host)),
     );
     if (refusedHost !== undefined) {
       refuse({
-        reason: suspended.has(refusedHost) ? "DomainSuspended" : "DomainNotAllowed",
+        reason: CoveredHosts.covers(suspended, refusedHost)
+          ? "DomainSuspended"
+          : "DomainNotAllowed",
         status: 403,
         actor: actorUri,
       });
@@ -1125,7 +1132,9 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
       }
       if (keyOwner.error.kind === "DomainRefused") {
         refuse({
-          reason: suspended.has(keyOwner.error.host) ? "DomainSuspended" : "DomainNotAllowed",
+          reason: CoveredHosts.covers(suspended, keyOwner.error.host)
+            ? "DomainSuspended"
+            : "DomainNotAllowed",
           status: 403,
           actor: actorUri,
         });

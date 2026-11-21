@@ -235,6 +235,28 @@ describe("severed relationships", () => {
     expect(await following.text()).toContain("ported@sev-ported.example:8796,");
   });
 
+  // BlockDomainService suspends `Account.by_domain_and_subdomains`.
+  it("severs the follows of actors on the suspended domain's subdomains", async () => {
+    const owner = await person("sev_sub_owner");
+    const sub = await remoteActor("subber", "social.sev-parent.example");
+    const elsewhere = await remoteActor("lookalike", "sev-parentx.example");
+    await follow(owner, sub, true);
+    await followedBy(owner, sub);
+    await follow(owner, elsewhere, true);
+    await blockDomain("sev-parent.example", "suspend");
+
+    expect(await count("outbound_follows", sub.actorUri)).toBe(0);
+    expect(await count("remote_follows", sub.actorUri)).toBe(0);
+    expect(await count("outbound_follows", elsewhere.actorUri)).toBe(1);
+    const [notification] = await severedNotifications(owner);
+    expect(notification?.event).toMatchObject({
+      type: "domain_block",
+      target_name: "sev-parent.example",
+      followers_count: 1,
+      following_count: 1,
+    });
+  });
+
   it("severs when a silence is raised to a suspension, not before", async () => {
     const erin = await person("sev_erin");
     const remote = await remoteActor("raised", "sev-raised.example");

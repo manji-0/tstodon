@@ -21,7 +21,6 @@ import {
   type NotificationGroupPage,
   type NotificationGroupTarget,
 } from "@tstodon/domain";
-import { suspendedDomains } from "../admin-domain-block-store";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "../d1";
 import { paramsCursor, readQueryParams } from "../request-params";
@@ -294,13 +293,9 @@ const groupedQuery = (
 };
 
 /** The federation state that hides a remote sender. */
-const hidingHosts = async (env: Env): Promise<RemoteActorSearchHosts> => {
-  const [allow, suspended] = await Promise.all([
-    federationAllowHosts(env),
-    suspendedDomains(env.DB),
-  ]);
-  return { suspended, allow };
-};
+const hidingHosts = async (env: Env): Promise<RemoteActorSearchHosts> => ({
+  allow: await federationAllowHosts(env),
+});
 
 /**
  * One page of groups, as Mastodon's `index`: SQL picks the representatives of

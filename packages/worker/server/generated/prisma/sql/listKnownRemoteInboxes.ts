@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listKnownRemoteInboxes = $runtime.makeTypedQueryFactory(
-  "SELECT COALESCE(shared_inbox_uri, inbox_uri) AS inbox_uri\nFROM remote_actors\nWHERE host NOT IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')\nAND uri_host NOT IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')\nGROUP BY COALESCE(shared_inbox_uri, inbox_uri)\nORDER BY MAX(fetched_at) DESC\nLIMIT $1",
+  "SELECT COALESCE(shared_inbox_uri, inbox_uri) AS inbox_uri\nFROM remote_actors\nWHERE actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'\n)\nGROUP BY COALESCE(shared_inbox_uri, inbox_uri)\nORDER BY MAX(fetched_at) DESC\nLIMIT $1",
 ) as (
   limit: number,
 ) => $runtime.TypedSql<listKnownRemoteInboxes.Parameters, listKnownRemoteInboxes.Result>;
@@ -16,6 +16,6 @@ export const listKnownRemoteInboxes = $runtime.makeTypedQueryFactory(
 export namespace listKnownRemoteInboxes {
   export type Parameters = [limit: number];
   export type Result = {
-    inbox_uri: null | null;
+    inbox_uri: string | null;
   };
 }

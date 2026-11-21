@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import { schemaResult, type SensitiveValue } from "@tstodon/core";
-import { Hostname, type InstanceIdentity } from "@tstodon/domain";
+import { CoveredHosts, Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
 import { linkHeaderAlternate, htmlAlternate } from "./activity-alternate";
 import { MAX_FETCHED_BYTES, readBodyJson, readBodyText } from "./body-limit";
@@ -92,7 +92,7 @@ export const isBlockedFederatedHost = (
 export type FederatedHostOptions = Readonly<{
   allowHosts?: ReadonlySet<string>;
   /** Hostnames this instance refuses to talk to (admin-suspended domains). */
-  blockedHosts?: ReadonlySet<Hostname>;
+  blockedHosts?: CoveredHosts;
   /** Resolves a hostname's addresses for the SSRF check; Cloudflare DoH when omitted. */
   resolveHost?: HostResolver;
 }>;
@@ -135,7 +135,7 @@ export const isFederatedHostRefused = (
   }
   return (
     isBlockedFederatedHost(hostname, instanceDomain, hostsExemptFromAddressChecks(allowHosts)) ||
-    (options.blockedHosts?.has(Hostname.ofAuthority(hostname)) ?? false)
+    CoveredHosts.covers(options.blockedHosts ?? CoveredHosts.none, Hostname.ofAuthority(hostname))
   );
 };
 

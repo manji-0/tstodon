@@ -626,6 +626,8 @@ export * from "./sql/listDirectoryAccountsByActive";
 
 export * from "./sql/listDirectoryAccountsByNew";
 
+export * from "./sql/listDomainBlockRules";
+
 export * from "./sql/listDueOutboxTargets";
 
 export * from "./sql/listEndedLocalPollVoters";
@@ -687,8 +689,6 @@ export * from "./sql/listLocalThreadAncestors";
 export * from "./sql/listMediaIdsForStatus";
 
 export * from "./sql/listMediaObjectKeysForAccount";
-
-export * from "./sql/listMediaRejectedDomains";
 
 export * from "./sql/listMutersOfActor";
 
@@ -795,8 +795,6 @@ export * from "./sql/listStatusReplyUris";
 export * from "./sql/listStuckOutboxTargets";
 
 export * from "./sql/listSuggestionExclusionIds";
-
-export * from "./sql/listSuspendedDomains";
 
 export * from "./sql/listTagModerationsByNamesJson";
 

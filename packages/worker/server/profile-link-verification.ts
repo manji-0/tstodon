@@ -1,5 +1,5 @@
 import {
-  type Hostname,
+  type CoveredHosts,
   InstanceIdentity,
   type OutboxJob,
   ProfileField,
@@ -32,7 +32,7 @@ type VerifyProfileLinks = Extract<OutboxJob, { kind: "VerifyProfileLinks" }>;
 
 type FetchOptions = Readonly<{
   allowHosts?: ReadonlySet<string>;
-  blockedHosts?: ReadonlySet<Hostname>;
+  blockedHosts?: CoveredHosts;
 }>;
 
 /** Mastodon's `Request`: three redirects, and the linked page is read up to 1 MB (`truncated_body`). */

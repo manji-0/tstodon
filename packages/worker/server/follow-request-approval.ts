@@ -89,9 +89,8 @@ const listAuthorizableRequesters = async (
            WHERE f.target_account_id = ? AND f.remote_request_kind = 'Queued'
              AND f.remote_actor_uri NOT IN (
                SELECT actor_uri FROM remote_actor_moderation WHERE moderation IN ('Silenced', 'Suspended'))
-             AND NOT EXISTS (
-               SELECT 1 FROM domain_blocks b
-               WHERE b.severity IN ('silence', 'suspend') AND lower(b.domain) IN (r.host, r.uri_host))
+             AND f.remote_actor_uri NOT IN (
+               SELECT actor_uri FROM remote_actor_domain_rules WHERE severity IN ('silence', 'suspend'))
            LIMIT ?`,
       )
       .bind(accountId, limit),

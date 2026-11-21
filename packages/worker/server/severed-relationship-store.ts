@@ -5,6 +5,7 @@ import type { Hostname } from "@tstodon/domain";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
+import { hostKeyRange } from "./host-key";
 import { newEntityId } from "./ids";
 import { parseJsonColumn } from "./json-column";
 
@@ -65,15 +66,22 @@ export type SeveredFollow = Readonly<{
 /**
  * The actors in a scope, `r` being `remote_actors`. An admin block names a
  * hostname, so it matches the account domain's (`host`) or the actor URI's
- * (`uri_host`), as `RemoteActor.onAnyHost`, and covers every port of it.
- * An empty domain matches no actor.
+ * (`uri_host`), as `RemoteActor.onAnyHost`, covers every port of it, and
+ * covers its subdomains, as `Account.by_domain_and_subdomains`. An empty
+ * domain matches no actor.
  */
 const actorMatch = (scope: SeveranceScope): Readonly<{ sql: string; binds: string[] }> => {
   switch (scope.kind) {
-    case "Domain":
-      return scope.domain === ""
-        ? { sql: "0", binds: [] }
-        : { sql: "(r.host = ? OR r.uri_host = ?)", binds: [scope.domain, scope.domain] };
+    case "Domain": {
+      if (scope.domain === "") {
+        return { sql: "0", binds: [] };
+      }
+      const { from, to } = hostKeyRange(scope.domain);
+      return {
+        sql: "((r.host_key >= ? AND r.host_key < ?) OR (r.uri_host_key >= ? AND r.uri_host_key < ?))",
+        binds: [from, to, from, to],
+      };
+    }
   }
 };
 

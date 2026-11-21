@@ -1,12 +1,11 @@
 -- @param {String} $1:accountId
 -- @param {String} $2:now
 -- @param {String} $3:groupsJson
--- @param {String} $4:suspendedHostsJson
--- @param {String} $5:allowHostsJson
--- @param {String} $6:upperId
--- @param {Int} $7:upperInclusive
--- @param {String} $8:lowerId
--- @param {Int} $9:lowerInclusive
+-- @param {String} $4:allowHostsJson
+-- @param {String} $5:upperId
+-- @param {Int} $6:upperInclusive
+-- @param {String} $7:lowerId
+-- @param {Int} $8:lowerInclusive
 -- Each group of `groupsJson` (`[{"key", "id"}]` for an ungrouped key,
 -- `[{"key", "type", "target"}]` for a type and target key) as Mastodon's
 -- `load_groups_data`: its newest visible notification, count and three newest
@@ -74,11 +73,12 @@ members AS MATERIALIZED (
           AND ra.actor_uri NOT IN (
             SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended'
           )
-          AND ra.host NOT IN (SELECT value FROM json_each($4))
-          AND ra.uri_host NOT IN (SELECT value FROM json_each($4))
-          AND (json_array_length($5) = 0 OR ra.uri_host IN (SELECT value FROM json_each($5)))
-          AND (json_array_length($5) = 0 OR EXISTS (
-            SELECT 1 FROM json_each($5) AS allowed
+          AND ra.actor_uri NOT IN (
+            SELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'
+          )
+          AND (json_array_length($4) = 0 OR ra.uri_host IN (SELECT value FROM json_each($4)))
+          AND (json_array_length($4) = 0 OR EXISTS (
+            SELECT 1 FROM json_each($4) AS allowed
             WHERE allowed.value = lower(ra.domain)
               OR (substr(lower(ra.domain), 1, length(allowed.value) + 1) = allowed.value || ':'
                 AND length(ra.domain) > length(allowed.value) + 1
@@ -86,12 +86,12 @@ members AS MATERIALIZED (
           ))
       )
     )
-    AND ($6 = '' OR n.id < $6 OR ($7 = 1 AND n.id = $6))
+    AND ($5 = '' OR n.id < $5 OR ($6 = 1 AND n.id = $5))
     AND (c.group_key LIKE 'ungrouped-%' OR NOT n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1))
 ),
 counted AS (
   SELECT group_key, COUNT(*) AS notifications_count, MAX(id) AS newest_id,
-    MIN(CASE WHEN $8 = '' OR id > $8 OR ($9 = 1 AND id = $8) THEN id END) AS page_min_id
+    MIN(CASE WHEN $7 = '' OR id > $7 OR ($8 = 1 AND id = $7) THEN id END) AS page_min_id
   FROM members GROUP BY group_key
 ),
 senders AS (

@@ -255,7 +255,8 @@ export const listActorRemoteStatuses = async (
  * asks for one entry and `onlyMedia` keeps the ones with attachments. Actors
  * the viewer blocks or mutes or that block the viewer, domains it blocks or the instance limits or
  * suspends (matched against both the account domain and the actor URI's
- * host), and actors an admin moderated stay out before the limit.
+ * host; an instance rule also covers subdomains), and actors an admin
+ * moderated stay out before the limit.
  */
 export const listPublicRemoteStatuses = async (
   db: D1Database,
@@ -286,8 +287,9 @@ export const listPublicRemoteStatuses = async (
              SELECT actor_uri FROM remote_actors
              WHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?)
                OR uri_host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = ?)
-               OR host IN (SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend'))
-               OR uri_host IN (SELECT lower(domain) FROM domain_blocks WHERE severity IN ('silence', 'suspend'))
+           )
+           AND actor_uri NOT IN (
+             SELECT actor_uri FROM remote_actor_domain_rules WHERE severity IN ('silence', 'suspend')
            )
            AND actor_uri NOT IN (
              SELECT actor_uri FROM remote_actor_moderation WHERE moderation IS NOT NULL
