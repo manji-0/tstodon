@@ -52,12 +52,6 @@ export const THREAD_REPLIES_COOLDOWN_MS = 15 * 60 * 1000;
 export const THREAD_BACKFILL_TTL_MS = THREAD_REPLIES_COOLDOWN_MS;
 
 /**
- * How long after a status is published opening it fetches nothing, Mastodon's
- * `FETCH_REPLIES_INITIAL_WAIT_MINUTES`.
- */
-export const THREAD_BACKFILL_INITIAL_WAIT_MS = 5 * 60 * 1000;
-
-/**
  * Notes fetched above the opened status. Each can cost a fetch, and an
  * author's actor when it is new, so this bounds the job's subrequests;
  * `CONTEXT_ANCESTOR_LIMIT` is how far a reader walks up anyway.
@@ -172,9 +166,11 @@ export const findThreadRefresh = async (
 
 /**
  * Queue fetching the thread of a remote status the reader opened, unless one
- * was queued within the TTL or the status is younger than the initial wait.
- * Only public and unlisted statuses, whose origin serves them to anyone.
- * Mastodon's `should_fetch_replies?`. Best effort and off the request path: the thread
+ * was queued within the TTL. Only public and unlisted statuses, whose origin
+ * serves them to anyone. Mastodon's `should_fetch_replies?`, without its
+ * five-minute initial wait: Mastodon fetches a new reply's ancestors when the
+ * reply arrives (`ThreadResolveWorker`), and tstodon fetches them only here,
+ * so waiting would leave a fresh reply's parent missing (INT-4). Best effort and off the request path: the thread
  * renders what is cached, and the refresh this resolves to tells a client
  * when to read it again.
  */
@@ -184,10 +180,6 @@ export const requestRemoteThreadBackfill = async (
 ): Promise<ThreadRefresh | undefined> => {
   if (status.visibility.kind !== "Public" && status.visibility.kind !== "Unlisted") {
     return undefined;
-  }
-  // Mastodon reports a running fetch before it asks whether to start one.
-  if (Date.parse(status.publishedAt) > Date.now() - THREAD_BACKFILL_INITIAL_WAIT_MS) {
-    return (await findThreadRefresh(env.DB, status.id)).unwrapOr(undefined);
   }
   const claimed = await claimRemoteThreadBackfill(env.DB, status.id, THREAD_BACKFILL_TTL_MS);
   if (claimed.isErr()) {

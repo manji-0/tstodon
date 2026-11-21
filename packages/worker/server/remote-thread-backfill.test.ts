@@ -1050,21 +1050,20 @@ describe("Mastodon async refresh of a remote thread", () => {
     );
   });
 
-  it("queues no fetch for a status published in the last five minutes", async () => {
+  it("queues a fetch for a status published in the last five minutes", async () => {
+    // tstodon has no ThreadResolveWorker: a fresh reply's parent arrives only
+    // through this fetch, so Mastodon's initial wait is not applied (INT-4).
     const author = await remoteActor("refresh-recent", "thread.example");
     const opened = {
       ...noteDocument(author, "refresh-recent-opened"),
-      published: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+      published: new Date(Date.now() - 60 * 1000).toISOString(),
     };
     await deliver(author, opened);
     const openedId = await statusIdOf(opened.id);
 
-    const response = await contextResponse(openedId, await authHeaders(READER));
-
-    expect(response.headers.get("Mastodon-Async-Refresh")).toBeNull();
     const recording = recordingEnv();
     await requested(openedId, recording.env);
-    expect(recording.sent).toEqual([]);
+    expect(recording.sent).toHaveLength(1);
   });
 
   it("reports a running fetch of a status published in the last five minutes", async () => {
