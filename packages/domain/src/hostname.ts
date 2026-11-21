@@ -15,13 +15,19 @@ export type Hostname = z.infer<typeof schema>;
 
 const withoutTrailingDots = (host: string): string => host.replace(/\.+$/, "");
 
-/** An internationalized name in its ASCII (punycode) form, as Addressable's `normalized_host`. */
+/**
+ * An internationalized name in its ASCII (punycode) form, as Addressable's
+ * `normalized_host`. A name with URL syntax in it stays as it is, as an ASCII
+ * one does, so `DomainValidator` refuses it rather than the URL parser
+ * reading a host out of it. The conversion maps `。` to `.`, so a trailing
+ * one is dropped after it.
+ */
 const asciiHost = (host: Hostname): Hostname => {
-  if (!/[^\x00-\x7f]/.test(host)) {
+  if (!/[^\x00-\x7f]/.test(host) || /[@?#\\/:]/.test(host)) {
     return host;
   }
   try {
-    return schema.parse(new URL(`http://${host}`).hostname);
+    return schema.parse(withoutTrailingDots(new URL(`http://${host}`).hostname));
   } catch {
     return host;
   }

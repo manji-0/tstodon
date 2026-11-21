@@ -19,6 +19,23 @@ describe("Hostname", () => {
     expect(Hostname.fromInput("Bücher.Example")).toBe("xn--bcher-kva.example");
     expect(Hostname.fromInput("https://bücher.example/about")).toBe("xn--bcher-kva.example");
     expect(Hostname.fromInput("123")).toBe("123");
+    expect(Hostname.fromInput("bücher.example。")).toBe("xn--bcher-kva.example");
+  });
+
+  it("leaves a non-ASCII name with URL syntax in it unconverted, as an ASCII one is", () => {
+    for (const raw of [
+      "alice@bücher.example",
+      "bücher.example\\evil.com",
+      "bücher.example?x",
+      "bücher.example#x",
+    ]) {
+      const host = Hostname.fromInput(raw);
+      expect(host, raw).toBeDefined();
+      expect(host === undefined || Hostname.isValidDomain(host), raw).toBe(false);
+    }
+    expect(
+      Hostname.isValidDomain(Hostname.fromInput("alice@example.com") ?? Hostname.ofAuthority("")),
+    ).toBe(false);
   });
 
   it("names a domain Mastodon's DomainValidator accepts", () => {

@@ -40,6 +40,14 @@ describe("DomainBlockPolicy.stricterThan (DomainBlock#stricter_than?)", () => {
     ).toBe(false);
   });
 
+  it("compares only the rejections for a severity Mastodon does not know", () => {
+    const unknown = { severity: undefined, rejectMedia: false, rejectReports: false };
+    expect(DomainBlockPolicy.stricterThan(unknown, policy("suspend"))).toBe(true);
+    expect(DomainBlockPolicy.stricterThan(unknown, policy("silence", { rejectMedia: true }))).toBe(
+      false,
+    );
+  });
+
   it("counts an equal or wider rule as stricter", () => {
     expect(DomainBlockPolicy.stricterThan(policy("silence"), policy("silence"))).toBe(true);
     expect(DomainBlockPolicy.stricterThan(policy("noop"), policy("noop"))).toBe(true);
