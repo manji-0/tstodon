@@ -6,29 +6,21 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
  * @param term
- * @param suspendedHostsJson
  * @param allowHostsJson
  * @param limit
  * @param offset
  */
 export const searchRemoteActors = $runtime.makeTypedQueryFactory(
-  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, display_name, profile_json, moved_to, outbox_uri, featured_uri, featured_tags_uri, followers_uri, following_uri, fetched_at\nFROM remote_actors\nWHERE instr(lower(username || '@' || domain), lower($1)) > 0\nAND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')\nAND host NOT IN (SELECT value FROM json_each($2))\nAND uri_host NOT IN (SELECT value FROM json_each($2))\nAND (json_array_length($3) = 0 OR uri_host IN (SELECT value FROM json_each($3)))\nAND (json_array_length($3) = 0 OR EXISTS (\nSELECT 1 FROM json_each($3) AS allow\nWHERE allow.value = lower(domain)\nOR (substr(lower(domain), 1, length(allow.value) + 1) = allow.value || ':'\nAND length(domain) > length(allow.value) + 1\nAND substr(domain, length(allow.value) + 2) NOT GLOB '*[^0-9]*')\n))\nORDER BY actor_uri DESC LIMIT $4 OFFSET $5",
+  "SELECT actor_uri, username, domain, inbox_uri, shared_inbox_uri, display_name, profile_json, moved_to, outbox_uri, featured_uri, featured_tags_uri, followers_uri, following_uri, fetched_at\nFROM remote_actors\nWHERE instr(lower(username || '@' || domain), lower($1)) > 0\nAND actor_uri NOT IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended')\nAND actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'\n)\nAND (json_array_length($2) = 0 OR uri_host IN (SELECT value FROM json_each($2)))\nAND (json_array_length($2) = 0 OR EXISTS (\nSELECT 1 FROM json_each($2) AS allow\nWHERE allow.value = lower(domain)\nOR (substr(lower(domain), 1, length(allow.value) + 1) = allow.value || ':'\nAND length(domain) > length(allow.value) + 1\nAND substr(domain, length(allow.value) + 2) NOT GLOB '*[^0-9]*')\n))\nORDER BY actor_uri DESC LIMIT $3 OFFSET $4",
 ) as (
   term: string,
-  suspendedHostsJson: string,
   allowHostsJson: string,
   limit: number,
   offset: number,
 ) => $runtime.TypedSql<searchRemoteActors.Parameters, searchRemoteActors.Result>;
 
 export namespace searchRemoteActors {
-  export type Parameters = [
-    term: string,
-    suspendedHostsJson: string,
-    allowHostsJson: string,
-    limit: number,
-    offset: number,
-  ];
+  export type Parameters = [term: string, allowHostsJson: string, limit: number, offset: number];
   export type Result = {
     actor_uri: string | null;
     username: string;

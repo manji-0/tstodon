@@ -5,17 +5,19 @@
 import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 
 /**
- * @param domain
+ * @param hostKeyFrom
+ * @param hostKeyTo
  * @param now
  */
 export const clearRemoteMediaForDomain = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_statuses SET media_json = '[]', updated_at = $2\nWHERE actor_uri IN (SELECT actor_uri FROM remote_actors WHERE host = $1 OR uri_host = $1)",
+  "UPDATE remote_statuses SET media_json = '[]', updated_at = $3\nWHERE actor_uri IN (\nSELECT actor_uri FROM remote_actors WHERE host_key >= $1 AND host_key < $2\nUNION\nSELECT actor_uri FROM remote_actors WHERE uri_host_key >= $1 AND uri_host_key < $2\n)",
 ) as (
-  domain: string,
+  hostKeyFrom: string,
+  hostKeyTo: string,
   now: string,
 ) => $runtime.TypedSql<clearRemoteMediaForDomain.Parameters, clearRemoteMediaForDomain.Result>;
 
 export namespace clearRemoteMediaForDomain {
-  export type Parameters = [domain: string, now: string];
+  export type Parameters = [hostKeyFrom: string, hostKeyTo: string, now: string];
   export type Result = {};
 }

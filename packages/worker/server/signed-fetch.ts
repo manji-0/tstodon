@@ -1,4 +1,4 @@
-import { Hostname, type InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { CoveredHosts, Hostname, type InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { checkSignatureStrength, parseRequestSignature, verifySignedFetch } from "./http-signature";
 import { resolveKeyOwner } from "./remote-actor-fetch";
@@ -43,7 +43,7 @@ const verify = async (
     suspendedDomains(env.DB),
   ]);
   const refusedHost = (host: Hostname): boolean =>
-    suspended.has(host) || !allowListAdmits(allowHosts, host);
+    CoveredHosts.covers(suspended, host) || !allowListAdmits(allowHosts, host);
   // A key on a suspended or not-allowed host is refused before it is fetched.
   const keyHost = Hostname.ofUri(parsed.keyId);
   if (keyHost !== undefined && refusedHost(keyHost)) {

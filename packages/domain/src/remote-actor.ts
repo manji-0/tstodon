@@ -1,6 +1,7 @@
 import { schemaResult } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
+import { CoveredHosts } from "./covered-hosts";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
 import { ProfileFieldSchema } from "./profile-field";
@@ -167,7 +168,7 @@ export const RemoteActor = {
    * on the host that serves the actor and its key.
    */
   hostnames,
-  /** True when an instance rule naming any of `hosts` applies to the actor. */
-  onAnyHost: (actor: RemoteActor, hosts: ReadonlySet<Hostname>): boolean =>
-    hostnames(actor).some((host) => hosts.has(host)),
+  /** True when an instance rule covering either of the actor's hosts applies to it. */
+  onAnyHost: (actor: RemoteActor, covered: CoveredHosts): boolean =>
+    hostnames(actor).some((host) => CoveredHosts.covers(covered, host)),
 } as const;

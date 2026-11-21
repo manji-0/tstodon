@@ -44,7 +44,6 @@ const page = [
   0,
   '["favourite"]',
   "[]",
-  "[]",
 ] as const;
 
 describe("grouped notification statements", () => {
@@ -57,7 +56,6 @@ describe("grouped notification statements", () => {
         "account",
         "2026-11-06T00:00:00.000Z",
         JSON.stringify([{ key: "favourite-s", type: "favourite", target: "s" }]),
-        "[]",
         "[]",
         "",
         0,

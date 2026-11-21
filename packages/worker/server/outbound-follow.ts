@@ -1,6 +1,7 @@
 import type { ApFollowJSON } from "@tstodon/api/activitypub";
 import {
   type AcceptOutboundFollow,
+  CoveredHosts,
   type FindLocalAccountByUsername,
   type HoldsOutboundFollow,
   Hostname,
@@ -62,7 +63,9 @@ export const followRemoteActor = async (
   );
   const suspended = await suspendedDomains(env.DB);
   const allowHosts = await federationAllowHosts(env);
-  if (hosts.some((host) => suspended.has(host) || !allowListAdmits(allowHosts, host))) {
+  if (
+    hosts.some((host) => CoveredHosts.covers(suspended, host) || !allowListAdmits(allowHosts, host))
+  ) {
     return err({ kind: "NotFederated" });
   }
   const blocked = await findBlock(env.DB, follower.id, actor.actorUri);

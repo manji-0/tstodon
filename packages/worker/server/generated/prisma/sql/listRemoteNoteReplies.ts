@@ -10,7 +10,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const listRemoteNoteReplies = $runtime.makeTypedQueryFactory(
-  "SELECT r.id, r.object_uri\nFROM remote_statuses r\nWHERE r.in_reply_to_uri = $1\nAND r.visibility IN ('public', 'unlisted')\nAND r.id > $2\nAND r.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended'\n)\nAND r.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actors\nWHERE host IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')\nOR uri_host IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')\n)\nORDER BY r.id\nLIMIT $3",
+  "SELECT r.id, r.object_uri\nFROM remote_statuses r\nWHERE r.in_reply_to_uri = $1\nAND r.visibility IN ('public', 'unlisted')\nAND r.id > $2\nAND r.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended'\n)\nAND r.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'\n)\nORDER BY r.id\nLIMIT $3",
 ) as (
   noteUri: string,
   afterId: string,

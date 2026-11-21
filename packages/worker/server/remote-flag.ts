@@ -4,7 +4,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findAccountById, findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
-import { findDomainBlockByDomain } from "./admin-domain-block-store";
+import { reportsRejectedDomains } from "./admin-domain-block-store";
 import { notifyAdmins } from "./admin-notify";
 import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
@@ -62,14 +62,8 @@ export const receiveRemoteFlag = async (
   if (flag.isErr()) {
     return ok(undefined);
   }
-  for (const host of RemoteActor.hostnames(sender)) {
-    const block = await findDomainBlockByDomain(env.DB, host);
-    if (block.isErr()) {
-      return err(block.error);
-    }
-    if (block.value !== undefined && block.value.reject_reports !== 0) {
-      return ok(undefined);
-    }
+  if (RemoteActor.onAnyHost(sender, await reportsRejectedDomains(env.DB))) {
+    return ok(undefined);
   }
   const uris = objectUris(flag.value.object);
   let target: LocalAccount | undefined;

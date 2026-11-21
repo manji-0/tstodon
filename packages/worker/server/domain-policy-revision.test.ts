@@ -1,7 +1,16 @@
 import { env } from "cloudflare:test";
+import { CoveredHosts, Hostname } from "@tstodon/domain";
 import { describe, expect, it } from "vite-plus/test";
 import { mediaRejectedDomains, suspendedDomains } from "./admin-domain-block-store";
 import { domainAllowHosts } from "./domain-allow-store";
+
+const BLOCKED = Hostname.ofAuthority("blocked.example");
+
+const suspended = async (): Promise<boolean> =>
+  CoveredHosts.covers(await suspendedDomains(env.DB), BLOCKED);
+
+const mediaRejected = async (): Promise<boolean> =>
+  CoveredHosts.covers(await mediaRejectedDomains(env.DB), BLOCKED);
 
 const allowed = async (): Promise<ReadonlySet<string>> =>
   (await domainAllowHosts(env.DB)).unwrapOr(new Set(["read failed"]));
@@ -12,24 +21,24 @@ const allowed = async (): Promise<ReadonlySet<string>> =>
  */
 describe("domain policy lists after writes", () => {
   it("follows each insert, update and delete of a domain block", async () => {
-    expect([...(await suspendedDomains(env.DB))]).toEqual([]);
-    expect([...(await mediaRejectedDomains(env.DB))]).toEqual([]);
+    expect(await suspended()).toBe(false);
+    expect(await mediaRejected()).toBe(false);
 
     await env.DB.prepare(
       `INSERT INTO domain_blocks (id, domain, severity, reject_media, created_at)
        VALUES ('revision-block', 'Blocked.Example:8443', 'suspend', 0, '2026-11-01T00:00:00.000Z')`,
     ).run();
-    expect([...(await suspendedDomains(env.DB))]).toEqual(["blocked.example"]);
-    expect([...(await mediaRejectedDomains(env.DB))]).toEqual([]);
+    expect(await suspended()).toBe(true);
+    expect(await mediaRejected()).toBe(false);
 
     await env.DB.prepare(
       "UPDATE domain_blocks SET severity = 'silence', reject_media = 1 WHERE id = 'revision-block'",
     ).run();
-    expect([...(await suspendedDomains(env.DB))]).toEqual([]);
-    expect([...(await mediaRejectedDomains(env.DB))]).toEqual(["blocked.example"]);
+    expect(await suspended()).toBe(false);
+    expect(await mediaRejected()).toBe(true);
 
     await env.DB.prepare("DELETE FROM domain_blocks WHERE id = 'revision-block'").run();
-    expect([...(await mediaRejectedDomains(env.DB))]).toEqual([]);
+    expect(await mediaRejected()).toBe(false);
   });
 
   it("follows each insert, update and delete of a domain allow", async () => {

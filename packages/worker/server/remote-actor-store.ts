@@ -1,7 +1,6 @@
 import {
   type AccountHandle,
   FollowRequest,
-  type Hostname,
   type InboxFollow,
   type InboxFollowRecord,
   IsoInstant,
@@ -840,13 +839,11 @@ export const searchPeerDomains = async (
   });
 
 /**
- * The federation state that hides a remote actor's domain: the hostnames
- * this instance suspends, and the allow list (empty when there is none).
+ * The federation state that hides a remote actor's domain beyond the
+ * suspensions the statements read themselves: the allow list (empty when
+ * there is none).
  */
-export type RemoteActorSearchHosts = Readonly<{
-  suspended: ReadonlySet<Hostname>;
-  allow: ReadonlySet<string>;
-}>;
+export type RemoteActorSearchHosts = Readonly<{ allow: ReadonlySet<string> }>;
 
 /**
  * Cached remote actors matching a username or `username@domain` substring,
@@ -864,13 +861,7 @@ export const searchRemoteActors = async (
   runD1(async () => {
     const results = await queryTyped(
       db,
-      searchRemoteActorsSql(
-        query,
-        jsonStringArray([...hosts.suspended]),
-        jsonStringArray([...hosts.allow]),
-        limit,
-        offset,
-      ),
+      searchRemoteActorsSql(query, jsonStringArray([...hosts.allow]), limit, offset),
       RemoteActorRowSchema,
     );
     return okValues(results.map((row) => remoteActorFromRow(row)));

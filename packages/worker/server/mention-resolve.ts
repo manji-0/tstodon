@@ -1,4 +1,4 @@
-import { InstanceIdentity, RemoteActor, Hostname } from "@tstodon/domain";
+import { CoveredHosts, Hostname, InstanceIdentity, RemoteActor } from "@tstodon/domain";
 import type { LocalAccount } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
@@ -53,7 +53,7 @@ const resolveRemoteMentions = async (
   };
   const mentions: RemoteMention[] = [];
   for (const handle of handles) {
-    if (blockedHosts.has(Hostname.ofAuthority(handle.domain))) {
+    if (CoveredHosts.covers(blockedHosts, Hostname.ofAuthority(handle.domain))) {
       continue;
     }
     const resolved = await resolveRemoteActorByHandle(
@@ -65,7 +65,7 @@ const resolveRemoteMentions = async (
     const admitted =
       resolved.isOk() &&
       RemoteActor.hostnames(resolved.value).every(
-        (host) => !blockedHosts.has(host) && allowListAdmits(allowHosts, host),
+        (host) => !CoveredHosts.covers(blockedHosts, host) && allowListAdmits(allowHosts, host),
       );
     if (resolved.isOk() && admitted) {
       mentions.push({ written: handle, actor: resolved.value });

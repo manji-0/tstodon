@@ -1,6 +1,7 @@
 -- @param {String} $1:actorUri
 -- @param {String} $2:viewerId
--- None when the viewer blocks the actor's account domain or the instance suspends it or the actor URI's host (a viewer of '' blocks none).
+-- None when the viewer blocks the actor's account domain or the instance suspends it or the actor URI's host,
+-- or a domain above either (a viewer of '' blocks none; the viewer's block names its exact domain).
 SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.emojis_json, s.quote_policy_json
 FROM remote_actor_pins p
 -- CROSS JOIN keeps the actor's pins as the outer loop; without table statistics the planner
@@ -11,7 +12,8 @@ WHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')
     SELECT actor_uri FROM remote_actors
     WHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)
       OR uri_host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)
-      OR host IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')
-      OR uri_host IN (SELECT lower(domain) FROM domain_blocks WHERE severity = 'suspend')
+  )
+  AND s.actor_uri NOT IN (
+    SELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'
   )
 ORDER BY p.position ASC

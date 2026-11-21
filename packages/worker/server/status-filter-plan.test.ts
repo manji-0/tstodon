@@ -23,14 +23,17 @@ const plan = async (): Promise<string[]> => {
 };
 
 describe("the silenced authors statement", () => {
+  // The rows scanned are the listed ids and, per actor, its two hosts and their parent domains.
   it("seeks each listed author instead of scanning a table", async () => {
     const scans = (await plan()).filter(
-      (detail) => detail.startsWith("SCAN ") && !detail.startsWith("SCAN json_each"),
+      (detail) =>
+        detail.startsWith("SCAN ") &&
+        !/^SCAN (json_each|CONSTANT ROW|hosts|variants)\b/.test(detail),
     );
     expect(scans).toEqual([]);
   });
 
-  // One seek per actor host, not a read of every silence block per actor.
+  // One seek per domain above each actor host, not a read of every block per actor.
   it("seeks a domain block by its domain", async () => {
     const searches = (await plan()).filter((detail) => detail.startsWith("SEARCH d "));
     expect(searches.length).toBeGreaterThan(0);

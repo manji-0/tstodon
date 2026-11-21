@@ -243,6 +243,36 @@ describe("reports from other servers", () => {
       [],
     );
   });
+
+  // Mastodon's `DomainBlock.reject_reports?` reads `rule_for`, which matches each parent domain.
+  it("ignores a Flag from a subdomain of a server whose reports are rejected", async () => {
+    const blocked = await json("/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("reports-admin@example.com", { admin: true })),
+      },
+      body: JSON.stringify({
+        domain: "noisy-parent.example",
+        severity: "noop",
+        reject_reports: true,
+      }),
+    });
+    expect(blocked.status).toBe(200);
+    const target = await localPoster("flag-ignored-sub@example.com", "not reported either");
+    const flagger = await remoteActor("flag-noisy-sub", "social.noisy-parent.example");
+    expect(
+      await flagger.send({
+        id: "https://social.noisy-parent.example/flags/1",
+        type: "Flag",
+        content: "noise",
+        object: [target.actorUri],
+      }),
+    ).toBe(202);
+    expect(await adminReports(`account_id=${RemoteAccountId.encode(flagger.actorUri)}`)).toEqual(
+      [],
+    );
+  });
 });
 
 const FlagSchema = z.object({

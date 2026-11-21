@@ -6,10 +6,9 @@
 -- @param {String} $6:fromAccountId
 -- @param {Int} $7:includeFiltered
 -- @param {String} $8:groupedTypesJson
--- @param {String} $9:suspendedHostsJson
--- @param {String} $10:allowHostsJson
--- @param {String} $11:maxId
--- @param {String} $12:minId
+-- @param {String} $9:allowHostsJson
+-- @param {String} $10:maxId
+-- @param {String} $11:minId
 -- The representative of each of the first `limit` groups above `min_id` (and
 -- below `max_id`), oldest first: the oldest visible notification of each
 -- group not met yet, as Mastodon's `paginate_groups` reading `:asc`.
@@ -61,11 +60,12 @@ candidates(id, group_key) AS NOT MATERIALIZED (
           AND ra.actor_uri NOT IN (
             SELECT actor_uri FROM remote_actor_moderation WHERE moderation = 'Suspended'
           )
-          AND ra.host NOT IN (SELECT value FROM json_each($9))
-          AND ra.uri_host NOT IN (SELECT value FROM json_each($9))
-          AND (json_array_length($10) = 0 OR ra.uri_host IN (SELECT value FROM json_each($10)))
-          AND (json_array_length($10) = 0 OR EXISTS (
-            SELECT 1 FROM json_each($10) AS allowed
+          AND ra.actor_uri NOT IN (
+            SELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'
+          )
+          AND (json_array_length($9) = 0 OR ra.uri_host IN (SELECT value FROM json_each($9)))
+          AND (json_array_length($9) = 0 OR EXISTS (
+            SELECT 1 FROM json_each($9) AS allowed
             WHERE allowed.value = lower(ra.domain)
               OR (substr(lower(ra.domain), 1, length(allowed.value) + 1) = allowed.value || ':'
                 AND length(ra.domain) > length(allowed.value) + 1
@@ -77,8 +77,8 @@ candidates(id, group_key) AS NOT MATERIALIZED (
     AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
     AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))
     AND ($6 = '' OR n.from_account_id = $6)
-    AND n.id < COALESCE(NULLIF($11, ''), '~')
-    AND n.id > $12
+    AND n.id < COALESCE(NULLIF($10, ''), '~')
+    AND n.id > $11
 ),
 -- `entry` is a notification's `id group_key` (an id holds no space); `met`
 -- the keys of the entries before it.

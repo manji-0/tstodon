@@ -1,13 +1,14 @@
 import type { ApActivityDocumentJSON } from "@tstodon/api/activitypub";
 import {
   ActivityId,
+  CoveredHosts,
   DeliveryAttemptOutcome,
-  FollowersSynchronization,
   type DeliveryAttemptOutcome as DeliveryAttemptOutcomeValue,
+  FollowersSynchronization,
+  Hostname,
   InstanceIdentity,
   type LocalAccount,
   type OutboxJob as OutboxJobValue,
-  Hostname,
   Username,
 } from "@tstodon/domain";
 import type { SensitiveValue } from "@tstodon/core";
@@ -178,7 +179,10 @@ export const admittedInboxes = async (
   ]);
   return [...new Set(inboxUrls)].filter((inboxUrl) => {
     const inboxHost = Hostname.ofUri(inboxUrl);
-    return !inboxHost || (!suspended.has(inboxHost) && allowListAdmits(allowHosts, inboxHost));
+    return (
+      !inboxHost ||
+      (!CoveredHosts.covers(suspended, inboxHost) && allowListAdmits(allowHosts, inboxHost))
+    );
   });
 };
 
@@ -269,7 +273,7 @@ export const deliverExpandedActivity = async (
           const host = new URL(inbox).host.toLowerCase();
           return (
             host !== sameHost &&
-            !suspended.has(Hostname.ofAuthority(host)) &&
+            !CoveredHosts.covers(suspended, Hostname.ofAuthority(host)) &&
             allowListAdmits(allowHosts, host)
           );
         } catch {

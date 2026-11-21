@@ -117,7 +117,7 @@ export const permittedStatusIds = async (
     return (
       authors.actorUris.has(node.status.actorUri) ||
       !actor ||
-      RemoteActor.onAnyHost(actor, domains) ||
+      RemoteActor.hostnames(actor).some((host) => domains.has(host)) ||
       isSilenced(node.status.actorUri)
     );
   };

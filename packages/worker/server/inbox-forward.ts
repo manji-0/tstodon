@@ -1,8 +1,9 @@
 import {
+  CoveredHosts,
   Hostname,
+  type InstanceIdentity,
   type RemoteActor,
   type RemoteActorKey,
-  type InstanceIdentity,
 } from "@tstodon/domain";
 import type { RepositoryError } from "./d1";
 import type { FederatedFetchOptions } from "./federated-fetch";
@@ -47,7 +48,7 @@ export type ForwardVerdict =
   | RepositoryError;
 
 type ForwardOptions = FederatedFetchOptions &
-  Readonly<{ allowHosts: ReadonlySet<string>; blockedHosts: ReadonlySet<Hostname> }>;
+  Readonly<{ allowHosts: ReadonlySet<string>; blockedHosts: CoveredHosts }>;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -57,7 +58,7 @@ const keyHostRefused = (keyId: string, options: ForwardOptions): boolean => {
   const keyHost = Hostname.ofUri(keyId);
   return (
     keyHost === undefined ||
-    options.blockedHosts.has(keyHost) ||
+    CoveredHosts.covers(options.blockedHosts, keyHost) ||
     !allowListAdmits(options.allowHosts, keyHost)
   );
 };

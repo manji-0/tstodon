@@ -1,5 +1,5 @@
 import type { ApiAdminDomainBlockJSON, ApiDomainBlockJSON } from "@tstodon/api";
-import { Hostname } from "@tstodon/domain";
+import { CoveredHosts, Hostname } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -12,17 +12,16 @@ import {
   findDomainBlockById as findDomainBlockByIdSql,
   insertDomainBlock as insertDomainBlockSql,
   clearRemoteMediaForDomain as clearRemoteMediaForDomainSql,
-  listMediaRejectedDomains as listMediaRejectedDomainsSql,
+  listDomainBlockRules as listDomainBlockRulesSql,
   listPublicDomainBlocks as listPublicDomainBlocksSql,
-  listSuspendedDomains as listSuspendedDomainsSql,
   updateDomainBlock as updateDomainBlockSql,
 } from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
+import { hostKeyRange } from "./host-key";
 import { idCursorFragment, type IdCursor } from "./id-cursor";
 import { queryTyped, runTyped } from "./typed-sql";
 
 const IdRow = z.object({ id: z.string() });
-const DomainRow = z.object({ domain: z.string() });
 
 export const DomainBlockSeveritySchema = z.union([
   z.literal("silence"),
@@ -153,16 +152,50 @@ export const deleteDomainBlock = async (
     return rows.length > 0;
   });
 
-const hostnames = (rows: ReadonlyArray<unknown>): ReadonlySet<Hostname> =>
-  new Set(parseRows(DomainRow, rows).map((row) => Hostname.ofAuthority(row.domain)));
+const RuleRow = DomainBlockRowSchema.pick({
+  domain: true,
+  severity: true,
+  reject_media: true,
+  reject_reports: true,
+});
 
-const suspendedCopy = domainPolicyCopy<ReadonlySet<Hostname>>();
+/** The hosts each kind of instance domain rule covers, as `DomainBlock.rule_for` matches them. */
+type DomainRuleHosts = Readonly<{
+  suspended: CoveredHosts;
+  mediaRejected: CoveredHosts;
+  reportsRejected: CoveredHosts;
+}>;
 
-/** Domains federation is refused with (suspend). */
-export const suspendedDomains = async (db: D1Database): Promise<ReadonlySet<Hostname>> =>
-  (await readDomainPolicy(db, suspendedCopy, listSuspendedDomainsSql(), hostnames)).unwrapOr(
-    new Set<Hostname>(),
-  );
+const NO_RULES: DomainRuleHosts = {
+  suspended: CoveredHosts.none,
+  mediaRejected: CoveredHosts.none,
+  reportsRejected: CoveredHosts.none,
+};
+
+const ruleHosts = (rows: ReadonlyArray<unknown>): DomainRuleHosts => {
+  const rules = parseRows(RuleRow, rows).map((row) => ({
+    ...row,
+    domain: Hostname.ofAuthority(row.domain),
+  }));
+  return {
+    suspended: CoveredHosts.of(rules, (rule) => rule.severity === "suspend"),
+    mediaRejected: CoveredHosts.of(rules, (rule) => rule.reject_media !== 0),
+    reportsRejected: CoveredHosts.of(rules, (rule) => rule.reject_reports !== 0),
+  };
+};
+
+const rulesCopy = domainPolicyCopy<DomainRuleHosts>();
+
+const domainRuleHosts = async (db: D1Database): Promise<DomainRuleHosts> =>
+  (await readDomainPolicy(db, rulesCopy, listDomainBlockRulesSql(), ruleHosts)).unwrapOr(NO_RULES);
+
+/** Hosts federation is refused with: a suspended domain and its subdomains. */
+export const suspendedDomains = async (db: D1Database): Promise<CoveredHosts> =>
+  (await domainRuleHosts(db)).suspended;
+
+/** Hosts whose reports are ignored (`reject_reports`), subdomains included. */
+export const reportsRejectedDomains = async (db: D1Database): Promise<CoveredHosts> =>
+  (await domainRuleHosts(db)).reportsRejected;
 
 export const domainBlockDocument = async (
   row: DomainBlockRow,
@@ -210,21 +243,21 @@ export const publicDomainBlockDocument = async (
   };
 };
 
-const mediaRejectedCopy = domainPolicyCopy<ReadonlySet<Hostname>>();
+/** Hosts whose remote media must not be kept (`reject_media`), subdomains included. */
+export const mediaRejectedDomains = async (db: D1Database): Promise<CoveredHosts> =>
+  (await domainRuleHosts(db)).mediaRejected;
 
-/** Domains whose remote media must not be kept (`reject_media`). */
-export const mediaRejectedDomains = async (db: D1Database): Promise<ReadonlySet<Hostname>> =>
-  (
-    await readDomainPolicy(db, mediaRejectedCopy, listMediaRejectedDomainsSql(), hostnames)
-  ).unwrapOr(new Set<Hostname>());
-
-/** Called when a block starts rejecting media so stored attachments go away too. */
+/**
+ * Called when a block starts rejecting media so stored attachments go away
+ * too, those of the domain's subdomains included, as `ClearDomainMediaService`.
+ */
 export const clearRemoteMediaForDomain = async (
   db: D1Database,
   domain: Hostname,
 ): Promise<Result<void, RepositoryError>> => {
+  const { from, to } = hostKeyRange(domain);
   const cleared = await runD1(async () => {
-    await runTyped(db, clearRemoteMediaForDomainSql(domain, nowIso()));
+    await runTyped(db, clearRemoteMediaForDomainSql(from, to, nowIso()));
   });
   return cleared.map(() => undefined);
 };

@@ -1,5 +1,5 @@
 import { type ApiPreviewCardJSON, isPreviewCardType, type PreviewCardType } from "@tstodon/api";
-import type { Hostname, InstanceIdentity } from "@tstodon/domain";
+import type { CoveredHosts, InstanceIdentity } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { afterResponse } from "./after-response";
@@ -208,7 +208,7 @@ export const fetchGuarded = async (
   identity: InstanceIdentity,
   options: Readonly<{
     allowHosts?: ReadonlySet<string>;
-    blockedHosts?: ReadonlySet<Hostname>;
+    blockedHosts?: CoveredHosts;
   }>,
   limits: PageFetchLimits = PREVIEW_FETCH,
 ): Promise<GuardedFetch> => {
@@ -265,7 +265,7 @@ export const resolveLinkCard = async (
   url: string,
   options: Readonly<{
     allowHosts?: ReadonlySet<string>;
-    blockedHosts?: ReadonlySet<Hostname>;
+    blockedHosts?: CoveredHosts;
   }> = {},
 ): Promise<LinkCardOutcome> => {
   const cached = await cachedCard(env.DB, url);
@@ -323,7 +323,7 @@ export const buildLinkCard = async (
   url: string,
   options: Readonly<{
     allowHosts?: ReadonlySet<string>;
-    blockedHosts?: ReadonlySet<Hostname>;
+    blockedHosts?: CoveredHosts;
   }> = {},
 ): Promise<LinkCard | undefined> => {
   const outcome = await resolveLinkCard(env, identity, url, options);
