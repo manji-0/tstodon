@@ -162,6 +162,38 @@ const resolveJob = (statusId: string, hop: number) => {
 
 const drain = (held: HeldQueue) => drainHeld(held, [RESOLVE, "FinishRemoteNoteRecipient"]);
 
+/**
+ * `env` with each queue's sends recorded, not sent; `failPull` makes every
+ * send to the pull queue throw, as a Queues outage.
+ */
+const recordingEnv = (failPull = false) => {
+  const pull: unknown[] = [];
+  const outbox: unknown[] = [];
+  const recorder = (into: unknown[], fails: boolean) => ({
+    send: async (body: unknown) => {
+      if (fails) {
+        throw new Error("queue unavailable");
+      }
+      into.push(body);
+    },
+    sendBatch: async (messages: ReadonlyArray<{ body: unknown }>) => {
+      if (fails) {
+        throw new Error("queue unavailable");
+      }
+      into.push(...messages.map((message) => message.body));
+    },
+  });
+  const queues: Record<string, unknown> = {
+    PULL_QUEUE: recorder(pull, failPull),
+    OUTBOX_PROCESS_QUEUE: recorder(outbox, false),
+  };
+  const proxied = new Proxy(env, {
+    get: (target, key) =>
+      typeof key === "string" && key in queues ? queues[key] : Reflect.get(target, key),
+  });
+  return { env: proxied, pull, outbox };
+};
+
 describe("a remote reply whose parent this server does not hold", () => {
   it("is linked to the parent its job fetches, and a self-reply sends its status notification", async () => {
     const author = await remoteActor("rtrself", "rtr-self.example");
@@ -280,6 +312,30 @@ describe("a remote reply whose parent this server does not hold", () => {
     });
     expect(await storedId(tail.id)).toBeDefined();
     expect(resolveJobs(held)).toHaveLength(0);
+  });
+
+  it("queues its jobs on the pull queue, not the delivery queue, and gives a claim back when the send fails", async () => {
+    const author = await remoteActor("rtrpull", "rtr-pull.example");
+    const root = note(author, "root");
+    const middle = note(author, "middle", { inReplyTo: root.id });
+    holdQueue();
+    const leaf = await deliver(author, note(author, "leaf", { inReplyTo: middle.id }));
+
+    const failing = recordingEnv(true);
+    await serving([middle], async () => {
+      expect(await processOutboxJob(failing.env, resolveJob(leaf, 1))).toBe("retry");
+    });
+    const recording = recordingEnv();
+    await serving([], async () => {
+      expect(await processOutboxJob(recording.env, resolveJob(leaf, 1))).toBe("ok");
+    });
+
+    expect(recording.pull).toEqual([
+      { kind: RESOLVE, statusId: await storedId(middle.id), hop: 2 },
+    ]);
+    expect(
+      [...failing.outbox, ...recording.outbox].filter((body) => kindOf(body) === RESOLVE),
+    ).toEqual([]);
   });
 
   it("retries while the parent's server cannot be reached, and ends when the parent is gone", async () => {

@@ -9,7 +9,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { nowInstant } from "./clock";
-import { type RepositoryError, runD1 } from "./d1";
+import { type RepositoryError, runD1, toRepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import {
   claimRemoteStatusThreadResolve,
@@ -17,7 +17,6 @@ import {
 } from "./generated/prisma/sql";
 import { instanceActorFetchSigner } from "./instance-actor";
 import { parseNoteDocument } from "./remote-note-document";
-import { queueOutboxJobs } from "./queue-jobs";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
 import { findStoredNote, redistributeRemoteNote, storeNoteDocument } from "./remote-status-persist";
 import { findRemoteStatusById } from "./remote-status-store";
@@ -79,12 +78,19 @@ export const queueRemoteThreadResolve = async (
   if (parentUri === undefined || !fetchableParent(identity, parentUri) || job.isErr()) {
     return ok(undefined);
   }
-  const queued = await queueOutboxJobs(env, [job.value]);
-  if (queued.isErr()) {
+  try {
+    // The pull queue, not the delivery queue: a chain's fetches must not hold up deliveries.
+    await env.PULL_QUEUE.send(job.value);
+    return ok(undefined);
+  } catch (cause) {
     // Best effort: a claim kept here leaves the reply unlinked.
     await runD1(() => runTyped(env.DB, releaseRemoteStatusThreadResolve(statusId, claimedAt)));
+    return err(
+      toRepositoryError(
+        `queueing the thread job failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      ),
+    );
   }
-  return queued;
 };
 
 /**

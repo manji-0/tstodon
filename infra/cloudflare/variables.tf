@@ -17,7 +17,7 @@ variable "create_r2" {
 
 variable "create_queue" {
   type        = bool
-  description = "Create the outbox process Queue and its dead-letter queue."
+  description = "Create the outbox process Queue, its dead-letter queue and the pull queue."
   default     = true
 }
 
@@ -49,6 +49,12 @@ variable "outbox_dlq_name" {
   type        = string
   description = "Dead-letter queue of the outbox queue (OUTBOX_DLQ; `deadLetterQueue` in app/queues/tstodon-outbox-process.ts)."
   default     = "tstodon-outbox-dlq"
+}
+
+variable "pull_queue_name" {
+  type        = string
+  description = "Queue name for PULL_QUEUE (app/queues/tstodon-pull.ts): fetch work kept off the outbox queue."
+  default     = "tstodon-pull"
 }
 
 variable "worker_script_name" {
@@ -103,6 +109,30 @@ variable "dlq_consumer_max_wait_time_ms" {
   type        = number
   description = "Dead-letter queue consumer max wait time in milliseconds (maxBatchTimeout in app/queues/tstodon-outbox-dlq.ts, in ms)."
   default     = 5000
+}
+
+variable "pull_consumer_batch_size" {
+  type        = number
+  description = "Pull queue consumer max_batch_size (maxBatchSize in app/queues/tstodon-pull.ts)."
+  default     = 1
+}
+
+variable "pull_consumer_max_retries" {
+  type        = number
+  description = "Pull queue consumer max_retries (maxRetries in app/queues/tstodon-pull.ts)."
+  default     = 3
+}
+
+variable "pull_consumer_max_concurrency" {
+  type        = number
+  description = "Pull queue consumer max_concurrency (maxConcurrency in app/queues/tstodon-pull.ts)."
+  default     = 2
+}
+
+variable "pull_consumer_max_wait_time_ms" {
+  type        = number
+  description = "Pull queue consumer max wait time in milliseconds (maxBatchTimeout in app/queues/tstodon-pull.ts, in ms)."
+  default     = 0
 }
 
 # --- Hostnames ---

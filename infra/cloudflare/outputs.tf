@@ -18,6 +18,11 @@ output "outbox_dlq_name" {
   value       = var.create_queue ? cloudflare_queue.outbox_dlq[0].queue_name : null
 }
 
+output "pull_queue_name" {
+  description = "Paste into wrangler.jsonc queues producers PULL_QUEUE queue name."
+  value       = var.create_queue ? cloudflare_queue.pull[0].queue_name : null
+}
+
 output "wrangler_bindings" {
   description = "Values to copy into wrangler.jsonc for production bindings."
   value = {
@@ -26,6 +31,7 @@ output "wrangler_bindings" {
     r2_media_bucket_name      = var.create_r2 ? cloudflare_r2_bucket.media[0].name : null
     outbox_process_queue_name = var.create_queue ? cloudflare_queue.outbox_process[0].queue_name : null
     outbox_dlq_name           = var.create_queue ? cloudflare_queue.outbox_dlq[0].queue_name : null
+    pull_queue_name           = var.create_queue ? cloudflare_queue.pull[0].queue_name : null
   }
 }
 

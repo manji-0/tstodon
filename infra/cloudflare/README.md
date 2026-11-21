@@ -53,11 +53,11 @@ tofu apply
 
 ### Suggested apply order
 
-1. Apply to create D1 / R2 / the outbox Queue and its dead-letter queue, the media hostname and its CORS policy, and the Access applications.
+1. Apply to create D1 / R2 / the outbox Queue, its dead-letter queue and the pull queue, the media hostname and its CORS policy, and the Access applications.
 2. Copy `tofu output -json wrangler_bindings` into production `packages/worker/wrangler.jsonc`, `tofu output access_aud` into `CF_ACCESS_AUD` and `tofu output media_public_base_url` into `MEDIA_PUBLIC_BASE_URL`.
 3. Skipped: `pnpm run deploy` applies remote D1 migrations.
 4. `pnpm run deploy` (`void deploy --backend cloudflare`)
-5. Re-apply with `attach_queue_consumer = true` so both Queue consumers point at the Worker (the outbox consumer with `dead_letter_queue` set to the dead-letter queue).
+5. Re-apply with `attach_queue_consumer = true` so the three Queue consumers point at the Worker (the outbox and pull consumers with `dead_letter_queue` set to the dead-letter queue).
 
 A state created before the KV namespaces were dropped (OPS-7) still holds `cloudflare_workers_kv_namespace.remote_dns_cache` and `.app_cache`: the next `tofu plan` destroys both. Nothing read `REMOTE_DNS_CACHE`, and `APP_CACHE` only held mail captured in test setups, so deploy the Worker without the `kv_namespaces` bindings first, then apply. To keep the namespaces instead, `tofu state rm` them.
 
@@ -69,6 +69,7 @@ A state created before the KV namespaces were dropped (OPS-7) still holds `cloud
 | `wrangler_bindings.r2_media_bucket_name`      | `r2_buckets[].bucket_name`                |
 | `wrangler_bindings.outbox_process_queue_name` | `queues.producers` `OUTBOX_PROCESS_QUEUE` |
 | `wrangler_bindings.outbox_dlq_name`           | `queues.producers` `OUTBOX_DLQ`           |
+| `wrangler_bindings.pull_queue_name`           | `queues.producers` `PULL_QUEUE`           |
 | `access_aud`                                  | Worker var `CF_ACCESS_AUD`                |
 | `media_public_base_url`                       | Worker var `MEDIA_PUBLIC_BASE_URL`        |
 
@@ -83,13 +84,15 @@ A state created before the KV namespaces were dropped (OPS-7) still holds `cloud
 
 ## Queue settings
 
-`wrangler deploy` writes the same two consumers from `packages/worker/app/queues/*.ts`, so keep these equal to the exports there.
+`wrangler deploy` writes the same three consumers from `packages/worker/app/queues/*.ts`, so keep these equal to the exports there.
 
 | Variable                                                                             | Default                                         | Queue file export                                                          |
 | ------------------------------------------------------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------- |
 | `outbox_queue_name` / `outbox_dlq_name`                                              | `tstodon-outbox-process` / `tstodon-outbox-dlq` | file names; `deadLetterQueue` in `tstodon-outbox-process.ts`               |
 | `queue_consumer_batch_size`, `_max_retries`, `_max_concurrency`, `_max_wait_time_ms` | `5`, `3`, `1`, `0`                              | `maxBatchSize`, `maxRetries`, `maxConcurrency`, `maxBatchTimeout` (outbox) |
 | `dlq_consumer_batch_size`, `_max_retries`, `_max_wait_time_ms`                       | `10`, `5`, `5000`                               | the same in `tstodon-outbox-dlq.ts` (concurrency fixed at `1`)             |
+| `pull_queue_name`                                                                    | `tstodon-pull`                                  | file name; dead-letters to `outbox_dlq_name` (`deadLetterQueue`)           |
+| `pull_consumer_batch_size`, `_max_retries`, `_max_concurrency`, `_max_wait_time_ms`  | `1`, `3`, `2`, `0`                              | the same in `tstodon-pull.ts`                                              |
 
 ## Media hostname
 
