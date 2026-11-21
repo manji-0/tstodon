@@ -87,11 +87,19 @@ const DomainBlockFormSchema = z.object({
   private_comment: comment,
 });
 
-const DOMAIN_BLOCK_ERRORS = {
-  DomainRequired: "Enter a domain.",
-  OwnDomain: "You cannot block this server's own domain.",
-  AlreadyBlocked: "This domain is already blocked.",
-} as const satisfies Record<Exclude<CreateDomainBlockError["kind"], "RepositoryError">, string>;
+/** The page's error for a refused block, as Mastodon's admin `DomainBlocksController#create` words it. */
+const domainBlockError = (
+  error: Exclude<CreateDomainBlockError, Readonly<{ kind: "RepositoryError" }>>,
+): string => {
+  switch (error.kind) {
+    case "ValidationFailed":
+      return "This is not a valid domain name.";
+    case "OwnDomain":
+      return "You cannot block this server's own domain.";
+    case "ExistingDomainBlock":
+      return `You have already imposed stricter limits on ${error.existing.domain}, you need to unblock it first.`;
+  }
+};
 
 /** The domain in the path, or the page that answers instead. */
 const instanceDomain = (
@@ -219,8 +227,10 @@ export const postAdminInstance = async (
           privateComment: form.value.private_comment,
           publicComment: form.value.public_comment,
         },
+        existingBlock:
+          saved.error.kind === "ExistingDomainBlock" ? saved.error.existing.domain : undefined,
       },
-      { kind: "error", text: DOMAIN_BLOCK_ERRORS[saved.error.kind] },
+      { kind: "error", text: domainBlockError(saved.error) },
     ),
     422,
   );

@@ -9,6 +9,7 @@ import {
   type RemoteActorValue,
   RemoteActorModeration,
   type RemoteActorModerationAction,
+  DomainBlockPolicy,
   Hostname,
   ReportResolution,
 } from "@tstodon/domain";
@@ -39,6 +40,7 @@ import {
   type DomainBlockRow,
   findDomainBlockByDomain,
   findDomainBlockById,
+  findDomainBlockRule,
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
@@ -333,10 +335,18 @@ export const purgeAccount = async (
 
 export type DomainBlockSettings = Omit<DomainBlockInput, "domain">;
 
+/** A new block's settings; `severity` is `undefined` when the request named none Mastodon knows. */
+export type DomainBlockRequest = Omit<DomainBlockSettings, "severity"> &
+  Readonly<{ severity: DomainBlockSettings["severity"] | undefined }>;
+
+/** A failed validation of a new block, in the order `DomainBlock` declares them. */
+export type DomainBlockInvalidity = "SeverityNotIncluded" | "DomainBlank" | "DomainInvalid";
+
 export type CreateDomainBlockError =
-  | Readonly<{ kind: "DomainRequired" }>
+  | Readonly<{ kind: "ValidationFailed"; invalidities: ReadonlyArray<DomainBlockInvalidity> }>
   | Readonly<{ kind: "OwnDomain" }>
-  | Readonly<{ kind: "AlreadyBlocked" }>
+  /** The rule already covering the domain is on it, or is not weaker. */
+  | Readonly<{ kind: "ExistingDomainBlock"; existing: DomainBlockRow }>
   | RepositoryError;
 
 /**
@@ -352,45 +362,101 @@ const savedBlock = async (
   if (block.isErr() || !block.value) {
     return block;
   }
-  const host = Hostname.ofAuthority(block.value.domain);
-  if (block.value.reject_media !== 0) {
-    await clearRemoteMediaForDomain(env.DB, host);
-  }
-  if (block.value.severity === "suspend") {
-    const severed = await severAndNotify(env, {
-      scope: { kind: "Domain", domain: host },
-      type: "domain_block",
-      targetName: block.value.domain,
-    });
-    if (severed.isErr()) {
-      return err(severed.error);
-    }
-  }
-  return block;
+  const applied = await blockEffects(env, block.value);
+  return applied.map(() => block.value);
 };
 
-/** Block a domain this server has not blocked yet; never its own. */
+/**
+ * What making a block does to what is stored: the media of `reject_media`
+ * cleared, the follows of a suspension severed. Both find nothing the second
+ * time, so a block can be applied again.
+ */
+const blockEffects = async (
+  env: Env,
+  block: DomainBlockRow,
+): Promise<Result<void, RepositoryError>> => {
+  const host = Hostname.ofAuthority(block.domain);
+  if (block.reject_media !== 0) {
+    await clearRemoteMediaForDomain(env.DB, host);
+  }
+  if (block.severity === "suspend") {
+    return severAndNotify(env, {
+      scope: { kind: "Domain", domain: host },
+      type: "domain_block",
+      targetName: block.domain,
+    });
+  }
+  return ok(undefined);
+};
+
+/** Apply the instance domain block on `domain` as it stands now, as making it would; nothing when there is none. */
+export const applyDomainBlockEffects = async (
+  env: Env,
+  domain: Hostname,
+): Promise<Result<void, RepositoryError>> => {
+  const block = await findDomainBlockByDomain(env.DB, domain);
+  if (block.isErr()) {
+    return err(block.error);
+  }
+  return block.value ? blockEffects(env, block.value) : ok(undefined);
+};
+
+const policyOf = (row: DomainBlockRow): DomainBlockPolicy => ({
+  severity: row.severity,
+  rejectMedia: row.reject_media !== 0,
+  rejectReports: row.reject_reports !== 0,
+});
+
+/**
+ * Block a domain, never this server's own. As Mastodon's
+ * `Api::V1::Admin::DomainBlocksController#create`, refused when the rule
+ * already covering the domain (`DomainBlock.rule_for`) names it or is not
+ * weaker than the new block (`stricter_than?`).
+ */
 export const createDomainBlock = async (
   env: Env,
   ownDomain: string,
   rawDomain: string,
-  settings: DomainBlockSettings,
+  request: DomainBlockRequest,
 ): Promise<Result<DomainBlockRow | undefined, CreateDomainBlockError>> => {
   const domain = Hostname.fromInput(rawDomain);
-  if (domain === undefined) {
-    return err({ kind: "DomainRequired" });
-  }
   if (domain === ownDomain.toLowerCase()) {
     return err({ kind: "OwnDomain" });
   }
-  const existing = await findDomainBlockByDomain(env.DB, domain);
-  if (existing.isErr()) {
-    return err(existing.error);
+  if (domain !== undefined) {
+    const existing = await findDomainBlockRule(env.DB, domain);
+    if (existing.isErr()) {
+      return err(existing.error);
+    }
+    if (
+      existing.value &&
+      (existing.value.domain === domain ||
+        !DomainBlockPolicy.stricterThan(request, policyOf(existing.value)))
+    ) {
+      return err({ kind: "ExistingDomainBlock", existing: existing.value });
+    }
   }
-  if (existing.value) {
-    return err({ kind: "AlreadyBlocked" });
+  const domainInvalidity: DomainBlockInvalidity | undefined =
+    domain === undefined
+      ? "DomainBlank"
+      : Hostname.isValidDomain(domain)
+        ? undefined
+        : "DomainInvalid";
+  if (request.severity === undefined || domain === undefined || domainInvalidity !== undefined) {
+    const invalidities: DomainBlockInvalidity[] = [];
+    if (request.severity === undefined) {
+      invalidities.push("SeverityNotIncluded");
+    }
+    if (domainInvalidity !== undefined) {
+      invalidities.push(domainInvalidity);
+    }
+    return err({ kind: "ValidationFailed", invalidities });
   }
-  const created = await insertDomainBlock(env.DB, { domain, ...settings });
+  const created = await insertDomainBlock(env.DB, {
+    ...request,
+    domain,
+    severity: request.severity,
+  });
   if (created.isErr()) {
     return err(created.error);
   }

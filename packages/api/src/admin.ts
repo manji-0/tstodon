@@ -92,6 +92,16 @@ export const ApiAdminDomainBlock = z.object({
 });
 export type ApiAdminDomainBlockJSON = z.infer<typeof ApiAdminDomainBlock>;
 
+/**
+ * `REST::Admin::ExistingDomainBlockErrorSerializer`: the 422 answer when a
+ * new domain block is no stricter than the rule already covering its domain.
+ */
+export const ApiAdminExistingDomainBlockError = z.object({
+  error: z.string(),
+  existing_domain_block: ApiAdminDomainBlock,
+});
+export type ApiAdminExistingDomainBlockErrorJSON = z.infer<typeof ApiAdminExistingDomainBlockError>;
+
 /** `REST::Admin::DomainAllowSerializer`. */
 export const ApiAdminDomainAllow = z.object({
   id: z.string(),

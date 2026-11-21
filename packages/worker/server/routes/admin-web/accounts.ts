@@ -2,8 +2,13 @@ import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
-import type { RemoteActorModerationAction, RemoteActorModerationValue } from "@tstodon/domain";
+import {
+  Hostname,
+  type RemoteActorModerationAction,
+  type RemoteActorModerationValue,
+} from "@tstodon/domain";
 import { listAdminAccounts } from "../../account-admin-store";
+import { findDomainBlockRule } from "../../admin-domain-block-store";
 import {
   type AdminAccountState,
   type AdminRemoteActorState,
@@ -316,6 +321,13 @@ const renderRemoteAccount = async (
   if (open.isErr()) {
     return serverError(c, open.error);
   }
+  const rule =
+    view.domain === undefined
+      ? ok(undefined)
+      : await findDomainBlockRule(c.env.DB, Hostname.ofAuthority(view.domain));
+  if (rule.isErr()) {
+    return serverError(c, rule.error);
+  }
   const moderation = view.state?.moderation;
   return c.html(
     remoteActorPage(
@@ -324,6 +336,7 @@ const renderRemoteAccount = async (
         actorUri: view.actorUri,
         acct: view.acct,
         domain: view.domain,
+        domainBlocked: rule.value !== undefined,
         moderation,
         openReports: open.value,
         actions:
