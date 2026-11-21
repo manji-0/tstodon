@@ -7,19 +7,21 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param claimedAt
  * @param statusId
+ * @param staleBefore
  */
 export const claimRemoteStatusThreadResolve = $runtime.makeTypedQueryFactory(
-  "UPDATE remote_statuses SET thread_resolve_queued_at = $1\nWHERE id = $2\nAND thread_resolve_queued_at IS NULL\nAND in_reply_to_uri IS NOT NULL\nAND NOT EXISTS (\nSELECT 1 FROM remote_statuses AS parent WHERE parent.object_uri = remote_statuses.in_reply_to_uri\n)\nRETURNING in_reply_to_uri",
+  "UPDATE remote_statuses SET thread_resolve_queued_at = $1\nWHERE id = $2\nAND (thread_resolve_queued_at IS NULL OR thread_resolve_queued_at < $3)\nAND in_reply_to_uri IS NOT NULL\nAND NOT EXISTS (\nSELECT 1 FROM remote_statuses AS parent WHERE parent.object_uri = remote_statuses.in_reply_to_uri\n)\nRETURNING in_reply_to_uri",
 ) as (
   claimedAt: string,
   statusId: string,
+  staleBefore: string,
 ) => $runtime.TypedSql<
   claimRemoteStatusThreadResolve.Parameters,
   claimRemoteStatusThreadResolve.Result
 >;
 
 export namespace claimRemoteStatusThreadResolve {
-  export type Parameters = [claimedAt: string, statusId: string];
+  export type Parameters = [claimedAt: string, statusId: string, staleBefore: string];
   export type Result = {
     in_reply_to_uri: string | null;
   };

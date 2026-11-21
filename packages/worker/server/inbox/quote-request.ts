@@ -37,7 +37,6 @@ import { findQuoteByActivityUri, findQuoteByQuoting, saveQuoteState } from "../q
 import { remoteFollowerActorUris } from "../remote-actor-store";
 import { persistRemoteObject } from "../remote-status-persist";
 import { findDeliveredRemoteStatus } from "../remote-status-store";
-import { resolveDeliveredThread } from "../remote-thread-resolve";
 import { readStatusById } from "../status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
 import type { RemoteDelivery } from "./handler";
@@ -149,13 +148,7 @@ const cacheInstrument = async (
     // A `Create` that comes after finds the note cached and notifies nobody.
     delivery: "QuoteRequest",
   });
-  if (stored.isErr() || stored.value?.actorUri !== signer.actorUri) {
-    return stored.map(() => undefined);
-  }
-  const status = stored.value;
-  // Mastodon stores the instrument through its `Create`, which resolves its thread.
-  const resolving = await resolveDeliveredThread(env, identity, status, embedded);
-  return resolving.map(() => status);
+  return stored.map((status) => (status?.actorUri === signer.actorUri ? status : undefined));
 };
 
 /**

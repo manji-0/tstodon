@@ -9,7 +9,8 @@ import { settle } from "../test/meter";
 import { parseRows } from "./d1";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
-import { THREAD_RESOLVE_HOP_LIMIT } from "./remote-thread-resolve";
+import { queueRemoteThreadResolve, THREAD_RESOLVE_HOP_LIMIT } from "./remote-thread-resolve";
+import { parseInstanceIdentity } from "./runtime-config";
 
 // Mastodon v4.7.5: a `Create` of a reply whose parent the server does not
 // hold queues `ThreadResolveWorker`, which fetches the parent, links the
@@ -119,21 +120,29 @@ const deliver = async (author: Remote, object: NoteDocument): Promise<string> =>
   return id;
 };
 
+/** Every URL a `serving` fetch was asked for, in order. */
+const fetchedUrls: string[] = [];
+
 /**
  * Run `body` while `fetch` serves `documents` by id, fails as a server that
- * cannot be reached for each URL of `unreachable`, and 404s anything else.
+ * cannot be reached for each URL of `unreachable`, answers 503 for each of
+ * `failing`, and 404s anything else.
  */
 const serving = async <T>(
   documents: ReadonlyArray<NoteDocument>,
   body: () => Promise<T>,
-  unreachable: ReadonlyArray<string> = [],
+  faults: Readonly<{ unreachable?: ReadonlyArray<string>; failing?: ReadonlyArray<string> }> = {},
 ): Promise<T> => {
   const byUrl = new Map(documents.map((document) => [document.id, document]));
   const original = globalThis.fetch;
   globalThis.fetch = async (input) => {
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (unreachable.includes(href)) {
+    fetchedUrls.push(href);
+    if (faults.unreachable?.includes(href)) {
       throw new TypeError("connection refused");
+    }
+    if (faults.failing?.includes(href)) {
+      return new Response("unavailable", { status: 503 });
     }
     const document = byUrl.get(href);
     return document === undefined
@@ -164,9 +173,13 @@ const drain = (held: HeldQueue) => drainHeld(held, [RESOLVE, "FinishRemoteNoteRe
 
 /**
  * `env` with each queue's sends recorded, not sent; `failPull` makes every
- * send to the pull queue throw, as a Queues outage.
+ * send to the pull queue throw, as a Queues outage, and `vars` replace
+ * configured variables.
  */
-const recordingEnv = (failPull = false) => {
+const recordingEnv = ({
+  failPull = false,
+  vars = {},
+}: Readonly<{ failPull?: boolean; vars?: Readonly<Record<string, string>> }> = {}) => {
   const pull: unknown[] = [];
   const outbox: unknown[] = [];
   const recorder = (into: unknown[], fails: boolean) => ({
@@ -184,6 +197,7 @@ const recordingEnv = (failPull = false) => {
     },
   });
   const queues: Record<string, unknown> = {
+    ...vars,
     PULL_QUEUE: recorder(pull, failPull),
     OUTBOX_PROCESS_QUEUE: recorder(outbox, false),
   };
@@ -360,7 +374,7 @@ describe("a remote reply whose parent this server does not hold", () => {
     holdQueue();
     const leaf = await deliver(author, note(author, "leaf", { inReplyTo: middle.id }));
 
-    const failing = recordingEnv(true);
+    const failing = recordingEnv({ failPull: true });
     await serving([middle], async () => {
       expect(await processOutboxJob(failing.env, resolveJob(leaf, 1))).toBe("retry");
     });
@@ -390,7 +404,7 @@ describe("a remote reply whose parent this server does not hold", () => {
       async () => {
         expect(await processOutboxJob(env, resolveJob(reply, 1))).toBe("retry");
       },
-      [parent.id],
+      { unreachable: [parent.id] },
     );
     await serving([], async () => {
       expect(await processOutboxJob(env, resolveJob(reply, 1))).toBe("ok");
@@ -398,5 +412,184 @@ describe("a remote reply whose parent this server does not hold", () => {
 
     expect((await replyRefs(email, reply)).in_reply_to_id).toBeNull();
     expect(await statusNotifications(email, reply)).toBe(0);
+  });
+
+  it("ends the job when the parent's server answers with an error", async () => {
+    const author = await remoteActor("rtrfail", "rtr-fail.example");
+    const email = "rtr-fail@example.com";
+    await followNotifying(email, author);
+    const parent = note(author, "root");
+    holdQueue();
+    const reply = await deliver(author, note(author, "reply", { inReplyTo: parent.id }));
+
+    // As `FetchRemoteStatusService`, which reads any HTTP error as no status.
+    await serving(
+      [],
+      async () => {
+        expect(await processOutboxJob(env, resolveJob(reply, 1))).toBe("ok");
+      },
+      { failing: [parent.id] },
+    );
+
+    expect(fetchedUrls).toContain(parent.id);
+    expect((await replyRefs(email, reply)).in_reply_to_id).toBeNull();
+  });
+
+  it("lets a claim whose job was lost expire after an hour", async () => {
+    const author = await remoteActor("rtrstale", "rtr-stale.example");
+    holdQueue();
+    const reply = await deliver(
+      author,
+      note(author, "reply", { inReplyTo: "https://rtr-stale.example/notes/root" }),
+    );
+    const identity = parseInstanceIdentity(env);
+    if (identity.isErr()) {
+      throw new Error("no instance identity");
+    }
+    const recording = recordingEnv();
+
+    expect((await queueRemoteThreadResolve(recording.env, identity.value, reply, 1)).isOk()).toBe(
+      true,
+    );
+    expect(recording.pull).toEqual([]);
+
+    await env.DB.prepare("UPDATE remote_statuses SET thread_resolve_queued_at = ? WHERE id = ?")
+      .bind(new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), reply)
+      .run();
+    expect((await queueRemoteThreadResolve(recording.env, identity.value, reply, 1)).isOk()).toBe(
+      true,
+    );
+    expect(recording.pull).toEqual([{ kind: RESOLVE, statusId: reply, hop: 1 }]);
+  });
+
+  it("chains the hop before the limit", async () => {
+    const author = await remoteActor("rtrlast", "rtr-last.example");
+    const tail = note(author, "tail", { inReplyTo: note(author, "above-tail").id });
+    holdQueue();
+    const top = await deliver(author, note(author, "top", { inReplyTo: tail.id }));
+    const recording = recordingEnv();
+
+    await serving([tail], async () => {
+      expect(
+        await processOutboxJob(recording.env, resolveJob(top, THREAD_RESOLVE_HOP_LIMIT - 1)),
+      ).toBe("ok");
+    });
+
+    expect(recording.pull).toEqual([
+      { kind: RESOLVE, statusId: await storedId(tail.id), hop: THREAD_RESOLVE_HOP_LIMIT },
+    ]);
+  });
+
+  it("notifies only the followers a direct self-reply names", async () => {
+    const author = await remoteActor("rtrdirect", "rtr-direct.example");
+    const named = "rtr-direct-named@example.com";
+    const other = "rtr-direct-other@example.com";
+    await followNotifying(named, author);
+    await followNotifying(other, author);
+    const namedUri = `https://example.com/users/${(await signedInAccount(named)).username}`;
+    const parent = note(author, "root");
+    const held = holdQueue();
+    const reply = await deliver(
+      author,
+      note(author, "reply", {
+        inReplyTo: parent.id,
+        to: [namedUri],
+        cc: [],
+        tag: [{ type: "Mention", href: namedUri }],
+      }),
+    );
+
+    await serving([parent], () => drain(held));
+
+    expect((await replyRefs(named, reply)).in_reply_to_id).toBe(await storedId(parent.id));
+    expect(await statusNotifications(named, reply)).toBe(1);
+    expect(await statusNotifications(other, reply)).toBe(0);
+  });
+
+  it("fetches no parent on a suspended host, or off the allow-list under limited federation", async () => {
+    const author = await remoteActor("rtrguard", "rtr-guard.example");
+    const suspended = note(
+      await remoteActor("rtrguardsusp", "rtr-guard-suspended.example"),
+      "root",
+    );
+    const unlisted = note(await remoteActor("rtrguardlimit", "rtr-guard-unlisted.example"), "root");
+    await env.DB.prepare(
+      "INSERT INTO domain_blocks (id, domain, severity) VALUES ('rtr-guard-block', 'rtr-guard-suspended.example', 'suspend')",
+    ).run();
+    holdQueue();
+    const underSuspended = await deliver(
+      author,
+      note(author, "under-suspended", { inReplyTo: suspended.id }),
+    );
+    const underUnlisted = await deliver(
+      author,
+      note(author, "under-unlisted", { inReplyTo: unlisted.id }),
+    );
+    const limited = recordingEnv({ vars: { FEDERATION_ALLOW_HOSTS: "rtr-guard.example" } });
+
+    await serving([suspended, unlisted], async () => {
+      expect(await processOutboxJob(env, resolveJob(underSuspended, 1))).toBe("ok");
+      expect(await processOutboxJob(limited.env, resolveJob(underUnlisted, 1))).toBe("ok");
+    });
+
+    expect(fetchedUrls).not.toContain(suspended.id);
+    expect(fetchedUrls).not.toContain(unlisted.id);
+    expect(await storedId(suspended.id)).toBeUndefined();
+    expect(await storedId(unlisted.id)).toBeUndefined();
+  });
+
+  it("queues the job of a quote request's instrument", async () => {
+    const author = await remoteActor("rtrquote", "rtr-quote.example");
+    const email = "rtr-quote-quoted@example.com";
+    const quoted = await signedInAccount(email);
+    const posted = z
+      .object({ id: z.string() })
+      .parse(await call(email, "/api/v1/statuses", { status: "quote me" }));
+    const statusUri = `https://example.com/users/${quoted.username}/statuses/${posted.id}`;
+    const instrument = note(author, "quoting", {
+      inReplyTo: "https://rtr-quote.example/notes/unseen",
+      quote: statusUri,
+    });
+    const held = holdQueue();
+
+    expect(
+      await author.send({
+        id: `${author.actorUri}/quote_requests/1`,
+        type: "QuoteRequest",
+        object: statusUri,
+        instrument,
+      }),
+    ).toBe(202);
+    await settle();
+
+    expect(resolveJobs(held)).toEqual([
+      { kind: RESOLVE, statusId: await storedId(instrument.id), hop: 1 },
+    ]);
+  });
+
+  it("queues one job when the sender delivers the Create again after a 5xx", async () => {
+    const author = await remoteActor("rtrredeliver", "rtr-redeliver.example");
+    const held = holdQueue();
+    const send = vi.spyOn(Object.getPrototypeOf(env.OUTBOX_PROCESS_QUEUE), "send");
+    let refused = 0;
+    send.mockImplementation((body: unknown) => {
+      if (kindOf(body) === RESOLVE && refused === 0) {
+        refused += 1;
+        throw new Error("queue unavailable");
+      }
+      held.bodies.push(body);
+    });
+    const reply = note(author, "reply", { inReplyTo: "https://rtr-redeliver.example/notes/root" });
+    const create = { id: `${reply.id}/create`, type: "Create", object: reply };
+
+    expect(await author.send(create)).toBeGreaterThanOrEqual(500);
+    expect(await author.send(create)).toBe(202);
+    expect(await author.send({ ...create, id: `${reply.id}/create-again` })).toBe(202);
+    await settle();
+
+    expect(refused).toBe(1);
+    expect(resolveJobs(held)).toEqual([
+      { kind: RESOLVE, statusId: await storedId(reply.id), hop: 1 },
+    ]);
   });
 });

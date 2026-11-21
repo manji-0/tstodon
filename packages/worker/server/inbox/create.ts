@@ -9,7 +9,6 @@ import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
 import { persistRemoteObject } from "../remote-status-persist";
 import { findDeliveredRemoteStatus, type KnownRemoteStatus } from "../remote-status-store";
-import { resolveDeliveredThread } from "../remote-thread-resolve";
 import type { InboxHandler, InboxTarget, RemoteDelivery } from "./handler";
 
 /**
@@ -61,10 +60,7 @@ export const applyRemoteCreate = async (
     read,
   );
   // A storage failure: the route releases the claim and answers 5xx, so the sender redelivers.
-  if (created.isErr() || created.value === undefined) {
-    return created.map(() => undefined);
-  }
-  return resolveDeliveredThread(env, identity, created.value, object);
+  return created.map(() => undefined);
 };
 
 /**

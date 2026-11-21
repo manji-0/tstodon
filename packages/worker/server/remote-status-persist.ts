@@ -47,6 +47,7 @@ import {
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
 import { remoteOwnAncestry } from "./own-ancestry";
+import { fetchableParent, queueRemoteThreadResolve } from "./remote-thread-resolve";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
@@ -269,7 +270,8 @@ const storedMentions = async (
  * `Created` is a note stored from `raw`. `marker` is the one written with its
  * row, or one another delivery wrote whose steps this one finishes; this
  * delivery holds its lease. Absent for a note that owes nothing (one that
- * was fetched and is not distributed, or one whose row existed).
+ * was fetched and is not distributed, or one whose row existed). `inReplyTo`
+ * is the status `raw` replies to, as read when it was parsed.
  *
  * `Updated` is an `Update` applied to a stored note. `added` are the local
  * accounts it newly mentions ({@link newlyMentionedAccountIds}, read before
@@ -290,7 +292,7 @@ export type LateSteps = Readonly<{
   addressees?: LocalAddressees;
 }> &
   (
-    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined }>
+    | Readonly<{ kind: "Created"; marker: HeldOwed | undefined; inReplyTo: string | undefined }>
     | Readonly<{
         kind: "Updated";
         added: ReadonlyArray<string>;
@@ -806,6 +808,19 @@ const writeLateSteps = async (
   });
   if (recorded.isErr()) {
     return err(recorded.error);
+  }
+  // `Create#resolve_thread`: a note an inbox activity brought that replies to
+  // a status not stored queues the job that fetches it.
+  if (
+    late.kind === "Created" &&
+    inboxDelivery(options) &&
+    late.inReplyTo !== undefined &&
+    fetchableParent(identity, late.inReplyTo)
+  ) {
+    const resolving = await queueRemoteThreadResolve(env, identity, status.id, 1);
+    if (resolving.isErr()) {
+      return err(resolving.error);
+    }
   }
   const notified = await statusNotified(env, late, new Set([...mentioned, ...addressed]));
   if (notified.isErr()) {
@@ -1376,6 +1391,7 @@ const storeRemoteNote = async (
     status: stored.value,
     options,
     marker,
+    inReplyTo,
     addressees: addressees.value,
   });
   return finished.map(() => stored.value);
@@ -1523,6 +1539,7 @@ const resumeCreated = async (
         )
       : ok(undefined);
   }
+  const note = parseNoteDocument(raw);
   return finishRemoteNote(env, identity, {
     kind: "Created",
     actor,
@@ -1530,5 +1547,6 @@ const resumeCreated = async (
     status,
     options,
     marker: held.value,
+    inReplyTo: note.isOk() ? (note.value.inReplyTo ?? undefined) : undefined,
   });
 };
