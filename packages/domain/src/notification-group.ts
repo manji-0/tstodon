@@ -7,8 +7,11 @@ export type GroupedNotificationEntry = Readonly<{
   reportId: string | null;
   severanceEventId: string | null;
   createdAt: string;
-  /** Held by the notification policy: Mastodon gives it no group key. */
-  held: boolean;
+  /**
+   * The key stored when it was recorded: `{typePrefix}-{hourBucket}` for a
+   * groupable type, none for another type or one the policy held.
+   */
+  groupKey: string | null;
 }>;
 
 export type NotificationGroup = Readonly<{
@@ -71,38 +74,36 @@ export type NotificationGroupPage =
 /** `Older` pages down (`max_id`, `since_id`, or none); `Newer` pages up from `min_id`. */
 export type NotificationPageDirection = "Older" | "Newer";
 
-/** The notifications a group key names, as Mastodon's `by_group_key` scope. */
+/**
+ * The notifications a group key names, as Mastodon's `by_group_key` scope:
+ * one by id for `ungrouped-{id}`, else those that stored the key.
+ */
 export type NotificationGroupTarget =
   | Readonly<{ kind: "Notification"; id: string }>
-  | Readonly<{ kind: "Group"; type: string; target: string }>;
+  | Readonly<{ kind: "Group"; key: string }>;
 
 /**
- * Notification kinds Mastodon groups server-side (4.3+). Types outside this set
- * get their own single-notification group keyed `ungrouped-{id}`.
+ * The group a type prefix's last notification went to, as Mastodon keeps it
+ * in Redis: its hour bucket, and when it was recorded.
  */
-const defaultGroupedTypes: ReadonlyArray<string> = ["favourite", "reblog", "follow"];
+export type PreviousGroupBucket = Readonly<{ bucket: number; setAt: string }>;
 
-/** Mastodon's `GROUPABLE_NOTIFICATION_TYPES`: a request's `grouped_types` keeps only these. */
-const groupableTypes: ReadonlySet<string> = new Set([...defaultGroupedTypes, "admin.sign_up"]);
-
-/** Mastodon's `Notification::TYPES`: the types a `{type}-{target}` key can name. */
-const notificationTypes: ReadonlySet<string> = new Set([
-  "mention",
-  "status",
+/**
+ * Mastodon's `GROUPABLE_NOTIFICATION_TYPES`: the types that get a group key,
+ * the ones a request's `grouped_types` keeps, and the ones grouped when it
+ * names none. Every other type gets its own group keyed `ungrouped-{id}`.
+ */
+const groupableTypes: ReadonlySet<string> = new Set([
+  "favourite",
   "reblog",
   "follow",
-  "follow_request",
-  "favourite",
-  "poll",
-  "update",
   "admin.sign_up",
-  "admin.report",
-  "severed_relationships",
-  "moderation_warning",
-  "annual_report",
-  "quote",
-  "quoted_update",
 ]);
+
+/** Mastodon's `MAXIMUM_GROUP_SPAN_HOURS`. */
+const MAXIMUM_GROUP_SPAN_HOURS = 12;
+
+const HOUR_MS = 3_600_000;
 
 const SAMPLE_ACCOUNT_LIMIT = 3;
 
@@ -112,31 +113,60 @@ const statusOf = (entry: GroupedNotificationEntry): string | null =>
   entry.statusId && entry.statusId.length > 0 ? entry.statusId : null;
 
 /**
- * Mastodon's group key: `{type}-{target}` for groupable types, else per
- * notification. A held notification has no group key, so it is ungrouped.
+ * Mastodon's `type_prefix` in `set_group_key!`: a favourite or reblog is
+ * grouped by its status, a follow or sign-up by its type alone. Undefined for
+ * a type that is not grouped.
  */
-const key = (entry: GroupedNotificationEntry, groupedTypes: ReadonlySet<string>): string =>
-  !entry.held && groupedTypes.has(entry.kind)
-    ? `${entry.kind}-${statusOf(entry) ?? entry.fromAccountId}`
-    : `${UNGROUPED_PREFIX}${entry.id}`;
+const typePrefix = (
+  notification: Readonly<{ kind: string; statusId?: string | undefined }>,
+): string | undefined => {
+  switch (notification.kind) {
+    case "favourite":
+    case "reblog":
+      return `${notification.kind}-${notification.statusId ?? ""}`;
+    case "follow":
+    case "admin.sign_up":
+      return notification.kind;
+    default:
+      return undefined;
+  }
+};
 
 /**
- * Read a group key back into what it names, as Mastodon's `by_group_key`:
- * whatever types the request groups. Undefined for a key no notification type
- * makes.
+ * Mastodon's `set_group_key!` for a notification recorded `at`: the hour
+ * bucket it falls in, or the previous one of its type prefix while that was
+ * used within the last `MAXIMUM_GROUP_SPAN_HOURS` (its Redis expiry) and
+ * began less than that many hours before.
  */
-const target = (groupKey: string): NotificationGroupTarget | undefined => {
-  if (groupKey.startsWith(UNGROUPED_PREFIX)) {
-    const id = groupKey.slice(UNGROUPED_PREFIX.length);
-    return id.length > 0 ? { kind: "Notification", id } : undefined;
-  }
-  const separator = groupKey.indexOf("-");
-  const type = groupKey.slice(0, separator);
-  const rest = groupKey.slice(separator + 1);
-  return separator > 0 && rest.length > 0 && notificationTypes.has(type)
-    ? { kind: "Group", type, target: rest }
-    : undefined;
+const groupKey = (
+  prefix: string,
+  previous: PreviousGroupBucket | undefined,
+  at: string,
+): string => {
+  const now = Date.parse(at);
+  const hourBucket = Math.floor(now / HOUR_MS);
+  const live =
+    previous !== undefined && now < Date.parse(previous.setAt) + MAXIMUM_GROUP_SPAN_HOURS * HOUR_MS;
+  const previousBucket = live ? previous.bucket : 0;
+  const bucket =
+    hourBucket < previousBucket + MAXIMUM_GROUP_SPAN_HOURS ? previousBucket : hourBucket;
+  return `${prefix}-${bucket}`;
 };
+
+/**
+ * A notification's group in a list that groups `groupedTypes`, as Mastodon's
+ * `paginate_groups`: its stored key, or a group of its own.
+ */
+const key = (entry: GroupedNotificationEntry, groupedTypes: ReadonlySet<string>): string =>
+  entry.groupKey !== null && groupedTypes.has(entry.kind)
+    ? entry.groupKey
+    : `${UNGROUPED_PREFIX}${entry.id}`;
+
+/** Read a group key back into what it names, as Mastodon's `by_group_key`. */
+const target = (groupKey: string): NotificationGroupTarget =>
+  groupKey.startsWith(UNGROUPED_PREFIX)
+    ? { kind: "Notification", id: groupKey.slice(UNGROUPED_PREFIX.length) }
+    : { kind: "Group", key: groupKey };
 
 const summarized = (groupKey: string, summary: NotificationGroupSummary): NotificationGroup => ({
   groupKey,
@@ -206,8 +236,9 @@ const page = (
 };
 
 export const NotificationGroup = {
-  defaultGroupedTypes,
   groupableTypes,
+  typePrefix,
+  groupKey,
   key,
   target,
   summarized,

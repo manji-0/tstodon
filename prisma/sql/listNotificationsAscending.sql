@@ -6,10 +6,8 @@
 -- @param {String} $6:fromAccountId
 -- @param {String} $7:minId
 -- @param {Int} $8:includeFiltered
--- @param {String} $9:notificationId
--- @param {String} $10:groupType
--- @param {String} $11:groupTarget
-SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at,
+-- @param {String} $9:groupKey
+SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at, n.group_key,
   n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
 FROM notifications n
 WHERE n.account_id = $1
@@ -28,12 +26,8 @@ WHERE n.account_id = $1
   AND ($4 = '[]' OR n.kind IN (SELECT value FROM json_each($4)))
   AND ($5 = '[]' OR n.kind NOT IN (SELECT value FROM json_each($5)))
   AND ($6 = '' OR n.from_account_id = $6)
-  -- A group key's notifications, as `NotificationGroup.key` builds it.
-  AND ($9 = '' OR n.id = $9)
-  AND (
-    $10 = ''
-    OR (n.kind = $10 AND COALESCE(NULLIF(n.status_id, ''), n.from_account_id) = $11)
-  )
+  -- The notifications that stored a group key.
+  AND ($9 = '' OR n.group_key = $9)
   AND n.id > $7
   AND n.from_account_id NOT IN (
     SELECT target_account_id FROM blocks

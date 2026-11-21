@@ -720,6 +720,7 @@ export const NotificationsScalarFieldEnum = {
   report_id: "report_id",
   severance_event_id: "severance_event_id",
   created_at: "created_at",
+  group_key: "group_key",
 } as const;
 
 export type NotificationsScalarFieldEnum =

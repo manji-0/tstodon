@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import { type GroupedNotificationEntry, NotificationGroup } from "./notification-group";
 
-const grouped = new Set(NotificationGroup.defaultGroupedTypes);
+const grouped = new Set(NotificationGroup.groupableTypes);
 
 const entry = (
   id: string,
   kind: string,
   fromAccountId: string,
   statusId: string | null = null,
-  held = false,
+  groupKey: string | null = null,
 ): GroupedNotificationEntry => ({
   id,
   kind,
@@ -17,23 +17,87 @@ const entry = (
   reportId: null,
   severanceEventId: null,
   createdAt: `2026-11-04T00:00:${id.padStart(2, "0")}.000Z`,
-  held,
+  groupKey,
+});
+
+describe("NotificationGroup.groupableTypes", () => {
+  it("is Mastodon's GROUPABLE_NOTIFICATION_TYPES", () => {
+    expect([...NotificationGroup.groupableTypes].toSorted()).toEqual([
+      "admin.sign_up",
+      "favourite",
+      "follow",
+      "reblog",
+    ]);
+  });
+});
+
+describe("NotificationGroup.typePrefix", () => {
+  it("keys a favourite or reblog by its status and a follow or sign-up by its type", () => {
+    expect(NotificationGroup.typePrefix({ kind: "favourite", statusId: "s1" })).toBe(
+      "favourite-s1",
+    );
+    expect(NotificationGroup.typePrefix({ kind: "reblog", statusId: "s1" })).toBe("reblog-s1");
+    expect(NotificationGroup.typePrefix({ kind: "follow" })).toBe("follow");
+    expect(NotificationGroup.typePrefix({ kind: "admin.sign_up" })).toBe("admin.sign_up");
+  });
+
+  it("gives no prefix to a type Mastodon does not group", () => {
+    for (const kind of ["mention", "follow_request", "status", "admin.report", "quote"]) {
+      expect(NotificationGroup.typePrefix({ kind, statusId: "s1" })).toBeUndefined();
+    }
+  });
+});
+
+describe("NotificationGroup.groupKey", () => {
+  // Hour bucket 493,000 starts at 2026-03-29T16:00:00Z.
+  const hour = (bucket: number, minutes = 0): string =>
+    new Date((bucket * 60 + minutes) * 60_000).toISOString();
+
+  it("starts a group in the hour the notification falls in", () => {
+    expect(NotificationGroup.groupKey("follow", undefined, hour(493_000, 59))).toBe(
+      "follow-493000",
+    );
+    expect(NotificationGroup.groupKey("favourite-s1", undefined, hour(493_000))).toBe(
+      "favourite-s1-493000",
+    );
+  });
+
+  it("keeps the previous bucket for up to MAXIMUM_GROUP_SPAN_HOURS", () => {
+    const previous = { bucket: 493_000, setAt: hour(493_011, 30) };
+    expect(NotificationGroup.groupKey("follow", previous, hour(493_011, 59))).toBe("follow-493000");
+    expect(NotificationGroup.groupKey("follow", previous, hour(493_012))).toBe("follow-493012");
+  });
+
+  it("forgets the previous bucket 12 hours after it was last used", () => {
+    const previous = { bucket: 493_000, setAt: hour(493_000, 10) };
+    expect(NotificationGroup.groupKey("follow", previous, hour(493_011, 59))).toBe("follow-493000");
+    const stale = { bucket: 493_000, setAt: hour(492_999, 50) };
+    expect(NotificationGroup.groupKey("follow", stale, hour(493_011, 50))).toBe("follow-493011");
+  });
 });
 
 describe("NotificationGroup.key", () => {
-  it("groups a groupable kind by its status, or by sender without one", () => {
-    expect(NotificationGroup.key(entry("1", "favourite", "a", "s1"), grouped)).toBe("favourite-s1");
-    expect(NotificationGroup.key(entry("2", "follow", "a", ""), grouped)).toBe("follow-a");
-  });
-
-  it("gives every other kind its own group", () => {
-    expect(NotificationGroup.key(entry("3", "mention", "a", "s1"), grouped)).toBe("ungrouped-3");
-  });
-
-  it("gives a held notification its own group, as Mastodon gives it no group key", () => {
-    expect(NotificationGroup.key(entry("4", "favourite", "a", "s1", true), grouped)).toBe(
-      "ungrouped-4",
+  it("is the stored group key of a grouped type", () => {
+    expect(
+      NotificationGroup.key(entry("1", "favourite", "a", "s1", "favourite-s1-493000"), grouped),
+    ).toBe("favourite-s1-493000");
+    expect(NotificationGroup.key(entry("2", "follow", "a", null, "follow-493000"), grouped)).toBe(
+      "follow-493000",
     );
+  });
+
+  it("gives a notification without a stored key its own group", () => {
+    expect(NotificationGroup.key(entry("3", "mention", "a", "s1"), grouped)).toBe("ungrouped-3");
+    expect(NotificationGroup.key(entry("4", "favourite", "a", "s1"), grouped)).toBe("ungrouped-4");
+  });
+
+  it("gives a type the request does not group its own group", () => {
+    expect(
+      NotificationGroup.key(
+        entry("5", "follow", "a", null, "follow-493000"),
+        new Set(["favourite"]),
+      ),
+    ).toBe("ungrouped-5");
   });
 });
 
@@ -87,10 +151,10 @@ describe("NotificationGroup.page", () => {
       [
         { id: "9", groupKey: "favourite-s1" },
         { id: "8", groupKey: "ungrouped-8" },
-        { id: "3", groupKey: "follow-e" },
+        { id: "3", groupKey: "follow-1" },
       ],
       new Map([
-        ["follow-e", summary(entry("3", "follow", "e"), ["e"])],
+        ["follow-1", summary(entry("3", "follow", "e"), ["e"])],
         ["favourite-s1", summary(entry("9", "favourite", "a", "s1"), ["a", "b"])],
         ["ungrouped-8", summary(entry("8", "mention", "b", "s2"), ["b"])],
       ]),
@@ -105,7 +169,7 @@ describe("NotificationGroup.page", () => {
     expect(page.kind === "Page" ? page.groups.map((group) => group.groupKey) : []).toEqual([
       "favourite-s1",
       "ungrouped-8",
-      "follow-e",
+      "follow-1",
     ]);
   });
 
@@ -117,23 +181,13 @@ describe("NotificationGroup.page", () => {
 });
 
 describe("NotificationGroup.target", () => {
-  it("names one notification for an ungrouped key and a type and target otherwise", () => {
-    expect(NotificationGroup.target("ungrouped-7")).toEqual({
-      kind: "Notification",
-      id: "7",
-    });
-    expect(NotificationGroup.target("favourite-s-1")).toEqual({
+  it("names one notification for an ungrouped key and the stored key otherwise", () => {
+    expect(NotificationGroup.target("ungrouped-7")).toEqual({ kind: "Notification", id: "7" });
+    expect(NotificationGroup.target("favourite-s-493000")).toEqual({
       kind: "Group",
-      type: "favourite",
-      target: "s-1",
+      key: "favourite-s-493000",
     });
-    expect(NotificationGroup.target("mention-s1")).toEqual({
-      kind: "Group",
-      type: "mention",
-      target: "s1",
-    });
-    expect(NotificationGroup.target("nonsense-s1")).toBeUndefined();
-    expect(NotificationGroup.target("favourite-")).toBeUndefined();
+    expect(NotificationGroup.target("nonsense")).toEqual({ kind: "Group", key: "nonsense" });
   });
 });
 

@@ -14,13 +14,12 @@
 -- group not met yet, as Mastodon's `paginate_groups` reading `:desc`.
 -- Each step seeks the next notification whose key is not among the keys met,
 -- so a long run of one group costs one statement, not one request per row.
--- The key is `NotificationGroup.key`'s.
+-- The key is `NotificationGroup.key`'s: the stored one for a grouped type.
 WITH RECURSIVE
 candidates(id, group_key) AS NOT MATERIALIZED (
   SELECT n.id,
     CASE
-      WHEN n.kind IN (SELECT value FROM json_each($8)) AND NOT n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1)
-        THEN n.kind || '-' || COALESCE(NULLIF(n.status_id, ''), n.from_account_id)
+      WHEN n.group_key IS NOT NULL AND n.kind IN (SELECT value FROM json_each($8)) THEN n.group_key
       ELSE 'ungrouped-' || n.id
     END
   FROM notifications n

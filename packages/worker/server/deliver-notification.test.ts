@@ -1,4 +1,9 @@
-import type { NewNotification, NotificationPolicyAction, SenderScreening } from "@tstodon/domain";
+import type {
+  NewNotification,
+  NotificationPolicyAction,
+  PreviousGroupBucket,
+  SenderScreening,
+} from "@tstodon/domain";
 import { ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
 import { deliverNotification } from "./notify";
@@ -10,15 +15,31 @@ const mention = {
   statusId: "300",
 } as const satisfies NewNotification;
 
+const favouriteOf300 = {
+  accountId: "100",
+  fromAccountId: "200",
+  kind: "favourite",
+  statusId: "300",
+} as const satisfies NewNotification;
+
+/** Hour bucket 493,000 starts at 2026-03-29T16:00:00Z. */
+const NOW = "2026-03-29T17:30:00.000Z";
+
 const recording = (
   disposition: NotificationPolicyAction,
   muted: ReadonlyArray<string> = [],
   screening: SenderScreening = { kind: "Screen" },
+  previous: PreviousGroupBucket | undefined = undefined,
 ) => {
   const events: string[] = [];
   return {
     events,
     contracts: {
+      now: () => NOW,
+      findGroupBucket: async (accountId: string, typePrefix: string) => {
+        events.push(`bucket ${accountId} ${typePrefix}`);
+        return ok(previous);
+      },
       screenSender: async () => ok(screening),
       resolveDisposition: async () => {
         events.push("disposition");
@@ -26,8 +47,8 @@ const recording = (
       },
       findMutedThreadStatusIds: async (_accountId: string, statusIds: ReadonlyArray<string>) =>
         ok(new Set(statusIds.filter((id) => muted.includes(id)))),
-      insertNotification: async (notification: NewNotification) => {
-        events.push(`insert ${notification.kind}`);
+      insertNotification: async (notification: NewNotification, groupKey?: string) => {
+        events.push(`insert ${notification.kind}${groupKey === undefined ? "" : ` ${groupKey}`}`);
         return ok("n1");
       },
       holdNotification: async (notificationId: string) => {
@@ -87,7 +108,42 @@ describe("deliverNotification", () => {
       fromAccountId: "200",
       kind: "admin.sign_up",
     });
-    expect(store.events).toEqual(["insert admin.sign_up", "publish 100 n1"]);
+    expect(store.events).toEqual([
+      "bucket 100 admin.sign_up",
+      "insert admin.sign_up admin.sign_up-493001",
+      "publish 100 n1",
+    ]);
+  });
+
+  it("records a groupable notification under its type prefix and hour bucket", async () => {
+    const store = recording("accept");
+    await deliverNotification(store.contracts, favouriteOf300);
+    expect(store.events).toEqual([
+      "disposition",
+      "bucket 100 favourite-300",
+      "insert favourite favourite-300-493001",
+      "publish 100 n1",
+    ]);
+  });
+
+  it("records a groupable notification in its type prefix's live bucket", async () => {
+    const store = recording(
+      "accept",
+      [],
+      { kind: "Screen" },
+      {
+        bucket: 492_995,
+        setAt: "2026-03-29T12:00:00.000Z",
+      },
+    );
+    await deliverNotification(store.contracts, { ...favouriteOf300, kind: "follow" });
+    expect(store.events).toContain("insert follow follow-492995");
+  });
+
+  it("gives a held notification no group key, as Mastodon's filtered ones", async () => {
+    const store = recording("filter");
+    await deliverNotification(store.contracts, favouriteOf300);
+    expect(store.events).toEqual(["disposition", "insert favourite", "hold n1"]);
   });
 
   it("records nothing of any kind from a sender screened out", async () => {
