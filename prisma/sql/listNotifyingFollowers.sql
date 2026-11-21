@@ -25,7 +25,7 @@ WHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Acc
   )
   AND NOT EXISTS (
     SELECT 1 FROM status_mentions sm
-    WHERE sm.status_id = $3
+    WHERE sm.status_id = $3 AND sm.silent = 0
       AND (
         EXISTS (
           SELECT 1 FROM blocks b
@@ -40,7 +40,7 @@ WHERE f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Acc
   )
   AND NOT EXISTS (
     SELECT 1 FROM status_remote_mentions sm
-    WHERE sm.status_id = $3
+    WHERE sm.status_id = $3 AND sm.silent = 0
       AND (
         EXISTS (
           SELECT 1 FROM blocks b

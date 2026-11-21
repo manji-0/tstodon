@@ -266,25 +266,26 @@ const snapshotPreviousRevision = async (
     : ok(undefined);
 };
 
-/** Replace the local and remote accounts the revised text mentions. */
+/**
+ * Replace the local and remote accounts the revised text mentions; one it
+ * no longer mentions keeps a silent mention.
+ */
 const replaceMentions = async (
   env: Env,
   note: LocalNote,
   resolved: ResolvedMentions,
 ): Promise<Result<void, ApiRefusal>> => {
-  const mentions = await replaceStatusMentions(
-    env.DB,
-    note.id,
-    resolved.locals.map((account) => account.id),
-  );
+  const mentions = await replaceStatusMentions(env.DB, note.id, {
+    mentioned: resolved.locals.map((account) => account.id),
+    addressed: [],
+  });
   if (mentions.isErr()) {
     return err(ApiRefusal.repository(mentions.error.message));
   }
-  const remoteSaved = await replaceStatusRemoteMentions(
-    env.DB,
-    note.id,
-    resolved.remotes.map((actor) => actor.actorUri),
-  );
+  const remoteSaved = await replaceStatusRemoteMentions(env.DB, note.id, {
+    mentioned: resolved.remotes.map((actor) => actor.actorUri),
+    addressed: [],
+  });
   return remoteSaved.isErr()
     ? err(ApiRefusal.repository(remoteSaved.error.message))
     : ok(undefined);

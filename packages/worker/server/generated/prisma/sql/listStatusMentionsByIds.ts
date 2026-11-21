@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param idsJson
  */
 export const listStatusMentionsByIds = $runtime.makeTypedQueryFactory(
-  "SELECT status_id, account_id FROM status_mentions\nWHERE status_id IN (SELECT value FROM json_each($1))",
+  "SELECT status_id, account_id FROM status_mentions\nWHERE status_id IN (SELECT value FROM json_each($1)) AND silent = 0",
 ) as (
   idsJson: string,
 ) => $runtime.TypedSql<listStatusMentionsByIds.Parameters, listStatusMentionsByIds.Result>;
