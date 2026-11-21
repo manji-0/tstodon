@@ -9,7 +9,7 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { parseRows, runD1, type RepositoryError } from "./d1";
-import { idCursorBounds, idCursorFragment, type IdCursor } from "./id-cursor";
+import { idCursorFragment, newestFirst, type IdCursor } from "./id-cursor";
 import { newEntityId } from "./ids";
 
 /** The validated params of a scheduled post, replayed by the publisher. */
@@ -126,9 +126,7 @@ export const listScheduledStatuses = async (
       const parsed = rowFromRow(row);
       return parsed ? [parsed] : [];
     });
-    // A `min_id` page is read oldest first and answered newest first, as Mastodon's
-    // `to_a_paginated_by_id` reverses it.
-    return idCursorBounds(cursor).ascending ? page.toReversed() : page;
+    return newestFirst(cursor, page);
   });
 
 export const findScheduledStatus = async (

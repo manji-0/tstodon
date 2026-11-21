@@ -66,19 +66,80 @@ export const remoteTimelineDocuments = async (
     },
   );
 
-/** Merge local and remote timeline documents, newest first (`min_id` oldest first). */
-export const mergeTimelineDocuments = (
-  local: ReadonlyArray<ApiStatusJSON>,
-  remote: ReadonlyArray<ApiStatusJSON>,
+/**
+ * A page of a timeline, newest first (a `min_id` page too, as Mastodon's
+ * `paginate_by_min_id(...).reverse`), and its `Link` cursors: `next` is the
+ * `max_id` of `rel="next"`, `prev` the `min_id` of `rel="prev"`. An empty page
+ * has neither.
+ */
+export type TimelinePage = Readonly<{
+  statuses: ApiStatusJSON[];
+  next: string | undefined;
+  prev: string | undefined;
+  /**
+   * Whether rows may follow the page: it is full, or a query read a full
+   * `limit` (Mastodon's `records_continue?` over the rows read).
+   */
+  continues: boolean;
+}>;
+
+/** The rows one query of a merged page read: their ids are the page's cursors. */
+export type FetchedRows = ReadonlyArray<Readonly<{ id: string }>>;
+
+const pageOrder =
+  (ascending: boolean) =>
+  (left: Readonly<{ id: string }>, right: Readonly<{ id: string }>): number =>
+    ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id);
+
+/**
+ * Where a page merged from several queries ends. A query that read a full
+ * `limit` read nothing past its last row in page order, so an entry past the
+ * earliest such row could pass over that query's unread rows: the page stops
+ * there, and `undefined` when no query read a full page.
+ */
+const pageCut = (
+  fetches: ReadonlyArray<FetchedRows>,
+  ascending: boolean,
+  limit: number,
+): string | undefined =>
+  fetches
+    .flatMap((rows) =>
+      rows.length > 0 && rows.length >= limit ? rows.toSorted(pageOrder(ascending)).slice(-1) : [],
+    )
+    .toSorted(pageOrder(ascending))[0]?.id;
+
+/** True when `id` is not past `cut` in page order. */
+const withinCut = (id: string, cut: string | undefined, ascending: boolean): boolean =>
+  cut === undefined || (ascending ? id <= cut : id >= cut);
+
+/**
+ * The page of `documents`, merged from the queries that read `fetches`: the
+ * first `limit` in page order up to the queries' cut. A page the cut leaves
+ * short (an entry of a full query did not render) continues from the cut, so
+ * the next page neither skips nor repeats that query's rows.
+ */
+export const timelinePage = (
+  documents: ReadonlyArray<ApiStatusJSON>,
   cursor: { minId?: string | undefined },
   limit: number,
-): ApiStatusJSON[] => {
+  fetches: ReadonlyArray<FetchedRows> = [],
+): TimelinePage => {
   const ascending = (cursor.minId ?? "").length > 0;
-  return [...local, ...remote]
-    .sort((left, right) =>
-      ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
-    )
+  const cut = pageCut(fetches, ascending, limit);
+  const inOrder = documents
+    .filter((document) => withinCut(document.id, cut, ascending))
+    .toSorted(pageOrder(ascending))
     .slice(0, limit);
+  const statuses = ascending ? inOrder.toReversed() : inOrder;
+  const resume = inOrder.length < limit ? cut : undefined;
+  return statuses.length === 0
+    ? { statuses, next: undefined, prev: undefined, continues: false }
+    : {
+        statuses,
+        next: ascending ? statuses.at(-1)?.id : (resume ?? statuses.at(-1)?.id),
+        prev: ascending ? (resume ?? statuses[0]?.id) : statuses[0]?.id,
+        continues: inOrder.length >= limit || cut !== undefined,
+      };
 };
 
 /** `read`, run on first use; later uses share its result. */
@@ -106,23 +167,25 @@ const pageSource = <T extends Readonly<{ id: string }>>(
 });
 
 /**
- * {@link mergeTimelineDocuments} over sources that each fetched up to `limit`
- * entries, rendering only the entries that can reach the page: the first
- * `limit` in page order, then, only if rendering left some of those out (an
- * author it may not show), the rest. An entry renders the same whichever
- * others render with it, so the page is the one rendering every entry gives.
+ * {@link timelinePage} over sources that each fetched up to `limit` entries
+ * (`fetches`, the rows each query read), rendering only the entries that can
+ * reach the page: the first `limit` in page order up to the cut, then, only if
+ * rendering left some of those out (an author it may not show), the rest. An
+ * entry renders the same whichever others render with it, so the page is the
+ * one rendering every entry gives.
  */
 const renderMergedPage = async (
   sources: ReadonlyArray<PageSource>,
+  fetches: ReadonlyArray<FetchedRows>,
   cursor: { minId?: string | undefined },
   limit: number,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+): Promise<Result<TimelinePage, RepositoryError>> => {
   const ascending = (cursor.minId ?? "").length > 0;
+  const cut = pageCut(fetches, ascending, limit);
   const ordered = sources
     .flatMap((source, index) => source.ids.map((id) => ({ id, index })))
-    .sort((left, right) =>
-      ascending ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id),
-    );
+    .filter((entry) => withinCut(entry.id, cut, ascending))
+    .sort(pageOrder(ascending));
   const rendered: ApiStatusJSON[][] = sources.map(() => []);
   const renderEntries = async (
     entries: ReadonlyArray<{ id: string; index: number }>,
@@ -153,7 +216,7 @@ const renderMergedPage = async (
       return err(rest.error);
     }
   }
-  return ok(mergeTimelineDocuments(rendered.flat(), [], cursor, limit));
+  return ok(timelinePage(rendered.flat(), cursor, limit, fetches));
 };
 
 /**
@@ -177,7 +240,7 @@ const publicSurfaceDocuments = async (
   remote: Promise<Result<RemoteNote[], RepositoryError>> | undefined,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+): Promise<Result<TimelinePage, RepositoryError>> => {
   const [localStatuses, remoteStatuses] = await Promise.all([
     local ?? Promise.resolve(ok([])),
     remote ?? Promise.resolve(ok([])),
@@ -213,6 +276,7 @@ const publicSurfaceDocuments = async (
           ),
       ),
     ],
+    [localStatuses.value, remoteStatuses.value],
     cursor,
     limit,
   );
@@ -231,7 +295,7 @@ export const publicTimelineDocuments = (
   options: Readonly<{ scopes: TimelineScopes; onlyMedia: boolean }>,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
+): Promise<Result<TimelinePage, RepositoryError>> =>
   publicSurfaceDocuments(
     env,
     identity,
@@ -258,7 +322,7 @@ export const tagTimelineDocuments = (
   options: Readonly<{ scopes: TimelineScopes; filters: TagStatusFilters }>,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> =>
+): Promise<Result<TimelinePage, RepositoryError>> =>
   publicSurfaceDocuments(
     env,
     identity,
@@ -288,7 +352,7 @@ const feedDocuments = async (
   limit: number,
   cursor: IdCursor,
   horizon: string | undefined = undefined,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+): Promise<Result<TimelinePage, RepositoryError>> => {
   const [statuses, followed, tagged, boosts] = await Promise.all([
     local,
     listFollowedRemoteStatuses(env.DB, viewerId, feed, limit, cursor),
@@ -298,28 +362,27 @@ const feedDocuments = async (
       : Promise.resolve(ok([])),
     listFollowedRemoteBoosts(env.DB, viewerId, feed, limit, cursor),
   ]);
-  // A followed actor's note under a followed hashtag comes from both queries,
-  // as Mastodon's two fan-out paths push it to the same home once. Nothing
-  // past the horizon, where the followed hashtags were not read.
-  const remote = followed.andThen((notes) =>
-    tagged.map((more) => {
-      const listed = new Set(notes.map((note) => note.id));
-      return withinHorizon(
-        [...notes, ...more.filter((note) => !listed.has(note.id))],
-        cursor,
-        horizon,
-      );
-    }),
-  );
   if (statuses.isErr()) {
     return err(statuses.error);
   }
-  if (remote.isErr()) {
-    return err(remote.error);
+  if (followed.isErr()) {
+    return err(followed.error);
+  }
+  if (tagged.isErr()) {
+    return err(tagged.error);
   }
   if (boosts.isErr()) {
     return err(boosts.error);
   }
+  // A followed actor's note under a followed hashtag comes from both queries,
+  // as Mastodon's two fan-out paths push it to the same home once. Nothing
+  // past the horizon, where the followed hashtags were not read.
+  const listed = new Set(followed.value.map((note) => note.id));
+  const remote = withinHorizon(
+    [...followed.value, ...tagged.value.filter((note) => !listed.has(note.id))],
+    cursor,
+    horizon,
+  );
   const filters = sharedRead(() => loadViewerFilters(env.DB, viewerId));
   return renderMergedPage(
     [
@@ -329,7 +392,7 @@ const feedDocuments = async (
         ),
       ),
       // The query already keeps followed actors' notes the viewer may see.
-      pageSource(remote.value, async (shown) =>
+      pageSource(remote, async (shown) =>
         (await remoteTimelineDocuments(env, identity, shown, viewerId, () => true)).asyncMap(
           (rendered) =>
             attachFilteredToRemoteStatuses(
@@ -346,6 +409,7 @@ const feedDocuments = async (
         remoteBoostDocuments(env, identity, shown, viewerId),
       ),
     ],
+    [statuses.value, followed.value, tagged.value, boosts.value],
     cursor,
     limit,
   );
@@ -367,7 +431,7 @@ export const homeTimelineDocuments = async (
   viewerId: string,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+): Promise<Result<TimelinePage, RepositoryError>> => {
   let page = cursor;
   for (let step = 1; ; step += 1) {
     const horizon = await findFollowedTagHorizon(env.DB, viewerId, page, limit);
@@ -388,7 +452,7 @@ export const homeTimelineDocuments = async (
     // hashtag) is read again past the horizon, as an empty page tells a
     // client the timeline ended. A `since_id` page never moves past it.
     const next =
-      documents.isOk() && documents.value.length === 0
+      documents.isOk() && documents.value.statuses.length === 0
         ? pastHorizon(page, horizon.value)
         : undefined;
     if (next === undefined || step >= HOME_HORIZON_STEPS) {
@@ -451,7 +515,7 @@ export const remoteAccountTimelineDocuments = async (
   actorUri: string,
   viewerId: string | undefined,
   filters: AccountStatusFilters,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+): Promise<Result<TimelinePage, RepositoryError>> => {
   const withBoosts =
     !filters.excludeReblogs && !filters.onlyMedia && (filters.tagged ?? "").length === 0;
   const [notes, boosts] = await Promise.all([
@@ -483,6 +547,7 @@ export const remoteAccountTimelineDocuments = async (
       ),
       pageSource(boosts.value, (shown) => remoteBoostDocuments(env, identity, shown, viewerId)),
     ],
+    [notes.value, boosts.value],
     filters.cursor ?? {},
     filters.limit,
   );
@@ -500,7 +565,7 @@ export const listTimelineDocuments = async (
   list: AccountList,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+): Promise<Result<TimelinePage, RepositoryError>> => {
   const feed: ListFeed = {
     kind: "List",
     listId: list.id,

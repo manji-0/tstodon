@@ -316,7 +316,7 @@ describe("remote boosts on the home timeline", () => {
     expect(pages).toEqual(entries.map((entry) => entry.uri));
     expect(
       (await home(follower, `?min_id=${entries[2]?.id ?? ""}`)).map((entry) => entry.uri),
-    ).toEqual([boosterNote, announceId(booster, "page")]);
+    ).toEqual([announceId(booster, "page"), boosterNote]);
   });
 
   it("drops the boosts of a deleted actor and of a deleted note", async () => {
@@ -443,5 +443,64 @@ describe("a boost of the booster's own followers-only note", () => {
     expect((await json(byId, { headers: await authHeaders(follower) })).status).toBe(200);
     expect((await json(byId, { headers: await authHeaders(other) })).status).toBe(404);
     expect((await json(byId)).status).toBe(404);
+  });
+});
+
+describe("a merged home page with a boost that fails to render", () => {
+  it("ends the page at the boosts' last fetched row, so the next page skips none", async () => {
+    const booster = await remoteActor("boost-cut-booster", "booster.example");
+    const author = await remoteActor("boost-cut-author");
+    const hidden = await remoteActor("boost-cut-hidden", "boost-cut-hidden.example");
+    const follower = "boost-cut-follower@example.com";
+    await acceptedFollow(follower, booster, "cut");
+    const own = await localPost(follower, "older than every boost");
+    const kept = await note(author, "boost-cut-kept");
+    const alsoKept = await note(author, "boost-cut-also-kept");
+    const unshown = await note(hidden, "boost-cut-unshown");
+    expect(await boost(booster, kept, "cut-1")).toBe(202);
+    expect(await boost(booster, alsoKept, "cut-2")).toBe(202);
+    expect(await boost(booster, unshown, "cut-3")).toBe(202);
+    // Once only allow-listed domains federate, the boost of the hidden actor's
+    // note renders away after the query picked it.
+    for (const domain of ["booster.example", "remote.example"]) {
+      const allowed = await json("/api/v1/admin/domain_allows", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(await authHeaders("boost-cut-admin@example.com", { admin: true })),
+        },
+        body: JSON.stringify({ domain }),
+      });
+      expect(allowed.status).toBe(200);
+    }
+    expect(await homeUris(follower)).toEqual([alsoKept, kept, own.uri]);
+
+    // At limit 2 the boosts fetched are cut-3 (not rendered) and cut-2, so the
+    // page holds cut-2 alone: padding it with the local post would page past cut-1.
+    const first = await home(follower, "?limit=2");
+    expect(first.map((entry) => entry.reblog?.uri ?? entry.uri)).toEqual([alsoKept]);
+    const seen = [...first];
+    let maxId = first.at(-1)?.id ?? "";
+    for (let step = 0; step < 4 && maxId; step += 1) {
+      const next = await home(follower, `?limit=2&max_id=${maxId}`);
+      seen.push(...next);
+      maxId = next.at(-1)?.id ?? "";
+    }
+    expect(seen.map((entry) => entry.reblog?.uri ?? entry.uri)).toEqual([alsoKept, kept, own.uri]);
+
+    // The booster's profile pages by the rows it read: a page left short by
+    // the unrendered boost still links to the next one.
+    const profile = await SELF.fetch(
+      `https://example.com/api/v1/accounts/${accountId(booster)}/statuses?limit=2`,
+      { headers: await authHeaders(follower) },
+    );
+    const shown = read(z.array(EntrySchema), await profile.json());
+    expect(shown.map((entry) => entry.reblog?.uri)).toEqual([alsoKept]);
+    const next = /<([^>]+)>; rel="next"/.exec(profile.headers.get("Link") ?? "")?.[1] ?? "";
+    expect(new URL(next).searchParams.get("max_id")).toBe(shown[0]?.id);
+    const rest = await SELF.fetch(next, { headers: await authHeaders(follower) });
+    expect(read(z.array(EntrySchema), await rest.json()).map((entry) => entry.reblog?.uri)).toEqual(
+      [kept],
+    );
   });
 });

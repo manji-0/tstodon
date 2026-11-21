@@ -6,8 +6,7 @@
 -- zero-padded to 18 digits so string order is time order.
 --
 -- A trigger gives every row written without an id the same id, so no insert
--- (a block, a follow, a domain or tag rename that moves a row) has to name
--- one, and none can leave a row out of the pages.
+-- has to name one, and none can leave a row out of the pages.
 
 ALTER TABLE account_domain_blocks ADD COLUMN id TEXT;
 ALTER TABLE followed_tags ADD COLUMN id TEXT;
@@ -50,6 +49,8 @@ BEGIN
     WHERE rowid = NEW.rowid;
 END;
 
--- Each page seeks the account's rows in id order.
-CREATE UNIQUE INDEX idx_account_domain_blocks_account_id ON account_domain_blocks (account_id, id);
-CREATE UNIQUE INDEX idx_followed_tags_account_id ON followed_tags (account_id, id);
+-- Each page seeks the account's rows in id order. Not unique: a domain or tag
+-- rename keeps the row's id, inserting the renamed row before it deletes the
+-- old one.
+CREATE INDEX idx_account_domain_blocks_account_id ON account_domain_blocks (account_id, id);
+CREATE INDEX idx_followed_tags_account_id ON followed_tags (account_id, id);

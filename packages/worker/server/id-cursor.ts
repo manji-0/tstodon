@@ -34,6 +34,13 @@ export const idCursorBounds = (
 };
 
 /**
+ * A page read by `cursor`, newest first: a `min_id` page is read oldest first
+ * and answered reversed, as Mastodon's `to_a_paginated_by_id` does.
+ */
+export const newestFirst = <T>(cursor: IdCursor, page: ReadonlyArray<T>): T[] =>
+  idCursorBounds(cursor).ascending ? page.toReversed() : [...page];
+
+/**
  * The cursor as a SQL `where` / `order` pair over the status id `column`
  * (`id` unless a join drives from another table's copy of it), with its binds.
  */

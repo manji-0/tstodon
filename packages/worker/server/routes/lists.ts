@@ -9,7 +9,7 @@ import {
   queryUnlimited,
   requireUser,
   setPaginationLinks,
-  setTimelineLinks,
+  timelineResponse,
   PageSize,
 } from "../http";
 import {
@@ -307,14 +307,10 @@ export const getV1TimelinesListById = async (
     c.env,
     "list",
     startedAt,
-    documents.isOk() ? documents.value.length : undefined,
+    documents.isOk() ? documents.value.statuses.length : undefined,
   );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  setTimelineLinks(
-    c,
-    documents.value.map((status) => status.id),
-  );
-  return c.json(documents.value);
+  return timelineResponse(c, documents.value);
 };

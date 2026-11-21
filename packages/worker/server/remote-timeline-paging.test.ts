@@ -181,8 +181,8 @@ describe("remote statuses on public and tag pages", () => {
     );
     const oldest = all[4]?.id ?? "";
     expect(await uris(`/api/v1/timelines/public?remote=true&limit=2&min_id=${oldest}`)).toEqual([
-      newestFirst[3],
       newestFirst[2],
+      newestFirst[3],
     ]);
     expect(
       await uris(`/api/v1/timelines/public?remote=true&limit=5&since_id=${all[2]?.id ?? ""}`),
@@ -210,8 +210,8 @@ describe("remote statuses on public and tag pages", () => {
       newestFirst.slice(0, 2),
     );
     expect(await uris(`${path}&limit=2&min_id=${all[4]?.id ?? ""}`)).toEqual([
-      newestFirst[3],
       newestFirst[2],
+      newestFirst[3],
     ]);
   });
 

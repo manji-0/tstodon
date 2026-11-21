@@ -414,6 +414,81 @@ describe("lists paged as Mastodon pages them", () => {
   });
 });
 
+/**
+ * Mastodon reads a `min_id` page oldest first and answers it newest first
+ * (`paginate_by_min_id(...).reverse`, and the feeds' `Status` default scope),
+ * so its `rel="prev"` is its newest id and a client catching up moves a whole
+ * page at a time.
+ */
+describe("min_id pages", () => {
+  const expectNewestFirst = async (
+    schema: z.ZodType<{ id: string }>,
+    email: string | undefined,
+    path: string,
+    oldest: string,
+    newer: ReadonlyArray<string>,
+  ) => {
+    const separator = path.includes("?") ? "&" : "?";
+    const result = await page(schema, email, `${path}${separator}limit=2&min_id=${oldest}`);
+    const expected = newer.slice(0, 2).toReversed();
+    expect(result.items.map((item) => item.id)).toEqual(expected);
+    expect(result.links.prev?.searchParams.get("min_id")).toBe(expected[0]);
+    expect(result.links.next?.searchParams.get("max_id")).toBe(expected[1]);
+  };
+
+  it("answers timelines and an account's statuses newest first", async () => {
+    const email = "links-min-id@example.com";
+    const account = await me(email);
+    const posted: string[] = [];
+    for (const n of [1, 2, 3, 4]) {
+      posted.push(await post(email, `min ${n} #linksminid`));
+    }
+    const [oldest = "", ...newer] = posted;
+    await expectNewestFirst(ApiStatus, email, "/api/v1/timelines/home", oldest, newer);
+    await expectNewestFirst(ApiStatus, undefined, "/api/v1/timelines/public?local=true", oldest, [
+      ...newer,
+    ]);
+    await expectNewestFirst(
+      ApiStatus,
+      undefined,
+      "/api/v1/timelines/tag/linksminid",
+      oldest,
+      newer,
+    );
+    await expectNewestFirst(
+      ApiStatus,
+      undefined,
+      `/api/v1/accounts/${account.id}/statuses`,
+      oldest,
+      newer,
+    );
+  });
+
+  it("answers v1 notifications, favourites and bookmarks newest first", async () => {
+    const email = "links-min-id-notified@example.com";
+    const target = (await me(email)).id;
+    for (const name of ["a", "b", "c", "d"]) {
+      await send(`links-min-id-${name}@example.com`, `/api/v1/accounts/${target}/follow`);
+    }
+    const all = (await page(ApiNotification, email, "/api/v1/notifications")).items
+      .map((item) => item.id)
+      .toReversed();
+    const [oldest = "", ...newer] = all;
+    await expectNewestFirst(ApiNotification, email, "/api/v1/notifications", oldest, newer);
+
+    const statuses: string[] = [];
+    for (const n of [1, 2, 3, 4]) {
+      const id = await post(email, `saved ${n}`);
+      await send(email, `/api/v1/statuses/${id}/favourite`);
+      await send(email, `/api/v1/statuses/${id}/bookmark`);
+      statuses.push(id);
+    }
+    const [first = "", ...rest] = statuses;
+    await expectNewestFirst(ApiStatus, email, "/api/v1/favourites", first, rest);
+    await expectNewestFirst(ApiStatus, email, "/api/v1/bookmarks", first, rest);
+  });
+});
+
 describe("unread_count limit", () => {
   it("counts at most limit unread notifications (100 by default, at most 1000)", async () => {
     const email = "links-unread@example.com";

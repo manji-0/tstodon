@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { ApiStatusJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { findAccountMove } from "./account-move-store";
 import {
@@ -138,6 +139,23 @@ export const setTimelineLinks = (
   ids: ReadonlyArray<string>,
   filters: LinkFilters = [],
 ): void => setLinkHeader(c, { next: ids.at(-1), prev: ids[0] }, filters);
+
+/**
+ * A timeline page as `Api::V1::Timelines::BaseController` answers it: its
+ * statuses, and a `Link` with the page's cursors keeping `filters`.
+ */
+export const timelineResponse = (
+  c: Context<{ Bindings: Env }>,
+  page: Readonly<{
+    statuses: ApiStatusJSON[];
+    next: string | undefined;
+    prev: string | undefined;
+  }>,
+  filters: LinkFilters = [],
+) => {
+  setLinkHeader(c, { next: page.next, prev: page.prev }, filters);
+  return c.json(page.statuses);
+};
 
 /**
  * Mastodon's `Link` header from page cursors: `max_id=<next>` as `rel="next"`

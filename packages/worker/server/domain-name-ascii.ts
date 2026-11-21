@@ -89,12 +89,14 @@ const RENAMES: ReadonlyArray<string> = [
     "d.created_at",
     "created_at = min(a.created_at, o.created_at)",
   ),
-  `INSERT INTO account_domain_blocks (account_id, domain, created_at)
-   SELECT r.account_id, ${NEW}, r.created_at
+  // The renamed block keeps its id (migration 0166), which pages the list.
+  `INSERT INTO account_domain_blocks (account_id, domain, created_at, id)
+   SELECT r.account_id, ${NEW}, r.created_at, r.id
    FROM json_each(?1) e JOIN account_domain_blocks r ON r.domain = ${OLD}
    WHERE true
    ON CONFLICT (account_id, domain) DO UPDATE SET
-     created_at = min(created_at, excluded.created_at)`,
+     created_at = min(created_at, excluded.created_at),
+     id = min(id, excluded.id)`,
   `DELETE FROM account_domain_blocks WHERE domain IN ${OLD_NAMES}`,
 ];
 

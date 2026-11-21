@@ -77,10 +77,10 @@ describe("timeline pagination", () => {
       third,
       second,
     ]);
-    // min_id pages upward from the oldest side.
+    // min_id pages upward from the oldest side, answered newest first.
     expect(await idsAt(`/api/v1/timelines/home?min_id=${first}&limit=2`, viewerEmail)).toEqual([
-      second,
       third,
+      second,
     ]);
   });
 
@@ -116,7 +116,7 @@ describe("timeline pagination", () => {
     expect(await idsAt(`/api/v1/timelines/tag/pagewave?min_id=${first}`)).toEqual([second]);
   });
 
-  it("lets the next source's entry take the place of a boost that renders away", async () => {
+  it("ends a page at a boost that renders away, so the next page skips nothing", async () => {
     const viewerEmail = "page-gap-viewer@example.com";
     const authorEmail = "page-gap-author@example.com";
     const authorId = await accountIdFor(authorEmail);
@@ -174,8 +174,8 @@ describe("timeline pagination", () => {
 
     // Once only allow-listed domains federate, the boost of the hidden actor's
     // note renders away after the query picked it. The local query fetched
-    // two entries, the boost and the newest, so the followed actor's note,
-    // fetched by its own query, fills the page rather than the older note.
+    // two entries, the newest and the boost, and read nothing below the boost:
+    // the page ends there, and the next one starts below it, at the older note.
     const allowed = await json("/api/v1/admin/domain_allows", {
       method: "POST",
       headers: {
@@ -185,8 +185,16 @@ describe("timeline pagination", () => {
       body: JSON.stringify({ domain: "gap-followed.example" }),
     });
     expect(allowed.status).toBe(200);
-    expect(await idsAt("/api/v1/timelines/home?limit=2", viewerEmail)).toEqual([
+    const first = await SELF.fetch("https://example.com/api/v1/timelines/home?limit=2", {
+      headers: await auth(viewerEmail),
+    });
+    expect(read(z.array(StatusIdSchema), await first.json()).map((status) => status.id)).toEqual([
       newest,
+    ]);
+    const next = /<([^>]+)>; rel="next"/.exec(first.headers.get("Link") ?? "")?.[1] ?? "";
+    const rest = await SELF.fetch(next, { headers: await auth(viewerEmail) });
+    expect(read(z.array(StatusIdSchema), await rest.json()).map((status) => status.id)).toEqual([
+      older,
       remoteNote,
     ]);
     expect(await idsAt("/api/v1/timelines/home?limit=4", viewerEmail)).toEqual([
