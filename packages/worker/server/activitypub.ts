@@ -196,6 +196,15 @@ export const parseLocalStatusId = (
   return match?.[1];
 };
 
+/** A note's `inReplyTo`, and the local status it names, if it names one. */
+export type NoteReplyTo = Readonly<{ uri: string; localStatusId: string | undefined }>;
+
+export const noteReplyTo = (
+  identity: InstanceIdentity,
+  uri: string | null | undefined,
+): NoteReplyTo | undefined =>
+  uri ? { uri, localStatusId: parseLocalStatusId(identity, uri) } : undefined;
+
 export const activityPayloadFromJson = (
   raw: z.infer<typeof ActivityJsonSchema>,
 ): Record<string, unknown> => {

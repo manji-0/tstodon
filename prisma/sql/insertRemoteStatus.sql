@@ -16,11 +16,31 @@
 -- @param {String} $16:pollJson?
 -- @param {String} $17:emojisJson
 -- @param {String} $18:quotePolicyJson?
+-- @param {String} $19:inReplyToLocalId?
+-- The reply's `in_reply_to_account_id`: a local parent's author, or a held
+-- remote parent's, or, when the note's author wrote that parent and it is
+-- itself a reply, whom the parent answers (Mastodon's
+-- `carried_over_reply_to_account_id`). `inReplyToLocalId` is the local
+-- status `inReplyToUri` names, if it names one.
 -- The row of a note that was not stored when its object URI was read. It has
 -- no ON CONFLICT: a row another delivery stored at the URI since then fails
 -- the batch on the unique object_uri, where upsertRemoteStatus.sql would
 -- update that row and leave the batch keyed on an id no row holds.
 INSERT INTO remote_statuses (
   id, actor_uri, object_uri, url, content_html, spoiler_text,
-  visibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json, emojis_json, quote_policy_json
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+  visibility, sensitive, language, published_at, media_json, created_at, updated_at, in_reply_to_uri, edited_at, poll_json, emojis_json, quote_policy_json,
+  in_reply_to_account_id, in_reply_to_actor_uri
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+  CASE WHEN $19 IS NOT NULL
+    THEN (SELECT l.account_id FROM statuses l WHERE l.id = $19)
+    ELSE (SELECT p.in_reply_to_account_id FROM remote_statuses p
+          WHERE p.object_uri = $14 AND p.actor_uri = $2)
+  END,
+  CASE WHEN $19 IS NULL
+    THEN (SELECT CASE WHEN p.actor_uri = $2
+                       AND (p.in_reply_to_uri IS NOT NULL OR p.in_reply_to_account_id IS NOT NULL
+                            OR p.in_reply_to_actor_uri IS NOT NULL)
+                      THEN p.in_reply_to_actor_uri ELSE p.actor_uri END
+          FROM remote_statuses p WHERE p.object_uri = $14)
+  END
+)

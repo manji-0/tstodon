@@ -37,12 +37,11 @@ import type { MediaAttribute } from "./status-body-schema";
 import { notifyingFollowers } from "./follow-store";
 import { mastodonStatus } from "./local-status-documents";
 import { insertStatusQuote, setStatusQuotePolicy, type QuotePolicy } from "./quote-store";
-import { insertLocalNote, setStatusReplyUri } from "./status-store";
+import { insertLocalNote, listStatusReplyLinks, setStatusReplyUri } from "./status-store";
 import { startHomeFanOut } from "./home-fan-out";
 import { startPublicFanOut } from "./public-fan-out";
 import { publishConversationUpdate } from "./conversation-stream";
 import { publishToAccount } from "./stream-publish";
-import { localOwnAncestryOfParent } from "./own-ancestry";
 
 /** Inline media metadata accepted on create (`media_attributes`). */
 export type PublishMediaAttributes = ReadonlyArray<MediaAttribute>;
@@ -134,12 +133,13 @@ export const writeMediaAttributes = async (
 };
 
 /**
- * Where a new local note sits in its thread, as Mastodon's
- * `in_reply_to_account_id` reads: a reply to its author's own status carries
- * that status's answer over ({@link NoteThread.of}).
+ * Where the new local note `noteId` sits in its thread, by whom it answers
+ * as stored when it was published ({@link NoteThread.of}). Only a reply to
+ * its author's own status can answer its author, so only that one is read.
  */
 const noteThread = async (
   db: D1Database,
+  noteId: string,
   replyTo: ThreadStatus | null,
   authorId: string,
 ): Promise<Result<NoteThread, RepositoryError>> => {
@@ -149,7 +149,13 @@ const noteThread = async (
   if (replyTo.kind !== "Local" || replyTo.status.accountId !== authorId) {
     return ok({ kind: "ReplyToOther" });
   }
-  return (await localOwnAncestryOfParent(db, replyTo.status.id)).map(NoteThread.of);
+  const links = await listStatusReplyLinks(db, [noteId]);
+  return links.map((found) =>
+    NoteThread.of(found.get(noteId)?.link ?? { kind: "NotReply" }, {
+      kind: "LocalAccount",
+      accountId: authorId,
+    }),
+  );
 };
 
 /** A published note and its author's view of it (as `GET /api/v1/statuses/:id` renders it). */
@@ -199,7 +205,7 @@ export const publishLocalNote = async (
   }
   // `in_reply_to_id` references local statuses only; a remote parent is kept by URI.
   if (input.replyTo?.kind === "Remote") {
-    const linked = await setStatusReplyUri(env.DB, note.id, input.replyTo.status.objectUri);
+    const linked = await setStatusReplyUri(env.DB, note.id, input.replyTo.status);
     if (linked.isErr()) {
       return err(linked.error);
     }
@@ -322,7 +328,7 @@ export const publishLocalNote = async (
   if (notifying.isErr()) {
     return err(notifying.error);
   }
-  const thread = await noteThread(env.DB, input.replyTo, user.id);
+  const thread = await noteThread(env.DB, note.id, input.replyTo, user.id);
   if (thread.isErr()) {
     return err(thread.error);
   }

@@ -1,7 +1,7 @@
 import type { ApiStatusJSON } from "@tstodon/api";
 import { withinHorizon } from "./followed-feed";
 import {
-  InstanceIdentity,
+  type InstanceIdentity,
   type LocalStatus,
   type RemoteNote,
   RemoteVisibility,
@@ -378,7 +378,7 @@ export const homeTimelineDocuments = async (
       env,
       identity,
       viewerId,
-      { kind: "Home", localActorPrefix: InstanceIdentity.actorUrl(identity, "") },
+      { kind: "Home" },
       listHomeStatuses(env.DB, viewerId, limit, page, horizon.value),
       limit,
       page,
@@ -505,7 +505,6 @@ export const listTimelineDocuments = async (
     kind: "List",
     listId: list.id,
     repliesPolicy: list.repliesPolicy,
-    localActorPrefix: InstanceIdentity.actorUrl(identity, ""),
   };
   return feedDocuments(
     env,

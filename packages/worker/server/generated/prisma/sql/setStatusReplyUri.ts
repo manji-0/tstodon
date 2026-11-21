@@ -7,15 +7,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  * @param statusId
  * @param inReplyToUri
+ * @param parentActorUri
  */
 export const setStatusReplyUri = $runtime.makeTypedQueryFactory(
-  "UPDATE statuses SET in_reply_to_uri = $2 WHERE id = $1",
+  "UPDATE statuses\nSET in_reply_to_uri = $2, in_reply_to_account_id = NULL, in_reply_to_actor_uri = $3\nWHERE id = $1",
 ) as (
   statusId: string,
   inReplyToUri: string,
+  parentActorUri: string,
 ) => $runtime.TypedSql<setStatusReplyUri.Parameters, setStatusReplyUri.Result>;
 
 export namespace setStatusReplyUri {
-  export type Parameters = [statusId: string, inReplyToUri: string];
+  export type Parameters = [statusId: string, inReplyToUri: string, parentActorUri: string];
   export type Result = {};
 }

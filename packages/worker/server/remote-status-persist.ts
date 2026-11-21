@@ -22,7 +22,7 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import { resolveRemoteActor } from "./remote-actor-fetch";
 import { findRemoteActorByUri, findRemoteActorsByUris } from "./remote-actor-store";
 import type { IdClock } from "./ids";
-import { parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
+import { noteReplyTo, parseLocalActorUsername, parseLocalStatusId } from "./activitypub";
 import { findAccountsByUsernames } from "./account-store";
 import { startLinkCard } from "./link-card";
 import { mentionedPost, notifyFromRemoteOnce } from "./notify";
@@ -46,8 +46,8 @@ import {
   releaseOwed,
 } from "./remote-status-owed";
 import { findThreadParent } from "./thread-context";
-import { remoteOwnAncestry } from "./own-ancestry";
 import { fetchableParent, queueRemoteThreadResolve } from "./remote-thread-resolve";
+import { findRemoteStatusReplyTargets } from "./remote-reply-store";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
 import {
   findDeliveredRemoteStatus,
@@ -392,16 +392,20 @@ const distributed = (late: LateSteps): boolean => {
 };
 
 /**
- * Where the stored note `status` sits in its thread, as Mastodon's
- * `in_reply_to_account_id` reads: a reply to a parent that is not stored
- * replies to someone else, and a reply to its author's own reply carries that
- * reply's answer over ({@link NoteThread.of}).
+ * Where the stored note `status` sits in its thread, by whom it answers as
+ * stored when it was linked ({@link NoteThread.of}): a reply to a parent
+ * that was not held answers no one, and counts as a reply to someone else.
  */
 const remoteNoteThread = async (
   db: D1Database,
   status: RemoteStatusValue,
 ): Promise<Result<NoteThread, RepositoryError>> =>
-  (await remoteOwnAncestry(db, status.id)).map(NoteThread.of);
+  (await findRemoteStatusReplyTargets(db, [status.id])).map((targets) =>
+    NoteThread.of(targets.get(status.id)?.replyLink ?? { kind: "NotReply" }, {
+      kind: "RemoteActor",
+      actorUri: status.actorUri,
+    }),
+  );
 
 /**
  * The followers of a page of the author's notifying followers that a note
@@ -1371,7 +1375,7 @@ const storeRemoteNote = async (
     env.DB,
     status,
     noteHashtags(raw),
-    inReplyTo,
+    noteReplyTo(identity, inReplyTo),
     existing,
     [],
     marker ? [(id) => owedStatement(env.DB, id, marker)] : [],

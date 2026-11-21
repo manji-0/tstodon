@@ -8,6 +8,7 @@ import {
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import { noteReplyTo } from "./activitypub";
 import { isStatusObjectType } from "./activitypub-wire";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
@@ -197,7 +198,7 @@ const applyNoteUpdate = async (
     env.DB,
     status,
     noteHashtags(target.raw),
-    note.value.inReplyTo ?? undefined,
+    noteReplyTo(identity, note.value.inReplyTo),
     { objectUri: target.objectUri, row: cached.value },
     // The version being replaced goes into the history with the row that
     // replaces it; the original is the first one kept.

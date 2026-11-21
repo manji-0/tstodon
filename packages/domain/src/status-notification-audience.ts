@@ -1,3 +1,4 @@
+import { type ReplyAccount, ReplyLink } from "./reply-account";
 import type { StatusLanguage } from "./status-quote-target";
 import type { RemoteVisibility } from "./visibility";
 
@@ -11,30 +12,18 @@ export type NoteThread =
   | Readonly<{ kind: "SelfReply" }>
   | Readonly<{ kind: "ReplyToOther" }>;
 
-/**
- * Where the statuses above a note by its own author lead: the note is no
- * reply (`NoParent`), they end at a root (`ReachesRoot`), or they end at a
- * reply to someone else, or to a status not linked (`LeavesAuthor`).
- */
-export type OwnAncestry =
-  | Readonly<{ kind: "NoParent" }>
-  | Readonly<{ kind: "ReachesRoot" }>
-  | Readonly<{ kind: "LeavesAuthor" }>;
-
 export const NoteThread = {
-  /**
-   * Mastodon's `carried_over_reply_to_account_id`: a reply to its author's
-   * own reply takes that reply's `in_reply_to_account_id`, so only a reply
-   * whose author's own statuses lead up to a root answers its author.
-   */
-  of: (ancestry: OwnAncestry): NoteThread => {
-    switch (ancestry.kind) {
-      case "NoParent":
+  /** Where a note by `author` sits, by the account its stored reply link answers. */
+  of: (link: ReplyLink, author: ReplyAccount): NoteThread => {
+    switch (link.kind) {
+      case "NotReply":
         return { kind: "Root" };
-      case "ReachesRoot":
-        return { kind: "SelfReply" };
-      case "LeavesAuthor":
+      case "NoAccount":
         return { kind: "ReplyToOther" };
+      case "Answers":
+        return ReplyLink.answersAuthor(link, author)
+          ? { kind: "SelfReply" }
+          : { kind: "ReplyToOther" };
     }
   },
 } as const;
