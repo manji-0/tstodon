@@ -15,6 +15,21 @@ describe("Hostname", () => {
     expect(Hostname.fromInput("https://")).toBeUndefined();
   });
 
+  it("reads an internationalized domain as its ASCII form, as TagManager#normalize_domain", () => {
+    expect(Hostname.fromInput("Bücher.Example")).toBe("xn--bcher-kva.example");
+    expect(Hostname.fromInput("https://bücher.example/about")).toBe("xn--bcher-kva.example");
+    expect(Hostname.fromInput("123")).toBe("123");
+  });
+
+  it("names a domain Mastodon's DomainValidator accepts", () => {
+    expect(Hostname.isValidDomain(Hostname.ofAuthority("xn--bcher-kva.example"))).toBe(true);
+    expect(Hostname.isValidDomain(Hostname.ofAuthority("a-b.example"))).toBe(true);
+    expect(Hostname.isValidDomain(Hostname.ofAuthority("foo bar"))).toBe(false);
+    expect(Hostname.isValidDomain(Hostname.ofAuthority("under_score.example"))).toBe(false);
+    expect(Hostname.isValidDomain(Hostname.ofAuthority("empty..label"))).toBe(false);
+    expect(Hostname.isValidDomain(Hostname.ofAuthority(`${"a".repeat(64)}.example`))).toBe(false);
+  });
+
   it("takes a URI's host without its port", () => {
     expect(Hostname.ofUri("https://Peer.Test:8792/users/bob")).toBe("peer.test");
     expect(Hostname.ofUri("not a uri")).toBeUndefined();
