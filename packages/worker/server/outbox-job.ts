@@ -22,7 +22,10 @@ import { processFanOutHomeJob, processFanOutRemovedStatusesJob } from "./home-fa
 import { processFanOutPublicJob } from "./public-fan-out";
 import { processCsvImportJob } from "./csv-import-apply";
 import { processSeverBlockedDomainFollowsJob } from "./account-domain-block";
-import { processRecordDomainBlockLimitsJob } from "./domain-block-limits";
+import {
+  processRecordDomainBlockLimitsJob,
+  processResumeLiftedDomainBlockLimitsJob,
+} from "./domain-block-limits";
 import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
@@ -252,6 +255,8 @@ export const processOutboxJob = async (
       });
     case "RecordDomainBlockLimits":
       return processRecordDomainBlockLimitsJob(env, job);
+    case "ResumeLiftedDomainBlockLimits":
+      return processResumeLiftedDomainBlockLimitsJob(env);
     case "RekeyLegacyMedia":
       return measureJobPage(env, job.kind, async () => {
         const batch = await rekeyLegacyMediaBatch(env, legacyMediaPolicy(env), job.afterId);

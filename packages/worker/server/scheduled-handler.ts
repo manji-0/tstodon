@@ -90,6 +90,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Restart the severance of up to 5 suspended actors whose pages stalled;
   // one query over the suspended actors when none did.
   { kind: "Inline", job: { kind: "ResumeSuspendedActorSeverances" } },
+  // Delete the rows left by domain blocks lifted while their deletion chain
+  // stopped; one walk of the distinct block ids when none did.
+  { kind: "Inline", job: { kind: "ResumeLiftedDomainBlockLimits" } },
   // A page tells up to 50 voters and announces up to 50 polls.
   { kind: "Queued", job: { kind: "ProcessExpiredPolls" }, due: hasExpiredPollWork },
   // Publish the scheduled posts whose time has come, 5 a run, chained while

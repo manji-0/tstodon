@@ -4,7 +4,9 @@ import { z } from "zod";
 import { authHeaders } from "../test/auth-fixture";
 import { withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { recordPageSql } from "./domain-block-limits";
 import { listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
+import { processOutboxJob } from "./outbox-job";
 import { d1PrepareTyped } from "./typed-sql";
 
 /**
@@ -220,5 +222,71 @@ describe("a block over more actors than one page", () => {
       .bind(id)
       .first();
     expect(z.object({ n: z.number() }).parse(left).n).toBe(0);
+  });
+});
+
+const limitRows = async (where: string, bind: string): Promise<number> => {
+  const row = await env.DB.prepare(
+    `SELECT count(*) AS n FROM remote_actor_domain_limits WHERE ${where} = ?`,
+  )
+    .bind(bind)
+    .first();
+  return z.object({ n: z.number() }).parse(row).n;
+};
+
+describe("a page of a block's actors", () => {
+  // Page k reads its own rows by the key's index, not the k - 1 pages before it.
+  it.each(["AccountDomain", "UriHost"] as const)(
+    "seeks the %s key's index in its own order",
+    async (host) => {
+      const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${recordPageSql(host)}`)
+        .bind("block", "com.example.", "com.example/", "com.example.a.", 7, 500)
+        .all();
+      const details = z
+        .array(z.object({ detail: z.string() }))
+        .parse(results)
+        .map((row) => row.detail);
+      expect(details.join("\n")).toMatch(/^SEARCH remote_actors USING (COVERING )?INDEX /);
+      expect(details.filter((detail) => /^SCAN |TEMP B-TREE/.test(detail))).toEqual([]);
+    },
+  );
+});
+
+describe("a block removed while its rows were left", () => {
+  it("has them deleted by the hourly sweep, a live block's rows kept", async () => {
+    const { known } = await knownUnderNoop("orphan-susp.example");
+    await remoteActor("kept", "kept-susp.example");
+    const kept = await block("kept-susp.example", "suspend");
+    const gone = await block("orphan-susp.example", "suspend");
+    // Removed without starting its deletion, as a chain that died.
+    await env.DB.prepare("DELETE FROM domain_blocks WHERE id = ?").bind(gone).run();
+    expect(await limitRows("domain_block_id", gone)).toBe(1);
+
+    await settled(async () => {
+      expect(await processOutboxJob(env, { kind: "ResumeLiftedDomainBlockLimits" })).toBe("ok");
+    });
+
+    expect(await limitRows("domain_block_id", gone)).toBe(0);
+    expect(await limitRows("domain_block_id", kept)).toBe(1);
+    expect(await limitRows("actor_uri", known.actorUri)).toBe(0);
+  });
+});
+
+describe("an actor a domain suspension suspended", () => {
+  it("can still delete its own account, which forgets its limitation", async () => {
+    const { known } = await knownUnderNoop("gone-susp.example");
+    await block("gone-susp.example", "suspend");
+    expect(await limitRows("actor_uri", known.actorUri)).toBe(1);
+
+    expect(
+      await known.send({
+        id: `${known.actorUri}#delete`,
+        type: "Delete",
+        object: known.actorUri,
+        to: [PUBLIC],
+      }),
+    ).toBe(202);
+
+    expect(await limitRows("actor_uri", known.actorUri)).toBe(0);
   });
 });

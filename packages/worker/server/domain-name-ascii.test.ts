@@ -314,4 +314,28 @@ describe("asciiDomainNames switching a stored block on", () => {
       await rows("SELECT id FROM account_domain_blocks WHERE domain = 'xn--zahl--ova.example'"),
     ).toEqual([before]);
   });
+
+  it("forgets the actors a merged block limited, keeping the kept block's", async () => {
+    const remote = await remoteActor("lim", "xn--lim--3ra.example");
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO domain_blocks (id, domain, severity, reject_media, reject_reports, obfuscate, created_at)
+         VALUES ('idn-lim-old', 'lim-ü.example', 'suspend', 0, 0, 0, '2020-01-01T00:00:00.000Z'),
+                ('idn-lim-kept', 'xn--lim--3ra.example', 'silence', 0, 0, 0, '2021-01-01T00:00:00.000Z')`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO remote_actor_domain_limits (domain_block_id, actor_uri)
+         VALUES ('idn-lim-old', ?1), ('idn-lim-kept', ?1)`,
+      ).bind(remote.actorUri),
+    ]);
+
+    await renameAndRunQueued();
+
+    expect(
+      await rows(
+        "SELECT domain_block_id FROM remote_actor_domain_limits WHERE actor_uri = ? ORDER BY 1",
+        remote.actorUri,
+      ),
+    ).toEqual([["idn-lim-kept"]]);
+  });
 });

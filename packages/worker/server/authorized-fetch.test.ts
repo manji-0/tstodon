@@ -8,6 +8,7 @@ import { envWith } from "../test/env-fixture";
 import { getWellKnownNodeinfo, getWellKnownWebfinger } from "./routes/discovery";
 import { signFetchRequest } from "./http-signature";
 import { generateAccountKeys } from "./keys";
+import { withQueueDrained } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import {
   getActor,
@@ -262,6 +263,31 @@ describe("secure mode on (AUTHORIZED_FETCH=true)", () => {
       .bind(mallory.actorUri)
       .run();
     expect((await secure(await mallory.signedGet(notePath))).status).toBe(403);
+  });
+
+  it("refuses a signer a domain suspension suspended when made, under a narrower noop, with 403", async () => {
+    const admin = async (body: unknown) =>
+      SELF.fetch(`${ORIGIN}/api/v1/admin/domain_blocks`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(await authHeaders("secure-domain-admin@example.com", { admin: true })),
+        },
+        body: JSON.stringify(body),
+      });
+    expect((await admin({ domain: "open.secure-limited.example", severity: "noop" })).status).toBe(
+      200,
+    );
+    const known = await remoteActor("secure-known", "open.secure-limited.example");
+    expect((await secure(await known.signedGet(notePath))).status).toBe(200);
+
+    await withQueueDrained(["RecordDomainBlockLimits"], async () => {
+      expect((await admin({ domain: "secure-limited.example", severity: "suspend" })).status).toBe(
+        200,
+      );
+    });
+
+    expect((await secure(await known.signedGet(notePath))).status).toBe(403);
   });
 
   it("refuses a forged signature with 401, and gives an actor GET the restricted document", async () => {

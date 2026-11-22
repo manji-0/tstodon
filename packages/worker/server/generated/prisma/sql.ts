@@ -876,6 +876,8 @@ export * from "./sql/purgeRemoteActorConversationHides";
 
 export * from "./sql/purgeRemoteActorConversationReads";
 
+export * from "./sql/purgeRemoteActorDomainLimits";
+
 export * from "./sql/purgeRemoteActorEndorsements";
 
 export * from "./sql/purgeRemoteActorMutes";
