@@ -2,13 +2,17 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { CoveredHosts, IsoInstant, RemoteActor } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
 import { holdQueue, kindOf, withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { webfingerAnswer } from "../test/webfinger-fixture";
+import { unsignedFetch } from "./federated-fetch";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
+import { refreshRemoteActor } from "./remote-actor-fetch";
 import { upsertRemoteActor } from "./remote-actor-store";
+import { parseInstanceIdentity } from "./runtime-config";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 const REFRESH = "RefreshRemoteEmoji";
@@ -383,6 +387,58 @@ describe("a remote custom emoji whose image changes", () => {
     expect(await statusEmojis(first)).toEqual({ lost: changed });
   });
 
+  // `ProcessAccountService#process_emojis` runs on every fetch of an
+  // account, and the new image shows on the server's posts at once.
+  it("shows an image a fetched actor document changes on the server's posts", async () => {
+    const host = "emoji-change-fetched.example";
+    const old = `https://${host}/system/owl-1.png`;
+    const changed = `https://${host}/system/owl-2.png`;
+    const author = await remoteActor("oscar", host);
+    const id = await post(author, "owl", "<p>:owl:</p>", [emojiTag("owl", old)]);
+    const document = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: author.actorUri,
+      type: "Person",
+      preferredUsername: "oscar",
+      name: "Oscar :owl:",
+      inbox: `${author.actorUri}/inbox`,
+      publicKey: {
+        id: `${author.actorUri}#main-key`,
+        owner: author.actorUri,
+        publicKeyPem: author.publicKeyPem,
+      },
+      tag: [emojiTag("owl", changed)],
+    };
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.pathname === "/.well-known/webfinger") {
+        return webfingerAnswer({ [author.actorUri]: document }, url);
+      }
+      return url.href === author.actorUri
+        ? Response.json(document, { headers: { "content-type": "application/activity+json" } })
+        : new Response(null, { status: 404 });
+    });
+    try {
+      const identity = parseInstanceIdentity(env);
+      if (identity.isErr()) {
+        throw new Error("no instance identity");
+      }
+      await withQueueDrained([REFRESH], async () => {
+        const refreshed = await refreshRemoteActor(env.DB, identity.value, author.actorUri, {
+          allowHosts: new Set<string>(),
+          blockedHosts: CoveredHosts.none,
+          fetchSigner: unsignedFetch,
+        });
+        expect(refreshed.isOk()).toBe(true);
+      });
+    } finally {
+      fetch.mockRestore();
+    }
+
+    expect(await accountEmojis(author.actorUri)).toEqual({ owl: changed });
+    expect(await statusEmojis(id)).toEqual({ owl: changed });
+  });
+
   // `skip_download?`: Mastodon stores no emoji of a domain whose media it rejects.
   it("records no image of a server whose media is rejected", async () => {
     const host = "emoji-change-rejected.example";
@@ -410,5 +466,54 @@ describe("a remote custom emoji whose image changes", () => {
 
     expect(refreshJobs(held.bodies)).toBe(0);
     expect(await statusEmojis(first)).toEqual({ no: old });
+  });
+});
+
+// `CustomEmoji.from_text(text, account.domain)`: Mastodon shows every
+// `:shortcode:` a post or profile writes whose emoji it knows for the
+// author's domain, whether or not the document declares it.
+describe("a known remote custom emoji a document writes without declaring it", () => {
+  it("shows on a post of the emoji's server, written as `SCAN_RE` reads a shortcode", async () => {
+    const host = "emoji-undeclared.example";
+    const blob = `https://${host}/system/blob.png`;
+    const alice = await remoteActor("alice", host);
+    const bob = await remoteActor("bob", host);
+    const elsewhere = await remoteActor("carol", "emoji-undeclared-elsewhere.example");
+    await post(alice, "declared", "<p>:blob:</p>", [emojiTag("blob", blob)]);
+
+    const undeclared = await post(bob, "undeclared", "<p>:blob: :unknown:</p>", []);
+    expect(await statusEmojis(undeclared)).toEqual({ blob });
+    const edited = await post(bob, "edited", "<p>plain</p>", []);
+    const object = noteOf(bob, "edited", "<p>now :blob:</p>", [], {
+      updated: "2026-11-21T00:00:00.000Z",
+    });
+    expect(await bob.send({ id: `${object.id}/update`, type: "Update", object })).toBe(202);
+    expect(await statusEmojis(edited)).toEqual({ blob });
+    expect(await historyEmojis(edited)).toEqual([{}, { blob }]);
+    // A letter, digit or colon next to it is no shortcode; nor is a name of another case.
+    const glued = await post(bob, "glued", "<p>x:blob: :blob:: :Blob:</p>", []);
+    expect(await statusEmojis(glued)).toEqual({});
+    // Another server's emoji of the same name is its own.
+    const other = await post(elsewhere, "other", "<p>:blob:</p>", []);
+    expect(await statusEmojis(other)).toEqual({});
+  });
+
+  it("shows on a profile of the emoji's server, and takes a new image", async () => {
+    const host = "emoji-undeclared-profile.example";
+    const old = `https://${host}/system/cat-1.png`;
+    const changed = `https://${host}/system/cat-2.png`;
+    const dana = await remoteActor("dana", host);
+    const erin = await remoteActor("erin", host);
+    await post(dana, "declared", "<p>:cat:</p>", [emojiTag("cat", old)]);
+
+    await updateProfile(erin, "Erin :cat:", []);
+    expect(await accountEmojis(erin.actorUri)).toEqual({ cat: old });
+    const undeclared = await post(erin, "undeclared", "<p>:cat:</p>", []);
+
+    await withQueueDrained([REFRESH], () =>
+      post(dana, "changed", "<p>:cat:</p>", [emojiTag("cat", changed)]),
+    );
+    expect(await accountEmojis(erin.actorUri)).toEqual({ cat: changed });
+    expect(await statusEmojis(undeclared)).toEqual({ cat: changed });
   });
 });

@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import {
   type AccountHandle,
   Hostname,
@@ -27,7 +28,7 @@ import { ActorDocumentSchema, refId } from "./activitypub-wire";
 import { type PublishedKey, publishedKeys, resolvePublishedKeys } from "./actor-keys";
 import { actorFields } from "./remote-actor-fields";
 import { actorEmojis } from "./remote-emoji-document";
-import { recordRemoteEmojiImages } from "./remote-emoji-refresh";
+import { recordProfileEmojis } from "./remote-emoji-refresh";
 import {
   claimRemoteActorKeyRefetch,
   claimRemoteActorRefresh,
@@ -501,12 +502,12 @@ const cacheActorWithKeys = async (
   check: HandleCheck = { kind: "RoundTrip" },
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
   const stored = await writeFetchedActor(db, identity, fetched, keys, options, check);
-  // As `ProcessAccountService#process_emojis` on every fetch of an account.
   if (stored.isOk()) {
-    const { profile, fetchedAt } = stored.value;
-    await recordRemoteEmojiImages(db, stored.value, profile.emojis, fetchedAt, {
-      kind: "Profile",
-    });
+    // The Worker's own queue binding: the fetch paths that reach here carry only `db`.
+    await recordProfileEmojis(
+      { DB: db, OUTBOX_PROCESS_QUEUE: env.OUTBOX_PROCESS_QUEUE },
+      stored.value,
+    );
   }
   return stored;
 };
