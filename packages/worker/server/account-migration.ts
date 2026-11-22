@@ -157,7 +157,7 @@ export const moveAccount = async (
 export type CancelMoveError = Readonly<{ kind: "NotMoved" }> | EnqueueLocalActivityError;
 
 /**
- * Cancel the redirect, as Mastodon's `Settings::MigrationsController#cancel`:
+ * Cancel the redirect, as Mastodon's `Settings::Migration::RedirectsController#destroy`:
  * the actor stops naming `movedTo` and remote servers are told with an actor
  * `Update`. Followers already moved stay moved, and the cooldown of the move
  * still holds for a new one.
