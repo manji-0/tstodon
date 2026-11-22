@@ -93,6 +93,16 @@ model account_moderation {
   @@index([moderation, account_id], map: "idx_account_moderation_state")
 }
 
+model remote_custom_emojis {
+  domain     String
+  shortcode  String
+  image_url  String
+  revision   Int    @default(0)
+  updated_at String
+
+  @@id([domain, shortcode])
+}
+
 model remote_actor_domain_limits {
   domain_block_id String
   actor_uri       String

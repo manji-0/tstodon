@@ -92,6 +92,19 @@ const RecordDomainBlockLimitsSchema = z.object({
  */
 const ResumeLiftedDomainBlockLimitsSchema = unitKind("ResumeLiftedDomainBlockLimits");
 /**
+ * Show a remote server's custom emoji `shortcode` with the image this server
+ * last read for it (`remote_custom_emojis`) on every post, earlier version
+ * and profile of that server's actors cached here, a page of actors after
+ * `cursor` at a time (self-chaining), as Mastodon keeps one emoji per
+ * shortcode and server and renders each post with it.
+ */
+const RefreshRemoteEmojiSchema = z.object({
+  kind: z.literal("RefreshRemoteEmoji"),
+  domain: z.string().min(1),
+  shortcode: z.string().min(1),
+  cursor: z.object({ afterUsername: z.string(), afterRowId: z.number().int() }),
+});
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -542,6 +555,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ApplyDomainBlockEffectsSchema,
   RecordDomainBlockLimitsSchema,
   ResumeLiftedDomainBlockLimitsSchema,
+  RefreshRemoteEmojiSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

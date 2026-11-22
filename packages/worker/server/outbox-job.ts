@@ -26,6 +26,7 @@ import {
   processRecordDomainBlockLimitsJob,
   processResumeLiftedDomainBlockLimitsJob,
 } from "./domain-block-limits";
+import { processRefreshRemoteEmojiJob } from "./remote-emoji-refresh";
 import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
@@ -257,6 +258,8 @@ export const processOutboxJob = async (
       return processRecordDomainBlockLimitsJob(env, job);
     case "ResumeLiftedDomainBlockLimits":
       return processResumeLiftedDomainBlockLimitsJob(env);
+    case "RefreshRemoteEmoji":
+      return processRefreshRemoteEmojiJob(env, job);
     case "RekeyLegacyMedia":
       return measureJobPage(env, job.kind, async () => {
         const batch = await rekeyLegacyMediaBatch(env, legacyMediaPolicy(env), job.afterId);

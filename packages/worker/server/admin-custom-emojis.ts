@@ -166,21 +166,26 @@ export const changeCustomEmoji = async (
     }
   }
   if (changes.image && imageType !== undefined) {
+    // A new image goes under a new key, so its URL changes: Mastodon fetches
+    // a remote emoji's image again only when the tag names another URL
+    // (`process_emoji`), and the image is cached for good wherever it went.
     const contentType = imageType;
+    const objectKey = `emoji/${newEntityId()}`;
     const bytes = await changes.image.arrayBuffer();
-    const stored = await env.MEDIA.put(`emoji/${id}`, bytes, {
+    const stored = await env.MEDIA.put(objectKey, bytes, {
       httpMetadata: { contentType },
     });
     const replaced = await replaceCustomEmojiImage(
       env.DB,
       id,
-      `emoji/${id}`,
+      objectKey,
       contentType,
       stored?.size ?? bytes.byteLength,
     );
     if (replaced.isErr()) {
       return err(replaced.error);
     }
+    await env.MEDIA.delete(row.value.object_key);
   }
   return findCustomEmojiRowById(env.DB, id);
 };
