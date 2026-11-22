@@ -55,9 +55,8 @@ const remotePresenter = async (
         federates:
           allowListAdmits(allowHosts, actor.domain) &&
           allowListAdmits(allowHosts, Hostname.ofUri(actor.actorUri) ?? actor.domain),
-        // A suspension covering the actor now, or one that suspended it when made.
-        domainSuspended:
-          RemoteActor.onAnyHost(actor, blockedHosts) || domainSuspended.value.has(actor.actorUri),
+        domainSuspended: RemoteActor.onAnyHost(actor, blockedHosts),
+        suspendedByDomainBlock: domainSuspended.value.has(actor.actorUri),
         standing: byUri.get(actor.actorUri)?.standing ?? AccountStanding.inGoodStanding,
       }),
   );
@@ -179,14 +178,15 @@ export const searchableRemoteActors = async (
  * Whose statuses a status renderer serves, by the author's presentation.
  * `available` is Mastodon's `StatusPolicy#show?`, which refuses an
  * unavailable author's status. `existing` serves any status Mastodon still
- * keeps, which is all but a suspended domain's: what a boost wraps. `any` is
+ * keeps, which is all but a domain suspension's: what a boost wraps. `any` is
  * a moderator's view, and the status a route answers once it has decided the
  * viewer may act on it. Whichever applies, an author that is not shown
  * renders stripped.
  */
 export const StatusAuthors = {
   available: AccountPresentation.available,
-  existing: (presentation: AccountPresentation): boolean => presentation.kind !== "Hidden",
+  existing: (presentation: AccountPresentation): boolean =>
+    presentation.kind !== "Hidden" && presentation.kind !== "Emptied",
   any: (): boolean => true,
 } as const satisfies Record<string, (presentation: AccountPresentation) => boolean>;
 
@@ -252,6 +252,7 @@ export const presentedAccountDocument = (
     case "Shown":
       return document;
     case "Suspended":
+    case "Emptied":
       return suspendedAccountDocument(identity, document);
     case "Hidden":
       return undefined;

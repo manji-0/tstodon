@@ -1,5 +1,6 @@
 import {
   AccountActionType,
+  type DomainBlockLimits,
   type LocalAccount,
   type LocalAccountActionEffect,
   LocalAccountModeration,
@@ -7,7 +8,9 @@ import {
   type LocalAccountModerationAction,
   type LocalAccountModerationValue,
   type RemoteActorValue,
+  RemoteActor,
   RemoteActorModeration,
+  type RemoteActorAdminFlags,
   type RemoteActorModerationAction,
   DomainBlockPolicy,
   Hostname,
@@ -26,10 +29,14 @@ import {
 import { deleteAccount, findAccountById } from "./account-store";
 import {
   getRemoteActorModeration,
+  remoteActorModerationSql,
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
 import { departedAccountActivityStatements } from "./outbox-store";
-import { findRemoteActorByUri } from "./remote-actor-store";
+import { emptyRemoteActorContentSql, findRemoteActorByUri } from "./remote-actor-store";
+import { announceRemovedBoosts } from "./home-fan-out";
+import { removedBoostsFromRows } from "./removed-boost";
+import { runTypedBatch } from "./typed-sql";
 import { federateActorChange } from "./local-actor";
 import { parseInstanceIdentity } from "./runtime-config";
 import { severAndNotify } from "./severance";
@@ -42,10 +49,17 @@ import {
   findDomainBlockById,
   findDomainBlockRule,
   deleteDomainBlock,
+  suspendedDomains,
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
-import { startDomainBlockLimits } from "./domain-block-limits";
+import {
+  type LiftedSeverity,
+  liftDomainBlockLimitsSql,
+  listDomainBlockLimits,
+  listLimitingDomainBlockIds,
+  startDomainBlockLimits,
+} from "./domain-block-limits";
 import type { RepositoryError } from "./d1";
 import {
   findReportById,
@@ -127,11 +141,39 @@ export const findAdminAccount = async (
   return states.map((found) => found[0]);
 };
 
-/** A remote actor with the moderation an admin applied to it. */
+/** A remote actor with its own moderation and what an admin sees of it. */
 export type AdminRemoteActorState = Readonly<{
   actor: RemoteActorValue;
+  /** What the admin set on the actor. */
   moderation: RemoteActorModeration;
+  /** With what the instance domain blocks hold on it, as Mastodon's admin views read it. */
+  flags: RemoteActorAdminFlags;
 }>;
+
+const NOT_LIMITED: DomainBlockLimits = { silenced: false, suspended: false };
+
+/**
+ * Each actor's flags as an admin reads them: Mastodon's `silenced?` and
+ * `suspended?` read `silenced_at` / `suspended_at`, which a domain block sets
+ * on the accounts it covers as an admin's own action does.
+ */
+export const remoteActorAdminFlags = async (
+  db: D1Database,
+  moderations: ReadonlyMap<string, RemoteActorModeration>,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteActorAdminFlags>, RepositoryError>> =>
+  (await listDomainBlockLimits(db, actorUris)).map(
+    (limits) =>
+      new Map(
+        actorUris.map((uri) => [
+          uri,
+          RemoteActorModeration.adminFlags(
+            moderations.get(uri) ?? RemoteActorModeration.inGoodStanding,
+            limits.get(uri) ?? NOT_LIMITED,
+          ),
+        ]),
+      ),
+  );
 
 /** The cached remote actor at `actorUri` with its moderation, if there is one. */
 export const findAdminRemoteActor = async (
@@ -146,12 +188,84 @@ export const findAdminRemoteActor = async (
   if (!found) {
     return ok(undefined);
   }
-  const moderation = await getRemoteActorModeration(db, actorUri);
-  return moderation.map((standing) => ({ actor: found, moderation: standing }));
+  const own = await getRemoteActorModeration(db, actorUri);
+  if (own.isErr()) {
+    return err(own.error);
+  }
+  const flags = await remoteActorAdminFlags(db, new Map([[actorUri, own.value]]), [actorUri]);
+  return flags.map((byUri) => ({
+    actor: found,
+    moderation: own.value,
+    flags: byUri.get(actorUri) ?? RemoteActorModeration.adminFlags(own.value, NOT_LIMITED),
+  }));
+};
+
+/**
+ * The blocks an unsilence or unsuspend of the actor lifts: those that hold
+ * that severity on it now. None while a suspension covers the actor's host:
+ * Mastodon's unsuspended account stays behind `domain_not_allowed?` there
+ * (lookup, inbox, signed fetches), and tstodon hides it on every read path
+ * (`AccountPresentation` `Hidden`), so the actor stays suspended as a whole.
+ */
+const liftedDomainBlockIds = async (
+  db: D1Database,
+  actorUri: string,
+  severity: LiftedSeverity,
+): Promise<Result<string[], RepositoryError>> => {
+  if (severity === "suspend") {
+    const [actor, blockedHosts] = await Promise.all([
+      findRemoteActorByUri(db, actorUri),
+      suspendedDomains(db),
+    ]);
+    if (actor.isErr()) {
+      return err(actor.error);
+    }
+    if (actor.value === undefined || RemoteActor.onAnyHost(actor.value, blockedHosts)) {
+      return ok([]);
+    }
+  }
+  return listLimitingDomainBlockIds(db, actorUri, severity);
+};
+
+/**
+ * Unsilence or unsuspend a remote actor: its own moderation and the
+ * limitation of each block that holds that severity on it go in one batch,
+ * as Mastodon's `unsilence!` / `unsuspend!` clear `silenced_at` /
+ * `suspended_at` whoever set them. Lifting a block's suspension also empties
+ * the actor's content from before, which Mastodon's `BlockDomainService`
+ * deleted (`DeleteAccountService` with `reserve_username`), so it does not
+ * come back.
+ */
+const liftRemoteActor = async (
+  env: Env,
+  actorUri: string,
+  next: RemoteActorModeration,
+  severity: LiftedSeverity,
+): Promise<Result<void, RepositoryError>> => {
+  const blockIds = await liftedDomainBlockIds(env.DB, actorUri, severity);
+  if (blockIds.isErr()) {
+    return err(blockIds.error);
+  }
+  const emptied =
+    severity === "suspend" && blockIds.value.length > 0 ? emptyRemoteActorContentSql(actorUri) : [];
+  const done = await runTypedBatch(env.DB, [
+    ...emptied,
+    remoteActorModerationSql(actorUri, next),
+    ...liftDomainBlockLimitsSql(actorUri, severity, blockIds.value),
+  ]);
+  if (done.isErr()) {
+    return err(done.error);
+  }
+  if (emptied.length > 0) {
+    await announceRemovedBoosts(env, removedBoostsFromRows(done.value[0]?.results));
+  }
+  return ok(undefined);
 };
 
 /**
  * Apply one moderation transition to a remote actor and store the result.
+ * Unsilencing or unsuspending also lifts what the domain blocks hold on the
+ * actor ({@link liftRemoteActor}).
  * Suspending an actor removes the follows between it and local accounts
  * (`account_suspension` in `/severed_relationships`) and tells its server
  * with a `Reject(Follow)` or `Undo(Follow)` for each, in pages
@@ -170,6 +284,9 @@ export const moderateRemoteActor = async (
     return err(current.error);
   }
   const next = RemoteActorModeration.apply(current.value, action);
+  if (action === "unsilence" || action === "unsuspend") {
+    return liftRemoteActor(env, actorUri, next, action === "unsilence" ? "silence" : "suspend");
+  }
   const stored = await setRemoteActorModeration(env.DB, actorUri, next);
   if (
     stored.isErr() ||

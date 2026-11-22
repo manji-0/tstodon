@@ -17,6 +17,8 @@ export type * from "./models/account_moderation";
 export type * from "./models/remote_custom_emojis";
 export type * from "./models/remote_emoji_refreshes";
 export type * from "./models/remote_actor_domain_limits";
+export type * from "./models/remote_actor_domain_lifts";
+export type * from "./models/domain_block_limit_backfills";
 export type * from "./models/remote_actor_moderation";
 export type * from "./models/account_domain_blocks";
 export type * from "./models/push_subscriptions";

@@ -8,7 +8,9 @@
 -- specific rule, as Mastodon's `DomainBlock.rule_for`: the host and each domain above it
 -- (`domain_variants`) are sought by key, a block's domain being stored lower case (`Hostname`,
 -- migration 0160), and the longest one found decides. A silence made while the actor was known
--- keeps it silenced under a narrower rule, as Mastodon's `silenced_at` (migration 0169).
+-- keeps it silenced under a narrower rule, as Mastodon's `silenced_at` (migration 0169). An
+-- admin's unsilence of the actor lifts a block's silence until the block is applied again
+-- (`remote_actor_domain_lifts`, migration 0171).
 -- Suspension is not checked here: a suspended author's status is not rendered at all.
 SELECT m.account_id AS author FROM account_moderation AS m
 WHERE m.account_id IN (SELECT value FROM json_each($2))
@@ -31,10 +33,18 @@ WHERE r.actor_uri IN (SELECT value FROM json_each($3))
       SELECT 1 FROM remote_actor_domain_limits AS l
       JOIN domain_blocks AS b ON b.id = l.domain_block_id
       WHERE l.actor_uri = r.actor_uri AND b.severity = 'silence'
+        AND NOT EXISTS (
+          SELECT 1 FROM remote_actor_domain_lifts AS x
+          WHERE x.domain_block_id = b.id AND x.actor_uri = r.actor_uri AND x.severity = 'silence'
+        )
     )
     OR 'silence' IN (
       SELECT (
-        SELECT d.severity FROM domain_blocks AS d
+        SELECT CASE WHEN EXISTS (
+          SELECT 1 FROM remote_actor_domain_lifts AS x
+          WHERE x.domain_block_id = d.id AND x.actor_uri = r.actor_uri AND x.severity = d.severity
+        ) THEN 'noop' ELSE d.severity END
+        FROM domain_blocks AS d
         WHERE d.domain IN (
           WITH RECURSIVE variants(domain) AS (
             SELECT hosts.host

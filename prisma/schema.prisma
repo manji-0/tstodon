@@ -120,6 +120,21 @@ model remote_actor_domain_limits {
   @@index([actor_uri, domain_block_id], map: "idx_remote_actor_domain_limits_actor")
 }
 
+model remote_actor_domain_lifts {
+  domain_block_id String
+  actor_uri       String
+  severity        String
+
+  @@id([domain_block_id, actor_uri])
+  @@index([actor_uri], map: "idx_remote_actor_domain_lifts_actor")
+}
+
+model domain_block_limit_backfills {
+  domain_block_id String @id
+  seen_by         String
+  claimed_at      String?
+}
+
 model remote_actor_moderation {
   actor_uri  String  @id
   moderation String?

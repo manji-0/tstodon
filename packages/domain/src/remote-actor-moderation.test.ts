@@ -22,4 +22,20 @@ describe("RemoteActorModeration", () => {
     const cleared = RemoteActorModeration.apply(sensitized, "unsensitize");
     expect(RemoteActorModeration.isDefault(cleared)).toBe(true);
   });
+
+  it("reads the admin's own standing and a domain block's apart, as two flags", () => {
+    const silenced = RemoteActorModeration.apply(start, "silence");
+    const suspended = RemoteActorModeration.apply(start, "suspend");
+    expect(
+      RemoteActorModeration.adminFlags(suspended, { silenced: true, suspended: false }),
+    ).toEqual({ silenced: true, suspended: true, sensitized: false });
+    expect(
+      RemoteActorModeration.adminFlags(silenced, { silenced: false, suspended: true }),
+    ).toEqual({ silenced: true, suspended: true, sensitized: false });
+    expect(RemoteActorModeration.adminFlags(start, { silenced: false, suspended: false })).toEqual({
+      silenced: false,
+      suspended: false,
+      sensitized: false,
+    });
+  });
 });

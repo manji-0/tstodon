@@ -58,6 +58,8 @@ export const ModelName = {
   remote_custom_emojis: "remote_custom_emojis",
   remote_emoji_refreshes: "remote_emoji_refreshes",
   remote_actor_domain_limits: "remote_actor_domain_limits",
+  remote_actor_domain_lifts: "remote_actor_domain_lifts",
+  domain_block_limit_backfills: "domain_block_limit_backfills",
   remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
   push_subscriptions: "push_subscriptions",
@@ -259,6 +261,24 @@ export const Remote_actor_domain_limitsScalarFieldEnum = {
 
 export type Remote_actor_domain_limitsScalarFieldEnum =
   (typeof Remote_actor_domain_limitsScalarFieldEnum)[keyof typeof Remote_actor_domain_limitsScalarFieldEnum];
+
+export const Remote_actor_domain_liftsScalarFieldEnum = {
+  domain_block_id: "domain_block_id",
+  actor_uri: "actor_uri",
+  severity: "severity",
+} as const;
+
+export type Remote_actor_domain_liftsScalarFieldEnum =
+  (typeof Remote_actor_domain_liftsScalarFieldEnum)[keyof typeof Remote_actor_domain_liftsScalarFieldEnum];
+
+export const Domain_block_limit_backfillsScalarFieldEnum = {
+  domain_block_id: "domain_block_id",
+  seen_by: "seen_by",
+  claimed_at: "claimed_at",
+} as const;
+
+export type Domain_block_limit_backfillsScalarFieldEnum =
+  (typeof Domain_block_limit_backfillsScalarFieldEnum)[keyof typeof Domain_block_limit_backfillsScalarFieldEnum];
 
 export const Remote_actor_moderationScalarFieldEnum = {
   actor_uri: "actor_uri",

@@ -9,8 +9,7 @@ import {
   IpRange,
   LocalAccountModeration,
   type LocalAccountModerationAction,
-  RemoteActorModeration,
-  type RemoteActorModerationValue,
+  type RemoteActorAdminFlags,
   type RemoteActorValue,
 } from "@tstodon/domain";
 import { findAccountById } from "../../account-store";
@@ -28,6 +27,7 @@ import {
   findAdminRemoteActor,
   moderateLocalAccount,
   moderateRemoteActor,
+  remoteActorAdminFlags,
   purgeAccount,
   takeAccountAction,
 } from "../../admin-actions";
@@ -183,11 +183,17 @@ const adminAccountDocument = async (
   };
 };
 
+const NOT_MODERATED: RemoteActorAdminFlags = {
+  silenced: false,
+  suspended: false,
+  sensitized: false,
+};
+
 /** An `Admin::Account` for a remote actor: it has no login, email, or IP here. */
 const adminRemoteDocument = (
   account: ApiAccountJSON,
   domain: string,
-  moderation: RemoteActorModerationValue,
+  flags: RemoteActorAdminFlags,
 ): ApiAdminAccountJSON => ({
   id: account.id,
   username: account.username,
@@ -203,19 +209,19 @@ const adminRemoteDocument = (
   confirmed: false,
   approved: true,
   disabled: false,
-  silenced: moderation.standing.kind === "Silenced",
-  suspended: moderation.standing.kind === "Suspended",
-  limited: moderation.standing.kind !== "InGoodStanding",
-  sensitized: moderation.sensitized,
+  silenced: flags.silenced,
+  suspended: flags.suspended,
+  limited: flags.silenced || flags.suspended,
+  sensitized: flags.sensitized,
   account,
 });
 
 const remoteActorDocument = (
   identity: InstanceIdentity,
   actor: RemoteActorValue,
-  moderation: RemoteActorModerationValue,
+  flags: RemoteActorAdminFlags,
 ): ApiAdminAccountJSON =>
-  adminRemoteDocument(mastodonRemoteAccount(identity, actor), actor.domain, moderation);
+  adminRemoteDocument(mastodonRemoteAccount(identity, actor), actor.domain, flags);
 
 /**
  * What a report remembers of a remote actor that was purged from the cache:
@@ -263,7 +269,7 @@ const purgedRemoteDocument = (
       fields: [],
     },
     domain,
-    RemoteActorModeration.inGoodStanding,
+    NOT_MODERATED,
   );
 };
 
@@ -277,7 +283,7 @@ export const adminAccountFor = async (
   if (actorUri.isOk()) {
     const state = await findAdminRemoteActor(env.DB, actorUri.value);
     return state.isOk() && state.value
-      ? remoteActorDocument(identity, state.value.actor, state.value.moderation)
+      ? remoteActorDocument(identity, state.value.actor, state.value.flags)
       : null;
   }
   const state = await findAdminAccount(env.DB, accountId);
@@ -304,7 +310,7 @@ export const adminPartyFor = async (
   }
   const state = await findAdminRemoteActor(env.DB, party.actorUri);
   if (state.isOk() && state.value) {
-    return remoteActorDocument(identity, state.value.actor, state.value.moderation);
+    return remoteActorDocument(identity, state.value.actor, state.value.flags);
   }
   return acct === null ? null : purgedRemoteDocument(identity, party.actorUri, acct);
 };
@@ -350,17 +356,15 @@ const remoteAdminAccounts = async (
   if (moderations.isErr()) {
     return err(moderations.error);
   }
+  const seen = await remoteActorAdminFlags(env.DB, moderations.value, uris.value);
+  if (seen.isErr()) {
+    return err(seen.error);
+  }
   return ok(
     uris.value.flatMap((uri) => {
       const actor = actors.value.get(uri);
       return actor
-        ? [
-            remoteActorDocument(
-              identity,
-              actor,
-              moderations.value.get(uri) ?? RemoteActorModeration.inGoodStanding,
-            ),
-          ]
+        ? [remoteActorDocument(identity, actor, seen.value.get(uri) ?? NOT_MODERATED)]
         : [];
     }),
   );

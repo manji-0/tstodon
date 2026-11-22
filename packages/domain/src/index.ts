@@ -273,6 +273,8 @@ export {
   RemoteActorModeration,
   type RemoteActorModeration as RemoteActorModerationValue,
   type RemoteActorModerationAction,
+  type DomainBlockLimits,
+  type RemoteActorAdminFlags,
 } from "./remote-actor-moderation";
 export {
   RemoteBoost,

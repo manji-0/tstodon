@@ -42,6 +42,16 @@ export default defineConfig({
             wrangler: { configPath: "./packages/worker/dist/ssr/wrangler.json" },
             miniflare: {
               compatibilityDate: "2026-08-22",
+              // The Worker's queues send to queues no consumer reads. Their
+              // consumers would run each job a test sets off in the
+              // background, unawaited, past the test and its file's end (a
+              // log after teardown fails the run). A test runs the jobs it
+              // means to (`withQueueDrained`, `drainHeld`, `drainJobs`).
+              queueProducers: {
+                OUTBOX_PROCESS_QUEUE: { queueName: "tstodon-test-unconsumed-outbox-process" },
+                PULL_QUEUE: { queueName: "tstodon-test-unconsumed-pull" },
+                OUTBOX_DLQ: { queueName: "tstodon-test-unconsumed-outbox-dlq" },
+              },
               bindings: {
                 TEST_MIGRATIONS: migrations,
                 // Test-only VAPID key pair (never used outside the test runner).
