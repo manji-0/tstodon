@@ -79,8 +79,8 @@ export const suppressedBinds = (viewerId: string | undefined): string[] => {
 
 /**
  * The page's horizon over the viewer's followed hashtags
- * ({@link followedTagHorizonSql}): `undefined` when every hashtag is read to
- * its end, and for a single entry (`onlyId`).
+ * ({@link followedTagHorizonSql}): `undefined` when the hashtags are read to
+ * their end, and for a single entry (`onlyId`).
  */
 export const findFollowedTagHorizon = async (
   db: D1Database,

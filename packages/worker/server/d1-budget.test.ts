@@ -189,6 +189,58 @@ describe("D1 rows read do not grow with unrelated rows", () => {
   );
 
   it(
+    "keeps home's rows read independent of the posts under many followed hashtags",
+    { timeout: 120_000 },
+    async () => {
+      const [reader, noisy] = await Promise.all(
+        ["budget-tags-reader", "budget-tags-noisy"].map((name) =>
+          signedInAccount(`${name}@example.com`),
+        ),
+      );
+      if (!reader || !noisy) throw new Error("accounts");
+      const readerToken = await accessTokenFor(reader.id);
+      if (!readerToken) throw new Error("token");
+      const tags = 200;
+      await env.DB.prepare(
+        `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${tags})
+         INSERT INTO followed_tags (account_id, tag_name, created_at)
+         SELECT ?, 'budgetmany' || n, '2020-01-01 00:00:00' FROM series`,
+      )
+        .bind(reader.id)
+        .run();
+      // The flood's author is muted, so each read answers the same empty page.
+      await post(readerToken, `/api/v1/accounts/${noisy.id}/mute`);
+      const flood = (from: number) => [
+        env.DB.prepare(
+          `WITH RECURSIVE series(n) AS (SELECT ${from} UNION ALL SELECT n + 1 FROM series WHERE n < ${from + NOISE - 1})
+           INSERT INTO statuses (id, account_id, kind, content_text, content_html, visibility, sensitive, spoiler_text, created_at, updated_at)
+           SELECT printf('many%07d', n), ?, 'LocalNote', '#budgetmany', '<p>#budgetmany</p>', 'public', 0, '',
+                  '2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z'
+           FROM series`,
+        ).bind(noisy.id),
+        env.DB.prepare(
+          `INSERT OR IGNORE INTO local_status_tags (status_id, tag)
+           SELECT id, 'budgetmany' || (1 + CAST(substr(id, 5) AS INTEGER) % ${tags})
+           FROM statuses WHERE id LIKE 'many%'`,
+        ),
+      ];
+      patchD1();
+      const path = "/api/v1/timelines/home?limit=20";
+      await env.DB.batch(flood(0));
+      const before = await get(readerToken, path);
+      await env.DB.batch(flood(NOISE));
+      const growth = (await get(readerToken, path)) - before;
+      // The followed hashtags' indexes are read together to a fixed depth, so
+      // a page costs a few rows per hashtag and a fixed number of entries,
+      // not a depth of each hashtag.
+      expect(
+        growth,
+        `home read ${growth} more rows after ${NOISE} more posts under ${tags} followed hashtags`,
+      ).toBeLessThan(MAX_GROWTH);
+    },
+  );
+
+  it(
     "keeps the ActivityPub collections' rows read independent of what they count",
     { timeout: 120_000 },
     async () => {

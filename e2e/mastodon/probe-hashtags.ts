@@ -85,16 +85,28 @@ export const hashtagScenarios = async ({ stamp, mona, carol }: Cast): Promise<vo
     mona,
     async (from, to) => {
       // The post reaches the server because `to` follows its author; the
-      // reader follows the hashtag only.
+      // reader follows the hashtag only, and 30 more after it, as Mastodon
+      // sets no limit on the hashtags home reads.
       const reader = to === alice ? bob : carol;
       const tag = `followed${stamp}${from === alice ? "ts" : "ma"}`;
-      await call(reader, `/api/v1/tags/${tag}/follow`, Anything, { method: "POST", body: {} });
+      const tags = [tag, ...Array.from({ length: 30 }, (_, n) => `${tag}later${n}`)];
       try {
+        for (const followed of tags) {
+          await call(reader, `/api/v1/tags/${followed}/follow`, Anything, {
+            method: "POST",
+            body: {},
+          });
+        }
         const sent = await post(from, { status: `tagged #${tag}` });
         await onHome(to, sent.uri);
         await onHome(reader, sent.uri);
       } finally {
-        await call(reader, `/api/v1/tags/${tag}/unfollow`, Anything, { method: "POST", body: {} });
+        for (const followed of tags) {
+          await call(reader, `/api/v1/tags/${followed}/unfollow`, Anything, {
+            method: "POST",
+            body: {},
+          });
+        }
       }
     },
   );

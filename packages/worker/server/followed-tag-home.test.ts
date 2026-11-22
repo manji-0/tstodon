@@ -243,4 +243,67 @@ describe("a followed hashtag on the home timeline", () => {
     const home = read(z.array(Entry), (await api(reader, "/api/v1/timelines/home?limit=20")).body);
     expect(home.map((entry) => entry.uri)).toEqual([worth.uri]);
   });
+
+  it("pages through the posts of several followed hashtags, older and newer", async () => {
+    const reader = "ftag-page-reader@example.com";
+    const tags = ["ftagpagea", "ftagpageb", "ftagpagec"];
+    for (const tag of tags) {
+      await followTag(reader, tag);
+    }
+    const posted: string[] = [];
+    for (let n = 0; n < 9; n += 1) {
+      posted.push((await post("ftag-page-author@example.com", `${n} #${tags[n % 3]}`)).id);
+    }
+    const page = async (query: string): Promise<string[]> =>
+      read(z.array(Entry), (await api(reader, `/api/v1/timelines/home?limit=2${query}`)).body).map(
+        (entry) => entry.id,
+      );
+    const pairs = (ids: string[]): string[][] =>
+      Array.from({ length: Math.ceil(ids.length / 2) }, (_, n) => ids.slice(2 * n, 2 * n + 2));
+
+    const older: string[][] = [];
+    for (let maxId = ""; older.flat().length < posted.length;) {
+      const ids = await page(maxId === "" ? "" : `&max_id=${maxId}`);
+      if (ids.length === 0) break;
+      older.push(ids);
+      maxId = ids.at(-1) ?? "";
+    }
+    expect(older).toEqual(pairs(posted.toReversed()));
+
+    const newer: string[][] = [];
+    for (let minId = "0"; newer.flat().length < posted.length;) {
+      const ids = await page(`&min_id=${minId}`);
+      if (ids.length === 0) break;
+      newer.push(ids);
+      minId = ids[0] ?? "";
+    }
+    expect(newer).toEqual(pairs(posted).map((pair) => pair.toReversed()));
+  });
+
+  it("brings the posts of every followed hashtag, however many the reader follows", async () => {
+    const reader = "ftag-many-reader@example.com";
+    await followTag(reader, "ftagmanyfirst");
+    for (let n = 0; n < 30; n += 1) {
+      await followTag(reader, `ftagmany${n}`);
+    }
+    const stream = await openStream({ email: reader, query: "?stream=user" });
+    const local = await post("ftag-many-author@example.com", "the first one #ftagmanyfirst");
+    const heard = await stream.next();
+    stream.close();
+    expect(heard.event).toBe("update");
+    expect(read(Entry, JSON.parse(heard.payload)).uri).toBe(local.uri);
+    const remote = await remoteActor("ftag-many-poster", "tagged.example");
+    const note = remoteNote(
+      remote,
+      "ftag-many",
+      "ftagmanyfirst",
+      [PUBLIC],
+      [`${remote.actorUri}/followers`],
+    );
+    await deliver(remote, note);
+
+    const home = await homeUris(reader);
+    expect(home).toContain(local.uri);
+    expect(home).toContain(note.id);
+  });
 });
