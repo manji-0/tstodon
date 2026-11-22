@@ -8,6 +8,7 @@ import {
   type StreamEventValue,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { signedInRecentlySince } from "./account-activity";
 import { type RepositoryError, runD1 } from "./d1";
 import { listHomeFanOutAccounts } from "./generated/prisma/sql";
 import { type JobStart, startJob } from "./inline-job";
@@ -256,6 +257,7 @@ export const fanOutHomePage = async (
         job.afterAccountId,
         pageSize,
         job.entryId,
+        signedInRecentlySince(env),
       ),
       AccountIdRow,
     ),

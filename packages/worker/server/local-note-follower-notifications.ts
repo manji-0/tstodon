@@ -6,6 +6,7 @@ import {
   StatusNotificationAudience,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { signedInRecentlySince } from "./account-activity";
 import type { RepositoryError } from "./d1";
 import { notifyingFollowersAmong, notifyingFollowersPage } from "./follow-store";
 import { listStatusMentions } from "./mention-store";
@@ -28,7 +29,7 @@ const NO_FOLLOWERS: NotifyingFollowerPage = { followers: [], next: undefined };
  * author's other followers are not paged through.
  */
 const reachableFollowers = (
-  db: D1Database,
+  env: Env,
   note: Pick<LocalNote, "id" | "accountId">,
   audience: NotifiedNote,
   afterFollowId: string,
@@ -39,16 +40,17 @@ const reachableFollowers = (
   switch (audience.visibility.kind) {
     case "Limited":
     case "Direct":
-      return notifyingFollowersAmong(db, note.accountId, note.id, [...audience.addressed]).then(
-        (found) => found.map((followers) => ({ followers, next: undefined })),
-      );
+      return notifyingFollowersAmong(env.DB, note.accountId, note.id, signedInRecentlySince(env), [
+        ...audience.addressed,
+      ]).then((found) => found.map((followers) => ({ followers, next: undefined })));
     case "Public":
     case "Unlisted":
     case "FollowersOnly":
       return notifyingFollowersPage(
-        db,
+        env.DB,
         note.accountId,
         note.id,
+        signedInRecentlySince(env),
         afterFollowId,
         NOTIFYING_FOLLOWER_PAGE_SIZE,
       );
@@ -69,7 +71,7 @@ const queueFollowerPage = async (
   audience: NotifiedNote,
   afterFollowId: string,
 ): Promise<Result<Readonly<{ read: number; chained: boolean }>, RepositoryError>> => {
-  const page = await reachableFollowers(env.DB, note, audience, afterFollowId);
+  const page = await reachableFollowers(env, note, audience, afterFollowId);
   if (page.isErr()) {
     return err(page.error);
   }

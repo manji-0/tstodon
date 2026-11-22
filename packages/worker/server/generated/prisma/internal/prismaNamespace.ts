@@ -7866,6 +7866,7 @@ export const AccountsScalarFieldEnum = {
   bio_text: "bio_text",
   avatar_object_key: "avatar_object_key",
   header_object_key: "header_object_key",
+  current_sign_in_at: "current_sign_in_at",
 } as const;
 
 export type AccountsScalarFieldEnum =
