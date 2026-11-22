@@ -267,10 +267,12 @@ export type RemoteUpdateError = RepositoryError | Readonly<{ kind: "Unavailable"
  * `ProcessAccountService`; the stale-actor refresh confirms it again. A
  * username Mastodon's `Account` would refuse is taken while it is the one
  * stored, as Mastodon validates it only when it changes. Its `movedTo`
- * follows the document as Mastodon's account processing
- * does: a target that lists the signer in `alsoKnownAs` is recorded, a
- * document without one clears a recorded move (the redirect was cancelled).
- * Only a `Move` carries followers over.
+ * follows the document: a document without one clears a recorded move (the
+ * redirect was cancelled), as Mastodon's account processing does. A target is
+ * recorded only when it lists the signer in `alsoKnownAs`, which is stricter
+ * than Mastodon's `ProcessAccountService#moved_account` (it takes any target);
+ * this is by design, so an actor cannot point its profile at an account that
+ * never agreed to the move. Only a `Move` carries followers over.
  */
 const applyActorUpdate = async (
   env: Env,
