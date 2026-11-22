@@ -157,16 +157,6 @@ export const feedLocalReblogsSql = (viewerId: string, now: string): SqlFragment 
 };
 
 /**
- * The followed hashtags a home page reads, the most recently followed first.
- * Mastodon reads none at all on a home page: it delivers each post to its
- * hashtags' followers once (`FanOutOnWriteService#deliver_to_hashtag_followers`)
- * and keeps 800 home entries. Here a page reads at most this many hashtags,
- * each to a {@link HOME_FOLLOWED_TAG_DEPTH bounded depth}, so its rows read
- * do not grow with how many posts carry those hashtags.
- */
-export const HOME_FOLLOWED_TAG_LIMIT = 25;
-
-/**
  * Where a side of home finds the notes under a hashtag: its tag index, its
  * notes table, and which of those notes a followed hashtag brings. The unary
  * `+` keeps SQLite on the tag index and the notes' primary key.
@@ -207,20 +197,45 @@ const FOLLOWED_TAG_SIDES = {
 } as const;
 
 /**
- * How deep a home page reads each followed hashtag's index below its cursor,
- * as a multiple of the page's size. Past that the page stops at the
- * {@link followedTagHorizonSql horizon}.
+ * How deep a home page reads the indexes of the followed hashtags together
+ * below its cursor, as a multiple of the page's size. Past that the page
+ * stops at the {@link followedTagHorizonSql horizon}.
  */
 export const HOME_FOLLOWED_TAG_DEPTH = 4;
 
-/** The viewer's most recently followed hashtags, with the id floor of each follow. */
-const followedTagsCte = `ft AS (
-  SELECT tag_name,
-    printf('%0${ENTITY_ID_DIGITS}d',
-      CAST(round((julianday(created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor
-  FROM followed_tags WHERE account_id = ?
-  ORDER BY created_at DESC, tag_name LIMIT ${HOME_FOLLOWED_TAG_LIMIT}
-)`;
+/**
+ * How many followed hashtags home reads, the most recently followed first.
+ * Mastodon reads none on a home page and sets no limit on them: it delivers
+ * each post to its hashtags' followers once
+ * (`FanOutOnWriteService#deliver_to_hashtag_followers`). Here a page costs a
+ * few rows per followed hashtag, so this keeps a page's cost bounded for an
+ * account that follows a great many.
+ */
+export const HOME_FOLLOWED_TAG_LIMIT = 1000;
+
+/**
+ * The CTE `ft(tag_name, floor)`: the viewer's {@link HOME_FOLLOWED_TAG_LIMIT}
+ * most recently followed hashtags, with the id floor of each follow. For a
+ * single entry (`onlyId`, the streaming fan-out's question), the followed
+ * hashtags among the entry's, found from its tags and the follow's primary
+ * key rather than from every hashtag the viewer follows: ranking the follow
+ * against the limit would read the follows newer than it, so a viewer past
+ * the limit hears an entry under an older hashtag that a page does not
+ * show. Binds the viewer, then the entry for `onlyId`.
+ */
+const followedTagsCte = (tags: string, onlyId: boolean): string => {
+  const floor = `printf('%0${ENTITY_ID_DIGITS}d',
+      CAST(round((julianday(f.created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor`;
+  return onlyId
+    ? `ft AS (
+      SELECT f.tag_name, ${floor} FROM followed_tags f
+      WHERE f.account_id = ? AND f.tag_name IN (SELECT tag FROM ${tags} WHERE status_id = ?)
+    )`
+    : `ft AS (
+      SELECT f.tag_name, ${floor} FROM followed_tags f WHERE f.account_id = ?
+      ORDER BY f.created_at DESC, f.rowid LIMIT ${HOME_FOLLOWED_TAG_LIMIT}
+    )`;
+};
 
 /**
  * The bounds on a tag index row `t` of followed hashtag `ft`: its id floor,
@@ -257,11 +272,15 @@ const tagIndexBounds = (
 
 /**
  * How far a home page can vouch for the notes under the viewer's followed
- * hashtags: for each hashtag whose index holds more than
- * {@link HOME_FOLLOWED_TAG_DEPTH} pages below the cursor (above it for a
- * `min_id` page), the id that deep, local and remote; the newest of those
- * (the oldest for `min_id`), or NULL when every hashtag is read to its end.
- * Reads only the tag indexes, a fixed depth per hashtag. One row,
+ * hashtags: the note {@link HOME_FOLLOWED_TAG_DEPTH} pages below the cursor
+ * (above it for a `min_id` page) in the local and remote indexes of all of
+ * them together, a note under several of them counted once, or NULL when
+ * they hold fewer. A recursive CTE merges the indexes: its queue holds the
+ * next entry of each hashtag and side, newest first (oldest for `min_id`),
+ * and each entry it takes queues the one after it in the same index. The
+ * outer `LIMIT` stops it there, so a page reads two index seeks per followed
+ * hashtag and one per entry it passes, however many notes the hashtags hold.
+ * Hidden notes count, so a hidden flood costs a bounded read. One row,
  * `horizon`.
  */
 export const followedTagHorizonSql = (
@@ -270,18 +289,40 @@ export const followedTagHorizonSql = (
   limit: number,
 ): SqlFragment => {
   const { bounds, sql: within } = tagIndexBounds(cursor, false);
-  const { ascending } = idCursorBounds(cursor);
+  const { after, before, ascending } = idCursorBounds(cursor);
+  const order = ascending ? "ASC" : "DESC";
   const deep = Math.max(1, Math.trunc(limit) * HOME_FOLLOWED_TAG_DEPTH) - 1;
-  const edge = (tags: string): string => `SELECT (
+  // The entry after `ft.id` replaces the cursor's bound on the side the merge
+  // walks from, so SQLite seeks from it rather than scan to it.
+  const past = ascending
+    ? ["t.status_id > ft.id", ...(before.length > 0 ? ["t.status_id < (SELECT hi FROM c)"] : [])]
+    : [
+        "t.status_id < ft.id",
+        `t.status_id >= ${after.length > 0 ? "max(ft.floor, (SELECT lo FROM c))" : "ft.floor"}`,
+        ...(after.length > 0 ? ["t.status_id <> (SELECT lo FROM c)"] : []),
+      ];
+  const next = (tags: string, where: string): string => `(
       SELECT t.status_id FROM ${tags} t
-      WHERE t.tag = ft.tag_name AND ${within}
-      ORDER BY t.status_id ${ascending ? "ASC" : "DESC"} LIMIT 1 OFFSET ${deep}
-    ) AS id FROM ft`;
+      WHERE t.tag = ft.tag_name AND ${where}
+      ORDER BY t.status_id ${order} LIMIT 1
+    )`;
   return {
-    sql: `WITH ${followedTagsCte}, c(lo, hi) AS (SELECT ?, ?)
-      SELECT ${ascending ? "MIN" : "MAX"}(id) AS horizon FROM (
-        ${edge("local_status_tags")} UNION ALL ${edge("remote_status_tags")}
-      )`,
+    sql: `WITH RECURSIVE ${followedTagsCte("", false)}, c(lo, hi) AS (SELECT ?, ?),
+      merged(id, side, tag_name, floor) AS (
+        SELECT * FROM (
+          SELECT ${next("local_status_tags", within)} AS id, 0, tag_name, floor FROM ft
+          UNION ALL SELECT ${next("remote_status_tags", within)}, 1, tag_name, floor FROM ft
+        ) WHERE id IS NOT NULL
+        UNION ALL SELECT CASE ft.side
+            WHEN 0 THEN ${next("local_status_tags", past.join(" AND "))}
+            ELSE ${next("remote_status_tags", past.join(" AND "))}
+          END, ft.side, ft.tag_name, ft.floor
+        FROM merged AS ft WHERE ft.id IS NOT NULL
+        ORDER BY 1 ${order}
+      )
+      SELECT (
+        SELECT DISTINCT id FROM merged WHERE id IS NOT NULL LIMIT 1 OFFSET ${deep}
+      ) AS horizon`,
     binds: [viewerId, ...bounds],
   };
 };
@@ -290,13 +331,12 @@ export const followedTagHorizonSql = (
  * The ids of the notes a followed hashtag brings to the viewer's home page,
  * as Mastodon's `deliver_to_hashtag_followers`: public notes (not of a
  * silenced or suspended local author), posted or received since the viewer
- * followed the hashtag, of the viewer's {@link HOME_FOLLOWED_TAG_LIMIT} most
- * recently followed hashtags. An id sorts by the instant it was made at, so
+ * followed the hashtag. An id sorts by the instant it was made at, so
  * "since the follow" is an id floor: the follow's instant shifted above the
  * id's low 16 bits (`entityIdAt`). The side's `hidden` authors are left out.
  * The ids lie within `cursor` and, when the page has a `horizon`
  * ({@link followedTagHorizonSql}), not past it, so a page reads a bounded
- * depth of each hashtag's index however many notes it holds or hides. The
+ * depth of the hashtags' indexes however many notes they hold or hide. The
  * binds are the viewer's, the cursor's and the horizon, however many
  * hashtags.
  */
@@ -310,9 +350,10 @@ export const followedTagNoteIdsSql = (
   const { tags, notes, shown } = FOLLOWED_TAG_SIDES[side];
   const hidden = FOLLOWED_TAG_SIDES[side].hidden(viewerId, now);
   const { bounds, sql: within } = tagIndexBounds(cursor, horizon !== undefined);
+  const { onlyId } = idCursorBounds(cursor);
   return {
     sql: `(
-      WITH ${followedTagsCte}, c(lo, hi) AS (SELECT ?, ?), w(h) AS (SELECT ?),
+      WITH ${followedTagsCte(tags, onlyId.length > 0)}, c(lo, hi) AS (SELECT ?, ?), w(h) AS (SELECT ?),
       hidden(id) AS MATERIALIZED (
         ${hidden.sql}
       )
@@ -321,24 +362,15 @@ export const followedTagNoteIdsSql = (
       CROSS JOIN ${notes} n ON n.id = t.status_id
       WHERE t.tag = ft.tag_name AND ${within} AND ${shown}
     )`,
-    binds: [viewerId, ...bounds, horizon ?? "", ...hidden.binds],
+    binds: [
+      viewerId,
+      ...(onlyId.length > 0 ? [onlyId] : []),
+      ...bounds,
+      horizon ?? "",
+      ...hidden.binds,
+    ],
   };
 };
-
-/**
- * Keep the home entries a page with this `horizon` can vouch for: none past
- * it, as the notes of the followed hashtags past it were not read.
- */
-export const withinHorizon = <T extends Readonly<{ id: string }>>(
-  entries: ReadonlyArray<T>,
-  cursor: IdCursor,
-  horizon: string | undefined,
-): T[] =>
-  horizon === undefined
-    ? [...entries]
-    : entries.filter((entry) =>
-        idCursorBounds(cursor).ascending ? entry.id <= horizon : entry.id >= horizon,
-      );
 
 /**
  * The local `statuses` rows a feed of the viewer keeps by the viewer's follow

@@ -1,5 +1,4 @@
 import type { ApiStatusJSON } from "@tstodon/api";
-import { withinHorizon } from "./followed-feed";
 import {
   type InstanceIdentity,
   type LocalStatus,
@@ -95,18 +94,22 @@ const pageOrder =
  * Where a page merged from several queries ends. A query that read a full
  * `limit` read nothing past its last row in page order, so an entry past the
  * earliest such row could pass over that query's unread rows: the page stops
- * there, and `undefined` when no query read a full page.
+ * there. A `horizon` (home's {@link findFollowedTagHorizon}) is such a bound
+ * too: past it the followed hashtags were not read. `undefined` when there is
+ * neither.
  */
 const pageCut = (
   fetches: ReadonlyArray<FetchedRows>,
   ascending: boolean,
   limit: number,
+  horizon: string | undefined,
 ): string | undefined =>
-  fetches
-    .flatMap((rows) =>
+  [
+    ...fetches.flatMap((rows) =>
       rows.length > 0 && rows.length >= limit ? rows.toSorted(pageOrder(ascending)).slice(-1) : [],
-    )
-    .toSorted(pageOrder(ascending))[0]?.id;
+    ),
+    ...(horizon === undefined ? [] : [{ id: horizon }]),
+  ].toSorted(pageOrder(ascending))[0]?.id;
 
 /** True when `id` is not past `cut` in page order. */
 const withinCut = (id: string, cut: string | undefined, ascending: boolean): boolean =>
@@ -114,32 +117,44 @@ const withinCut = (id: string, cut: string | undefined, ascending: boolean): boo
 
 /**
  * The page of `documents`, merged from the queries that read `fetches`: the
- * first `limit` in page order up to the queries' cut. A page the cut leaves
- * short (an entry of a full query did not render) continues from the cut, so
- * the next page neither skips nor repeats that query's rows.
+ * first `limit` in page order up to the queries' cut, or the `horizon` when
+ * that comes first. A page the cut leaves short (an entry of a full query did
+ * not render, or the horizon came first) continues from the cut, so the next
+ * page neither skips nor repeats that query's rows. A page the horizon leaves
+ * empty still continues from it, as an empty page with no `Link` ends the
+ * timeline for a client.
  */
 export const timelinePage = (
   documents: ReadonlyArray<ApiStatusJSON>,
   cursor: { minId?: string | undefined },
   limit: number,
   fetches: ReadonlyArray<FetchedRows> = [],
+  horizon: string | undefined = undefined,
 ): TimelinePage => {
   const ascending = (cursor.minId ?? "").length > 0;
-  const cut = pageCut(fetches, ascending, limit);
+  const cut = pageCut(fetches, ascending, limit, horizon);
   const inOrder = documents
     .filter((document) => withinCut(document.id, cut, ascending))
     .toSorted(pageOrder(ascending))
     .slice(0, limit);
   const statuses = ascending ? inOrder.toReversed() : inOrder;
   const resume = inOrder.length < limit ? cut : undefined;
-  return statuses.length === 0
-    ? { statuses, next: undefined, prev: undefined, continues: false }
-    : {
-        statuses,
-        next: ascending ? statuses.at(-1)?.id : (resume ?? statuses.at(-1)?.id),
-        prev: ascending ? (resume ?? statuses[0]?.id) : statuses[0]?.id,
-        continues: inOrder.length >= limit || cut !== undefined,
-      };
+  if (statuses.length === 0) {
+    return horizon === undefined || cut === undefined
+      ? { statuses, next: undefined, prev: undefined, continues: false }
+      : {
+          statuses,
+          next: ascending ? undefined : cut,
+          prev: ascending ? cut : undefined,
+          continues: true,
+        };
+  }
+  return {
+    statuses,
+    next: ascending ? statuses.at(-1)?.id : (resume ?? statuses.at(-1)?.id),
+    prev: ascending ? (resume ?? statuses[0]?.id) : statuses[0]?.id,
+    continues: inOrder.length >= limit || cut !== undefined,
+  };
 };
 
 /** `read`, run on first use; later uses share its result. */
@@ -179,9 +194,10 @@ const renderMergedPage = async (
   fetches: ReadonlyArray<FetchedRows>,
   cursor: { minId?: string | undefined },
   limit: number,
+  horizon: string | undefined = undefined,
 ): Promise<Result<TimelinePage, RepositoryError>> => {
   const ascending = (cursor.minId ?? "").length > 0;
-  const cut = pageCut(fetches, ascending, limit);
+  const cut = pageCut(fetches, ascending, limit, horizon);
   const ordered = sources
     .flatMap((source, index) => source.ids.map((id) => ({ id, index })))
     .filter((entry) => withinCut(entry.id, cut, ascending))
@@ -216,7 +232,7 @@ const renderMergedPage = async (
       return err(rest.error);
     }
   }
-  return ok(timelinePage(rendered.flat(), cursor, limit, fetches));
+  return ok(timelinePage(rendered.flat(), cursor, limit, fetches, horizon));
 };
 
 /**
@@ -375,18 +391,13 @@ const feedDocuments = async (
     return err(boosts.error);
   }
   // A followed actor's note under a followed hashtag comes from both queries,
-  // as Mastodon's two fan-out paths push it to the same home once. Nothing
-  // past the horizon, where the followed hashtags were not read.
+  // as Mastodon's two fan-out paths push it to the same home once.
   const listed = new Set(followed.value.map((note) => note.id));
-  const remote = withinHorizon(
-    [...followed.value, ...tagged.value.filter((note) => !listed.has(note.id))],
-    cursor,
-    horizon,
-  );
+  const remote = [...followed.value, ...tagged.value.filter((note) => !listed.has(note.id))];
   const filters = sharedRead(() => loadViewerFilters(env.DB, viewerId));
   return renderMergedPage(
     [
-      pageSource(withinHorizon(statuses.value, cursor, horizon), async (shown) =>
+      pageSource(statuses.value, async (shown) =>
         (await mastodonStatuses(env, identity, shown, viewerId)).asyncMap((documents) =>
           attachFilteredToStatuses(env.DB, viewerId, "home", shown, documents, filters()),
         ),
@@ -405,13 +416,12 @@ const feedDocuments = async (
             ),
         ),
       ),
-      pageSource(withinHorizon(boosts.value, cursor, horizon), (shown) =>
-        remoteBoostDocuments(env, identity, shown, viewerId),
-      ),
+      pageSource(boosts.value, (shown) => remoteBoostDocuments(env, identity, shown, viewerId)),
     ],
     [statuses.value, followed.value, tagged.value, boosts.value],
     cursor,
     limit,
+    horizon,
   );
 };
 

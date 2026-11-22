@@ -2,12 +2,21 @@ import { env, SELF } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
-import { meter, patchD1, requestsSettled, resetMeter, seedNoise, settle } from "../test/meter";
+import {
+  meter,
+  meterWork,
+  patchD1,
+  requestsSettled,
+  resetMeter,
+  seedNoise,
+  settle,
+} from "../test/meter";
 import { drainHeld, holdQueue, QUEUE_BATCH, QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { insertScheduledStatus } from "./scheduled-status-store";
-import { HOME_HORIZON_STEPS } from "./timeline-documents";
+import { HOME_HORIZON_STEPS, homeTimelineDocuments } from "./timeline-documents";
+import { parseInstanceIdentity } from "./runtime-config";
 import { ACTIVITY_JSON } from "../test/activity-json";
 
 /**
@@ -185,6 +194,110 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       expect(growth, `home read ${growth} more rows after ${2 * NOISE} tagged posts`).toBeLessThan(
         MAX_GROWTH * 3 * HOME_HORIZON_STEPS,
       );
+    },
+  );
+
+  it(
+    "keeps home's rows read independent of the posts under many followed hashtags",
+    { timeout: 120_000 },
+    async () => {
+      const [reader, noisy] = await Promise.all(
+        ["budget-tags-reader", "budget-tags-noisy"].map((name) =>
+          signedInAccount(`${name}@example.com`),
+        ),
+      );
+      if (!reader || !noisy) throw new Error("accounts");
+      const readerToken = await accessTokenFor(reader.id);
+      if (!readerToken) throw new Error("token");
+      const tags = 200;
+      await env.DB.prepare(
+        `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${tags})
+         INSERT INTO followed_tags (account_id, tag_name, created_at)
+         SELECT ?, 'budgetmany' || n, '2020-01-01 00:00:00' FROM series`,
+      )
+        .bind(reader.id)
+        .run();
+      // The flood's author is muted, so each read answers the same empty page.
+      await post(readerToken, `/api/v1/accounts/${noisy.id}/mute`);
+      const flood = (from: number) => [
+        env.DB.prepare(
+          `WITH RECURSIVE series(n) AS (SELECT ${from} UNION ALL SELECT n + 1 FROM series WHERE n < ${from + NOISE - 1})
+           INSERT INTO statuses (id, account_id, kind, content_text, content_html, visibility, sensitive, spoiler_text, created_at, updated_at)
+           SELECT printf('%018d', 950000000000000000 + n), ?, 'LocalNote', '#budgetmany', '<p>#budgetmany</p>', 'public', 0, '',
+                  '2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z'
+           FROM series`,
+        ).bind(noisy.id),
+        env.DB.prepare(
+          `INSERT OR IGNORE INTO local_status_tags (status_id, tag)
+           SELECT id, 'budgetmany' || (1 + CAST(id AS INTEGER) % ${tags})
+           FROM statuses WHERE account_id = ?`,
+        ).bind(noisy.id),
+      ];
+      patchD1();
+      const path = "/api/v1/timelines/home?limit=20";
+      await env.DB.batch(flood(0));
+      const before = await get(readerToken, path);
+      await env.DB.batch(flood(NOISE));
+      const growth = (await get(readerToken, path)) - before;
+      // The followed hashtags' indexes are read together to a fixed depth, so
+      // a page costs a few rows per hashtag and a fixed number of entries,
+      // not a depth of each hashtag.
+      expect(
+        growth,
+        `home read ${growth} more rows after ${NOISE} more posts under ${tags} followed hashtags`,
+      ).toBeLessThan(MAX_GROWTH);
+    },
+  );
+
+  it(
+    "grows home's rows read by a few rows a followed hashtag, and a streamed entry's by none",
+    { timeout: 120_000 },
+    async () => {
+      const followTags = async (accountId: string, count: number) =>
+        env.DB.prepare(
+          `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${count})
+           INSERT INTO followed_tags (account_id, tag_name, created_at)
+           SELECT ?, 'budgetcount' || n, '2020-01-01 00:00:00' FROM series`,
+        )
+          .bind(accountId)
+          .run();
+      const [few, many] = await Promise.all(
+        ["budget-count-few", "budget-count-many"].map((name) =>
+          signedInAccount(`${name}@example.com`),
+        ),
+      );
+      if (!few || !many) throw new Error("accounts");
+      const added = 200;
+      await followTags(few.id, 10);
+      await followTags(many.id, 10 + added);
+      const [fewToken, manyToken, authorToken] = await Promise.all(
+        [few.id, many.id, (await signedInAccount("budget-count-author@example.com")).id].map((id) =>
+          accessTokenFor(id),
+        ),
+      );
+      if (!fewToken || !manyToken || !authorToken) throw new Error("tokens");
+      const tagged = idOf(
+        await post(authorToken, "/api/v1/statuses", { status: "under #budgetcount1" }),
+      );
+      patchD1();
+      const path = "/api/v1/timelines/home?limit=20";
+      // Each followed hashtag costs a row of the follows and an index seek or
+      // two in each of the page's three hashtag queries (about 11 rows).
+      const perTag = ((await get(manyToken, path)) - (await get(fewToken, path))) / added;
+      expect(perTag, `home read ${perTag} more rows per followed hashtag`).toBeLessThan(12);
+
+      const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+      const streamed = async (viewerId: string): Promise<number> => {
+        await settle();
+        resetMeter();
+        const page = await meterWork(() =>
+          homeTimelineDocuments(env, identity, viewerId, 1, { onlyId: tagged }),
+        );
+        expect(page._unsafeUnwrap().statuses.map((status) => status.id)).toEqual([tagged]);
+        return meter.tally.rowsRead;
+      };
+      const growth = (await streamed(many.id)) - (await streamed(few.id));
+      expect(growth, `a streamed entry read ${growth} more rows`).toBeLessThan(MAX_GROWTH / 10);
     },
   );
 
