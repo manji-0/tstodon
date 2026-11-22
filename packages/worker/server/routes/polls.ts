@@ -9,7 +9,9 @@ import { refreshRemotePoll } from "../remote-poll-refresh";
 import { voteOnRemotePoll } from "../remote-poll-own-vote";
 import { findRemoteStatusById } from "../remote-status-store";
 import { canViewRemoteStatus } from "../visibility-guard";
-import { findPollById, votePoll } from "../poll-store";
+import { findPollById, type PollRecord, votePoll } from "../poll-store";
+import { loadCustomEmojis } from "../custom-emoji-store";
+import { parseInstanceIdentity } from "../runtime-config";
 import { schedulePollUpdate } from "../poll-update";
 import { numberList } from "../form-values";
 import { ApiPollVoteParamsSchema } from "@tstodon/api";
@@ -28,6 +30,15 @@ const REMOTE_VOTE_REFUSALS = {
   TooManyChoices: PollBallot.message(["AlreadyVoted"]),
   OutOfRange: PollBallot.message(["InvalidChoice"]),
 } as const;
+
+/** A local poll's entity, with the instance's custom emoji its options write. */
+const localPollResponse = async (c: Context<{ Bindings: Env }>, poll: PollRecord) => {
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  return c.json(pollJson(poll, await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl)));
+};
 
 export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/polls/:id">) => {
   const user = await requireUser(c);
@@ -70,7 +81,7 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
   if (!poll.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  return c.json(pollJson(poll.value));
+  return localPollResponse(c, poll.value);
 };
 
 export const postV1PollsByIdVotes = async (
@@ -119,7 +130,7 @@ export const postV1PollsByIdVotes = async (
   }
   await schedulePollUpdate(c.env, poll.value);
   // Mastodon answers a vote with the updated Poll entity, not the status.
-  return c.json(pollJson(poll.value));
+  return localPollResponse(c, poll.value);
 };
 
 // Module-init compile so Workers startup `new Function` installs fast paths before requests.

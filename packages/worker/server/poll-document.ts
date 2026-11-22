@@ -1,10 +1,15 @@
 import type { ApiPollJSON } from "@tstodon/api";
 import type { RemoteEmoji, RemotePollValue } from "@tstodon/domain";
+import { type CustomEmoji, customEmojiJson, emojisInTexts } from "./emoji";
 import { remoteEmojisJson, remoteEmojisInTexts } from "./remote-emoji-document";
 import type { PollRecord } from "./poll-store";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 
-export const pollJson = (poll: PollRecord): ApiPollJSON => {
+/**
+ * The Poll entity of a local poll. Its emoji are the instance's custom emoji
+ * its options write, as Mastodon's `Poll#emojis`.
+ */
+export const pollJson = (poll: PollRecord, emojis: ReadonlyArray<CustomEmoji>): ApiPollJSON => {
   const expired = Date.parse(poll.expiresAt) <= Date.now();
   // A poll that hides totals keeps each option's count secret until it ends,
   // as Mastodon's: the total votes and voters stay shown.
@@ -22,7 +27,10 @@ export const pollJson = (poll: PollRecord): ApiPollJSON => {
       title: option.title,
       votes_count: hidden ? null : option.votesCount,
     })),
-    emojis: [],
+    emojis: emojisInTexts(
+      poll.options.map((option) => option.title),
+      emojis,
+    ).map(customEmojiJson),
   };
 };
 

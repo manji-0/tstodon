@@ -27,6 +27,7 @@ import type { ActivityJsonSchema } from "./activitypub-wire";
 import {
   type CustomEmoji,
   emojisInTexts,
+  statusEmojiTexts,
   type UploadedCustomEmoji,
   type UploadedEmojiSource,
 } from "./emoji";
@@ -531,7 +532,10 @@ export const noteDocument = (
   const { quote, mentions = [], reply, poll, quotePolicy } = extras;
   const hashtags = extractHashtags(note.text);
   const emojis = emojisInTexts(
-    [note.text, note.spoilerText, ...(poll?.options.map((option) => option.title) ?? [])],
+    statusEmojiTexts(
+      note,
+      poll?.options.map((option) => option.title),
+    ),
     extras.emojis,
   );
   const { attachments, authorSensitized } = extras.media;

@@ -64,4 +64,66 @@ describe("custom emojis", () => {
     const account = read(z.object({ emojis: z.array(EmojiSchema) }), updated.body);
     expect(account.emojis.map((emoji) => emoji.shortcode)).toContain("tstodon");
   });
+
+  // `CustomEmoji::SCAN_RE`: no letter, mark, digit or colon on either side.
+  it("finds no emoji whose shortcode is glued to a word or a colon", async () => {
+    const response = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth("emoji-glued@example.com")) },
+      body: JSON.stringify({ status: "x:tstodon: :tstodon:x :tstodon:: é:tstodon:" }),
+    });
+    expect(response.status).toBe(200);
+    const status = read(z.object({ emojis: z.array(EmojiSchema) }), response.body);
+    expect(status.emojis).toEqual([]);
+  });
+
+  // `Status#emojis` scans the poll's options, and `Poll#emojis` scans them alone.
+  it("exposes emojis used in a poll option on the status and on the poll", async () => {
+    const headers = {
+      "content-type": "application/json",
+      ...(await auth("emoji-poll@example.com")),
+    };
+    const response = await json("/api/v1/statuses", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        status: "which?",
+        poll: { options: ["yes :tstodon:", "no"], expires_in: 3600 },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const PollStatus = z.object({
+      emojis: z.array(EmojiSchema),
+      poll: z.object({ id: z.string(), emojis: z.array(EmojiSchema) }),
+    });
+    const status = read(PollStatus, response.body);
+    expect(status.emojis.map((emoji) => emoji.shortcode)).toEqual(["tstodon"]);
+    expect(status.poll.emojis.map((emoji) => emoji.shortcode)).toEqual(["tstodon"]);
+
+    const poll = await json(`/api/v1/polls/${status.poll.id}`, { headers });
+    expect(poll.status).toBe(200);
+    const shown = read(z.object({ emojis: z.array(EmojiSchema) }), poll.body);
+    expect(shown.emojis.map((emoji) => emoji.shortcode)).toEqual(["tstodon"]);
+  });
+
+  // `Account#emojis` scans the note, the display name and each field's name and value.
+  it.each([
+    ["note", { note: "I like :tstodon:" }],
+    ["field name", { fields_attributes: [{ name: ":tstodon:", value: "yes" }] }],
+    ["field value", { fields_attributes: [{ name: "Likes", value: ":tstodon:" }] }],
+  ])("exposes emojis used in a profile's %s", async (where, profile) => {
+    const email = `emoji-profile-${where.replace(" ", "-")}@example.com`;
+    const updated = await json("/api/v1/accounts/update_credentials", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ display_name: "Plain", ...profile }),
+    });
+    expect(updated.status).toBe(200);
+    const Account = z.object({ id: z.string(), emojis: z.array(EmojiSchema) });
+    const account = read(Account, updated.body);
+    expect(account.emojis.map((emoji) => emoji.shortcode)).toEqual(["tstodon"]);
+
+    const shown = read(Account, (await json(`/api/v1/accounts/${account.id}`)).body);
+    expect(shown.emojis.map((emoji) => emoji.shortcode)).toEqual(["tstodon"]);
+  });
 });

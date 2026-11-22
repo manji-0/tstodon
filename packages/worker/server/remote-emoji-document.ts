@@ -2,6 +2,7 @@ import type { ApiCustomEmojiJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { IsoInstant, type RemoteEmoji, RemoteEmojiSchema } from "@tstodon/domain";
 import { z } from "zod";
+import { scannedShortcodes } from "./emoji";
 import { httpUrl } from "./sanitize-html";
 
 const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
@@ -76,27 +77,14 @@ export const declaredEmojis = (
   return emojis;
 };
 
-/** The shortcodes `texts` write between colons. */
-const shortcodesIn = (texts: ReadonlyArray<string>): ReadonlyArray<string> =>
-  texts.flatMap((text) =>
-    [...text.matchAll(/:([a-zA-Z0-9_]+):/g)].flatMap((match) => (match[1] ? [match[1]] : [])),
-  );
-
 /** The emoji whose `:shortcode:` appears in one of `texts`. */
 export const remoteEmojisInTexts = (
   texts: ReadonlyArray<string>,
   emojis: ReadonlyArray<RemoteEmoji>,
 ): ReadonlyArray<RemoteEmoji> => {
-  const used = new Set(shortcodesIn(texts).map((shortcode) => shortcode.toLowerCase()));
+  const used = new Set(scannedShortcodes(texts).map((shortcode) => shortcode.toLowerCase()));
   return emojis.filter((emoji) => used.has(emoji.shortcode.toLowerCase()));
 };
-
-/**
- * Mastodon's `CustomEmoji::SCAN_RE`: two or more of `[a-zA-Z0-9_]` between
- * colons, with no letter, mark, digit or colon on either side (Onigmo's
- * `[[:alnum:]]` is Letter, Mark and Decimal_Number).
- */
-const SCAN_RE = /(?<=^|[^\p{L}\p{M}\p{Nd}:]):([a-zA-Z0-9_]{2,}):(?=[^\p{L}\p{M}\p{Nd}:]|$)/gu;
 
 /** A document writes far fewer; this only bounds a hostile one. */
 const MAX_UNDECLARED = 50;
@@ -113,10 +101,7 @@ export const undeclaredShortcodes = (
   declared: ReadonlyArray<RemoteEmoji>,
 ): ReadonlyArray<string> => {
   const named = new Set(declared.map((emoji) => emoji.shortcode));
-  const written = [...texts.join(" ").matchAll(SCAN_RE)].flatMap((match) =>
-    match[1] === undefined ? [] : [match[1]],
-  );
-  return [...new Set(written)]
+  return scannedShortcodes(texts)
     .filter((shortcode) => !named.has(shortcode))
     .slice(0, MAX_UNDECLARED);
 };
@@ -133,7 +118,7 @@ export const actorEmojis = (
   raw: unknown,
   texts: ReadonlyArray<string>,
 ): ReadonlyArray<RemoteEmoji> => {
-  const written = new Set(shortcodesIn(texts));
+  const written = new Set(scannedShortcodes(texts));
   return declaredEmojis(raw, (shortcode) => shortcode)
     .filter((emoji) => written.has(emoji.shortcode))
     .slice(0, MAX_ACTOR_EMOJIS);
