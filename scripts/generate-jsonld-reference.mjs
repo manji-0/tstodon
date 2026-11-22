@@ -172,10 +172,20 @@ const documents = {
   },
 };
 
-const own = spawnSync("pnpm", ["exec", "tsx", path("./own-activity-documents.ts")], {
-  encoding: "utf8",
-  maxBuffer: 64 * 1024 * 1024,
-});
+const own = spawnSync(
+  "pnpm",
+  [
+    "exec",
+    "tsx",
+    "--import",
+    path("./worker-module-stubs.mjs"),
+    path("./own-activity-documents.ts"),
+  ],
+  {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  },
+);
 if (own.status !== 0) {
   process.stderr.write(own.stderr);
   process.exit(own.status ?? 1);

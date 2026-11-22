@@ -83,9 +83,15 @@ export const OWN_ACTIVITIES: Readonly<Record<string, Readonly<Record<string, unk
         },
         { type: "Hashtag", href: "https://tstodon.example/tags/tag", name: "#tag" },
         {
+          id: "https://tstodon.example/emojis/1",
           type: "Emoji",
           name: ":blob:",
-          icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+          updated: "2026-01-02T03:04:05Z",
+          icon: {
+            type: "Image",
+            mediaType: "image/png",
+            url: "https://media.tstodon.example/emoji/1.png",
+          },
         },
       ],
       interactionPolicy: {
@@ -135,9 +141,15 @@ export const OWN_ACTIVITIES: Readonly<Record<string, Readonly<Record<string, unk
       attachment: [],
       tag: [
         {
+          id: "https://tstodon.example/emojis/1",
           type: "Emoji",
           name: ":blob:",
-          icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+          updated: "2026-01-02T03:04:05Z",
+          icon: {
+            type: "Image",
+            mediaType: "image/png",
+            url: "https://media.tstodon.example/emoji/1.png",
+          },
         },
       ],
       interactionPolicy: {
@@ -358,9 +370,15 @@ export const OWN_ACTIVITIES: Readonly<Record<string, Readonly<Record<string, unk
       },
       tag: [
         {
+          id: "https://tstodon.example/emojis/1",
           type: "Emoji",
           name: ":blob:",
-          icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+          updated: "2026-01-02T03:04:05Z",
+          icon: {
+            type: "Image",
+            mediaType: "image/png",
+            url: "https://media.tstodon.example/emoji/1.png",
+          },
         },
       ],
       attachment: [
@@ -535,9 +553,15 @@ export const OWN_ACTIVITIES: Readonly<Record<string, Readonly<Record<string, unk
         },
         { type: "Hashtag", href: "https://tstodon.example/tags/tag", name: "#tag" },
         {
+          id: "https://tstodon.example/emojis/1",
           type: "Emoji",
           name: ":blob:",
-          icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+          updated: "2026-01-02T03:04:05Z",
+          icon: {
+            type: "Image",
+            mediaType: "image/png",
+            url: "https://media.tstodon.example/emoji/1.png",
+          },
         },
       ],
       interactionPolicy: {
@@ -648,9 +672,15 @@ export const MASTODON_READS: Readonly<
           },
           { type: "Hashtag", href: "https://tstodon.example/tags/tag", name: "#tag" },
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         interactionPolicy: {
@@ -781,9 +811,15 @@ export const MASTODON_READS: Readonly<
           },
           { type: "Hashtag", href: "https://tstodon.example/tags/tag", name: "#tag" },
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         interactionPolicy: {
@@ -794,10 +830,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "Pxei04hxlIUYBxgA2/aSlM2Gon43qt9HQQuf+ynqbJcshY5vgJjsqh09Eg4LlbgeoUVQZvOq0WMS/LQ652jb00MpD61XKJu1MSHhbFA9wus1DL/qNIh98sZXwpMQJ0dRx1kc43kd9Zg8Q4rmOio0SEqchL+NSLnkDFEI74cfMJ0OYYcZ19p3yOuJMha5w77qycDnaww4FWDWnyfiJCgUzQmeSpbAQsn4ybnL+waEb5FEUClcaZwCxwypCMQ2nGCFCR1ZXbGPOBg1Ncok0CEB6bl65DT30BqzJK5morPNMyts+/euQ0azNa1RMn/hc41mtrj9iNlLqubMG+Z21/SW9A==",
+          "U708IyuxRaHxjoWvcwJ5YewonGSwvX+soBwJQg3JZL0K+7fDyOCoW5KatMHPgrCB5BEmJGfD27srm6zKC6qLVvG/qRygy9qwfLe8sCqycGF67U8NIhc2PQ7s6cMcNrCzsU2dMexkJum/+zier+c2T6vIi40r+OxdzLF62zESYKbz5ud7V+wR0/CS+RDYbqcMNudESKt9+LHV72mxkyP+EKhxNrlD4S4Cj8/5ovb6qlOenG2wdvItF4JJFHOZ0xVgevy6P0pJXR1gjUba6NAP73c/YMfnFbPdbsm6B3PCMcC6jOMTiZztQnrEZD7HbC6rGw9CStD9W5+t3BwBh6xwbA==",
       },
     },
     verified: true,
@@ -830,9 +866,15 @@ export const MASTODON_READS: Readonly<
         attachment: [],
         tag: [
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         interactionPolicy: {
@@ -936,9 +978,15 @@ export const MASTODON_READS: Readonly<
         attachment: [],
         tag: [
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         interactionPolicy: {
@@ -955,10 +1003,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "QR4gRupq07xC0Gt95kFGtxYLQibQj+RLEdRMEaLMzZWt14RFHJ6vNt3b4s/9Jb4Ou/txCB9qtf4tXLwkdGUMe77Esr/lwdEuWuu+tvGDAPUmq85gqN+OSkIbYhWmEK5XNOFhphGX5endI1l0fr2WLe0Sjy5br/y4xGFg2vlj8kYd/WiSbI57piD2e6PZ818E+iC0uEo5kAfhIkCZoOnJl7Cwe7NjH/bF00rcL/EJUWClEqfxAwv0fjzWNvsOctK8WTpdO5jk+jhOSW1bUL0jCfMn0ovN6cCJnzkyD3B6LdSy5pJaZMVVFkoW0c5XF8x3p8mmiMUdGA9PRLA5+k/dcA==",
+          "jDxobsTe5eoyDIFwpmsn5nOxdclrJUsi1f8mxWRAmISIBE5XZGx4WSBXf8huOIHwLK7VUk0JlilI3hT39r5MCreF71lj0xziGlh4HwUjltNso7JKTLVZyO8uiEY8sDc1UI2XDfe24X/3kMouzc+NeSq5/popDgVGV10AUzMOCmOVq12FCJFu5Uy3ZvJnxWO9NqN5KNbT6FgPOFWzM3jQwBhaE7KQFEXOlQkuiWLTZBhWOpONB/jZAvyVMts2DZq5phhaKbDq0XDs5vJ+WbY4TWi5dvj+Yq9FkF3717j/QWKpCDqEs297ePX4Px5EquxC/UBdsCnd+dcC9KUbGEC7KQ==",
       },
     },
     verified: true,
@@ -1098,10 +1146,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "apqjLaLtkNCt4DJW1MEPjbigMapOZ5s3nGh6P9SY6q++toH9YOGC6qenVYOn0qmDpHSxnml5KjoSkjgXdiveE8zBE5Cu+luiMS3DC9LdgDGtaq04Yv6qbvBKUFig024SnEctH9ecpsWAX0t1BHjQFcqP4WUi1t4Rio3FJT27lYOP0n1tAFG/ijnQOYNCNWuYyzWdEmxwbkeT2pSkwfamuFQDmS+Uha7COvqUZvp8Zr/qTa+VKsgttUsGgfYVvhd+eN8sKrajvm/iFNCr5LQ1xv45WzzlWUZHrY+Nl1eKbwKm6VqKMIDRRAiF/DDYEQeNJd7xJcxMvLB7IAW8IZQokw==",
+          "EkN13KW+KWUaqwzff79/OpViL/KE04VB6aKlNR81KbsMCxtiVKaDvVdZx94n6ySGrLCR6yQvaEvK6/aN0kPJjAX+ZjtY3B3XEqxP37qHXVrBsZZxNztcPywf5eYRf8nRPa8ccIWpzen7D1Te8Hx8pMDA7Hd5yR7muY9inIPGIft1pUu0/9dgqI1ccMnrrMqb7wLglamnnKScv7rcrJzB3dwr7h3O2V+YCJqZLlpNvrJTx5t9O16lVJwo/foknVOb4D2ienkkAvDGxWDpRyRTsZwHeeD2pOhF3LglZl7nuu+C7xy6RvYPPnEyCCqp3PdUpSne3Twvk3b6pP6b7Mhptw==",
       },
     },
     verified: true,
@@ -1251,10 +1299,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "Zn2TQLvDEW6HAiOlqmVpy6EC3KZ06HUiW183WuWXLqau3VrbQgf8E/dZbOnEh92+CpksD2ao642oYvHTSjnZWoWsK/U8q2lFi9pNWBwDQr0Z5mTCthcv3mEHQIGJY4Ki+J50WzGE6Mfc/1f7bQmcNcBI4XTrtedBTxWg1Ot4YfK2rrfAZ59Z7E3MKFZnMr5S5IykKd7IpoZF6auBsCO+dI2VuH4/IO2bJRsbSU1RE8S+SJvUB90d2QtyPSyMrxHv6QiU7sFbRWgQnh925ne50dOd9bz4I20QZ2eAfnql5GytISDLOVHAc+mTWeDVKGJoeZxYsuUzAV5FW4EOuGGaMg==",
+          "BwRTiiEFx8gUJEzop8AhxdG3d+MbY+H+XFj/Q46kS+i9sXTmkIoFMGlWy2rcot0JszESz1i8P+T6ZxYw7ByR/TFyYyQddcNrBYiLuSJJkxutqXDbuwOuV63TLatZu4F0Db0YrT+cfSzfWBcDWqIyq/j7b3G1ezHIfvc15KAnD0OoAeSRwiVKHhDWFPBQBf/CQqZnrrQpEWrTEZOts4hd/r43hq2jJiIXTQZoi84JwUyGzuNCK+PQir8U5GbfSWNLDrgtdDESQUgMfGX5i2hl992IZ+7YJxs6UhBrVwzmElWp3N3adR5gJKMBC1J2ufmDrNFvLB9h8ncxM5V1VCcvsQ==",
       },
     },
     verified: true,
@@ -1342,10 +1390,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "O7NY0aRt32W9I2xpd7EXv/Za8tKMVsFPhM/fUnTa8bfgQweyApVqj7/2CiGjx7fLo8tGqY49cKXmX2aiIFzHxL2FiObtHoFfID2SV0GIGkCQjiLGWt8jhuNoDbEOPYlMSKZ8F2SJfH00xvRnukNacwxW39LSlKSRqYyPYsq+LcE2pzDeVKNsd2rSPH8hX7120Qvgsn/wPsJfeHGRnUpSFJPGwGK0FWjSArhNWQDmncaEs9bMJDiky0sni2hMzsboAwhN6gU6byBgx/43tq17GHEP44ecTLQlTxBEONGYNzl1R5/yRndL6/vE+6AJxT+0L2XgIMeqNsoHLkmNawab3w==",
+          "cElQXobEcmre5dAspPKJdA8c8uZFzFHgz9pKbBRUqZxZJGuAqdLCwR2D+E6as3jXyrMOJm0s6xi4Zi9c4OxcLWMYqP/UevQTqeAirNdpZBPw6wLKpdsIDV4r29PSGED9VfZLMYGtSLAkoePY9oo8utbyxwqptbpEn/0Ko5toArFHueLaFQDniB9njS7enqD3AR0Y6BmDIIS5w1OtghGlrNV86FtB01ic3NhJ6YzPmAbsKAJ8nBl3K2K5fsumy/vL/wUVFZCp2wlLn+jWT4MAvLkXauC9me3AM6xozDP8XaW3vSttN549IvZhW+9KgxLfjsoWu7jrCIn2slrCDbPanA==",
       },
     },
     verified: true,
@@ -1433,10 +1481,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "dD1QYNEERQGLaHukQzu6CNlHikoRiBDZrGUuq/KLmyxJAi1EmXF2OXWllbycB/nqh1SFiLwLBSOnzQBKpewrSrvTF1rPKNrTEsYWRYPMpeZx/ajTRh+1PHqSijwmCnf+3/lbvEUIR+q0UXuEO66wJmHQlrMe4kFRSo2JnoBYCCaZ4VVJ07LT5rNVgPyIhZw+q3zTrDmr5gK6UdkhbCKcBQIgndVJrQD8DqSjgMh5eCKF4/1nWk9GGbF/DKc4xcHK6u847ImtkuJct9VS2NkoG+xjNt+5YB0KSFgPupm3NA4ZHmQBCOcGGaJFQar58Lr+j2nbDP3GhWOy+1QU5CZWeg==",
+          "KvR6FL7yVpcsJlUhOldlDpnD0H29EwfsZiloqJcY7e1YuMPkX7GjgucBmF96DV5QC67w6d0UdVglXOd1ErsSgRWsPSkfWkzhNTAZWRsga3wNkfkNRyH38r41aO5OlTN/ZHjyabIjQ2KvNPaC4kbkLrfQHSEiyPiS6aCIpv45094zoJoEnpdKwTUFIO2TSAy/cNHDi0UZDjB+speXCw3LX+/RKkQGCcSz2GV8PG4m6tueiiXoJxhfW5Z64e77um9BHBMD9oAm862Uh5/1Q9OAlT2MIbdV7CxBJf0L6OLj7oKXQauX7qJMFZLy5yz4IRODO5mo8mDot8B/LaATQmw3xA==",
       },
     },
     verified: true,
@@ -1544,10 +1592,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "CfQUqHORijG18SvaVI8wL0xb79qJbcFv7Gry2YPBa5/6vJGb6j5YnMVbvomBFxNYY3RN8gUQn4fsbeSbuSvKqh7z4O04bfuEu4sKWvBGMFa8VbOkyaDFnMne/qqozIjkNmPwwe8OLXzSTAEGx93SYWP96Q01qhVKitViGtrfc49leLkyc9WfXqs48UZ6gzPQIarr35J7qSiz7QQGDM55WJdMNtH2Eo2FqNd69PbnvGX5wStwQBx1RAiH7js5KrWB/ryPBmjm0TV5GxZ749qZwrCiMW2WFVEkdHoupIKXuJq+pNPjWQXh+by76+9b//5mVIrfkDsiv2jG35zOCa+r2g==",
+          "c749jLQz6kaXHP1ci5xiiBjUvvDHRJjvUZuINC+1KK1NRJIos+YWVblD98Q1QSzAQHwaW0A5Vsx2RmUc91CzDhkmnFUcmkh1karUHHGb/DyupH9fOmOIWGk1hME4GNuwGGzB+1sSmf+Mn6j+to8ZZoLQBVqn/pqZVktIsxJ94DTSI1Y2G3oJ9nqL3Yx02nuzOf3Hh7+oETYUYQVrPCInAQAljru25byq4Hlui36U2HlD/N5CcT/+BYbM4ModAKhxSl6a8y29v8damlCqvwv4OSuBRRwBumEh9OfeGsqMUav7dKUmYAhFqiIIdcUJvzECvD7VaPURJ2IqaklhKe9fQA==",
       },
     },
     verified: true,
@@ -1641,10 +1689,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "arevDsKSpTiNm01rKUS0bU7o6OrwjP7BK8txxTlOMFomSnDYDiKgJrxCK44pnip/3V03Qehq3DO4fd/w0UndFEvQy8DeLgrQ6h2PnOi4nR8wa9Wfx93hpZPvKgjd6gDFHExygF+nqstKNoEGsy12DjRs6wu8cFhuTTop8ijXDOBkx1M5Lcisw8roeEW2wxsD8hqQEg9XkhwNrW7aAWcLfVLQTnnDgzoTIlKziwID+88xa0duBBkIv2hUy6fBTJMdC4xla0otykAZfbMXfFGz6Y7wlKeZtslR1jzxsfSD2CFv9K73zYkaMT3vlU3WYhOujgW5dv0bw9GuIixsiBf+5g==",
+          "cW60Zjqje5/bKMgOb1qrIX9rTERNP26C1pucGQI457oKVTSc3jjZbmC+aBipQWT6IrruWoue677lvKfJ+JVNUk6dJHpoGaNGD7f9qYj3AorXwGVR1Q+JT4t1pR20mJDu9ca+RYV3tjrAvjsM5wEKcpTcY4cbI/vARlE7iRtk9x3g0tPgUSvgfKHpViYOOPk8ZX+GNxva42ssO8oAD64ta+VSuCqK8mXc8qMPrZU6N3gSD+9lHQnRxp8Ktb+lZFlu+BMQ/1GP1tVxAiC5JpkKMmMTmC4jOWOg5Wjn0/y3SF+AmBExB9tc37+SKWbZI+7yzQP/fx6op2oA1QgNAfCTJQ==",
       },
     },
     verified: true,
@@ -1684,9 +1732,15 @@ export const MASTODON_READS: Readonly<
         },
         tag: [
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         attachment: [
@@ -1797,9 +1851,15 @@ export const MASTODON_READS: Readonly<
         },
         tag: [
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         attachment: [
@@ -1816,10 +1876,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "dY01ri++jCo3it3Rp9Xjdz5SEGZv/6T9elYEuGPt744nOq6zHhkwJ/vQykSML80pAe/ud07kFgs/X0PBhtIKUvjk41jGZ6pp9jPWJAcvUPxZrmqtzvU2LRmQL7mo3JbMb1SuyjheHGH7tuQIXvaq4AjcbRvdHG0PBOcvEMG31PUtzhOoxXOqsUxqzxse9XP7Gwyf0jZMayYM1cxxL3klPYVqXX5Qi3a7NCoQDDGvpXeZtSKVWConLJ9tOV/f31lPWRYpdleyoGLkIcrvyNz6uH97xcYWpx82UDmjk9qyli/7DhAj5Tf0I6umiT3ProWh9vHjxFzP8L6rb1TRhIAfVg==",
+          "fS+nQvPmYf0k75uzqE4s9ae90+LMNNXzJeVfCP+lTD5TfAck620i8sXs3cUHngDTUQBu+F5fQ5Z9iPKuE71441WgKCO6t/38/LVycy/8yN+iRcpXzx/P404EGqu4Ozi276PekhgP+P0SJADx662VfRvqVC0p5VRGw20uNhCswVUPhovlr4AwfEWmapKR+A3SN9RfeFUJVxd2MSgyR8wO+TLC4sDwntRz/lSmYV5yldvBngObD4V5fuJ7PDCS+iitevEcwLOIYQ1DOpPZWf5Im/ckVZeXdsk6XFuiLA1KJOF+eMQWOn49hOZ5MXKj+7elLQB9Nf8f/w7Ha4Q+PndeFQ==",
       },
     },
     verified: true,
@@ -1959,10 +2019,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "MRoRiTxKA/LqRAFLs+ME+alk7GsMpPph+QRr7hgBUpfHVOXZdRpossq1TtXF+/0QYu00QKq9QXS/hNbDsW4jUIMsBzEbEKyExxGqUYckLSoz5uZu54yogKlUqtKqNKI9UZQyUug85yRHip94aBhmyZqivDclwv2/0pDBzJU9wp2Ax9cTMON15mUtmcalHcqDuFG/Zox5BU63nm97jbe/emdH76dyO7oLqu4lh9+0urgj+oolxphFaQayKFCCNkGrjup9t+bkRa8ImqY778AAFq/59HyobRp65dT6bVHFQmQr8bhuIk0olULICML7WX8GHjgDb8QI/9Mek1IwCgBHdA==",
+          "aCmyP+21md9O8UQI372aOqD9b7W8eoSuvW/7UrHUgjIiTfScJ59qyI9kZ4mxlsxbinbM7cJi2Y0ZoP0OBaq2Psl5yUMgHFd/Dosf4s8KEtzyfu0fWueOvwUBWuncrv5CpgSDZn7L4oJxf3KB0/QwwZSnwVeDMySyAwu0Nl0ZYSy4B3I43VJlpf3IiAeorcpTX3PcdOSqu5lvd9TKQ884CIABixDw/pPGwfheLaoNqRyYnNVxEgvWHsnJc+/dQK7Ib3bJ7AV10Io/6nliMlZOotClVvg889XXXi1nL9lnUvpnPwwC7jhM11KwoSR2rPAZqx9uyP2BfdXqZHTwouHuhg==",
       },
     },
     verified: true,
@@ -2046,10 +2106,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "MnPqy+bjwpOHy+juaQUZcKi8TKHOTV9Uvhl8iUfDA19X8VW/+8lfAu+LgHZgCT6Qw5j1VTksH2oxpiaOytVcddbfZ0zMNT0wdAwXL4i4Um+i3PX6s/lkC3Kb5UvC70eZpXg0+i3GHr0pSNCk8VYDLiIM592Djsh9Yx2VYztnGaLVK5tOSdwpoWunUIVD/MQTBGD03PPRJAE0VvsCpDplnS+qT/XKK1Qita+INPZeoe2POde8nT3DDZmQGLTvXKh2XBMKUtc+JnTtOsTT0nOkYyu52+8vuah6fXV40/mU1wqPxGrVXJwX9RAiCPa3bwZYv5QT7cf5GJybNFUxyy/toA==",
+          "Ch4HM4ARG7nxHZfBklBYm5M7dCBKCCduoBkX8/wTWcac2rcTOz2w4oOBxhNhaiyoljc7Syh+hviIQPPO71LzsLGesBNlmwjV890AjtMI/v1tJ4Mskc8O1b5NtjbJ8walHLFqvhL/S+CzKVQ1CApzdgJB44/7sMRTiYIQUt4Jy7LAhDBenXbFJpK0ETn5o75kCY0HV1NNK0SKIs/r1Zsp/EB8zy6IjsXVsLPOsujD6m571C5qoUoHlhSc1zfzRkANY4fQpNUodPSpCv0CdJhqazR0Brh1ngR+G/sKUOc1oNufitXpdC4uJ71BouXAv0q9RO9d0a24I4TGrxaK94mZ4Q==",
       },
     },
     verified: true,
@@ -2133,10 +2193,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "dTkkuA+9Urjais/430V+UpafdWY51NMW7ha2mpxQSqZvXP/vhGjlEa3gI+xZGuv0JmybUDi0UBdL1dPjlORymtdIqKjJ7TLMpGn6cOWaZEYyalkBV+X5RqDNXY+81cFQxzN8iLbukuzPtGhyISGVGY1ztmIVrOhA2rRkeBwfI9L/esVN1m1Y1VMR4XV1ysplnTimzIJTd0OOyupqivAunx/jjwq3d1ndx/61FsThsrzmeVV7VbJ4Ml08AsdAslzYAOyNkkeZofIBjSnzA/1Q9FpQenOSKvo618pzkTCiPjzQE7thTE+c6kwO1uSaLv1WJZznUfSOBHhh6Rt8cHFEYg==",
+          "WelxuWNUyquo5cJ5l7EUkHfwR4W4heJoFqpIS8uflXsYiDAe30CfH1FmIJyRzmrMbCvVdNfaH+rFMEFyOxPhGLQFA3qCIw9veVCCmsdUcAVyRqLcLlk3KiMm1xTi8J8C/HXJZtr8Xi9kae21trtlXj6oEa8bYYs1TZNebZ9SM4UGeXRituHrMu4EGZGc5s7heTfpgJfRHSfVCdcZjuxMGE7dM9dIBzbq78CJu/kEefmgEBG4fv2V4JY/JKO28Ajv5queaO4R10zz4BFkcccHk/G8q8RckSpU7JmQCX1eHB/PAxKBDiyeY/nHNwCi4GLXudBD4fyniblrsVBGRBQiJA==",
       },
     },
     verified: true,
@@ -2220,10 +2280,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "PvAXPUAOddQi+lSybqgJ84jP1n1/O1zucDGLBgxcoUFTXXrat81D60UjEze1IRRBReF3SwUjzxb6O2G2JvPG74ngCeQNB3+z/Q+r2JqLc+ZiOpnMW8XnmeSB1TD5Lppf5bzBkzq1UAByGBQQHTHS3zJZB6OrsIacgGCT9BkwGbupnm97MmVDwh0OOY7py3Z97QVlpnd3X1+lHGYAtwwCZ57TXu+H9XO4gG2LkOg2ZymuzLgAFtIvT6fIr53k9qI1gV6/ilZ6jSTfojFzb1psTxPPhFvlk3ucAbcZgsJSZ7HXwieJrONWwNFsMMcpLUZcz6/5GcZBclWJIbwbxwV9Yg==",
+          "B3sYwF0bj0t+nYiHthqaUEDKAto4bcMTwNFsRlNnE1OOY62AVxg3FcGweoqxSRjIVmWB8k2hPOp5gXW1ZMSU4pzxwKC1UCnskwOxo4886EPQrkO87ZjPNQLr7P70SKCPUuEpmzOGzZFl/0uiIxjD2To6abNLgtkCROR516RlBbibdcTcEz1vv/jZ+aQ9VrL2/bQR5qJL+4BdO/I77df46HWQQcMXwnDwiHoqe44aO2PrDIkFU67xYx7MLPdDwdpdSJz1unfwaWtXamVMQGTX1PVh7vOrDPTOmweJIrtC71Xb0o+raC1hblxCygQ+uNXwvOohcNIPe6olyNNvEQLQ9A==",
       },
     },
     verified: true,
@@ -2290,9 +2350,15 @@ export const MASTODON_READS: Readonly<
           },
           { type: "Hashtag", href: "https://tstodon.example/tags/tag", name: "#tag" },
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         interactionPolicy: {
@@ -2424,9 +2490,15 @@ export const MASTODON_READS: Readonly<
           },
           { type: "Hashtag", href: "https://tstodon.example/tags/tag", name: "#tag" },
           {
+            id: "https://tstodon.example/emojis/1",
             type: "Emoji",
             name: ":blob:",
-            icon: { type: "Image", url: "https://media.tstodon.example/emoji/1.png" },
+            updated: "2026-01-02T03:04:05Z",
+            icon: {
+              type: "Image",
+              mediaType: "image/png",
+              url: "https://media.tstodon.example/emoji/1.png",
+            },
           },
         ],
         interactionPolicy: {
@@ -2437,10 +2509,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "eEOtWaVHm3ZLzpYaeuZMt5zWNGMepXwdnkAa/hjgrY3o5824RLO2UqcbPy/IpFyrBiBfwJXC4551TKo7/CCuOvwpGYOlclONF8MlvMDLFKbl2CMKpy4hAOfdxyLLzcworqVefB0NrF9pGRfT5/4puNdj5qLBvO7Co6xuRD1WRFtb5Ugs03AHLRCO5N9x8Zr538EVrvCKkz8+Odq1+hTjLjUm5hItAqPlUEfGSu4k0j7I3QejJ4kd8ospLymB69Q/mRqD7IQ4MiEX/8vRCDHrXOomy6eRChMiiL2TuwbqUDxdZ+vToBaMub/617/rsM0mownxj60/q2bmQ4yqt4o18Q==",
+          "L6Fo53I61chK4hFCR7J+o0kK+pp+wUEdNVnluaKYSEDfI8PiXt9G2n2UTv/1eXkWYqeNX5yiTMW1X/yZU3P1rpYNVY4crn9SzuIRPtAxtvGavqpRWb5C9AZQ+IlYXODCXJwtOA4hzyplNguM+TmWYbcaBEbv9rbasPMdGMI+OE/9Vz465sQLmwmZSnkw1M2c1jSuL8t8RohyaAyIUfL7GalM6+xMBTWQpOyNd0hneOU+D8iIVZaTIPeZotUBsGX5IB1uZ5+WJV38fzFKAvcol6LgYuvTA4r7eabx9vCjKTpVgTa5CZyf+ruOMV/GKPI1FT0FNIhANxgT5eezlOZwpg==",
       },
     },
     verified: true,
@@ -2538,10 +2610,10 @@ export const MASTODON_READS: Readonly<
       signature: {
         type: "RsaSignature2017",
         creator: "https://tstodon.example/users/alice#main-key",
-        created: "2026-11-19T10:05:42Z",
-        expires: "2026-11-21T10:05:42Z",
+        created: "2026-11-22T18:57:12Z",
+        expires: "2026-11-24T18:57:12Z",
         signatureValue:
-          "awgcztGhjKPpC4wiOBWvNR3V3GkPQnd6ZMN7IE3c14TKv6W8tFtLRkal1VL863hDMq7JcitFyJ2AHrLcPLMLbNFFD3/CtNDsHVUBZzKTmPZ1ZY+h0KOYGvdELGRaiz1CK4pD7B1ySkVWUwfTdyeugWGQwCfZ4MS35hAUycgWhiAbsIZseufP9d8xrEf/w0WhLzO9hDvU2PgXWCy7wfAwUUtc6xIQPndPfZe3O2HV82L2Asl9AURgriMjkw129KfK0A/Qc6rw1m3QQHP72xezI3yLj9ltPWzoYHHN665YAI9FOiYUcUpCkJzFl03y45dgJ1qTU8NEhd77Kgc2k3RUtA==",
+          "am9VteotqaJw5yycCUOkrJQiFCzDxf4s7z4cbINcyb6e+gjvwguFImLAknX03vosWr2y+BpEAc6tcrHMo185ZFNsuEPSTfADSJx8dWtjnkkX1P+NyT5yuWNTAs0lMg8zq14iyYrMklwRpN3UaoC9Qhiq8KQMBSkDai2zB/dAfSzqY7MLq+bJPN3sxFdt2Wis1+iqEfsj3PkKqt0wLSWed5NN0HcRWn9wGxoC4HTwgqgUHkPDjcHKYYzY3y/B6dvEDuCbom6MD3wVE9+5vHKotf2YYmMeouK4tmHZDJWZOdQerMuuO+HMMtjKbPgre436Lk4YpW4tgswcDoKp6pbUlA==",
       },
     },
     verified: true,

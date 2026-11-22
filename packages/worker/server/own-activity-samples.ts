@@ -68,7 +68,12 @@ const blob: CustomEmoji = {
   url: "https://media.tstodon.example/emoji/1.png",
   static_url: "https://media.tstodon.example/emoji/1.png",
   visible_in_picker: true,
-  source: { kind: "Configured" },
+  source: {
+    kind: "Uploaded",
+    id: "1",
+    updatedAt: "2026-01-02T03:04:05Z",
+    contentType: "image/png",
+  },
 };
 
 const note = (fields: Readonly<Record<string, unknown>>): LocalNote => {
