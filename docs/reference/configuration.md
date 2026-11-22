@@ -109,6 +109,12 @@ Sizes are shown in binary units with three significant digits, as Mastodon's `nu
 | Worker `/api/*`, `/.well-known/*`, `/nodeinfo/*`                              | `Access-Control-Allow-Origin: *` for any origin, never `Access-Control-Allow-Credentials` (as Mastodon's `origins '*'`; cookies are not sent, so the web session and Access stay unreachable cross-origin). Allows `Authorization`, `Content-Type`, `Accept`, `Idempotency-Key`; exposes `Link`, `Mastodon-Async-Refresh`, `X-Request-Id` and `X-RateLimit-Limit` / `-Remaining` / `-Reset`. Also applies to `/oauth/token` and `/oauth/revoke`. |
 | Production R2 custom domain                                                   | A bucket CORS policy: `infra/cloudflare` sets it with the custom domain (`media_hostname`; see the [infra README](../../infra/cloudflare/README.md#media-hostname)). Worker CORS does not cover R2 hostnames.                                                                                                                                                                                                                                    |
 
+## Active users
+
+`USER_ACTIVE_DAYS` is Mastodon's variable of the same name: how many days after a local user's last sign-in the user still counts as active (`User::ACTIVE_DURATION`). It defaults to `7`. A value that is not a whole number counts as unset. Only an active follower gets the `status` notification ("notify me when this account posts") and hears a followed account's posts, edits and deletes on an open `user` or `list` stream, as Mastodon's fan-out reads `followers_for_local_distribution`. The home timeline itself is read when it is asked for, so it shows the same posts either way.
+
+The sign-in time is `accounts.current_sign_in_at` (migration 0172), Mastodon's `users.current_sign_in_at`. An authenticated request moves it to the request's time when it is unset or more than 24 hours old (`UserTrackingConcern`). A new Cloudflare Access login moves it to the login's time (`update_sign_in!`). A streaming connection does not move it, because Mastodon's streaming server is not part of Rails. A user counts as active while that time is within `USER_ACTIVE_DAYS` of now.
+
 ## Outbox dead-letter queue
 
 <!-- constrained-by ../operations/runbook.md#dead-lettered-jobs -->

@@ -16,6 +16,7 @@ import { recordNoteEmojis } from "./remote-emoji-refresh";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
+import { signedInRecentlySince } from "./account-activity";
 import { nowInstant } from "./clock";
 import { readableRow, type RepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -439,6 +440,7 @@ const notifiedPage = async (
     env.DB,
     status.actorUri,
     status.id,
+    signedInRecentlySince(env),
     afterFollowId,
     NOTIFYING_FOLLOWER_PAGE_SIZE,
   );

@@ -8,16 +8,16 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  * @param now
  * @param statusId
- * @param activeSinceDay
+ * @param activeSince
  * @param followerIdsJson
  */
 export const listNotifyingFollowersAmong = $runtime.makeTypedQueryFactory(
-  "SELECT f.follower_account_id, f.languages_json FROM follows f\nWHERE f.follower_account_id IN (SELECT value FROM json_each($5))\nAND +f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Accepted' AND f.notify != 0\nAND EXISTS (\nSELECT 1 FROM account_activity_days d\nWHERE d.account_id = f.follower_account_id AND d.day >= $4\n)\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND +m.target_account_id = $1\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\nAND NOT EXISTS (\nSELECT 1 FROM status_mentions sm\nWHERE sm.status_id = $3 AND sm.silent = 0\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.follower_account_id AND +b.target_account_id = sm.account_id\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND +m.target_account_id = sm.account_id\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)\nAND NOT EXISTS (\nSELECT 1 FROM status_remote_mentions sm\nWHERE sm.status_id = $3 AND sm.silent = 0\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.follower_account_id AND b.target_actor_uri = sm.actor_uri\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND m.target_actor_uri = sm.actor_uri\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)",
+  "SELECT f.follower_account_id, f.languages_json FROM follows f\nWHERE f.follower_account_id IN (SELECT value FROM json_each($5))\nAND +f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Accepted' AND f.notify != 0\nAND EXISTS (\nSELECT 1 FROM accounts a\nWHERE a.id = f.follower_account_id AND a.current_sign_in_at >= $4\n)\nAND NOT EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND +m.target_account_id = $1\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\nAND NOT EXISTS (\nSELECT 1 FROM status_mentions sm\nWHERE sm.status_id = $3 AND sm.silent = 0\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.follower_account_id AND +b.target_account_id = sm.account_id\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND +m.target_account_id = sm.account_id\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)\nAND NOT EXISTS (\nSELECT 1 FROM status_remote_mentions sm\nWHERE sm.status_id = $3 AND sm.silent = 0\nAND (\nEXISTS (\nSELECT 1 FROM blocks b\nWHERE b.blocker_account_id = f.follower_account_id AND b.target_actor_uri = sm.actor_uri\n)\nOR EXISTS (\nSELECT 1 FROM mutes m\nWHERE m.account_id = f.follower_account_id AND m.target_actor_uri = sm.actor_uri\nAND (m.expires_at IS NULL OR m.expires_at > $2)\n)\n)\n)",
 ) as (
   accountId: string,
   now: string,
   statusId: string,
-  activeSinceDay: string,
+  activeSince: string,
   followerIdsJson: string,
 ) => $runtime.TypedSql<listNotifyingFollowersAmong.Parameters, listNotifyingFollowersAmong.Result>;
 
@@ -26,7 +26,7 @@ export namespace listNotifyingFollowersAmong {
     accountId: string,
     now: string,
     statusId: string,
-    activeSinceDay: string,
+    activeSince: string,
     followerIdsJson: string,
   ];
   export type Result = {

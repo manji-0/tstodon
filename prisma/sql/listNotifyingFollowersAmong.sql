@@ -1,7 +1,7 @@
 -- @param {String} $1:accountId
 -- @param {String} $2:now
 -- @param {String} $3:statusId
--- @param {String} $4:activeSinceDay
+-- @param {String} $4:activeSince
 -- @param {String} $5:followerIdsJson
 -- `listNotifyingFollowers` for the followers among `$5` only: a direct
 -- note's `status` notification reaches only the accounts it mentions
@@ -14,8 +14,8 @@ SELECT f.follower_account_id, f.languages_json FROM follows f
 WHERE f.follower_account_id IN (SELECT value FROM json_each($5))
   AND +f.target_account_id = $1 AND f.follower_account_id != $1 AND f.kind = 'Accepted' AND f.notify != 0
   AND EXISTS (
-    SELECT 1 FROM account_activity_days d
-    WHERE d.account_id = f.follower_account_id AND d.day >= $4
+    SELECT 1 FROM accounts a
+    WHERE a.id = f.follower_account_id AND a.current_sign_in_at >= $4
   )
   AND NOT EXISTS (
     SELECT 1 FROM mutes m

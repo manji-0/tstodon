@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "neverthrow";
+import { signedInRecentlySince } from "./account-activity";
 import type { RepositoryError } from "./d1";
 import { announceRemovedBoosts, enqueueRemovedStatusesFanOut } from "./home-fan-out";
 import {
@@ -35,6 +36,7 @@ export const purgeRemoteActorAndAnnounce = async (
   const followers = await listRemoteActorFollowerAccountIds(
     env.DB,
     actorUri,
+    signedInRecentlySince(env),
     PURGE_ANNOUNCED_FOLLOWER_LIMIT,
   );
   const addressed = await listRemoteActorAddressedHomeEntries(

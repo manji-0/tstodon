@@ -3,7 +3,6 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
-import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
 import { type IdCursor, type MaxIdCursor, idCursorFragment } from "./id-cursor";
 import { parseJsonColumn } from "./json-column";
@@ -230,30 +229,25 @@ export const listFollowers = async (
   });
 
 /**
- * A page of the local followers of `accountId` who signed in recently, asked
- * for a notification on every new status, do not mute the account, and do
- * not block or mute an account or actor its note `statusId` mentions: up to
- * `limit` of them, after the follow `afterFollowId` (empty for the first
- * page), in follow id order.
+ * A page of the local followers of `accountId` who signed in at or after
+ * `activeSince` (`User.signed_in_recently`), asked for a notification on
+ * every new status, do not mute the account, and do not block or mute an
+ * account or actor its note `statusId` mentions: up to `limit` of them,
+ * after the follow `afterFollowId` (empty for the first page), in follow id
+ * order.
  */
 export const notifyingFollowersPage = async (
   db: D1Database,
   accountId: string,
   statusId: string,
+  activeSince: string,
   afterFollowId: string,
   limit: number,
 ): Promise<Result<NotifyingFollowerPage, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listNotifyingFollowersSql(
-        accountId,
-        nowIso(),
-        statusId,
-        signedInRecentlySinceDay(),
-        afterFollowId,
-        limit,
-      ),
+      listNotifyingFollowersSql(accountId, nowIso(), statusId, activeSince, afterFollowId, limit),
       NotifyingFollowerRow,
     );
     return {
@@ -273,6 +267,7 @@ export const notifyingFollowersAmong = async (
   db: D1Database,
   accountId: string,
   statusId: string,
+  activeSince: string,
   followerIds: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyArray<NotifyingFollower>, RepositoryError>> =>
   runD1(async () => {
@@ -285,7 +280,7 @@ export const notifyingFollowersAmong = async (
         accountId,
         nowIso(),
         statusId,
-        signedInRecentlySinceDay(),
+        activeSince,
         jsonStringArray(followerIds),
       ),
       NotifyingFollowerAmongRow,

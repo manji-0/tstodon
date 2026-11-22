@@ -10,15 +10,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param afterAccountId
  * @param limit
  * @param entryId
+ * @param activeSince
  */
 export const listHomeFanOutAccounts = $runtime.makeTypedQueryFactory(
-  "SELECT account_id FROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE target_account_id = $1 AND kind = 'Accepted' AND follower_account_id > $3\nUNION\nSELECT account_id FROM outbound_follows\nWHERE actor_uri = $2 AND state = 'Accepted' AND account_id > $3\nUNION\nSELECT account_id FROM followed_tags\nWHERE account_id > $3 AND tag_name IN (\nSELECT tag FROM local_status_tags WHERE status_id = $5\nUNION ALL\nSELECT tag FROM remote_status_tags WHERE status_id = $5\n)\n)\nWHERE EXISTS (\nSELECT 1 FROM stream_subscriptions s\nWHERE s.hub = account_id AND s.stream IN ('user', 'list')\n)\nORDER BY account_id LIMIT $4",
+  "SELECT account_id FROM (\nSELECT follower_account_id AS account_id FROM follows\nWHERE target_account_id = $1 AND kind = 'Accepted' AND follower_account_id > $3\nUNION\nSELECT account_id FROM outbound_follows\nWHERE actor_uri = $2 AND state = 'Accepted' AND account_id > $3\nUNION\nSELECT account_id FROM followed_tags\nWHERE account_id > $3 AND tag_name IN (\nSELECT tag FROM local_status_tags WHERE status_id = $5\nUNION ALL\nSELECT tag FROM remote_status_tags WHERE status_id = $5\n)\n)\nWHERE EXISTS (\nSELECT 1 FROM stream_subscriptions s\nWHERE s.hub = account_id AND s.stream IN ('user', 'list')\n)\nAND EXISTS (\nSELECT 1 FROM accounts a WHERE a.id = account_id AND a.current_sign_in_at >= $6\n)\nORDER BY account_id LIMIT $4",
 ) as (
   accountId: string,
   actorUri: string,
   afterAccountId: string,
   limit: number,
   entryId: string,
+  activeSince: string,
 ) => $runtime.TypedSql<listHomeFanOutAccounts.Parameters, listHomeFanOutAccounts.Result>;
 
 export namespace listHomeFanOutAccounts {
@@ -28,6 +30,7 @@ export namespace listHomeFanOutAccounts {
     afterAccountId: string,
     limit: number,
     entryId: string,
+    activeSince: string,
   ];
   export type Result = {
     account_id: string;

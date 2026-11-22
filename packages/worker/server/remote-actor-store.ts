@@ -962,10 +962,14 @@ export const listRemoteActorAddressedHomeEntries = async (
     return [...entries].map(([statusId, accountIds]) => ({ statusId, accountIds }));
   });
 
-/** Ids of the local accounts that follow the actor, in order, up to `limit`. */
+/**
+ * Ids of the local accounts that follow the actor and signed in at or after
+ * `activeSince` (`followers_for_local_distribution`), in order, up to `limit`.
+ */
 export const listRemoteActorFollowerAccountIds = async (
   db: D1Database,
   actorUri: string,
+  activeSince: string,
   limit: number,
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
@@ -975,7 +979,7 @@ export const listRemoteActorFollowerAccountIds = async (
       const page = await queryTyped(
         db,
         // No entry: no hashtag followers.
-        listHomeFanOutAccountsSql("", actorUri, ids.at(-1) ?? "", size, ""),
+        listHomeFanOutAccountsSql("", actorUri, ids.at(-1) ?? "", size, "", activeSince),
         AccountIdRow,
       );
       ids.push(...page.map((row) => row.account_id));

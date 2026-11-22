@@ -2,7 +2,6 @@ import { type NotifyingFollower, OutboundFollow, type OutboundFollowAnswer } fro
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
-import { signedInRecentlySinceDay } from "./account-activity";
 import { nowIso } from "./clock";
 import { jsonStringArray, type RepositoryError, runD1 } from "./d1";
 import type { FollowOptions } from "./follow-store";
@@ -230,15 +229,17 @@ export type NotifyingFollowerPage = Readonly<{
 
 /**
  * A page of the local accounts following `actorUri` (accepted) that signed
- * in recently, asked for a notification on each new note, do not mute it,
- * and do not block or mute an account or actor its note `statusId` actively
- * mentions: up to `limit` of them, after the follow `afterFollowId` (empty
- * for the first page), in follow id order.
+ * in at or after `activeSince` (`User.signed_in_recently`), asked for a
+ * notification on each new note, do not mute it, and do not block or mute
+ * an account or actor its note `statusId` actively mentions: up to `limit`
+ * of them, after the follow `afterFollowId` (empty for the first page), in
+ * follow id order.
  */
 export const notifyingRemoteFollowersPage = async (
   db: D1Database,
   actorUri: string,
   statusId: string,
+  activeSince: string,
   afterFollowId: string,
   limit: number,
 ): Promise<Result<NotifyingFollowerPage, RepositoryError>> =>
@@ -249,7 +250,7 @@ export const notifyingRemoteFollowersPage = async (
         actorUri,
         nowIso(),
         statusId,
-        signedInRecentlySinceDay(),
+        activeSince,
         afterFollowId,
         limit,
       ),

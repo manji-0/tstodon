@@ -254,6 +254,8 @@ export * from "./sql/findAccountNotesOfTargetsJson";
 
 export * from "./sql/findAccountProfile";
 
+export * from "./sql/findAccountSignIn";
+
 export * from "./sql/findAccountsByIdsJson";
 
 export * from "./sql/findAccountsByUsernamesJson";
@@ -1005,6 +1007,8 @@ export * from "./sql/sumAccountMediaBytes";
 export * from "./sql/sumStoredMediaBytes";
 
 export * from "./sql/summarizeNotificationGroups";
+
+export * from "./sql/touchAccountSignIn";
 
 export * from "./sql/trimRemoteActorPins";
 

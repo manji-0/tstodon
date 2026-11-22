@@ -1,12 +1,14 @@
 import { z } from "zod";
 import type { Result } from "neverthrow";
-import { jsonStringArray, runD1, type RepositoryError } from "./d1";
+import { jsonStringArray, parseRows, runD1, type RepositoryError } from "./d1";
 import {
   countActiveAccountsSince,
+  findAccountSignIn,
   listAccountIpsByAccountIdsJson,
   listAllAccountIps,
   recordAccountActivityDay,
   recordAccountIp,
+  touchAccountSignIn,
 } from "./generated/prisma/sql";
 import { clientIp } from "./ip-access";
 import { queryTyped, runTypedBatch } from "./typed-sql";
@@ -16,11 +18,13 @@ import { queryTyped, runTypedBatch } from "./typed-sql";
  * made an authenticated request, for the `active_users` measure and the
  * retention cohorts, and the addresses it used, for `Admin::Account#ips`
  * and the admin `ip` filter. Mastodon keeps the first in Redis and the
- * second in `user_ips`.
+ * second in `user_ips`. Also the account's sign-in time (migration 0172),
+ * Mastodon's `current_sign_in_at`.
  *
- * Each (account, day, address) is written at most once per isolate, so an
- * active account costs one small batch per isolate per day, not a write per
- * request. A failed write is dropped: tracking never fails the request.
+ * Each (account, day, address) is written at most once per isolate, and the
+ * sign-in time only when it is due, so an active account costs one small
+ * batch per isolate per day, not a write per request. A failed write is
+ * dropped: tracking never fails the request.
  */
 
 const MAX_REMEMBERED = 10_000;
@@ -32,42 +36,106 @@ const utcDay = (now: Date): string => now.toISOString().slice(0, 10);
 
 /**
  * How long a user counts as signed in recently, Mastodon's
- * `User::ACTIVE_DURATION` (`USER_ACTIVE_DAYS`, 7 by default).
+ * `User::ACTIVE_DURATION`, unless the `USER_ACTIVE_DAYS` var sets it.
  */
-const ACTIVE_DAYS = 7;
+const DEFAULT_USER_ACTIVE_DAYS = 7;
 
 /**
- * The first UTC day an account must have made an authenticated request on
- * to count as signed in recently (`User.signed_in_recently`). Mastodon
- * compares `current_sign_in_at`, which it moves at most once a day, with
- * the instant a week ago; this counts that whole day.
+ * The earliest sign-in time that counts as signed in recently
+ * (`User.signed_in_recently`): `USER_ACTIVE_DAYS` (a whole number of days)
+ * before `now`.
  */
-export const signedInRecentlySinceDay = (now: Date = new Date()): string =>
-  utcDay(new Date(now.getTime() - ACTIVE_DAYS * DAY_MS));
+export const signedInRecentlySince = (
+  env: Readonly<{ USER_ACTIVE_DAYS?: string }>,
+  now: Date = new Date(),
+): string => {
+  const raw = (env.USER_ACTIVE_DAYS ?? "").trim();
+  const days = /^\d+$/.test(raw) ? Number(raw) : DEFAULT_USER_ACTIVE_DAYS;
+  return new Date(now.getTime() - days * DAY_MS).toISOString();
+};
 
+/**
+ * Mastodon's `UserTrackingConcern::SIGN_IN_UPDATE_FREQUENCY`: a request
+ * moves the sign-in time only when it is older than this.
+ */
+const SIGN_IN_UPDATE_FREQUENCY_MS = DAY_MS;
+
+/**
+ * Each account's sign-in time (epoch ms) as this isolate last read it. The
+ * stored time only moves forward, so one read earlier never hides a due
+ * update.
+ */
+const signIns = new Map<string, number>();
+
+/**
+ * Mastodon's streaming server is not Rails, so a stream moves no sign-in
+ * time: `UserTrackingConcern` runs on Rails requests only.
+ */
+const isStreaming = (request: Request): boolean => {
+  const path = new URL(request.url).pathname;
+  return path === "/api/v1/streaming" || path.startsWith("/api/v1/streaming/");
+};
+
+const signInDue = (accountId: string, now: Date, signedInAt: Date | undefined): boolean => {
+  const known = signIns.get(accountId);
+  return (
+    known === undefined ||
+    known < now.getTime() - SIGN_IN_UPDATE_FREQUENCY_MS ||
+    (signedInAt !== undefined && signedInAt.getTime() > known)
+  );
+};
+
+const SignInRow = z.object({ current_sign_in_at: z.string().nullable() });
+
+/**
+ * Record an authenticated request by `accountId` at `now`. `signedInAt` is
+ * when the browser session's sign-in happened, for a request that has one.
+ */
 export const recordAccountActivity = async (
   db: D1Database,
   accountId: string,
   request: Request,
   now: Date = new Date(),
+  signedInAt?: Date,
 ): Promise<void> => {
   const day = utcDay(now);
   const ip = clientIp(request);
   const key = `${day}|${accountId}|${ip ?? ""}`;
-  if (remembered.has(key)) {
+  const dayDue = !remembered.has(key);
+  const signInWanted = !isStreaming(request) && signInDue(accountId, now, signedInAt);
+  if (!dayDue && !signInWanted) {
     return;
   }
   if (remembered.size >= MAX_REMEMBERED) {
     remembered.clear();
   }
+  if (signIns.size >= MAX_REMEMBERED) {
+    signIns.clear();
+  }
   remembered.add(key);
   const statements = [
-    recordAccountActivityDay(accountId, day),
-    ...(ip === undefined ? [] : [recordAccountIp(accountId, ip, now.toISOString())]),
+    ...(dayDue ? [recordAccountActivityDay(accountId, day)] : []),
+    ...(dayDue && ip !== undefined ? [recordAccountIp(accountId, ip, now.toISOString())] : []),
+    ...(signInWanted
+      ? [
+          touchAccountSignIn(
+            accountId,
+            now.toISOString(),
+            new Date(now.getTime() - SIGN_IN_UPDATE_FREQUENCY_MS).toISOString(),
+            signedInAt?.toISOString() ?? "",
+          ),
+          findAccountSignIn(accountId),
+        ]
+      : []),
   ];
   const written = await runTypedBatch(db, statements);
   if (written.isErr()) {
     remembered.delete(key);
+    return;
+  }
+  const [stored] = signInWanted ? parseRows(SignInRow, written.value.at(-1)?.results) : [];
+  if (stored?.current_sign_in_at) {
+    signIns.set(accountId, Date.parse(stored.current_sign_in_at));
   }
 };
 
