@@ -425,18 +425,29 @@ describe("Update of the Question after votes", () => {
     await handleVote(recording, await remoteActor("job-b"), poll, "dogs");
     await handleVote(recording, await remoteActor("job-c"), poll, "dogs");
     expect(await queuedAt(poll)).toEqual(expect.any(String));
+    const ownReply = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("job-author@example.com")),
+      },
+      body: JSON.stringify({ status: "my own reply", in_reply_to_id: poll.statusId }),
+    });
+    const ownReplyUri = read(z.object({ uri: z.string() }), ownReply.body).uri;
 
     await runUpdateJob(poll);
 
     expect(await queuedAt(poll)).toBeNull();
     const federated = await updates(poll);
     expect(federated).toHaveLength(1);
+    // As Mastodon's `UpdateNoteSerializer`, with the replies as they are now.
     expect(federated[0]).toMatchObject({
       type: "Update",
       actor: actorUrl(poll),
       object: {
         id: poll.statusUri,
         type: "Question",
+        replies: { first: { items: [ownReplyUri] } },
         votersCount: 3,
         oneOf: [
           { name: "cats", replies: { totalItems: 1 } },

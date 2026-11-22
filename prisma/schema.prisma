@@ -860,7 +860,7 @@ model remote_statuses {
   @@index([actor_uri, published_at(sort: Desc)], map: "idx_remote_statuses_actor_published")
   @@index([visibility, published_at(sort: Desc)], map: "idx_remote_statuses_visibility_published")
   @@index([card_url, id], map: "idx_remote_statuses_card_url")
-  @@index([in_reply_to_uri], map: "idx_remote_statuses_in_reply_to_uri")
+  @@index([in_reply_to_uri, id], map: "idx_remote_statuses_in_reply_to_uri_id")
   @@index([card_url, visibility, id], map: "idx_remote_statuses_card_url_visibility")
   @@index([actor_uri, id], map: "idx_remote_statuses_actor_id")
   @@index([visibility, id], map: "idx_remote_statuses_visibility_id")

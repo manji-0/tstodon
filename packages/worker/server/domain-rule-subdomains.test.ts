@@ -6,7 +6,7 @@ import { authHeaders } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { mediaRejectedDomains, suspendedDomains } from "./admin-domain-block-store";
 import { admittedInboxes } from "./delivery";
-import { listRemoteNoteReplies, listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
+import { listOtherNoteReplies, listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
 import { listKnownRemoteInboxes } from "./remote-actor-store";
 import { d1PrepareTyped } from "./typed-sql";
 
@@ -196,7 +196,7 @@ describe("an instance suspension of a parent domain", () => {
 
     const { results } = await d1PrepareTyped(
       env.DB,
-      listRemoteNoteReplies(parentUri, "", 40),
+      listOtherNoteReplies("", "", parentUri, "", 40),
     ).all();
     expect(
       z

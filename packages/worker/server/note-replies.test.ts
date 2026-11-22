@@ -13,14 +13,16 @@ import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 import { envWith } from "../test/env-fixture";
 import { remoteActor } from "../test/remote-actor-fixture";
+import { listOtherNoteReplies, listSelfNoteRepliesJson } from "./generated/prisma/sql";
 import { RemoteAccountId } from "./remote-account-id";
 import { getUsersByUsernameStatusesByIdReplies } from "./routes/activitypub";
+import { d1PrepareTyped } from "./typed-sql";
 
 /**
  * INT-4, the `replies` collection of a local note in Mastodon's shape: the
  * note embeds a first page with its author's own replies, and `next` leads
- * to the replies of other local accounts, then to the ones cached from other
- * servers. Only public and unlisted replies are listed.
+ * to the rest of them, then to the replies of every other account, local or
+ * cached from another server. Only public and unlisted replies are listed.
  */
 
 const ORIGIN = "https://example.com";
@@ -70,7 +72,7 @@ const repliesPage = async (uri: string) => {
 };
 
 describe("a local note's replies collection", () => {
-  it("lists the author's replies first, then other local accounts', then remote ones", async () => {
+  it("lists the author's replies first, then every other account's in one id order", async () => {
     const author = "replies-author@example.com";
     const other = "replies-other@example.com";
     const root = await post(author, { status: "a root with replies" });
@@ -85,6 +87,29 @@ describe("a local note's replies collection", () => {
       in_reply_to_id: root.id,
       visibility: "private",
     });
+    const remote = await remoteActor("replier", "replies.example");
+    const remoteReply = async (name: string) => {
+      const uri = `https://replies.example/notes/${name}`;
+      expect(
+        await remote.send({
+          id: `${uri}/activity`,
+          type: "Create",
+          to: [PUBLIC],
+          object: {
+            id: uri,
+            type: "Note",
+            attributedTo: remote.actorUri,
+            content: `<p>${name}</p>`,
+            published: "2024-05-01T00:00:00.000Z",
+            to: [PUBLIC],
+            cc: [],
+            inReplyTo: root.uri,
+          },
+        }),
+      ).toBe(202);
+      return uri;
+    };
+    const earlyRemote = await remoteReply("early-remote-reply");
     const theirs = await post(other, {
       status: "another account's reply",
       in_reply_to_id: root.id,
@@ -95,37 +120,28 @@ describe("a local note's replies collection", () => {
       visibility: "direct",
     });
     await post(other, { status: "a reply to the reply", in_reply_to_id: own.id });
-    const remote = await remoteActor("replier", "replies.example");
-    const remoteReply = `https://replies.example/notes/remote-reply`;
-    expect(
-      await remote.send({
-        id: `${remoteReply}/activity`,
-        type: "Create",
-        to: [PUBLIC],
-        object: {
-          id: remoteReply,
-          type: "Note",
-          attributedTo: remote.actorUri,
-          content: "<p>a remote reply</p>",
-          published: "2024-05-01T00:00:00.000Z",
-          to: [PUBLIC],
-          cc: [],
-          inReplyTo: root.uri,
-        },
-      }),
-    ).toBe(202);
+    const ownChild = await post(author, { status: "my reply to my reply", in_reply_to_id: own.id });
+    const lateRemote = await remoteReply("late-remote-reply");
 
     const collectionUri = `${root.uri}/replies`;
     const { replies } = await noteDocument(root.uri);
+    // As Mastodon's `NoteSerializer#replies`: `next` goes on from the last
+    // of the author's replies it embeds.
     expect(replies).toEqual({
       id: collectionUri,
       type: "Collection",
       first: {
         type: "CollectionPage",
-        next: `${collectionUri}?only_other_accounts=true&page=true`,
+        next: `${collectionUri}?min_id=${ownUnlisted.id}&page=true`,
         partOf: collectionUri,
         items: [own.uri, ownUnlisted.uri],
       },
+    });
+    const afterOwn = await repliesPage(replies.first.next ?? "");
+    expect(afterOwn).toMatchObject({
+      id: `${collectionUri}?min_id=${ownUnlisted.id}&page=true`,
+      items: [],
+      next: `${collectionUri}?only_other_accounts=true&page=true`,
     });
 
     // As Mastodon's `RepliesController`, the served pages embed a local
@@ -149,23 +165,47 @@ describe("a local note's replies collection", () => {
       await noteDocumentBody(own.uri),
       await noteDocumentBody(ownUnlisted.uri),
     ]);
+    // An embedded reply carries the first page of its own replies, as the
+    // note it is.
+    expect(collection.first.items[0]).toMatchObject({
+      replies: {
+        id: `${own.uri}/replies`,
+        first: {
+          items: [ownChild.uri],
+          next: `${own.uri}/replies?min_id=${ownChild.id}&page=true`,
+        },
+      },
+    });
 
-    const others = await repliesPage(replies.first.next ?? "");
+    // Every other account's replies, local or cached from another server, in
+    // one id order, as Mastodon keeps them in one table.
+    const others = await repliesPage(afterOwn.next ?? "");
     expect(others).toMatchObject({
       id: `${collectionUri}?only_other_accounts=true&page=true`,
       type: "CollectionPage",
       partOf: collectionUri,
-      next: `${collectionUri}?only_other_accounts=true&remote=true&page=true`,
     });
-    expect(itemIds(others.items)).toEqual([theirs.uri]);
-    expect(others.items[0]).toMatchObject({ type: "Note", attributedTo: expect.any(String) });
+    expect(others).not.toHaveProperty("next");
+    expect(itemIds(others.items)).toEqual([earlyRemote, theirs.uri, lateRemote]);
+    expect(others.items[1]).toEqual(await noteDocumentBody(theirs.uri));
 
-    const remotes = await repliesPage(others.next ?? "");
-    expect(remotes.items).toEqual([remoteReply]);
-    expect(remotes).not.toHaveProperty("next");
+    const afterTheirs = await repliesPage(
+      `${collectionUri}?min_id=${theirs.id}&only_other_accounts=true&page=true`,
+    );
+    expect(afterTheirs.items).toEqual([lateRemote]);
 
-    const afterFirst = await repliesPage(`${collectionUri}?min_id=${own.id}&page=true`);
+    // `page` is read as Rails casts a boolean.
+    const afterFirst = await repliesPage(`${collectionUri}?min_id=${own.id}&page=yes`);
     expect(itemIds(afterFirst.items)).toEqual([ownUnlisted.uri]);
+
+    // A page's `id` echoes what it was asked with, as `params_slice`; a blank
+    // `min_id` is ignored, as `paginate_by_min_id`.
+    const othersAsked = await repliesPage(`${collectionUri}?only_other_accounts=1&page=true`);
+    expect(othersAsked.id).toBe(`${collectionUri}?only_other_accounts=1&page=true`);
+    expect(itemIds(othersAsked.items)).toEqual([earlyRemote, theirs.uri, lateRemote]);
+    const blankMinId = await repliesPage(`${collectionUri}?min_id=&page=true`);
+    expect(blankMinId.id).toBe(`${collectionUri}?min_id=&page=true`);
+    expect(itemIds(blankMinId.items)).toEqual([own.uri, ownUnlisted.uri]);
   });
 
   it("leaves out the replies of a suspended account", async () => {
@@ -211,6 +251,37 @@ describe("a local note's replies collection", () => {
         replies: {
           id: `${note.uri}/replies`,
           first: { items: [], next: `${note.uri}/replies?only_other_accounts=true&page=true` },
+        },
+      },
+    });
+  });
+
+  it("is carried as it is now in an edit's Update", async () => {
+    const email = "replies-update@example.com";
+    const note = await post(email, { status: "a note to edit" });
+    const reply = await post(email, { status: "my reply", in_reply_to_id: note.id });
+    const edited = await SELF.fetch(`${ORIGIN}/api/v1/statuses/${note.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "an edited note" }),
+    });
+    expect(edited.status).toBe(200);
+    const row = await env.DB.prepare(
+      "SELECT payload_json FROM outbound_activities WHERE kind = 'Update' AND instr(payload_json, ?) > 0",
+    )
+      .bind(note.uri)
+      .first();
+    const update = expectContract(
+      ApActivityDocument,
+      JSON.parse(read(z.object({ payload_json: z.string() }), row).payload_json),
+    );
+    // As Mastodon's `UpdateNoteSerializer`.
+    expect(update).toMatchObject({
+      type: "Update",
+      object: {
+        replies: {
+          id: `${note.uri}/replies`,
+          first: { items: [reply.uri], next: `${note.uri}/replies?min_id=${reply.id}&page=true` },
         },
       },
     });
@@ -314,5 +385,39 @@ describe("the replies collection in secure mode", () => {
     );
     expect(block.status).toBe(200);
     expect((await secure(await blocked.signedGet(`${path}?page=true`))).status).toBe(404);
+  });
+});
+
+describe("the replies queries", () => {
+  const plan = async (typed: { sql: string; values: unknown[] }): Promise<string[]> => {
+    const { results } = await d1PrepareTyped(env.DB, {
+      sql: `EXPLAIN QUERY PLAN ${typed.sql}`,
+      values: typed.values,
+    }).all();
+    return z
+      .array(z.object({ detail: z.string() }))
+      .parse(results)
+      .map((row) => row.detail);
+  };
+  const scans = (details: ReadonlyArray<string>) =>
+    details.filter((detail) => /^SCAN (p|s|r|a|statuses|remote_statuses|accounts)\b/.test(detail));
+
+  it("seeks each note's own replies by parent and id, however many notes", async () => {
+    const details = await plan(listSelfNoteRepliesJson('["1","2"]', "", 5));
+    expect(scans(details)).toEqual([]);
+    expect(details).toContain(
+      "SEARCH r USING INDEX idx_statuses_in_reply_to (in_reply_to_id=? AND id>?)",
+    );
+  });
+
+  it("seeks the other accounts' replies in id order after the last one served", async () => {
+    const details = await plan(listOtherNoteReplies("1", "2", "https://example.com/n/1", "3", 60));
+    expect(scans(details)).toEqual([]);
+    expect(details).toContain(
+      "SEARCH s USING INDEX idx_statuses_in_reply_to (in_reply_to_id=? AND id>?)",
+    );
+    expect(details).toContain(
+      "SEARCH r USING INDEX idx_remote_statuses_in_reply_to_uri_id (in_reply_to_uri=? AND id>?)",
+    );
   });
 });

@@ -6,6 +6,7 @@ import { loadCustomEmojis } from "./custom-emoji-store";
 import { enqueueTargetedActivity } from "./delivery";
 import { loadNoteMentions } from "./mention-resolve";
 import { loadNoteMedia } from "./note-attachments";
+import { loadNotesReplies, repliedNote } from "./note-replies";
 import { loadNotePoll } from "./poll-store";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
@@ -24,15 +25,21 @@ export type NoteObject = Readonly<{
  */
 export type NoteObjectUnreadable = Readonly<{
   kind: "NoteObjectUnreadable";
-  cause: "media" | "quote";
+  cause: "media" | "quote" | "replies";
 }>;
 
-/** The note's ActivityPub object, read from what is stored about it. */
+/**
+ * The note's ActivityPub object for its `activity`, read from what is stored
+ * about it. An `Update` carries the first page of the note's `replies` as it
+ * is now, as Mastodon's `UpdateNoteSerializer`; a `Create` carries it empty,
+ * a new note having no replies yet.
+ */
 export const readNoteObject = async (
   env: Env,
   identity: InstanceIdentity,
   account: LocalAccount,
   note: LocalNote,
+  activity: "Create" | "Update",
 ): Promise<Result<NoteObject, NoteObjectUnreadable>> => {
   const media = await loadNoteMedia(env.DB, identity, note);
   if (media.isErr()) {
@@ -42,12 +49,20 @@ export const readNoteObject = async (
   if (quote.isErr()) {
     return err({ kind: "NoteObjectUnreadable", cause: "quote" });
   }
+  const replies =
+    activity === "Update"
+      ? await loadNotesReplies(env.DB, [repliedNote(identity, account, note.id)])
+      : ok(undefined);
+  if (replies.isErr()) {
+    return err({ kind: "NoteObjectUnreadable", cause: "replies" });
+  }
   return ok({
     quote: quote.value,
     object: noteDocument(identity, account, note, {
       quote: quote.value,
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
+      replies: replies.value?.get(note.id),
       poll: await loadNotePoll(env.DB, note.id),
       media: media.value,
       quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),

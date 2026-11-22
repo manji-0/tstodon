@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: its `ON CONFLICT ... DO UPDATE SET` reads as an UPDATE without WHERE; the backfill only adds counts.)
 -- Counters that triggers keep, so rendering an account or a status reads one
 -- row instead of counting every status, follow, favourite or boost it has.
 -- A missing row counts 0. Each row holds exactly what the counting queries it

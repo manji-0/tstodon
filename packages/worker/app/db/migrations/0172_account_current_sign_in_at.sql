@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: the UPDATEs without WHERE backfill the sign-in time of every account.)
 -- A local account's sign-in time, Mastodon's `users.current_sign_in_at`: set
 -- by a request when it is unset or more than 24 hours old
 -- (`UserTrackingConcern`) and by a fresh sign-in (`update_sign_in!`). The

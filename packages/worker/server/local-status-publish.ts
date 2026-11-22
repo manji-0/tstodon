@@ -350,7 +350,9 @@ export const publishLocalNote = async (
   // The note, its media and its quote are already stored, so a failure to
   // read them back neither federates it without them nor fails it half
   // done: its `Create` is retried later (FED-14).
-  const federated = federates ? await readNoteObject(env, identity, user, note) : undefined;
+  const federated = federates
+    ? await readNoteObject(env, identity, user, note, "Create")
+    : undefined;
   if (federated?.isErr()) {
     console.error(
       JSON.stringify({

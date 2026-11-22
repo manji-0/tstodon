@@ -684,8 +684,6 @@ export * from "./sql/listLocalBoostsOfRemoteObject";
 
 export * from "./sql/listLocalFollowsOfActor";
 
-export * from "./sql/listLocalNoteReplies";
-
 export * from "./sql/listLocalNoteTextsAfter";
 
 export * from "./sql/listLocalThreadAncestors";
@@ -709,6 +707,8 @@ export * from "./sql/listNotifyingFollowers";
 export * from "./sql/listNotifyingFollowersAmong";
 
 export * from "./sql/listNotifyingRemoteFollowers";
+
+export * from "./sql/listOtherNoteReplies";
 
 export * from "./sql/listOutboundActivities";
 
@@ -748,8 +748,6 @@ export * from "./sql/listRemoteFeaturedTags";
 
 export * from "./sql/listRemoteFollowerUrisByPrefix";
 
-export * from "./sql/listRemoteNoteReplies";
-
 export * from "./sql/listRemotePollVotes";
 
 export * from "./sql/listRemotePollVotesForActor";
@@ -771,6 +769,8 @@ export * from "./sql/listRemoteThreadAncestors";
 export * from "./sql/listRemoteThreadLevel";
 
 export * from "./sql/listRestrictedTagNames";
+
+export * from "./sql/listSelfNoteRepliesJson";
 
 export * from "./sql/listSensitizedAccountIds";
 

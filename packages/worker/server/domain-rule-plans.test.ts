@@ -6,7 +6,7 @@ import { DOMAIN_RESTRICTED_ACTORS_SQL } from "./domain-hidden-actors";
 import {
   clearRemoteMediaForDomain,
   listKnownRemoteInboxes,
-  listRemoteNoteReplies,
+  listOtherNoteReplies,
   searchRemoteActors,
 } from "./generated/prisma/sql";
 import { hostKeyRange } from "./host-key";
@@ -37,7 +37,7 @@ describe("statements that apply instance domain rules", () => {
       "the hidden actors of a timeline",
       { sql: `SELECT * FROM ${DOMAIN_RESTRICTED_ACTORS_SQL.replace("?", "$1")}`, values: [""] },
     ],
-    ["a note's replies", listRemoteNoteReplies("https://example.com/notes/1", "", 20)],
+    ["a note's replies", listOtherNoteReplies("1", "2", "https://example.com/notes/1", "", 20)],
     ["account search", searchRemoteActors("bob", "[]", 20, 0)],
   ])("seeks the actors each rule covers by host key in %s", async (_, typed) => {
     const details = await plan(typed);

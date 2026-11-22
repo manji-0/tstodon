@@ -56,7 +56,9 @@ export const announceNoteUpdate = async (
   // goes out with this version.
   const owed = await deferToOwedActivity(env, note.id, editedAt);
   const federated =
-    federate && owed === "None" ? await readNoteObject(env, identity, account, stamped) : undefined;
+    federate && owed === "None"
+      ? await readNoteObject(env, identity, account, stamped, "Update")
+      : undefined;
   // Unknown whether a `Create` is owed: the `Update` is owed instead, which
   // an owed `Create` outranks.
   const cause =
