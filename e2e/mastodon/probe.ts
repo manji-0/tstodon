@@ -48,6 +48,7 @@ import {
   Statuses,
   step,
   StepFailure,
+  fetchWaitingOutRateLimit,
 } from "./sweep.js";
 
 /** Every interaction once, in both directions, between a pair that follows each other. */
@@ -303,7 +304,7 @@ const baseScenarios = async ({ stamp, mona, carol }: Cast): Promise<void> => {
     const copy = await onHome(to, sent.uri);
     await call(from, `/api/v1/statuses/${sent.id}`, Anything, { method: "DELETE" });
     await eventually("the copy is gone", async () => {
-      const response = await fetch(`${to.origin}/api/v1/statuses/${copy.id}`, {
+      const response = await fetchWaitingOutRateLimit(to, `/api/v1/statuses/${copy.id}`, {
         headers: to.headers,
       });
       return response.status === 404 ? true : undefined;

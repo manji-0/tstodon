@@ -58,6 +58,7 @@ import {
   purgeRemoteActorEndorsements as purgeRemoteActorEndorsementsSql,
   purgeRemoteActorMutes as purgeRemoteActorMutesSql,
   purgeRemoteActorNotes as purgeRemoteActorNotesSql,
+  purgeRemoteActorDomainLimits as purgeRemoteActorDomainLimitsSql,
   purgeRemoteActorNotificationDismissals as purgeRemoteActorNotificationDismissalsSql,
   purgeRemoteActorNotifications as purgeRemoteActorNotificationsSql,
   purgeRemoteActorRequestAcceptances as purgeRemoteActorRequestAcceptancesSql,
@@ -885,6 +886,7 @@ export const purgeRemoteActor = async (
     purgeRemoteActorMutesSql(actorUri),
     purgeRemoteActorEndorsementsSql(actorUri),
     purgeRemoteActorNotesSql(actorUri),
+    purgeRemoteActorDomainLimitsSql(actorUri),
     deleteRemoteActorSql(actorUri),
   ]);
   if (batched.isErr()) {

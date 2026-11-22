@@ -15,6 +15,7 @@ import {
   Status,
   Statuses,
   StepFailure,
+  fetchWaitingOutRateLimit,
 } from "./sweep.js";
 
 const QuoteApproval = z.looseObject({
@@ -26,7 +27,7 @@ const QuoteApproval = z.looseObject({
  * on: `refused` when the API does not take the post at all.
  */
 const quoteState = async (quoter: E2eUser, targetId: string, text: string): Promise<string> => {
-  const response = await fetch(`${quoter.origin}/api/v1/statuses`, {
+  const response = await fetchWaitingOutRateLimit(quoter, `/api/v1/statuses`, {
     method: "POST",
     headers: { ...quoter.headers, "Content-Type": "application/json" },
     body: JSON.stringify({ status: text, visibility: "public", quoted_status_id: targetId }),

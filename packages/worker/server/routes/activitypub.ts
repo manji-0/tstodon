@@ -58,6 +58,7 @@ import { type InboxRefusal, recordInboxRefusal } from "../inbox-refusal";
 import { localActorDocument } from "../local-actor";
 import { suspendedDomains } from "../admin-domain-block-store";
 import { getRemoteActorModeration } from "../remote-actor-moderation-store";
+import { listDomainSuspendedActors } from "../domain-block-limits";
 import { signedFetchActor } from "../signed-fetch";
 import {
   authorizedFetchEnabled,
@@ -1061,12 +1062,20 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
       });
       return c.json(FORBIDDEN_DOMAIN, 403);
     }
-    const moderation = await getRemoteActorModeration(c.env.DB, actor.actorUri);
+    const [moderation, domainSuspended] = await Promise.all([
+      getRemoteActorModeration(c.env.DB, actor.actorUri),
+      listDomainSuspendedActors(c.env.DB, [actor.actorUri]),
+    ]);
     if (moderation.isErr()) {
       return jsonRepositoryError(c, moderation.error.message);
     }
+    if (domainSuspended.isErr()) {
+      return jsonRepositoryError(c, domainSuspended.error.message);
+    }
+    // Suspended by an admin, or by a domain suspension made while it was known.
     if (
-      moderation.value.standing.kind === "Suspended" &&
+      (moderation.value.standing.kind === "Suspended" ||
+        domainSuspended.value.has(actor.actorUri)) &&
       !(deletesSigner && actor.actorUri === actorUri)
     ) {
       refuse({ reason: "ActorSuspended", status: 403, actor: actorUri, signer: actor.actorUri });

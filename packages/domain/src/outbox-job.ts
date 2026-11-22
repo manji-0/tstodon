@@ -62,6 +62,36 @@ const ApplyDomainBlockEffectsSchema = z.object({
   domain: Hostname.schema,
 });
 /**
+ * Where recording a block's limits resumes: the host the actors are read by,
+ * their account domain's (`AccountDomain`) and then their URI's (`UriHost`),
+ * and the last actor recorded, by that host's key and the actor's row id.
+ */
+const DomainBlockLimitsCursorSchema = z.object({
+  host: z.union([z.literal("AccountDomain"), z.literal("UriHost")]),
+  afterKey: z.string(),
+  afterRowId: z.number().int(),
+});
+/**
+ * Bring the limitation the instance domain block `domainBlockId` keeps on the
+ * actors cached at or under its domain in line with the block, a page at a
+ * time (self-chaining): while the block silences or suspends, record each
+ * actor after `cursor`, as Mastodon's `BlockDomainService` sets
+ * `silenced_at` / `suspended_at`; once it is a `noop` or removed, delete the
+ * rows it left. The block's current severity is what the rows mean, so a
+ * change takes effect before the job runs.
+ */
+const RecordDomainBlockLimitsSchema = z.object({
+  kind: z.literal("RecordDomainBlockLimits"),
+  domainBlockId: z.string().min(1),
+  cursor: DomainBlockLimitsCursorSchema,
+});
+/**
+ * Queue the deletion of the rows each removed or `noop` block left in
+ * `remote_actor_domain_limits`, for a `RecordDomainBlockLimits` chain that
+ * stopped before it finished (hourly cron).
+ */
+const ResumeLiftedDomainBlockLimitsSchema = unitKind("ResumeLiftedDomainBlockLimits");
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -510,6 +540,8 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   FoldTagNamesSchema,
   AsciiDomainNamesSchema,
   ApplyDomainBlockEffectsSchema,
+  RecordDomainBlockLimitsSchema,
+  ResumeLiftedDomainBlockLimitsSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

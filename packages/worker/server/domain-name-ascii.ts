@@ -71,6 +71,11 @@ const STRICTER_SEVERITY = `CASE
  * one parameter.
  */
 const RENAMES: ReadonlyArray<string> = [
+  // A merged block goes, and the actors it limited with it (migration 0169):
+  // the kept block's own rows limit them, once `ApplyDomainBlockEffects` runs.
+  `DELETE FROM remote_actor_domain_limits WHERE domain_block_id IN (
+     SELECT o.id FROM domain_blocks o WHERE o.domain IN ${OLD_NAMES} AND EXISTS (
+       SELECT 1 FROM json_each(?1) e JOIN domain_blocks a ON a.domain = ${NEW} WHERE ${OLD} = o.domain))`,
   // The strictest of the two rules; the kept row's comments, else the old one's.
   ...renameKeyed(
     "domain_blocks",

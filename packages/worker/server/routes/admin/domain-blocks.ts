@@ -6,9 +6,9 @@ import {
   changeDomainBlock,
   createDomainBlock,
   type DomainBlockInvalidity,
+  removeDomainBlock,
 } from "../../admin-actions";
 import {
-  deleteDomainBlock,
   domainBlockDocument,
   type DomainBlockSeverity,
   DomainBlockSeveritySchema,
@@ -215,7 +215,7 @@ export const deleteV1AdminDomainBlocksById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const removed = await deleteDomainBlock(c.env.DB, c.req.param("id") ?? "");
+  const removed = await removeDomainBlock(c.env, c.req.param("id") ?? "");
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);
   }

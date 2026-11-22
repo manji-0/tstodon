@@ -3,6 +3,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { checkSignatureStrength, parseRequestSignature, verifySignedFetch } from "./http-signature";
 import { resolveKeyOwner } from "./remote-actor-fetch";
 import { getRemoteActorModeration } from "./remote-actor-moderation-store";
+import { listDomainSuspendedActors } from "./domain-block-limits";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
 
@@ -76,11 +77,14 @@ const verify = async (
   if (!(await verifySignedFetch(request, parsed, key))) {
     return { kind: "Invalid" };
   }
-  const moderation = await getRemoteActorModeration(env.DB, actor.actorUri);
-  if (moderation.isErr()) {
+  const [moderation, domainSuspended] = await Promise.all([
+    getRemoteActorModeration(env.DB, actor.actorUri),
+    listDomainSuspendedActors(env.DB, [actor.actorUri]),
+  ]);
+  if (moderation.isErr() || domainSuspended.isErr()) {
     return { kind: "Unavailable" };
   }
-  return moderation.value.standing.kind === "Suspended"
+  return moderation.value.standing.kind === "Suspended" || domainSuspended.value.has(actor.actorUri)
     ? { kind: "Refused" }
     : { kind: "Signed", actor };
 };

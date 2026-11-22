@@ -93,6 +93,14 @@ model account_moderation {
   @@index([moderation, account_id], map: "idx_account_moderation_state")
 }
 
+model remote_actor_domain_limits {
+  domain_block_id String
+  actor_uri       String
+
+  @@id([domain_block_id, actor_uri])
+  @@index([actor_uri, domain_block_id], map: "idx_remote_actor_domain_limits_actor")
+}
+
 model remote_actor_moderation {
   actor_uri  String  @id
   moderation String?

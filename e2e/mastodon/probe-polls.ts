@@ -15,6 +15,7 @@ import {
   Status,
   step,
   StepFailure,
+  fetchWaitingOutRateLimit,
 } from "./sweep.js";
 
 const tallies = (poll: Poll | null | undefined): string =>
@@ -103,7 +104,7 @@ export const pollScenarios = async ({ stamp, mona, carol }: Cast): Promise<void>
         throw new StepFailure(`the copy's poll is ${JSON.stringify(copy.poll)}`);
       }
       await vote(to, copy.poll.id, [0]);
-      const again = await fetch(`${to.origin}/api/v1/polls/${copy.poll.id}/votes`, {
+      const again = await fetchWaitingOutRateLimit(to, `/api/v1/polls/${copy.poll.id}/votes`, {
         method: "POST",
         headers: { ...to.headers, "Content-Type": "application/json" },
         body: JSON.stringify({ choices: [1] }),
@@ -198,11 +199,15 @@ export const pollScenarios = async ({ stamp, mona, carol }: Cast): Promise<void>
       (poll) => poll.expired && tallies(poll) === "1,0",
       40_000,
     );
-    const late = await fetch(`${alice.origin}/api/v1/polls/${copy.poll?.id ?? ""}/votes`, {
-      method: "POST",
-      headers: { ...alice.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ choices: [1] }),
-    });
+    const late = await fetchWaitingOutRateLimit(
+      alice,
+      `/api/v1/polls/${copy.poll?.id ?? ""}/votes`,
+      {
+        method: "POST",
+        headers: { ...alice.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ choices: [1] }),
+      },
+    );
     await late.arrayBuffer();
     if (late.status !== 422) {
       throw new StepFailure(`a vote on the ended poll answers ${late.status}, not 422`);
@@ -226,8 +231,9 @@ export const pollScenarios = async ({ stamp, mona, carol }: Cast): Promise<void>
             "Validation failed: The chosen vote option does not exist, You cannot vote in your own polls",
           ],
         ] as const) {
-          const refused = await fetch(
-            `${author.origin}/api/v1/polls/${sent.poll?.id ?? ""}/votes`,
+          const refused = await fetchWaitingOutRateLimit(
+            author,
+            `/api/v1/polls/${sent.poll?.id ?? ""}/votes`,
             {
               method: "POST",
               headers: { ...author.headers, "Content-Type": "application/json" },

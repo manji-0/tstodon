@@ -17,6 +17,7 @@ import {
   Statuses,
   step,
   StepFailure,
+  fetchWaitingOutRateLimit,
 } from "./sweep.js";
 
 const History = z.array(
@@ -59,7 +60,7 @@ const copyBecomes = async (
 
 const gone = (viewer: E2eUser, statusId: string, label: string) =>
   eventually(label, async () => {
-    const response = await fetch(`${viewer.origin}/api/v1/statuses/${statusId}`, {
+    const response = await fetchWaitingOutRateLimit(viewer, `/api/v1/statuses/${statusId}`, {
       headers: viewer.headers,
     });
     await response.arrayBuffer();
