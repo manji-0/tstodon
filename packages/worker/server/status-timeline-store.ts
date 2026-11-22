@@ -15,7 +15,7 @@ import {
   followedTagNoteIdsSql,
   reblogOfShownAuthorSql,
 } from "./followed-feed";
-import { type IdCursor, idCursorFragment, newestFirst } from "./id-cursor";
+import { type IdCursor, idCursorBounds, idCursorFragment, newestFirst } from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
 /** Authors silenced or suspended by an admin are hidden from public surfaces. */
@@ -172,6 +172,8 @@ export type AccountStatusFilters = Readonly<{
   excludeDirect: boolean;
   onlyMedia: boolean;
   tagged?: string | undefined;
+  /** Only the account's pins, newest pin first (`pinned_scope`). */
+  pinned?: boolean | undefined;
 }>;
 
 /**
@@ -193,8 +195,24 @@ export const listAccountStatusesFiltered = async (
     const tagged = filters.tagged?.replace(/^#/, "") ?? "";
     const viewer = viewerId ?? "";
     const { where, order, binds } = cursorFragment(filters.cursor);
+    // Pins drive the read from their own index, so a page does not walk every
+    // status of the account. Mastodon's `pinned_statuses` orders by pin time,
+    // and `to_a_paginated_by_id` by id within it, or by id alone for a
+    // `min_id` page.
+    const source =
+      filters.pinned === true
+        ? {
+            sql: `(SELECT s.*, p.created_at AS pinned_at FROM status_pins p
+              CROSS JOIN statuses s ON s.id = p.status_id
+              WHERE p.account_id = ?) AS statuses`,
+            binds: [accountId],
+            order: idCursorBounds(filters.cursor).ascending
+              ? order
+              : "ORDER BY pinned_at DESC, id DESC",
+          }
+        : { sql: "statuses", binds: [], order };
     const reblogs = reblogOfShownAuthorSql(viewer, nowIso());
-    const sql = `SELECT ${statusSelect} FROM statuses
+    const sql = `SELECT ${statusSelect} FROM ${source.sql}
          WHERE account_id = ?
            AND (account_id = ? OR (
              NOT EXISTS (
@@ -215,10 +233,11 @@ export const listAccountStatusesFiltered = async (
            AND (? = 0 OR visibility <> 'direct')
            AND (? = 0 OR id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL))
            AND (? = '' OR id IN (SELECT status_id FROM local_status_tags WHERE tag = ?))
-           ${where} ${order} LIMIT ?`;
+           ${where} ${source.order} LIMIT ?`;
     const { results } = await db
       .prepare(sql)
       .bind(
+        ...source.binds,
         accountId,
         viewer,
         // Bound rather than read off each row, so SQLite checks the block and follow once.

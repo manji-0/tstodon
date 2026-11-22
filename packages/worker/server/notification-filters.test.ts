@@ -164,12 +164,15 @@ describe("notification filters", () => {
     // since_id keeps the newest rows above the cursor; min_id the oldest.
     expect(await ids(`?since_id=${follow}&limit=2`)).toEqual([first, second]);
     expect(await ids(`?min_id=${follow}&limit=2`)).toEqual([third, fourth]);
-    // min_id wins over since_id and max_id; since_id wins over max_id.
-    expect(await ids(`?min_id=${third}&since_id=${follow}&max_id=${second}`)).toEqual([
-      first,
+    // min_id wins over since_id; max_id bounds either, as Mastodon's Paginable.
+    expect(await ids(`?min_id=${fourth}&since_id=${follow}&max_id=${first}`)).toEqual([
       second,
+      third,
     ]);
-    expect(await ids(`?since_id=${third}&max_id=${second}`)).toEqual([first, second]);
+    expect(await ids(`?min_id=${fourth}&since_id=${follow}&max_id=${first}&limit=1`)).toEqual([
+      third,
+    ]);
+    expect(await ids(`?since_id=${fourth}&max_id=${first}&limit=1`)).toEqual([second]);
     expect(await ids(`?types[]=mention&max_id=${second}`)).toEqual([third, fourth]);
     expect(await ids(`?types[]=follow&min_id=${fourth}`)).toEqual([]);
     expect(await ids(`?exclude_types[]=mention&since_id=0`)).toEqual([follow]);

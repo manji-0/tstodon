@@ -57,18 +57,27 @@ export const removeRemoteActorPin = async (
   });
 
 /**
- * The public and unlisted notes `actorUri` pinned, in its order; none when the
- * viewer blocks its domain or the instance suspends it.
+ * The public and unlisted notes `actorUri` pinned, in its order, under the
+ * profile's `exclude_replies`, `only_media` and `tagged`; none when the
+ * viewer blocks its domain or the instance suspends it. A pin is a note, so
+ * `exclude_reblogs` and `exclude_direct` leave none out.
  */
 export const listRemoteActorPinnedStatuses = async (
   db: D1Database,
   actorUri: string,
   viewerId: string | undefined,
+  filters: Readonly<{ excludeReplies: boolean; onlyMedia: boolean; tagged?: string | undefined }>,
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(
       db,
-      listRemoteActorPinnedStatusesSql(actorUri, viewerId ?? ""),
+      listRemoteActorPinnedStatusesSql(
+        actorUri,
+        viewerId ?? "",
+        filters.excludeReplies ? 1 : 0,
+        filters.onlyMedia ? 1 : 0,
+        filters.tagged?.replace(/^#/, "").toLowerCase() ?? "",
+      ),
       RemoteStatusRowSchema,
     );
     return rows.flatMap((row) => {

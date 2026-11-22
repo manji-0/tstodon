@@ -212,8 +212,9 @@ export const listNotifications = async (
     const minId = filters.minId ?? "";
     const sinceId = filters.sinceId ?? "";
     // Mastodon's cursors: `min_id` pages newer from the oldest side, answered
-    // newest first; `since_id` (which wins over `max_id`) newer and `max_id`
-    // older.
+    // newest first, `since_id` newer from the newest side, and `max_id`
+    // bounds either from above.
+    const maxId = filters.maxId ?? "";
     const query =
       minId.length > 0
         ? listNotificationsAscendingSql(
@@ -226,6 +227,7 @@ export const listNotifications = async (
             minId,
             includeFiltered,
             filters.groupKey ?? "",
+            maxId,
           )
         : listNotificationsSql(
             accountId,
@@ -235,7 +237,7 @@ export const listNotifications = async (
             excludeTypes,
             fromAccountId,
             sinceId,
-            sinceId.length > 0 ? "" : (filters.maxId ?? ""),
+            maxId,
             includeFiltered,
             filters.groupKey ?? "",
           );

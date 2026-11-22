@@ -2,7 +2,6 @@ import { ApiGetAccountStatusesParamsSchema } from "@tstodon/api";
 import { normalizeHashtag, warmSchemas } from "@tstodon/core";
 import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
-import { ok } from "neverthrow";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
 import { authenticate } from "../../auth";
@@ -36,8 +35,6 @@ import {
   remoteAccountPinnedDocuments,
   remoteAccountTimelineDocuments,
 } from "../../timeline-documents";
-import { listPinnedStatuses } from "../../status-pin-store";
-import { viewableStatusIds } from "../../visibility-guard";
 import { paramsCursor, readQueryParams } from "../../request-params";
 import { lookupAccountDocument } from "./lookup";
 
@@ -57,8 +54,7 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
 
 /**
  * `Api::V1::Accounts::StatusesController`'s `Link`, keeping `limit` and
- * `AccountStatusesFilter::KEYS`. Pinned statuses are answered whole, not
- * paged, so they get none.
+ * `AccountStatusesFilter::KEYS`, pinned statuses' too.
  */
 const ACCOUNT_STATUSES_FILTERS = [
   "pinned",
@@ -122,10 +118,13 @@ const remoteAccountStatuses = async (
       identity,
       actor.value.actorUri,
       viewerId,
+      filters,
     );
-    return documents.isErr()
-      ? jsonRepositoryError(c, documents.error.message)
-      : c.json(documents.value);
+    if (documents.isErr()) {
+      return jsonRepositoryError(c, documents.error.message);
+    }
+    setAccountStatusesLinks(c, documents.value.ids, filters.limit);
+    return c.json(documents.value.statuses);
   }
   const read = await remoteAccountTimelineDocuments(
     c.env,
@@ -145,20 +144,6 @@ const remoteAccountStatuses = async (
     ACCOUNT_STATUSES_FILTERS,
   );
   return c.json(page.statuses);
-};
-
-/** An account's pins the viewer may see; there are few, so each is checked as by id. */
-const listViewablePinnedStatuses = async (
-  db: D1Database,
-  accountId: string,
-  viewerId: string | undefined,
-) => {
-  const pins = await listPinnedStatuses(db, accountId);
-  if (pins.isErr()) {
-    return pins;
-  }
-  const viewable = await viewableStatusIds(db, pins.value, [], viewerId);
-  return ok(pins.value.filter((status) => viewable.has(status.id)));
 };
 
 export const getV1AccountsByIdStatuses = async (
@@ -202,9 +187,10 @@ export const getV1AccountsByIdStatuses = async (
   if (!AccountPresentation.available(presentation.value)) {
     return c.json([]);
   }
-  const statuses = pinned
-    ? await listViewablePinnedStatuses(c.env.DB, account.value.id, viewerId)
-    : await listAccountStatusesFiltered(c.env.DB, account.value.id, viewerId, filters);
+  const statuses = await listAccountStatusesFiltered(c.env.DB, account.value.id, viewerId, {
+    ...filters,
+    pinned,
+  });
   if (statuses.isErr()) {
     return jsonRepositoryError(c, statuses.error.message);
   }
@@ -212,13 +198,11 @@ export const getV1AccountsByIdStatuses = async (
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }
-  if (!pinned) {
-    setAccountStatusesLinks(
-      c,
-      statuses.value.map((status) => status.id),
-      filters.limit,
-    );
-  }
+  setAccountStatusesLinks(
+    c,
+    statuses.value.map((status) => status.id),
+    filters.limit,
+  );
   return c.json(
     await attachFilteredToStatuses(c.env.DB, viewerId, "public", statuses.value, documents.value),
   );

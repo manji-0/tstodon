@@ -94,11 +94,26 @@ describe("timeline pagination", () => {
     await action(`/api/v1/statuses/${first}/favourite`, email);
     await action(`/api/v1/statuses/${second}/favourite`, email);
 
+    // Both page by the bookmark or favourite row id, which `rel="next"` names.
+    const rowIds = async (path: string): Promise<{ newest: string; oldest: string }> => {
+      const response = await SELF.fetch(`https://example.com${path}?limit=1`, {
+        headers: await auth(email),
+      });
+      const newest = /max_id=(\d+)/.exec(response.headers.get("link") ?? "")?.[1] ?? "";
+      const older = await SELF.fetch(`https://example.com${path}?limit=1&max_id=${newest}`, {
+        headers: await auth(email),
+      });
+      const oldest = /max_id=(\d+)/.exec(older.headers.get("link") ?? "")?.[1] ?? "";
+      return { newest, oldest };
+    };
+    const bookmarks = await rowIds("/api/v1/bookmarks");
+    const favourites = await rowIds("/api/v1/favourites");
+
     expect(await idsAt("/api/v1/bookmarks", email)).toEqual([second, first]);
-    expect(await idsAt(`/api/v1/bookmarks?max_id=${second}`, email)).toEqual([first]);
-    expect(await idsAt(`/api/v1/bookmarks?since_id=${first}`, email)).toEqual([second]);
-    expect(await idsAt(`/api/v1/favourites?max_id=${second}`, email)).toEqual([first]);
-    expect(await idsAt(`/api/v1/favourites?min_id=${first}`, email)).toEqual([second]);
+    expect(await idsAt(`/api/v1/bookmarks?max_id=${bookmarks.newest}`, email)).toEqual([first]);
+    expect(await idsAt(`/api/v1/bookmarks?since_id=${bookmarks.oldest}`, email)).toEqual([second]);
+    expect(await idsAt(`/api/v1/favourites?max_id=${favourites.newest}`, email)).toEqual([first]);
+    expect(await idsAt(`/api/v1/favourites?min_id=${favourites.oldest}`, email)).toEqual([second]);
 
     const accountId = await accountIdFor(email);
     expect(await idsAt(`/api/v1/accounts/${accountId}/statuses?min_id=${first}`)).toEqual([second]);

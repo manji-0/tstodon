@@ -224,29 +224,32 @@ const followedTagsCte = `ft AS (
 
 /**
  * The bounds on a tag index row `t` of followed hashtag `ft`: its id floor,
- * the cursor's bound (the CTE `c(v)`) and, when `horizon` is given, the
+ * the cursor's bounds (the CTE `c(lo, hi)`) and, when `horizon` is given, the
  * horizon (the CTE `w(h)`). Every lower bound is folded into one `max(...)`,
  * so SQLite starts the index range at the highest of them.
  */
 const tagIndexBounds = (
   cursor: IdCursor,
   horizon: boolean,
-): Readonly<{ bound: string; sql: string }> => {
+): Readonly<{ bounds: readonly [string, string]; sql: string }> => {
   const { onlyId, after, before, ascending } = idCursorBounds(cursor);
   if (onlyId.length > 0) {
-    return { bound: onlyId, sql: "t.status_id = (SELECT v FROM c) AND t.status_id >= ft.floor" };
+    return {
+      bounds: [onlyId, ""],
+      sql: "t.status_id = (SELECT lo FROM c) AND t.status_id >= ft.floor",
+    };
   }
   const lower = [
     "ft.floor",
-    ...(after.length > 0 ? ["(SELECT v FROM c)"] : []),
+    ...(after.length > 0 ? ["(SELECT lo FROM c)"] : []),
     ...(horizon && !ascending ? ["(SELECT h FROM w)"] : []),
   ];
   return {
-    bound: after.length > 0 ? after : before,
+    bounds: [after, before],
     sql: [
       `t.status_id >= ${lower.length > 1 ? `max(${lower.join(", ")})` : lower[0]}`,
-      ...(after.length > 0 ? ["t.status_id <> (SELECT v FROM c)"] : []),
-      ...(before.length > 0 ? ["t.status_id < (SELECT v FROM c)"] : []),
+      ...(after.length > 0 ? ["t.status_id <> (SELECT lo FROM c)"] : []),
+      ...(before.length > 0 ? ["t.status_id < (SELECT hi FROM c)"] : []),
       ...(horizon && ascending ? ["t.status_id <= (SELECT h FROM w)"] : []),
     ].join(" AND "),
   };
@@ -266,7 +269,7 @@ export const followedTagHorizonSql = (
   cursor: IdCursor,
   limit: number,
 ): SqlFragment => {
-  const { bound, sql: within } = tagIndexBounds(cursor, false);
+  const { bounds, sql: within } = tagIndexBounds(cursor, false);
   const { ascending } = idCursorBounds(cursor);
   const deep = Math.max(1, Math.trunc(limit) * HOME_FOLLOWED_TAG_DEPTH) - 1;
   const edge = (tags: string): string => `SELECT (
@@ -275,11 +278,11 @@ export const followedTagHorizonSql = (
       ORDER BY t.status_id ${ascending ? "ASC" : "DESC"} LIMIT 1 OFFSET ${deep}
     ) AS id FROM ft`;
   return {
-    sql: `WITH ${followedTagsCte}, c(v) AS (SELECT ?)
+    sql: `WITH ${followedTagsCte}, c(lo, hi) AS (SELECT ?, ?)
       SELECT ${ascending ? "MIN" : "MAX"}(id) AS horizon FROM (
         ${edge("local_status_tags")} UNION ALL ${edge("remote_status_tags")}
       )`,
-    binds: [viewerId, bound],
+    binds: [viewerId, ...bounds],
   };
 };
 
@@ -306,10 +309,10 @@ export const followedTagNoteIdsSql = (
 ): SqlFragment => {
   const { tags, notes, shown } = FOLLOWED_TAG_SIDES[side];
   const hidden = FOLLOWED_TAG_SIDES[side].hidden(viewerId, now);
-  const { bound, sql: within } = tagIndexBounds(cursor, horizon !== undefined);
+  const { bounds, sql: within } = tagIndexBounds(cursor, horizon !== undefined);
   return {
     sql: `(
-      WITH ${followedTagsCte}, c(v) AS (SELECT ?), w(h) AS (SELECT ?),
+      WITH ${followedTagsCte}, c(lo, hi) AS (SELECT ?, ?), w(h) AS (SELECT ?),
       hidden(id) AS MATERIALIZED (
         ${hidden.sql}
       )
@@ -318,7 +321,7 @@ export const followedTagNoteIdsSql = (
       CROSS JOIN ${notes} n ON n.id = t.status_id
       WHERE t.tag = ft.tag_name AND ${within} AND ${shown}
     )`,
-    binds: [viewerId, bound, horizon ?? "", ...hidden.binds],
+    binds: [viewerId, ...bounds, horizon ?? "", ...hidden.binds],
   };
 };
 
