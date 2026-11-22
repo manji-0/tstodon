@@ -400,31 +400,16 @@ export const listLinkRemoteStatuses = async (
 ): Promise<Result<RemoteStatus[], RepositoryError>> =>
   runD1(async () => {
     const viewer = viewerId ?? "";
-    const minId = cursor.minId ?? "";
-    const sinceId = cursor.sinceId ?? "";
-    const maxId = cursor.maxId ?? "";
-    const cursorId = minId || sinceId || maxId;
-    const cursorWhere =
-      cursorId.length > 0 ? (maxId && !minId && !sinceId ? "AND s.id < ?" : "AND s.id > ?") : "";
-    const order = minId.length > 0 ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
+    const { where, order, binds } = idCursorFragment(cursor, "s.id");
     const { results } = await db
       .prepare(
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_statuses s
          WHERE s.card_url = ? AND s.visibility = 'public'
            AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
-           ${cursorWhere} ${order} LIMIT ?`,
+           ${where} ${order} LIMIT ?`,
       )
-      .bind(
-        url,
-        viewer,
-        viewer,
-        viewer,
-        nowIso(),
-        viewer,
-        ...(cursorId.length > 0 ? [cursorId] : []),
-        limit,
-      )
+      .bind(url, viewer, viewer, viewer, nowIso(), viewer, ...binds, limit)
       .all();
     return okValues(
       (results ?? []).map((raw) =>

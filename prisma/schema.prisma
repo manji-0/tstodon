@@ -275,6 +275,7 @@ model bookmarks {
   @@unique([account_id, remote_status_id])
   @@index([local_status_id], map: "idx_bookmarks_status")
   @@index([remote_status_id], map: "idx_bookmarks_remote_status")
+  @@index([account_id, id], map: "idx_bookmarks_account_id")
 }
 
 model conversation_hides {
@@ -313,6 +314,7 @@ model favourites {
   @@unique([account_id, remote_status_id])
   @@index([local_status_id, id], map: "idx_favourites_status")
   @@index([remote_status_id, id], map: "idx_favourites_remote_status")
+  @@index([account_id, id], map: "idx_favourites_account_id")
 }
 
 model filter_statuses {

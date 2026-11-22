@@ -14,21 +14,21 @@ export type IdCursor = Readonly<{
 export type MaxIdCursor = Readonly<{ maxId?: string | undefined; sinceId?: string | undefined }>;
 
 /**
- * Mastodon id cursors: `max_id` pages older (newest first), `since_id` pages
- * newer (newest first), and `min_id` pages newer from the oldest side so a
- * client can prepend. `min_id` wins, then `since_id`, then `max_id`.
- * Ids are exclusive bounds; `''` leaves a side open.
+ * Mastodon id cursors, as `Paginable#to_a_paginated_by_id`: `max_id` bounds
+ * the page above, and `since_id` (newest first) or `min_id` (from the oldest
+ * side, so a client can prepend) below; `min_id` wins over `since_id`, and
+ * `max_id` holds with either. Ids are exclusive bounds; `''` leaves a side
+ * open.
  */
 export const idCursorBounds = (
   cursor: IdCursor = {},
 ): Readonly<{ onlyId: string; after: string; before: string; ascending: boolean }> => {
   const onlyId = cursor.onlyId ?? "";
   const minId = cursor.minId ?? "";
-  const after = minId || (cursor.sinceId ?? "");
   return {
     onlyId,
-    after,
-    before: onlyId || after ? "" : (cursor.maxId ?? ""),
+    after: onlyId ? "" : minId || (cursor.sinceId ?? ""),
+    before: onlyId ? "" : (cursor.maxId ?? ""),
     ascending: minId.length > 0,
   };
 };
@@ -39,6 +39,30 @@ export const idCursorBounds = (
  */
 export const newestFirst = <T>(cursor: IdCursor, page: ReadonlyArray<T>): T[] =>
   idCursorBounds(cursor).ascending ? page.toReversed() : [...page];
+
+/**
+ * A page of `entries` held in their own order, as an id-paged query reads
+ * them: the first `limit` within the cursor's bounds, or for a `min_id` page
+ * the `limit` lowest ids, answered newest first.
+ */
+export const pageInOrder = <T extends Readonly<{ id: string }>>(
+  entries: ReadonlyArray<T>,
+  cursor: IdCursor,
+  limit: number,
+): T[] => {
+  const { onlyId, after, before, ascending } = idCursorBounds(cursor);
+  const within = entries.filter((entry) =>
+    onlyId.length > 0
+      ? entry.id === onlyId
+      : (after.length === 0 || entry.id > after) && (before.length === 0 || entry.id < before),
+  );
+  return ascending
+    ? within
+        .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+        .slice(0, limit)
+        .toReversed()
+    : within.slice(0, limit);
+};
 
 /**
  * The cursor as a SQL `where` / `order` pair over the status id `column`
@@ -52,15 +76,13 @@ export const idCursorFragment = (
   if (onlyId.length > 0) {
     return { where: `AND ${column} = ?`, order: "", binds: [onlyId] };
   }
-  if (after.length > 0) {
-    return {
-      where: `AND ${column} > ?`,
-      order: ascending ? `ORDER BY ${column} ASC` : `ORDER BY ${column} DESC`,
-      binds: [after],
-    };
-  }
-  if (before.length > 0) {
-    return { where: `AND ${column} < ?`, order: `ORDER BY ${column} DESC`, binds: [before] };
-  }
-  return { where: "", order: `ORDER BY ${column} DESC`, binds: [] };
+  const bounds = [
+    ...(after.length > 0 ? [{ sql: `AND ${column} > ?`, bind: after }] : []),
+    ...(before.length > 0 ? [{ sql: `AND ${column} < ?`, bind: before }] : []),
+  ];
+  return {
+    where: bounds.map((bound) => bound.sql).join(" "),
+    order: `ORDER BY ${column} ${ascending ? "ASC" : "DESC"}`,
+    binds: bounds.map((bound) => bound.bind),
+  };
 };

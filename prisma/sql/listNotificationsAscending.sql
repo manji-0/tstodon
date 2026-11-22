@@ -7,6 +7,7 @@
 -- @param {String} $7:minId
 -- @param {Int} $8:includeFiltered
 -- @param {String} $9:groupKey
+-- @param {String} $10:maxId
 SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at, n.group_key,
   n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
 FROM notifications n
@@ -29,6 +30,7 @@ WHERE n.account_id = $1
   -- The notifications that stored a group key.
   AND ($9 = '' OR n.group_key = $9)
   AND n.id > $7
+  AND n.id < COALESCE(NULLIF($10, ''), X'FF')
   AND n.from_account_id NOT IN (
     SELECT target_account_id FROM blocks
       WHERE blocker_account_id = $1 AND target_account_id IS NOT NULL

@@ -1,6 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { jsonStringArray, parseRows, runD1, type RepositoryError } from "./d1";
+import { idCursorFragment, newestFirst } from "./id-cursor";
 import {
   findTagModeration as findTagModerationSql,
   listRestrictedTagNames as listRestrictedTagNamesSql,
@@ -144,17 +145,13 @@ export const listTagModerationPage = async (
   limit: number,
 ): Promise<Result<TagModeration[], RepositoryError>> =>
   runD1(async () => {
-    const after = cursor.minId || cursor.sinceId || "";
-    const ascending = Boolean(cursor.minId);
-    const where = after ? "WHERE name > ?" : cursor.maxId ? "WHERE name < ?" : "";
-    const binds = after ? [after] : cursor.maxId ? [cursor.maxId] : [];
+    const { where, order, binds } = idCursorFragment(cursor, "name");
     const { results } = await db
       .prepare(
-        `SELECT name, usable, listable, display_name, created_at FROM tags ${where}
-         ORDER BY name ${ascending ? "ASC" : "DESC"} LIMIT ?`,
+        `SELECT name, usable, listable, display_name, created_at FROM tags
+         WHERE 1 = 1 ${where} ${order} LIMIT ?`,
       )
       .bind(...binds, limit)
       .all();
-    const rows = parseRows(TagPageRow, results).map(fromRow);
-    return ascending ? rows.toReversed() : rows;
+    return newestFirst(cursor, parseRows(TagPageRow, results).map(fromRow));
   });

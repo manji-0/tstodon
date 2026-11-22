@@ -55,7 +55,6 @@ import {
   listNotifications,
   type NotificationFilters,
   type NotificationRow,
-  groupedEntry,
   pageNotificationGroups,
   summarizeNotificationGroups,
 } from "../notification-store";
@@ -462,9 +461,11 @@ const groupEnvelope = async (
   });
 };
 
-/** How many of the newest notifications the grouped unread count reads. */
-const NOTIFICATION_GROUP_ROW_CAP = 200;
-
+/**
+ * As Mastodon's `unread_count`: the groups of the first `limit` past the read
+ * marker (`paginate_groups_by_min_id(limit, min_id: last_read_id)`), under
+ * the list's `types`, `exclude_types`, `include_filtered` and `grouped_types`.
+ */
 export const getV2NotificationsUnreadCount = async (
   c: Context<{ Bindings: Env }, "/api/v2/notifications/unread_count">,
 ) => {
@@ -476,23 +477,26 @@ export const getV2NotificationsUnreadCount = async (
   if (markers.isErr()) {
     return jsonRepositoryError(c, markers.error.message);
   }
-  const markerId = markers.value.notifications?.last_read_id;
-  const { groupedTypes } = groupedQuery(c);
-  const rows = await listNotifications(c.env.DB, user.value.id, NOTIFICATION_GROUP_ROW_CAP, {
-    maxId: undefined,
-  });
-  if (rows.isErr()) {
-    return jsonRepositoryError(c, rows.error.message);
-  }
-  const unreadKeys = new Set(
-    rows.value
-      .filter((row) => !(markerId && row.id <= markerId))
-      .map((row) => NotificationGroup.key(groupedEntry(row), groupedTypes)),
+  const { groupedTypes, filters } = groupedQuery(c);
+  const groups = await pageNotificationGroups(
+    c.env.DB,
+    user.value.id,
+    queryLimit(c, PageSize.unreadNotifications),
+    {
+      ...filters,
+      fromAccountId: undefined,
+      maxId: undefined,
+      sinceId: undefined,
+      minId: markers.value.notifications?.last_read_id,
+    },
+    groupedTypes,
+    await hidingHosts(c.env),
+    "Newer",
   );
-  // At most `limit` groups, as Mastodon counts `paginate_groups_by_min_id(limit, ...)`.
-  return c.json({
-    count: Math.min(unreadKeys.size, queryLimit(c, PageSize.unreadNotifications)),
-  });
+  if (groups.isErr()) {
+    return jsonRepositoryError(c, groups.error.message);
+  }
+  return c.json({ count: groups.value.length });
 };
 
 export const getV2Notifications = async (
