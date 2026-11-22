@@ -6,24 +6,32 @@ describe("RepliesPage", () => {
     expect(RepliesPage.fromQuery({})).toEqual({ kind: "SelfReplies" });
     expect(RepliesPage.fromQuery({ min_id: "5" })).toEqual({ kind: "SelfReplies", afterId: "5" });
     expect(RepliesPage.fromQuery({ only_other_accounts: "true" })).toEqual({
-      kind: "LocalReplies",
+      kind: "OtherReplies",
     });
-    expect(
-      RepliesPage.fromQuery({ only_other_accounts: "1", remote: "true", min_id: "r9" }),
-    ).toEqual({ kind: "RemoteReplies", afterId: "r9" });
-    expect(RepliesPage.fromQuery({ only_other_accounts: "false", remote: "true" })).toEqual({
+    expect(RepliesPage.fromQuery({ only_other_accounts: "1", min_id: "9" })).toEqual({
+      kind: "OtherReplies",
+      afterId: "9",
+    });
+    expect(RepliesPage.fromQuery({ only_other_accounts: "false" })).toEqual({
       kind: "SelfReplies",
     });
+  });
+
+  it("reads a flag as Rails casts a boolean: true unless empty or one of its false words", () => {
+    for (const value of ["true", "1", "t", "yes", "on", "anything", "False"]) {
+      expect(RepliesPage.truthy(value), value).toBe(true);
+    }
+    for (const value of [undefined, "", "0", "f", "F", "false", "FALSE", "off", "OFF"]) {
+      expect(RepliesPage.truthy(value), String(value)).toBe(false);
+    }
   });
 
   it("links a page with the parameters it is read from", () => {
     const pages: RepliesPage[] = [
       { kind: "SelfReplies" },
       { kind: "SelfReplies", afterId: "5" },
-      { kind: "LocalReplies" },
-      { kind: "LocalReplies", afterId: "7" },
-      { kind: "RemoteReplies" },
-      { kind: "RemoteReplies", afterId: "r9" },
+      { kind: "OtherReplies" },
+      { kind: "OtherReplies", afterId: "7" },
     ];
     for (const page of pages) {
       const params = new URLSearchParams(RepliesPage.query(page));
@@ -31,28 +39,30 @@ describe("RepliesPage", () => {
       expect(
         RepliesPage.fromQuery({
           only_other_accounts: params.get("only_other_accounts") ?? undefined,
-          remote: params.get("remote") ?? undefined,
           min_id: params.get("min_id") ?? undefined,
         }),
       ).toEqual(page);
     }
-    expect(RepliesPage.query({ kind: "LocalReplies" })).toBe("?only_other_accounts=true&page=true");
+    expect(RepliesPage.query({ kind: "OtherReplies" })).toBe("?only_other_accounts=true&page=true");
+    expect(RepliesPage.query({ kind: "SelfReplies", afterId: "5" })).toBe("?min_id=5&page=true");
   });
 
-  it("stays in a stage while its pages are full, then moves to the next", () => {
+  it("stays on the author's replies while a page is full, then lists the other accounts'", () => {
     expect(RepliesPage.next({ kind: "SelfReplies" }, ["1", "2"], 2)).toEqual({
       kind: "SelfReplies",
       afterId: "2",
     });
-    expect(RepliesPage.next({ kind: "SelfReplies" }, ["1"], 2)).toEqual({ kind: "LocalReplies" });
-    expect(RepliesPage.next({ kind: "SelfReplies" }, [], 2)).toEqual({ kind: "LocalReplies" });
-    expect(RepliesPage.next({ kind: "LocalReplies", afterId: "2" }, ["3"], 2)).toEqual({
-      kind: "RemoteReplies",
+    expect(RepliesPage.next({ kind: "SelfReplies" }, ["1"], 2)).toEqual({ kind: "OtherReplies" });
+    expect(RepliesPage.next({ kind: "SelfReplies" }, [], 2)).toEqual({ kind: "OtherReplies" });
+    expect(RepliesPage.next({ kind: "OtherReplies" }, ["1", "2"], 2)).toEqual({
+      kind: "OtherReplies",
+      afterId: "2",
     });
-    expect(RepliesPage.next({ kind: "RemoteReplies" }, ["r1", "r2"], 2)).toEqual({
-      kind: "RemoteReplies",
-      afterId: "r2",
-    });
-    expect(RepliesPage.next({ kind: "RemoteReplies" }, ["r1"], 2)).toBeUndefined();
+    expect(RepliesPage.next({ kind: "OtherReplies", afterId: "2" }, ["3"], 2)).toBeUndefined();
+  });
+
+  it("links an embedded first page on from its last reply, as Mastodon's NoteSerializer", () => {
+    expect(RepliesPage.embeddedNext(["1", "2"])).toEqual({ kind: "SelfReplies", afterId: "2" });
+    expect(RepliesPage.embeddedNext([])).toEqual({ kind: "OtherReplies" });
   });
 });

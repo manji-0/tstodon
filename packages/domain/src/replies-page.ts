@@ -1,42 +1,30 @@
 import { z } from "zod";
 
 /**
- * One page of a local note's `replies` collection. The pages run in three
- * stages, as Mastodon's `RepliesController` runs two: the author's own
- * replies, then the replies of other local accounts, then the replies cached
- * from other servers (Mastodon keeps both in one table and lists them
- * together). `afterId` is the id of the last reply of the page before, in the
- * stage's own id order; without it the stage starts.
+ * One page of a local note's `replies` collection, as Mastodon's
+ * `RepliesController` serves it: the author's own replies, then those of
+ * every other account, local or cached from another server, in one id
+ * order. `afterId` is the id of the last reply of the page before (Mastodon's
+ * `min_id`); without it the stage starts.
  */
 const RepliesPageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("SelfReplies"), afterId: z.string().min(1).optional() }),
-  z.object({ kind: z.literal("LocalReplies"), afterId: z.string().min(1).optional() }),
-  z.object({ kind: z.literal("RemoteReplies"), afterId: z.string().min(1).optional() }),
+  z.object({ kind: z.literal("OtherReplies"), afterId: z.string().min(1).optional() }),
 ]);
 
 export type RepliesPage = z.infer<typeof RepliesPageSchema>;
 
-/** The query of a page link, as Mastodon names it, plus `remote` for the third stage. */
+/** The query of a page link, as Mastodon names it. */
 export type RepliesPageQuery = Readonly<{
   only_other_accounts?: string | undefined;
-  remote?: string | undefined;
   min_id?: string | undefined;
 }>;
 
-const truthy = (value: string | undefined): boolean =>
-  value !== undefined && ["1", "true", "t", "yes", "on"].includes(value.toLowerCase());
+/** The strings Rails' `ActiveModel::Type::Boolean` casts to false. */
+const FALSE_VALUES: ReadonlySet<string> = new Set(["0", "f", "F", "false", "FALSE", "off", "OFF"]);
 
-/** The stage after `kind`, when its replies are exhausted. */
-const stageAfter = (kind: RepliesPage["kind"]): RepliesPage | undefined => {
-  switch (kind) {
-    case "SelfReplies":
-      return { kind: "LocalReplies" };
-    case "LocalReplies":
-      return { kind: "RemoteReplies" };
-    case "RemoteReplies":
-      return undefined;
-  }
-};
+const truthy = (value: string | undefined): boolean =>
+  value !== undefined && value !== "" && !FALSE_VALUES.has(value);
 
 export const RepliesPage = {
   schema: RepliesPageSchema,
@@ -46,32 +34,28 @@ export const RepliesPage = {
   EMBEDDED_LIMIT: 5,
   /** The first page: the author's own replies. */
   first: { kind: "SelfReplies" } satisfies RepliesPage,
-  fromQuery: (query: RepliesPageQuery): RepliesPage => {
-    const after = query.min_id ? { afterId: query.min_id } : {};
-    if (!truthy(query.only_other_accounts)) {
-      return { kind: "SelfReplies", ...after };
-    }
-    return { kind: truthy(query.remote) ? "RemoteReplies" : "LocalReplies", ...after };
-  },
-  /** The query string of the link to `page`, with Mastodon's parameter names. */
+  /** A query flag as Mastodon's `truthy_param?` reads it. */
+  truthy,
+  fromQuery: (query: RepliesPageQuery): RepliesPage => ({
+    kind: truthy(query.only_other_accounts) ? "OtherReplies" : "SelfReplies",
+    ...(query.min_id ? { afterId: query.min_id } : {}),
+  }),
+  /** The query string of the link to `page`, with Mastodon's parameter names in Rails' order. */
   query: (page: RepliesPage): string => {
     const params = new URLSearchParams();
     if (page.afterId !== undefined) {
       params.set("min_id", page.afterId);
     }
-    if (page.kind !== "SelfReplies") {
+    if (page.kind === "OtherReplies") {
       params.set("only_other_accounts", "true");
-    }
-    if (page.kind === "RemoteReplies") {
-      params.set("remote", "true");
     }
     params.set("page", "true");
     return `?${params.toString()}`;
   },
   /**
-   * The page after one of `page`'s stage that held `replyIds`, read with
-   * `limit`: more of the stage when the page was full, else the next stage;
-   * `undefined` after the last one.
+   * The page after a served page of `page`'s stage that held `replyIds`,
+   * read with `limit`: more of the stage when the page was full, else the
+   * other accounts' replies; `undefined` after those.
    */
   next: (
     page: RepliesPage,
@@ -79,8 +63,20 @@ export const RepliesPage = {
     limit: number,
   ): RepliesPage | undefined => {
     const lastId = replyIds.at(-1);
-    return replyIds.length >= limit && lastId !== undefined
-      ? { kind: page.kind, afterId: lastId }
-      : stageAfter(page.kind);
+    if (replyIds.length >= limit && lastId !== undefined) {
+      return { kind: page.kind, afterId: lastId };
+    }
+    return page.kind === "SelfReplies" ? { kind: "OtherReplies" } : undefined;
+  },
+  /**
+   * The page after a note's embedded first page that held `replyIds`, as
+   * Mastodon's `NoteSerializer#replies`: the author's replies after the last
+   * one, or the other accounts' when it held none.
+   */
+  embeddedNext: (replyIds: ReadonlyArray<string>): RepliesPage => {
+    const lastId = replyIds.at(-1);
+    return lastId === undefined
+      ? { kind: "OtherReplies" }
+      : { kind: "SelfReplies", afterId: lastId };
   },
 } as const;

@@ -14,13 +14,14 @@ import { announceActivity, noteCreateActivity } from "./activitypub";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { parseRows } from "./d1";
 import { loadLocalNoteDocument } from "./local-note-document";
+import { loadNotesReplies, repliedNote } from "./note-replies";
 import { statusTargetRef } from "./quote-uri";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusesByIds } from "./status-store";
 
 /**
  * An outbox page renders its notes as each note's own URI serves it, with
- * the media, mentions, parent, poll, quote and quote policy of every note
+ * the media, mentions, parent, replies, poll, quote and quote policy of every note
  * read for the whole page at once, so its D1 statements do not grow with
  * the notes on it.
  */
@@ -175,8 +176,13 @@ describe("an outbox page", () => {
       for (const id of ids) {
         const status = statuses.value.get(id);
         if (status?.kind === "LocalNote") {
+          const replies = await loadNotesReplies(env.DB, [
+            repliedNote(identity.value, account.value, status.id),
+          ]);
+          if (replies.isErr()) throw new Error("replies");
           const note = await loadLocalNoteDocument(env, identity.value, account.value, status, {
             emojis,
+            replies: replies.value.get(status.id),
           });
           if (note.isErr()) throw new Error("note");
           expected.push(noteCreateActivity(identity.value, account.value, note.value));

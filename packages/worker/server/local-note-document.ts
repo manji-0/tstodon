@@ -6,6 +6,7 @@ import type { RepositoryError } from "./d1";
 import type { CustomEmoji } from "./emoji";
 import { loadNoteMentions, loadNotesMentions } from "./mention-resolve";
 import { loadNoteMedia, loadNotesMedia } from "./note-attachments";
+import { loadNotesReplies, repliedNote } from "./note-replies";
 import { findPollsByStatusIds, loadNotePoll } from "./poll-store";
 import { loadNoteQuotePolicies, loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote, noteQuotes } from "./quote-uri";
@@ -57,9 +58,9 @@ export type AuthoredNote = Readonly<{ author: LocalAccount; note: LocalNote }>;
 
 /**
  * {@link loadLocalNoteDocument} for several notes, of one author or several,
- * keyed by note id, without their replies collections. The media, mentions,
- * parents, polls, quotes and quote policies of all the notes are read at
- * once, so the statements do not grow with the notes.
+ * keyed by note id, each with the first page of its replies collection. The
+ * media, mentions, parents, replies, polls, quotes and quote policies of all
+ * the notes are read at once, so the statements do not grow with the notes.
  */
 export const loadLocalNoteDocuments = async (
   env: Env,
@@ -69,11 +70,15 @@ export const loadLocalNoteDocuments = async (
 ): Promise<Result<ReadonlyMap<string, ApStatusDocumentJSON>, RepositoryError>> => {
   const notes = authored.map(({ note }) => note);
   const ids = notes.map((note) => note.id);
-  const [media, quotes, mentions, replies, polls, quotePolicies] = await Promise.all([
+  const [media, quotes, mentions, parents, replies, polls, quotePolicies] = await Promise.all([
     loadNotesMedia(env.DB, identity, notes),
     noteQuotes(env, identity, ids),
     loadNotesMentions(env.DB, identity, ids),
     loadNoteReplies(env.DB, identity, notes),
+    loadNotesReplies(
+      env.DB,
+      authored.map(({ author, note }) => repliedNote(identity, author, note.id)),
+    ),
     findPollsByStatusIds(env.DB, ids, undefined),
     loadNoteQuotePolicies(env.DB, authored),
   ]);
@@ -83,6 +88,9 @@ export const loadLocalNoteDocuments = async (
   if (quotes.isErr()) {
     return err(quotes.error);
   }
+  if (replies.isErr()) {
+    return err(replies.error);
+  }
   return ok(
     new Map(
       authored.map(({ author, note }) => [
@@ -90,8 +98,8 @@ export const loadLocalNoteDocuments = async (
         noteDocument(identity, author, note, {
           quote: quotes.value.get(note.id),
           mentions: mentions.get(note.id) ?? [],
-          reply: replies.get(note.id),
-          replies: undefined,
+          reply: parents.get(note.id),
+          replies: replies.value.get(note.id),
           poll: polls.isOk() ? polls.value.get(note.id) : undefined,
           media: media.value.get(note.id) ?? { attachments: [], authorSensitized: false },
           quotePolicy: quotePolicies.get(note.id) ?? "nobody",

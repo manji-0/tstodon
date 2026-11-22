@@ -101,12 +101,8 @@ import { parseJsonText } from "../json-column";
 import { assertNever, schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
 import { hasStatusRemoteMention } from "../mention-store";
-import {
-  loadNoteReplies,
-  loadNoteRepliesPage,
-  type RepliedNote,
-  repliesCollectionUri,
-} from "../note-replies";
+import { loadNotesReplies, repliedNote, repliesCollectionUri } from "../note-replies";
+import { loadNoteRepliesPage } from "../note-replies-page";
 import { findStatusById, findStatusesByIds } from "../status-store";
 import { listPinnedStatuses } from "../status-pin-store";
 import { listFeaturedTags } from "../tag-store";
@@ -123,25 +119,9 @@ const parseActivityJson = schemaResult(ActivityJsonSchema);
 const RepliesQuerySchema = z.object({
   page: z.string().optional(),
   only_other_accounts: z.string().optional(),
-  remote: z.string().optional(),
   min_id: z.string().min(1).max(64).optional(),
 });
 const parseRepliesQuery = schemaResult(RepliesQuerySchema);
-
-/** The note as its `replies` collection names it. */
-const repliedNote = (
-  identity: InstanceIdentity,
-  author: LocalAccount,
-  note: LocalStatusValue,
-): RepliedNote => {
-  const actorUri = InstanceIdentity.actorUrl(identity, author.username);
-  return {
-    id: note.id,
-    uri: `${actorUri}/statuses/${note.id}`,
-    authorId: author.id,
-    actorUrlPrefix: actorUri.slice(0, actorUri.length - author.username.length),
-  };
-};
 
 /**
  * Whether `account` blocks the remote actor that signed a fetch, or its
@@ -273,15 +253,14 @@ export const getUsersByUsernameStatusesById = async (
   }
   const visibility = status.value.visibility.kind;
   // As Mastodon's `NoteSerializer`, whatever the note's own visibility.
-  const replies = await loadNoteReplies(
-    c.env.DB,
-    repliedNote(identity.value, account, status.value),
-  );
+  const replies = await loadNotesReplies(c.env.DB, [
+    repliedNote(identity.value, account, status.value.id),
+  ]);
   if (replies.isErr()) {
     return jsonRepositoryError(c, replies.error.message);
   }
   const document = await loadLocalNoteDocument(c.env, identity.value, account, status.value, {
-    replies: replies.value,
+    replies: replies.value.get(status.value.id),
     emojis: await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl),
   });
   if (document.isErr()) {
@@ -321,8 +300,8 @@ const readsPrivateNote = async (
 /**
  * A note's `replies` collection, or one page of it (`?page=true`), as
  * Mastodon's `RepliesController`: public and unlisted replies, the author's
- * own first, then other local accounts', then the ones cached from other
- * servers, a local reply embedded as its note. A followers-only or direct
+ * own first, then every other account's, local or cached from another
+ * server, in one id order; a local reply embedded as its note. A followers-only or direct
  * note's collection is served as the note is ({@link readsPrivateNote}). 404
  * for a note the fetcher may not read, and for a signed fetcher the author
  * blocks.
@@ -375,7 +354,7 @@ export const getUsersByUsernameStatusesByIdReplies = async (
       return c.json({ kind: "NotFound" }, 404);
     }
   }
-  const note = repliedNote(identity.value, account, status.value);
+  const note = repliedNote(identity.value, account, status.value.id);
   const page = await loadNoteRepliesPage(
     c.env,
     identity.value,
@@ -385,7 +364,7 @@ export const getUsersByUsernameStatusesByIdReplies = async (
   if (page.isErr()) {
     return jsonRepositoryError(c, page.error.message);
   }
-  if (!["1", "true"].includes(query.value.page ?? "")) {
+  if (!RepliesPage.truthy(query.value.page)) {
     // Without `page`, the collection with the page its query names as `first`.
     const collection: ApRepliesDocumentJSON = {
       "@context": ACTIVITY_STREAMS,
