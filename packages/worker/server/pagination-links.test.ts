@@ -603,6 +603,30 @@ describe("both bounds of an id page", () => {
     expect(min.items.map((status) => status.id)).toEqual([b]);
   });
 
+  it("bounds the admin tags by max_id with since_id or min_id", async () => {
+    const admin = "links-bounds-admin@example.com";
+    for (const name of ["a", "b", "c", "d"]) {
+      await post(admin, `#linksboundtag${name}`);
+    }
+    const names = async (query: string): Promise<string[]> => {
+      const response = await SELF.fetch(`https://example.com/api/v1/admin/tags?${query}`, {
+        headers: await authHeaders(admin, { admin: true }),
+      });
+      expect(response.status).toBe(200);
+      return z
+        .array(z.object({ name: z.string() }))
+        .parse(await response.json())
+        .map((tag) => tag.name)
+        .filter((name) => name.startsWith("linksboundtag"));
+    };
+
+    expect(await names("since_id=linksboundtaga&max_id=linksboundtagd")).toEqual([
+      "linksboundtagc",
+      "linksboundtagb",
+    ]);
+    expect(await names("min_id=linksboundtaga&max_id=linksboundtagc")).toEqual(["linksboundtagb"]);
+  });
+
   it("bounds v1 notifications by max_id with since_id or min_id", async () => {
     const email = "links-bounds-notified@example.com";
     const target = (await me(email)).id;

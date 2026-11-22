@@ -475,18 +475,18 @@ const pastHorizon = (cursor: IdCursor, horizon: string | undefined): IdCursor | 
 
 /**
  * The notes a remote actor pinned, in its order, as `pinned=true` on its
- * profile shows them: public and unlisted, with `filtered` on them. A page of
- * them by status id, as Mastodon pages an account's `StatusPin`s; `ids` are
- * the notes the page read, for its `Link`.
+ * profile shows them: public and unlisted, under the profile's filters, with
+ * `filtered` on them. A page of them by status id, as Mastodon pages an
+ * account's `StatusPin`s; `ids` are the notes the page read, for its `Link`.
  */
 export const remoteAccountPinnedDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   actorUri: string,
   viewerId: string | undefined,
-  page: Readonly<{ limit: number; cursor?: IdCursor | undefined }>,
+  page: AccountStatusFilters,
 ): Promise<Result<Readonly<{ statuses: ApiStatusJSON[]; ids: string[] }>, RepositoryError>> => {
-  const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri, viewerId);
+  const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri, viewerId, page);
   if (pinned.isErr()) {
     return err(pinned.error);
   }
