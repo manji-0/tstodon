@@ -48,7 +48,7 @@ import {
   statusInteractionCountsByIds,
 } from "./status-interaction-store";
 import { findMediaByIds, type MediaRow } from "./media-store";
-import { type CustomEmoji, customEmojiJson, emojisInTexts } from "./emoji";
+import { type CustomEmoji, customEmojiJson, emojisInTexts, statusEmojiTexts } from "./emoji";
 import { sensitizedAccountIds } from "./account-flag-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { listStatusMuteRoots, resolveThreadRootStatusIds } from "./status-mute-store";
@@ -108,7 +108,7 @@ const buildLocalNoteDocument = (
   poll: PollRecord | undefined,
   mediaById: ReadonlyMap<string, MediaRow>,
   answeredAccountId: string | null,
-  emojis: ReadonlyArray<CustomEmoji>,
+  instanceEmojis: ReadonlyArray<CustomEmoji>,
   muted: boolean,
   sensitized: boolean,
   card: ApiPreviewCardJSON | null,
@@ -140,9 +140,15 @@ const buildLocalNoteDocument = (
     media_attachments: attachments,
     mentions: [],
     tags: extractHashtags(status.text).map((name) => ({ name, url: tagUrl(identity, name) })),
-    emojis: emojis.map(customEmojiJson),
+    emojis: emojisInTexts(
+      statusEmojiTexts(
+        status,
+        poll?.options.map((option) => option.title),
+      ),
+      instanceEmojis,
+    ).map(customEmojiJson),
     card,
-    poll: poll ? pollJson(poll) : null,
+    poll: poll ? pollJson(poll, instanceEmojis) : null,
     quote: null,
     quotes_count: interactions.quotes,
     quote_approval: { automatic: [], manual: [], current_user: "denied" },
@@ -449,7 +455,7 @@ const renderLocalStatuses = async (
             kind: "NotReply",
           },
         ),
-        emojisInTexts([status.text, status.spoilerText], instanceEmojis),
+        instanceEmojis,
         root !== undefined && mutedSet.has(root),
         sensitizedIds.has(status.accountId),
         cards.get(status.id) ?? null,

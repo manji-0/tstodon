@@ -24,7 +24,7 @@ import { RemoteAccountId } from "./remote-account-id";
 import { remoteEmojisJson } from "./remote-emoji-document";
 import { sanitizeRemoteHtml } from "./sanitize-html";
 import { findRemoteActorsByUris } from "./remote-actor-store";
-import { type CustomEmoji, customEmojiJson, emojisInText } from "./emoji";
+import { type CustomEmoji, customEmojiJson, emojisInTexts, profileEmojiTexts } from "./emoji";
 import {
   type AccountProfile,
   EMPTY_ACCOUNT_PROFILE,
@@ -284,9 +284,11 @@ export const mastodonAccount = (
   identity: InstanceIdentity,
   account: LocalAccount,
   counts: { followers: number; following: number; statuses: number },
-  emojis: ReadonlyArray<CustomEmoji> = [],
+  /** The instance's custom emojis; the account's are those its profile writes. */
+  instanceEmojis: ReadonlyArray<CustomEmoji> = [],
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
 ): ApiAccountJSON => {
+  const emojis = emojisInTexts(profileEmojiTexts(account.displayName, profile), instanceEmojis);
   return {
     id: account.id,
     username: account.username,
@@ -384,13 +386,18 @@ export const mastodonAccountDocument = async (
     account.id,
   ),
 ): Promise<ApiAccountJSON> => {
-  const [counts, profile] = await Promise.all([accountCounts(env.DB, account.id), profileRead]);
+  const [counts, profileResult, emojis] = await Promise.all([
+    accountCounts(env.DB, account.id),
+    profileRead,
+    loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+  ]);
+  const profile = profileResult.isOk() ? profileResult.value : EMPTY_ACCOUNT_PROFILE;
   const document = mastodonAccount(
     identity,
     account,
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
-    emojisInText(account.displayName, await loadCustomEmojis(env, identity.mediaPublicBaseUrl)),
-    profile.isOk() ? profile.value : EMPTY_ACCOUNT_PROFILE,
+    emojis,
+    profile,
   );
   return (
     (await withLocalMoves(env, identity, new Map([[account.id, document]]))).get(account.id) ??
@@ -421,20 +428,24 @@ export const mastodonAccountDocuments = async (
     customEmojis ?? loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
   const documents = new Map(
-    accounts.map((account) => [
-      account.id,
-      mastodonAccount(
-        identity,
-        account,
-        (counts.isOk() ? counts.value.get(account.id) : undefined) ?? {
-          followers: 0,
-          following: 0,
-          statuses: 0,
-        },
-        emojisInText(account.displayName, emojis),
-        (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE,
-      ),
-    ]),
+    accounts.map((account) => {
+      const profile =
+        (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE;
+      return [
+        account.id,
+        mastodonAccount(
+          identity,
+          account,
+          (counts.isOk() ? counts.value.get(account.id) : undefined) ?? {
+            followers: 0,
+            following: 0,
+            statuses: 0,
+          },
+          emojis,
+          profile,
+        ),
+      ];
+    }),
   );
   return includeMoved ? withLocalMoves(env, identity, documents) : documents;
 };

@@ -493,6 +493,13 @@ describe("a known remote custom emoji a document writes without declaring it", (
     // A letter, digit or colon next to it is no shortcode; nor is a name of another case.
     const glued = await post(bob, "glued", "<p>x:blob: :blob:: :Blob:</p>", []);
     expect(await statusEmojis(glued)).toEqual({});
+    // A declared emoji is read from the text the same way.
+    const declaredGlued = await post(bob, "declared-glued", "<p>x:blob: :blob::</p>", [
+      emojiTag("blob", blob),
+    ]);
+    expect(await statusEmojis(declaredGlued)).toEqual({});
+    await updateProfile(bob, "Bob x:blob:", [emojiTag("blob", blob)]);
+    expect(await accountEmojis(bob.actorUri)).toEqual({});
     // Onigmo's `[[:alnum:]]` holds the marks: a combining accent before it ends no word.
     const marked = await post(bob, "marked", "<p>é:blob:</p>", []);
     expect(await statusEmojis(marked)).toEqual({});
