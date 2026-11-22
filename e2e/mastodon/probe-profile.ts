@@ -22,6 +22,7 @@ import {
   Statuses,
   step,
   StepFailure,
+  fetchWaitingOutRateLimit,
 } from "./sweep.js";
 
 type Account = ReturnType<typeof Account.parse>;
@@ -288,7 +289,7 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
         : true,
     );
     await eventually("the account's post is gone", async () => {
-      const response = await fetch(`${alice.origin}/api/v1/statuses/${copy.id}`, {
+      const response = await fetchWaitingOutRateLimit(alice, `/api/v1/statuses/${copy.id}`, {
         headers: alice.headers,
       });
       await response.arrayBuffer();
@@ -312,7 +313,7 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
         : true,
     );
     await eventually("the account's post is gone", async () => {
-      const response = await fetch(`${mona.origin}/api/v1/statuses/${copy.id}`, {
+      const response = await fetchWaitingOutRateLimit(mona, `/api/v1/statuses/${copy.id}`, {
         headers: mona.headers,
       });
       await response.arrayBuffer();
