@@ -15,7 +15,7 @@ import {
   listAnnouncementDismissals,
   removeAnnouncementReaction,
 } from "../announcement-store";
-import { type CustomEmoji, customEmojiJson, emojisInText } from "../emoji";
+import { type CustomEmoji, customEmojiJson, emojisInTexts } from "../emoji";
 import { loadCustomEmojis } from "../custom-emoji-store";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
 import {
@@ -50,7 +50,7 @@ const announcementDocument = (
     mentions: [],
     statuses: [],
     tags: [],
-    emojis: emojisInText(announcement.content, emojis).map(customEmojiJson),
+    emojis: emojisInTexts([announcement.content], emojis).map(customEmojiJson),
     reactions: names.map((name) => {
       const state = reactions.get(name);
       return { name, count: state?.count ?? 0, me: state?.me ?? false };

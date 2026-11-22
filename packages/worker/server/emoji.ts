@@ -34,49 +34,63 @@ export const customEmojiJson = (emoji: CustomEmoji): ApiCustomEmojiJSON => ({
 });
 
 /**
- * Configured emojis whose `:shortcode:` appears in `text`, in first-use order.
- * A shortcode matches as written, case and all, as Mastodon's
+ * Mastodon's `CustomEmoji::SCAN_RE`: two or more of `[a-zA-Z0-9_]` between
+ * colons, with no letter, mark, digit or colon on either side (Onigmo's
+ * `[[:alnum:]]` is Letter, Mark and Decimal_Number).
+ */
+const SCAN_RE = /(?<=^|[^\p{L}\p{M}\p{Nd}:]):([a-zA-Z0-9_]{2,}):(?=[^\p{L}\p{M}\p{Nd}:]|$)/gu;
+
+/**
+ * The shortcodes `texts` write, once each in first-use order, as
+ * `CustomEmoji.from_text` scans them.
+ */
+export const scannedShortcodes = (texts: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...new Set(
+    texts.flatMap((text) =>
+      [...text.matchAll(SCAN_RE)].flatMap((match) => (match[1] === undefined ? [] : [match[1]])),
+    ),
+  ),
+];
+
+/** The texts Mastodon's `Status#emojis` scans: the spoiler, the text and the poll's options. */
+export const statusEmojiTexts = (
+  status: Readonly<{ spoilerText: string; text: string }>,
+  pollOptions: ReadonlyArray<string> = [],
+): ReadonlyArray<string> => [status.spoilerText, status.text, ...pollOptions];
+
+/**
+ * The texts Mastodon's `Account#emojis` scans (`emojifiable_text`): the note,
+ * the display name, and each field's name and value.
+ */
+export const profileEmojiTexts = (
+  displayName: string,
+  profile: Readonly<{
+    note: string;
+    fields: ReadonlyArray<Readonly<{ name: string; value: string }>>;
+  }>,
+): ReadonlyArray<string> => [
+  profile.note,
+  displayName,
+  ...profile.fields.map((field) => field.name),
+  ...profile.fields.map((field) => field.value),
+];
+
+/**
+ * Configured emojis whose `:shortcode:` one of `texts` writes, in first-use
+ * order. A shortcode matches as written, case and all, as Mastodon's
  * `CustomEmoji.from_text`: a remote server matches an `Emoji` tag's name
  * against the text the same way, so `:Blob:` is not the emoji `blob`.
  */
-export const emojisInText = (
-  text: string,
-  emojis: ReadonlyArray<CustomEmoji>,
-): ReadonlyArray<CustomEmoji> => {
-  if (emojis.length === 0 || text.length === 0) {
-    return [];
-  }
-  const byShortcode = new Map(emojis.map((emoji) => [emoji.shortcode, emoji]));
-  const found: CustomEmoji[] = [];
-  const seen = new Set<string>();
-  for (const match of text.matchAll(/:([a-zA-Z0-9_]+):/g)) {
-    const shortcode = match[1];
-    if (shortcode === undefined || seen.has(shortcode)) {
-      continue;
-    }
-    const emoji = byShortcode.get(shortcode);
-    if (emoji) {
-      seen.add(shortcode);
-      found.push(emoji);
-    }
-  }
-  return found;
-};
-
-/** Emojis used across the given texts, de-duplicated by shortcode. */
 export const emojisInTexts = (
   texts: ReadonlyArray<string>,
   emojis: ReadonlyArray<CustomEmoji>,
 ): ReadonlyArray<CustomEmoji> => {
-  const found: CustomEmoji[] = [];
-  const seen = new Set<string>();
-  for (const text of texts) {
-    for (const emoji of emojisInText(text, emojis)) {
-      if (!seen.has(emoji.shortcode)) {
-        seen.add(emoji.shortcode);
-        found.push(emoji);
-      }
-    }
+  if (emojis.length === 0) {
+    return [];
   }
-  return found;
+  const byShortcode = new Map(emojis.map((emoji) => [emoji.shortcode, emoji]));
+  return scannedShortcodes(texts).flatMap((shortcode) => {
+    const emoji = byShortcode.get(shortcode);
+    return emoji === undefined ? [] : [emoji];
+  });
 };

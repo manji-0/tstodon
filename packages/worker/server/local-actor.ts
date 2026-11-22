@@ -9,7 +9,7 @@ import { type ActorProfile, actorDocument, actorUpdateActivity } from "./activit
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { loadCustomEmojis } from "./custom-emoji-store";
-import { emojisInTexts } from "./emoji";
+import { emojisInTexts, profileEmojiTexts } from "./emoji";
 import { enqueueLocalActivity, type EnqueueLocalActivityError } from "./delivery";
 import { newEntityId } from "./ids";
 
@@ -43,17 +43,13 @@ export const localActorDocument = async (
   if (standing.isErr()) {
     return err(standing.error);
   }
-  const { note, fields } = profile.value;
   const shown: ActorProfile =
     standing.value.kind === "Suspended"
       ? { kind: "Suspended" }
       : {
           kind: "Shown",
           profile: profile.value,
-          emojis: emojisInTexts(
-            [account.displayName, note, ...fields.flatMap((field) => [field.name, field.value])],
-            emojis,
-          ),
+          emojis: emojisInTexts(profileEmojiTexts(account.displayName, profile.value), emojis),
         };
   return ok(
     actorDocument(
