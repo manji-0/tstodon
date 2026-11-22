@@ -75,9 +75,10 @@ describe("custom emoji in a federated note", () => {
       poll: { options: ["yes :notevote:", "no"], expires_in: 3600 },
     });
 
+    // In the order `Status#emojis` scans them: the content warning, the text, the poll.
     const expected = [
-      storedTag(wave, "notewave"),
       storedTag(warn, "notewarn"),
+      storedTag(wave, "notewave"),
       storedTag(vote, "notevote"),
     ];
     const served = await noteDocument(sent.uri);
