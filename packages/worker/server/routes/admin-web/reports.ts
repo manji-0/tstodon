@@ -112,7 +112,7 @@ const targetModerationOf = async (
   }
   const state = await findAdminRemoteActor(db, target.actorUri);
   return state.isOk() && state.value
-    ? { summary: remoteModerationSummary(state.value.moderation), actions: REMOTE_REPORT_ACTIONS }
+    ? { summary: remoteModerationSummary(state.value.flags), actions: REMOTE_REPORT_ACTIONS }
     : undefined;
 };
 

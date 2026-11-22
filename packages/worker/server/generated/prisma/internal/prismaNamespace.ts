@@ -7715,6 +7715,7 @@ export type Remote_actor_domain_liftsScalarFieldEnum =
 export const Domain_block_limit_backfillsScalarFieldEnum = {
   domain_block_id: "domain_block_id",
   seen_by: "seen_by",
+  claimed_at: "claimed_at",
 } as const;
 
 export type Domain_block_limit_backfillsScalarFieldEnum =

@@ -1,7 +1,7 @@
 import {
   DELIVERY_FAILURE_DAYS_THRESHOLD,
   type DeliveryDomainHealthValue,
-  type RemoteActorModerationValue,
+  type RemoteActorAdminFlags,
 } from "@tstodon/domain";
 import type { AdminAccountFilters } from "./account-admin-store";
 import type { AdminAccountState } from "./admin-actions";
@@ -168,11 +168,11 @@ export const moderationSummary = ({ moderation }: AdminAccountState): string => 
 };
 
 /** How a remote actor stands with this server, for the pages that name it. */
-export const remoteModerationSummary = (moderation: RemoteActorModerationValue): string => {
+export const remoteModerationSummary = (flags: RemoteActorAdminFlags): string => {
   const labels = [
-    moderation.standing.kind === "Suspended" ? "suspended" : undefined,
-    moderation.standing.kind === "Silenced" ? "limited" : undefined,
-    moderation.sensitized ? "media marked sensitive" : undefined,
+    flags.suspended ? "suspended" : undefined,
+    flags.silenced ? "limited" : undefined,
+    flags.sensitized ? "media marked sensitive" : undefined,
   ].filter((label) => label !== undefined);
   return labels.length === 0 ? "in good standing" : labels.join(", ");
 };
@@ -418,7 +418,7 @@ export const remoteActorPage = (
     /** Whether a domain block applies to `domain` (`DomainBlock.rule_for`). */
     domainBlocked: boolean;
     /** Absent once the actor was purged from this server's cache. */
-    moderation: RemoteActorModerationValue | undefined;
+    moderation: RemoteActorAdminFlags | undefined;
     openReports: ReadonlyArray<string>;
     actions: ReadonlyArray<AccountActionButton>;
   }>,

@@ -27,32 +27,38 @@ export type AggregateDomain_block_limit_backfills = {
 export type Domain_block_limit_backfillsMinAggregateOutputType = {
   domain_block_id: string | null;
   seen_by: string | null;
+  claimed_at: string | null;
 };
 
 export type Domain_block_limit_backfillsMaxAggregateOutputType = {
   domain_block_id: string | null;
   seen_by: string | null;
+  claimed_at: string | null;
 };
 
 export type Domain_block_limit_backfillsCountAggregateOutputType = {
   domain_block_id: number;
   seen_by: number;
+  claimed_at: number;
   _all: number;
 };
 
 export type Domain_block_limit_backfillsMinAggregateInputType = {
   domain_block_id?: true;
   seen_by?: true;
+  claimed_at?: true;
 };
 
 export type Domain_block_limit_backfillsMaxAggregateInputType = {
   domain_block_id?: true;
   seen_by?: true;
+  claimed_at?: true;
 };
 
 export type Domain_block_limit_backfillsCountAggregateInputType = {
   domain_block_id?: true;
   seen_by?: true;
+  claimed_at?: true;
   _all?: true;
 };
 
@@ -140,6 +146,7 @@ export type domain_block_limit_backfillsGroupByArgs<
 export type Domain_block_limit_backfillsGroupByOutputType = {
   domain_block_id: string;
   seen_by: string;
+  claimed_at: string | null;
   _count: Domain_block_limit_backfillsCountAggregateOutputType | null;
   _min: Domain_block_limit_backfillsMinAggregateOutputType | null;
   _max: Domain_block_limit_backfillsMaxAggregateOutputType | null;
@@ -169,11 +176,13 @@ export type domain_block_limit_backfillsWhereInput = {
     | Prisma.domain_block_limit_backfillsWhereInput[];
   domain_block_id?: Prisma.StringFilter<"domain_block_limit_backfills"> | string;
   seen_by?: Prisma.StringFilter<"domain_block_limit_backfills"> | string;
+  claimed_at?: Prisma.StringNullableFilter<"domain_block_limit_backfills"> | string | null;
 };
 
 export type domain_block_limit_backfillsOrderByWithRelationInput = {
   domain_block_id?: Prisma.SortOrder;
   seen_by?: Prisma.SortOrder;
+  claimed_at?: Prisma.SortOrderInput | Prisma.SortOrder;
 };
 
 export type domain_block_limit_backfillsWhereUniqueInput = Prisma.AtLeast<
@@ -187,6 +196,7 @@ export type domain_block_limit_backfillsWhereUniqueInput = Prisma.AtLeast<
       | Prisma.domain_block_limit_backfillsWhereInput
       | Prisma.domain_block_limit_backfillsWhereInput[];
     seen_by?: Prisma.StringFilter<"domain_block_limit_backfills"> | string;
+    claimed_at?: Prisma.StringNullableFilter<"domain_block_limit_backfills"> | string | null;
   },
   "domain_block_id"
 >;
@@ -194,6 +204,7 @@ export type domain_block_limit_backfillsWhereUniqueInput = Prisma.AtLeast<
 export type domain_block_limit_backfillsOrderByWithAggregationInput = {
   domain_block_id?: Prisma.SortOrder;
   seen_by?: Prisma.SortOrder;
+  claimed_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.domain_block_limit_backfillsCountOrderByAggregateInput;
   _max?: Prisma.domain_block_limit_backfillsMaxOrderByAggregateInput;
   _min?: Prisma.domain_block_limit_backfillsMinOrderByAggregateInput;
@@ -209,56 +220,70 @@ export type domain_block_limit_backfillsScalarWhereWithAggregatesInput = {
     | Prisma.domain_block_limit_backfillsScalarWhereWithAggregatesInput[];
   domain_block_id?: Prisma.StringWithAggregatesFilter<"domain_block_limit_backfills"> | string;
   seen_by?: Prisma.StringWithAggregatesFilter<"domain_block_limit_backfills"> | string;
+  claimed_at?:
+    | Prisma.StringNullableWithAggregatesFilter<"domain_block_limit_backfills">
+    | string
+    | null;
 };
 
 export type domain_block_limit_backfillsCreateInput = {
   domain_block_id: string;
   seen_by: string;
+  claimed_at?: string | null;
 };
 
 export type domain_block_limit_backfillsUncheckedCreateInput = {
   domain_block_id: string;
   seen_by: string;
+  claimed_at?: string | null;
 };
 
 export type domain_block_limit_backfillsUpdateInput = {
   domain_block_id?: Prisma.StringFieldUpdateOperationsInput | string;
   seen_by?: Prisma.StringFieldUpdateOperationsInput | string;
+  claimed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type domain_block_limit_backfillsUncheckedUpdateInput = {
   domain_block_id?: Prisma.StringFieldUpdateOperationsInput | string;
   seen_by?: Prisma.StringFieldUpdateOperationsInput | string;
+  claimed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type domain_block_limit_backfillsCreateManyInput = {
   domain_block_id: string;
   seen_by: string;
+  claimed_at?: string | null;
 };
 
 export type domain_block_limit_backfillsUpdateManyMutationInput = {
   domain_block_id?: Prisma.StringFieldUpdateOperationsInput | string;
   seen_by?: Prisma.StringFieldUpdateOperationsInput | string;
+  claimed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type domain_block_limit_backfillsUncheckedUpdateManyInput = {
   domain_block_id?: Prisma.StringFieldUpdateOperationsInput | string;
   seen_by?: Prisma.StringFieldUpdateOperationsInput | string;
+  claimed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type domain_block_limit_backfillsCountOrderByAggregateInput = {
   domain_block_id?: Prisma.SortOrder;
   seen_by?: Prisma.SortOrder;
+  claimed_at?: Prisma.SortOrder;
 };
 
 export type domain_block_limit_backfillsMaxOrderByAggregateInput = {
   domain_block_id?: Prisma.SortOrder;
   seen_by?: Prisma.SortOrder;
+  claimed_at?: Prisma.SortOrder;
 };
 
 export type domain_block_limit_backfillsMinOrderByAggregateInput = {
   domain_block_id?: Prisma.SortOrder;
   seen_by?: Prisma.SortOrder;
+  claimed_at?: Prisma.SortOrder;
 };
 
 export type domain_block_limit_backfillsSelect<
@@ -267,6 +292,7 @@ export type domain_block_limit_backfillsSelect<
   {
     domain_block_id?: boolean;
     seen_by?: boolean;
+    claimed_at?: boolean;
   },
   ExtArgs["result"]["domain_block_limit_backfills"]
 >;
@@ -277,6 +303,7 @@ export type domain_block_limit_backfillsSelectCreateManyAndReturn<
   {
     domain_block_id?: boolean;
     seen_by?: boolean;
+    claimed_at?: boolean;
   },
   ExtArgs["result"]["domain_block_limit_backfills"]
 >;
@@ -287,6 +314,7 @@ export type domain_block_limit_backfillsSelectUpdateManyAndReturn<
   {
     domain_block_id?: boolean;
     seen_by?: boolean;
+    claimed_at?: boolean;
   },
   ExtArgs["result"]["domain_block_limit_backfills"]
 >;
@@ -294,12 +322,13 @@ export type domain_block_limit_backfillsSelectUpdateManyAndReturn<
 export type domain_block_limit_backfillsSelectScalar = {
   domain_block_id?: boolean;
   seen_by?: boolean;
+  claimed_at?: boolean;
 };
 
 export type domain_block_limit_backfillsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "domain_block_id" | "seen_by",
+  "domain_block_id" | "seen_by" | "claimed_at",
   ExtArgs["result"]["domain_block_limit_backfills"]
 >;
 
@@ -312,6 +341,7 @@ export type $domain_block_limit_backfillsPayload<
     {
       domain_block_id: string;
       seen_by: string;
+      claimed_at: string | null;
     },
     ExtArgs["result"]["domain_block_limit_backfills"]
   >;
@@ -887,6 +917,7 @@ export interface Prisma__domain_block_limit_backfillsClient<
 export interface domain_block_limit_backfillsFieldRefs {
   readonly domain_block_id: Prisma.FieldRef<"domain_block_limit_backfills", "String">;
   readonly seen_by: Prisma.FieldRef<"domain_block_limit_backfills", "String">;
+  readonly claimed_at: Prisma.FieldRef<"domain_block_limit_backfills", "String">;
 }
 
 // Custom InputTypes

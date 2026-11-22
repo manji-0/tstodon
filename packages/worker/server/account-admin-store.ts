@@ -166,19 +166,16 @@ export const listAdminRemoteActorUris = async (
   >,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
   runD1(async () => {
-    // The stronger of the admin's own moderation and a domain block's, as
-    // `withDomainBlockStandings` reads them.
+    // Mastodon's `silenced_at` / `suspended_at`, apart: the admin's own
+    // moderation or a domain block's, as `remoteActorAdminFlags` reads them.
     const limitedBy = (moderation: string, severity: string): string =>
-      `(EXISTS (SELECT 1 FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri AND m.moderation = '${moderation}')
-        OR EXISTS (SELECT 1 FROM remote_actor_domain_rules v WHERE v.actor_uri = a.actor_uri AND v.severity = '${severity}'))`;
-    const standing = (comparison: string): string =>
-      `(CASE WHEN ${limitedBy("Suspended", "suspend")} THEN 'Suspended'
-        WHEN ${limitedBy("Silenced", "silence")} THEN 'Silenced' ELSE '' END) ${comparison}`;
+      `(a.actor_uri IN (SELECT actor_uri FROM remote_actor_moderation WHERE moderation = '${moderation}')
+        OR a.actor_uri IN (SELECT actor_uri FROM remote_actor_domain_rules WHERE severity = '${severity}'))`;
     const statusCondition: Record<AdminAccountFilters["status"], string> = {
       all: "1",
-      active: standing("<> 'Suspended'"),
-      silenced: standing("= 'Silenced'"),
-      suspended: standing("= 'Suspended'"),
+      active: `NOT ${limitedBy("Suspended", "suspend")}`,
+      silenced: limitedBy("Silenced", "silence"),
+      suspended: limitedBy("Suspended", "suspend"),
       sensitized:
         "EXISTS (SELECT 1 FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri AND m.sensitized <> 0)",
       pending: "0",

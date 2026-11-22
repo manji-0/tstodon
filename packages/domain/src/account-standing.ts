@@ -33,11 +33,6 @@ const silence = (_current: InGoodStanding | Silenced): Silenced => ({ kind: "Sil
 const suspend = (_current: AccountStanding): Suspended => ({ kind: "Suspended" });
 const lift = (_current: Silenced | Suspended): InGoodStanding => inGoodStanding;
 
-const RANK = { InGoodStanding: 0, Silenced: 1, Suspended: 2 } as const satisfies Record<
-  AccountStanding["kind"],
-  number
->;
-
 export const AccountStanding = {
   schema,
   parse: schemaResult(schema),
@@ -59,7 +54,4 @@ export const AccountStanding = {
         return current.kind === "Suspended" ? lift(current) : current;
     }
   },
-  /** The stronger of two standings, as one standing holds a silence and a suspension. */
-  stronger: (a: AccountStanding, b: AccountStanding): AccountStanding =>
-    RANK[b.kind] > RANK[a.kind] ? b : a,
 } as const;

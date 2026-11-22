@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   Hostname,
   type RemoteActorModerationAction,
-  type RemoteActorModerationValue,
+  type RemoteActorAdminFlags,
 } from "@tstodon/domain";
 import { listAdminAccounts } from "../../account-admin-store";
 import { findDomainBlockRule } from "../../admin-domain-block-store";
@@ -224,7 +224,7 @@ const renderAccount = async (
 type RemoteAccountCommand = Readonly<{
   label: string;
   /** Whether the actor's state offers this action. */
-  offered: (moderation: RemoteActorModerationValue) => boolean;
+  offered: (flags: RemoteActorAdminFlags) => boolean;
   /** Asked before the action goes through. */
   confirm?: string;
   action: RemoteActorModerationAction;
@@ -233,34 +233,34 @@ type RemoteAccountCommand = Readonly<{
 const REMOTE_COMMANDS: Readonly<Record<RemoteActorModerationAction, RemoteAccountCommand>> = {
   silence: {
     label: "Limit",
-    offered: (moderation) => moderation.standing.kind === "InGoodStanding",
+    offered: (flags) => !flags.silenced && !flags.suspended,
     action: "silence",
   },
   unsilence: {
     label: "Lift limit",
-    offered: (moderation) => moderation.standing.kind === "Silenced",
+    offered: (flags) => flags.silenced,
     action: "unsilence",
   },
   suspend: {
     label: "Suspend",
-    offered: (moderation) => moderation.standing.kind !== "Suspended",
+    offered: (flags) => !flags.suspended,
     confirm:
       "Suspending hides the account and its posts and refuses everything it sends. You can lift it later.",
     action: "suspend",
   },
   unsuspend: {
     label: "Unsuspend",
-    offered: (moderation) => moderation.standing.kind === "Suspended",
+    offered: (flags) => flags.suspended,
     action: "unsuspend",
   },
   sensitize: {
     label: "Mark media as sensitive",
-    offered: (moderation) => !moderation.sensitized,
+    offered: (flags) => !flags.sensitized,
     action: "sensitize",
   },
   unsensitize: {
     label: "Stop marking media as sensitive",
-    offered: (moderation) => moderation.sensitized,
+    offered: (flags) => flags.sensitized,
     action: "unsensitize",
   },
 };
@@ -328,7 +328,7 @@ const renderRemoteAccount = async (
   if (rule.isErr()) {
     return serverError(c, rule.error);
   }
-  const moderation = view.state?.moderation;
+  const moderation = view.state?.flags;
   return c.html(
     remoteActorPage(
       instanceName(c.env),
@@ -406,7 +406,7 @@ const postRemoteAccount = async (
   }
   const command = REMOTE_COMMANDS[name.value];
   const path = `/admin/accounts/${RemoteAccountId.encode(view.actorUri)}`;
-  if (view.state === undefined || !command.offered(view.state.moderation)) {
+  if (view.state === undefined || !command.offered(view.state.flags)) {
     return renderRemoteAccount(
       c,
       view,

@@ -22,10 +22,13 @@ CREATE INDEX idx_remote_actor_domain_lifts_actor
 -- The silences and suspensions made before migration 0169 recorded no actors.
 -- Each is recorded once, in queued pages, for the actors first seen by its
 -- last change (`seen_by`), when Mastodon's `BlockDomainService` last ran over
--- `Account.by_domain_and_subdomains`; the hourly sweep starts it.
+-- `Account.by_domain_and_subdomains`; the hourly sweep starts it. Each page
+-- of the chain stamps `claimed_at`, and the sweep starts no second chain
+-- while the stamp is recent.
 CREATE TABLE domain_block_limit_backfills (
     domain_block_id TEXT PRIMARY KEY NOT NULL,
-    seen_by TEXT NOT NULL
+    seen_by TEXT NOT NULL,
+    claimed_at TEXT
 );
 
 INSERT INTO domain_block_limit_backfills (domain_block_id, seen_by)

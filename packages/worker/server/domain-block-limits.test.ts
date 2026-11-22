@@ -390,6 +390,28 @@ describe("the admin account views of an actor a domain block limits", () => {
     expect(await listedV1("suspended", "open.adm-susp.example")).toEqual([known.actorUri]);
     expect(await listedV2("active", "open.adm-susp.example")).toEqual([]);
   });
+
+  // `silenced_at` and `suspended_at` are apart: an actor can hold both, and
+  // `AccountFilter`'s `silenced` lists a suspended one too.
+  it("show a domain silence and an admin's suspension both", async () => {
+    const { known } = await knownUnderNoop("mix-sil.example");
+    await moderate(known.actorUri, "suspend");
+    await block("mix-sil.example", "silence");
+
+    expect(await adminAccount(known.actorUri)).toMatchObject({ silenced: true, suspended: true });
+    expect(await listedV2("silenced", "open.mix-sil.example")).toEqual([known.actorUri]);
+    expect(await listedV2("suspended", "open.mix-sil.example")).toEqual([known.actorUri]);
+  });
+
+  it("show an admin's silence and a domain suspension both", async () => {
+    const { known } = await knownUnderNoop("mix-susp.example");
+    await moderate(known.actorUri, "silence");
+    await block("mix-susp.example", "suspend");
+
+    expect(await adminAccount(known.actorUri)).toMatchObject({ silenced: true, suspended: true });
+    expect(await listedV2("silenced", "open.mix-susp.example")).toEqual([known.actorUri]);
+    expect(await listedV2("suspended", "open.mix-susp.example")).toEqual([known.actorUri]);
+  });
 });
 
 /**
@@ -420,14 +442,20 @@ describe("lifting a domain block's limitation of one actor", () => {
   });
 
   it("unsuspends the actor, and a change to a silence silences it", async () => {
-    const { known } = await knownUnderNoop("lift-one-susp.example");
+    const { known, note } = await knownUnderNoop("lift-one-susp.example");
     const id = await block("lift-one-susp.example", "suspend");
 
     expect(await moderate(known.actorUri, "unsilence")).toMatchObject({ suspended: true });
     expect(await moderate(known.actorUri, "unsuspend")).toMatchObject({ suspended: false });
 
     expect(await lookup("known@open.lift-one-susp.example")).toBe("Shown");
-    expect(await createNote(known, "https://open.lift-one-susp.example/notes/after")).toBe(202);
+    const after = "https://open.lift-one-susp.example/notes/after";
+    expect(await createNote(known, after)).toBe(202);
+    // `DeleteAccountService` deleted what the account had when suspended;
+    // what it posts after the unsuspension shows.
+    const shown = await publicRemoteUris();
+    expect(shown).toContain(after);
+    expect(shown).not.toContain(note);
 
     await changeBlock(id, "silence");
 
@@ -441,11 +469,43 @@ describe("lifting a domain block's limitation of one actor", () => {
     const { known } = await knownUnderNoop("own-sil.example");
     await moderate(known.actorUri, "silence");
     await block("own-sil.example", "suspend");
+    expect(await adminAccount(known.actorUri)).toMatchObject({ silenced: true, suspended: true });
 
     expect(await moderate(known.actorUri, "unsuspend")).toMatchObject({
       silenced: true,
       suspended: false,
     });
+  });
+
+  it("leaves an actor suspended while a suspension covers its host", async () => {
+    const onDomain = await remoteActor("plain", "host-susp.example");
+    await block("host-susp.example", "suspend");
+
+    // Mastodon keeps such an account behind `domain_not_allowed?` (lookup,
+    // inbox, signed fetches); tstodon hides it on every read path, so it
+    // lifts nothing rather than half of it.
+    expect(await moderate(onDomain.actorUri, "unsuspend")).toMatchObject({ suspended: true });
+    expect(await lookup("plain@host-susp.example")).toBe("NotFound");
+    expect(await listedV2("suspended", "host-susp.example")).toEqual([onDomain.actorUri]);
+    expect(await liftRows(onDomain.actorUri)).toBe(0);
+  });
+
+  it("forgets the lift with the actor's own account Delete", async () => {
+    const { known } = await knownUnderNoop("lift-del.example");
+    await block("lift-del.example", "silence");
+    await moderate(known.actorUri, "unsilence");
+    expect(await liftRows(known.actorUri)).toBe(1);
+
+    expect(
+      await known.send({
+        id: `${known.actorUri}#delete`,
+        type: "Delete",
+        object: known.actorUri,
+        to: [PUBLIC],
+      }),
+    ).toBe(202);
+
+    expect(await liftRows(known.actorUri)).toBe(0);
   });
 
   it("forgets the lift with the block", async () => {
@@ -463,6 +523,15 @@ describe("lifting a domain block's limitation of one actor", () => {
     expect(z.object({ n: z.number() }).parse(row).n).toBe(0);
   });
 });
+
+const liftRows = async (actorUri: string): Promise<number> => {
+  const row = await env.DB.prepare(
+    "SELECT count(*) AS n FROM remote_actor_domain_lifts WHERE actor_uri = ?",
+  )
+    .bind(actorUri)
+    .first();
+  return z.object({ n: z.number() }).parse(row).n;
+};
 
 describe("a silence or suspension made before its actors were recorded", () => {
   it("records the actors first seen by its last change, from the hourly sweep", async () => {
@@ -498,6 +567,36 @@ describe("a silence or suspension made before its actors were recorded", () => {
       "SELECT count(*) AS n FROM domain_block_limit_backfills",
     ).first();
     expect(z.object({ n: z.number() }).parse(left).n).toBe(0);
+  });
+
+  it("is not started again while a chain holds its claim", async () => {
+    const actor = await remoteActor("claimed", "claimed-susp.example");
+    const id = "claimed-susp-block";
+    const now = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO domain_blocks (id, domain, severity, created_at, updated_at)
+         VALUES (?, 'claimed-susp.example', 'suspend', ?, ?)`,
+      ).bind(id, now, now),
+      env.DB.prepare(
+        `INSERT INTO domain_block_limit_backfills (domain_block_id, seen_by, claimed_at)
+         VALUES (?, ?, ?)`,
+      ).bind(id, now, now),
+    ]);
+    const sweep = () =>
+      settled(async () => {
+        expect(await processOutboxJob(env, { kind: "ResumeLiftedDomainBlockLimits" })).toBe("ok");
+      });
+
+    await sweep();
+    expect(await limitRows("actor_uri", actor.actorUri)).toBe(0);
+
+    // A claim no page stamped for an hour is a chain that stopped.
+    await env.DB.prepare("UPDATE domain_block_limit_backfills SET claimed_at = ?")
+      .bind(new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+      .run();
+    await sweep();
+    expect(await limitRows("actor_uri", actor.actorUri)).toBe(1);
   });
 });
 

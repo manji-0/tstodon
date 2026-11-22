@@ -279,3 +279,25 @@ describe("the notification policy for a remote sender", () => {
     expect(await outcome(recipient)).toEqual({ listed: 3, held: 2 });
   });
 });
+
+describe("a remote sender an instance domain silence limits", () => {
+  it("is held as `for_limited_accounts: filter` holds an admin's silence", async () => {
+    const recipient = await local("np-remote-domain-silence@example.com");
+    const sender = await remoteActor("np-domain-silenced", "np-silenced.example");
+    await firstSeen(sender, 60);
+    const blocked = await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(await authHeaders("np-domain-admin@example.com", { admin: true })),
+      },
+      body: JSON.stringify({ domain: "np-silenced.example", severity: "silence" }),
+    });
+    expect(blocked.status).toBe(200);
+
+    // Mastodon's `NotifyService` filters a sender whose `silenced?` holds,
+    // whoever silenced it.
+    await mention(sender, recipient, "np-domain-silenced");
+    expect(await outcome(recipient)).toEqual(HELD);
+  });
+});

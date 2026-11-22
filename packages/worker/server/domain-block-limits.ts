@@ -1,4 +1,4 @@
-import { AccountStanding, Hostname, type OutboxJob } from "@tstodon/domain";
+import { type DomainBlockLimits, Hostname, type OutboxJob } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findDomainBlockById } from "./admin-domain-block-store";
@@ -6,6 +6,8 @@ import { jsonStringArray, parseRows, runD1, type RepositoryError } from "./d1";
 import { hostKeyRange } from "./host-key";
 import { startJob } from "./inline-job";
 import { measureJobPage } from "./metrics";
+import { nowIso } from "./clock";
+import type { TypedSqlLike } from "./typed-sql";
 
 /**
  * The limitation an instance domain block keeps on the actors it found when
@@ -43,25 +45,52 @@ export const recordPageSql = (host: Cursor["host"]): string => {
 
 const PageRow = z.object({ row_id: z.number(), key: z.string(), actor_uri: z.string() });
 
+/** Statements that forget what the admin's lifts and a pending backfill kept for a block. */
+const forgetBlockState = (db: D1Database, blockId: string): D1PreparedStatement[] => [
+  db.prepare("DELETE FROM remote_actor_domain_lifts WHERE domain_block_id = ?").bind(blockId),
+  db.prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?").bind(blockId),
+];
+
+const isStart = (cursor: Cursor): boolean =>
+  cursor.host === START.host &&
+  cursor.afterKey === START.afterKey &&
+  cursor.afterRowId === START.afterRowId;
+
 /**
  * Record the actors of the page after `cursor` under block `blockId`, unless
  * the block no longer silences or suspends by the time the statement runs,
- * so a block changed or removed meanwhile leaves no rows. With `seenBy`,
- * only the actors first seen by then. Resolves to the cursor after the page,
- * `undefined` once both hosts are read.
+ * so a block changed or removed meanwhile leaves no rows. The first page of
+ * an `Apply` run forgets the admin's lifts of the block and a pending
+ * backfill in the same batch, so a failure is retried with the page. A
+ * `Backfill` run records only the actors first seen by its `seenBy`, and
+ * each of its pages stamps the backfill's claim. Resolves to the cursor
+ * after the page, `undefined` once both hosts are read.
  */
 const recordPage = (
   db: D1Database,
   blockId: string,
   domain: Hostname,
   cursor: Cursor,
-  seenBy: string | undefined,
+  run: RecordJob["run"],
 ): Promise<Result<Cursor | undefined, RepositoryError>> =>
   runD1(async () => {
     const { from, to } = hostKeyRange(domain);
     const page = recordPageSql(cursor.host);
     const binds = [blockId, from, to, cursor.afterKey, cursor.afterRowId, PAGE];
-    const [, read] = await db.batch([
+    const before =
+      run.kind === "Apply"
+        ? isStart(cursor)
+          ? forgetBlockState(db, blockId)
+          : []
+        : [
+            db
+              .prepare(
+                "UPDATE domain_block_limit_backfills SET claimed_at = ? WHERE domain_block_id = ?",
+              )
+              .bind(nowIso(), blockId),
+          ];
+    const results = await db.batch([
+      ...before,
       db
         .prepare(
           `INSERT OR IGNORE INTO remote_actor_domain_limits (domain_block_id, actor_uri)
@@ -70,22 +99,25 @@ const recordPage = (
              SELECT 1 FROM domain_blocks WHERE id = ?1 AND severity IN ('silence', 'suspend')
            ) AND (?7 IS NULL OR julianday(p.created_at) <= julianday(?7))`,
         )
-        .bind(...binds, seenBy ?? null),
+        .bind(...binds, run.kind === "Backfill" ? run.seenBy : null),
       db.prepare(page).bind(...binds),
     ]);
-    const rows = parseRows(PageRow, read?.results);
+    const rows = parseRows(PageRow, results.at(-1)?.results);
     const last = rows.at(-1);
     if (last !== undefined && rows.length === PAGE) {
       return { host: cursor.host, afterKey: last.key, afterRowId: last.row_id };
     }
-    return cursor.host === "AccountDomain" ? { ...START, host: "UriHost" } : undefined;
+    if (cursor.host === "AccountDomain") {
+      return { ...START, host: "UriHost" };
+    }
+    if (run.kind === "Backfill") {
+      await db
+        .prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
+        .bind(blockId)
+        .run();
+    }
+    return undefined;
   });
-
-/** Statements that forget what the admin and the backfill kept for a block applied again or lifted. */
-const forgetBlockState = (db: D1Database, blockId: string): D1PreparedStatement[] => [
-  db.prepare("DELETE FROM remote_actor_domain_lifts WHERE domain_block_id = ?").bind(blockId),
-  db.prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?").bind(blockId),
-];
 
 /** Delete the next page of rows a lifted block left, with its lifts and backfill. */
 const forgetPage = (db: D1Database, blockId: string): Promise<Result<number, RepositoryError>> =>
@@ -132,35 +164,22 @@ export const processRecordDomainBlockLimitsJob = (env: Env, job: RecordJob) =>
       block.id,
       Hostname.ofAuthority(block.domain),
       job.cursor,
-      job.seenBy,
+      job.run,
     );
     if (next.isErr()) {
       return { outcome: "retry", size: 0, chained: false };
     }
     if (next.value !== undefined) {
       await env.OUTBOX_PROCESS_QUEUE.send({ ...job, cursor: next.value });
-    } else if (job.seenBy !== undefined) {
-      const done = await runD1(() =>
-        env.DB.prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
-          .bind(block.id)
-          .run(),
-      );
-      if (done.isErr()) {
-        return { outcome: "retry", size: 0, chained: false };
-      }
     }
     return { outcome: "ok", size: -1, chained: next.value !== undefined, step: job.cursor.host };
   });
 
-const recordJob = (domainBlockId: string): RecordJob => ({
+const applyJob = (domainBlockId: string): RecordJob => ({
   kind: "RecordDomainBlockLimits",
   domainBlockId,
   cursor: START,
-});
-
-const backfillJob = (backfill: Backfill): RecordJob => ({
-  ...recordJob(backfill.id),
-  seenBy: backfill.seen_by,
+  run: { kind: "Apply" },
 });
 
 /**
@@ -170,22 +189,21 @@ const backfillJob = (backfill: Backfill): RecordJob => ({
  * current severity; the pages only delete the rows it left. Applying the
  * block again limits every actor it covers again, as each run of Mastodon's
  * `DomainBlockWorker` does (`process_domain_block!` over the accounts
- * `without_silenced` / `without_suspended`): the admin's lifts of it go, and
- * so does a pending backfill, which a full recording supersedes.
+ * `without_silenced` / `without_suspended`): its first page forgets the
+ * admin's lifts of the block, and a pending backfill, which a full recording
+ * supersedes.
  */
-export const startDomainBlockLimits = async (env: Env, domainBlockId: string): Promise<void> => {
-  const forgotten = await runD1(() => env.DB.batch(forgetBlockState(env.DB, domainBlockId)));
-  if (forgotten.isErr()) {
-    console.error(JSON.stringify({ kind: "DomainBlockLiftsNotForgotten", domainBlockId }));
-  }
-  await startJob(env, recordJob(domainBlockId), processRecordDomainBlockLimitsJob, "Queued");
-};
+export const startDomainBlockLimits = (env: Env, domainBlockId: string): Promise<void> =>
+  startJob(env, applyJob(domainBlockId), processRecordDomainBlockLimitsJob, "Queued");
 
-/** Distinct blocks with rows one hourly sweep looks at. */
+/** Distinct blocks with rows, and backfills, one hourly sweep looks at. */
 const RESUME_SCAN = 200;
 
 /** Messages one `sendBatch` takes. */
 const QUEUE_BATCH = 100;
+
+/** How long a backfill's claim holds without a page stamping it. */
+const BACKFILL_CLAIM_HOURS = 1;
 
 const BlockIdRow = z.object({ id: z.string() });
 
@@ -214,39 +232,55 @@ const listLiftedDomainBlockIds = (db: D1Database): Promise<Result<string[], Repo
     return parseRows(BlockIdRow, results).map((row) => row.id);
   });
 
-const Backfill = z.object({ id: z.string(), seen_by: z.string() });
-type Backfill = z.infer<typeof Backfill>;
+const ClaimedBackfill = z.object({ id: z.string(), seen_by: z.string() });
 
 /**
- * The silences and suspensions made before their actors were recorded
- * (migration 0171), each with the time of its last change.
+ * Claim the silences and suspensions made before their actors were recorded
+ * (migration 0171) that no chain records now: unclaimed, or whose claim no
+ * page stamped for {@link BACKFILL_CLAIM_HOURS}.
  */
-const listBackfills = (db: D1Database): Promise<Result<Backfill[], RepositoryError>> =>
+const claimBackfills = (
+  db: D1Database,
+): Promise<Result<z.infer<typeof ClaimedBackfill>[], RepositoryError>> =>
   runD1(async () => {
     const { results } = await db
-      .prepare("SELECT domain_block_id AS id, seen_by FROM domain_block_limit_backfills LIMIT ?")
-      .bind(RESUME_SCAN)
+      .prepare(
+        `UPDATE domain_block_limit_backfills SET claimed_at = ?1
+         WHERE domain_block_id IN (
+           SELECT domain_block_id FROM domain_block_limit_backfills
+           WHERE claimed_at IS NULL OR julianday(claimed_at) < julianday(?1) - ?2 / 24.0
+           LIMIT ?3
+         )
+         RETURNING domain_block_id AS id, seen_by`,
+      )
+      .bind(nowIso(), BACKFILL_CLAIM_HOURS, RESUME_SCAN)
       .all();
-    return parseRows(Backfill, results);
+    return parseRows(ClaimedBackfill, results);
   });
 
 /**
  * Queue the deletion of the rows each lifted block left, for a chain that
  * stopped before it finished: a next page that could not be queued, or a job
  * that gave up its retries (hourly cron). A chain still running gets a
- * second job; both delete what is left. Each block still to be recorded once
- * gets its recording queued the same way, until a chain finishes it.
+ * second job; both delete what is left. Each backfill no chain holds gets
+ * its recording queued, until a chain finishes it.
  */
 export const processResumeLiftedDomainBlockLimitsJob = (env: Env) =>
   measureJobPage(env, "ResumeLiftedDomainBlockLimits", async () => {
     const [lifted, backfills] = await Promise.all([
       listLiftedDomainBlockIds(env.DB),
-      listBackfills(env.DB),
+      claimBackfills(env.DB),
     ]);
     if (lifted.isErr() || backfills.isErr()) {
       return { outcome: "retry", size: -1, chained: false };
     }
-    const jobs = [...lifted.value.map(recordJob), ...backfills.value.map(backfillJob)];
+    const jobs: RecordJob[] = [
+      ...lifted.value.map(applyJob),
+      ...backfills.value.map((backfill): RecordJob => ({
+        ...applyJob(backfill.id),
+        run: { kind: "Backfill", seenBy: backfill.seen_by },
+      })),
+    ];
     for (let start = 0; start < jobs.length; start += QUEUE_BATCH) {
       await env.OUTBOX_PROCESS_QUEUE.sendBatch(
         jobs.slice(start, start + QUEUE_BATCH).map((body) => ({ body })),
@@ -286,65 +320,73 @@ export const listDomainSuspendedActors = async (
 /** The severity of a domain block one actor's lift undoes. */
 export type LiftedSeverity = "silence" | "suspend";
 
+/** The blocks that hold `severity` on the actor now. */
+export const listLimitingDomainBlockIds = (
+  db: D1Database,
+  actorUri: string,
+  severity: LiftedSeverity,
+): Promise<Result<string[], RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT DISTINCT domain_block_id AS id FROM remote_actor_domain_rules
+         WHERE actor_uri = ? AND severity = ?`,
+      )
+      .bind(actorUri, severity)
+      .all();
+    return parseRows(BlockIdRow, results).map((row) => row.id);
+  });
+
 /**
- * Lift the `severity` each instance domain block holds on the actor now, as
+ * The statements that lift `severity` of blocks `blockIds` on the actor, as
  * Mastodon's per-account `unsilence!` / `unsuspend!` clear the
  * `silenced_at` / `suspended_at` that `BlockDomainService` set, until the
  * block is applied again ({@link startDomainBlockLimits}).
  */
-export const liftDomainBlockLimits = (
-  db: D1Database,
+export const liftDomainBlockLimitsSql = (
   actorUri: string,
   severity: LiftedSeverity,
-): Promise<Result<void, RepositoryError>> =>
-  runD1(async () => {
-    await db
-      .prepare(
-        `INSERT OR REPLACE INTO remote_actor_domain_lifts (domain_block_id, actor_uri, severity)
-         SELECT DISTINCT domain_block_id, actor_uri, severity FROM remote_actor_domain_rules
-         WHERE actor_uri = ? AND severity = ?`,
-      )
-      .bind(actorUri, severity)
-      .run();
-  });
+  blockIds: ReadonlyArray<string>,
+): TypedSqlLike[] =>
+  blockIds.map((id) => ({
+    sql: `INSERT OR REPLACE INTO remote_actor_domain_lifts (domain_block_id, actor_uri, severity)
+          VALUES ($1, $2, $3)`,
+    values: [id, actorUri, severity],
+  }));
 
-const StandingRow = z.object({ actor_uri: z.string(), rank: z.number() });
-
-const STANDING_OF_RANK: ReadonlyArray<AccountStanding> = [
-  AccountStanding.inGoodStanding,
-  { kind: "Silenced" },
-  { kind: "Suspended" },
-];
+const LimitsRow = z.object({ actor_uri: z.string(), silenced: z.number(), suspended: z.number() });
 
 /**
- * The standing the instance domain blocks hold on each of `actorUris`, the
- * stronger when more than one does, as Mastodon's `silenced_at` /
- * `suspended_at` set by `BlockDomainService` or at the account's creation
- * (`ProcessAccountService#create_account`). Actors no block limits are absent.
+ * The silence and the suspension the instance domain blocks hold on each of
+ * `actorUris`, as Mastodon's `silenced_at` / `suspended_at` that
+ * `BlockDomainService` or `ProcessAccountService#create_account` set. Actors
+ * no block limits are absent.
  */
-export const listDomainBlockStandings = async (
+export const listDomainBlockLimits = async (
   db: D1Database,
   actorUris: ReadonlyArray<string>,
-): Promise<Result<ReadonlyMap<string, AccountStanding>, RepositoryError>> => {
+): Promise<Result<ReadonlyMap<string, DomainBlockLimits>, RepositoryError>> => {
   if (actorUris.length === 0) {
     return ok(new Map());
   }
   return runD1(async () => {
     const { results } = await db
       .prepare(
-        `SELECT actor_uri,
-                max(CASE severity WHEN 'suspend' THEN 2 WHEN 'silence' THEN 1 ELSE 0 END) AS rank
+        `SELECT actor_uri, max(severity = 'silence') AS silenced, max(severity = 'suspend') AS suspended
          FROM remote_actor_domain_rules
-         WHERE actor_uri IN (SELECT value FROM json_each(?))
-         GROUP BY actor_uri HAVING rank > 0`,
+         WHERE actor_uri IN (SELECT value FROM json_each(?)) AND severity IN ('silence', 'suspend')
+         GROUP BY actor_uri`,
       )
       .bind(jsonStringArray([...new Set(actorUris)]))
       .all();
     return new Map(
-      parseRows(StandingRow, results).flatMap((row) => {
-        const standing = STANDING_OF_RANK[row.rank];
-        return standing === undefined ? [] : [[row.actor_uri, standing] as const];
-      }),
+      parseRows(LimitsRow, results).map(
+        (row) =>
+          [
+            row.actor_uri,
+            { silenced: row.silenced !== 0, suspended: row.suspended !== 0 },
+          ] as const,
+      ),
     );
   });
 };

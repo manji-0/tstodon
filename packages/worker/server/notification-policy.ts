@@ -13,6 +13,7 @@ import { findAccountStanding } from "./account-moderation-store";
 import { findAccountProfile } from "./account-profile-store";
 import { findAccountById } from "./account-store";
 import { parseRows, type RepositoryError, runD1 } from "./d1";
+import { listDomainBlockLimits } from "./domain-block-limits";
 import { listShownRemoteStatusMentions, listStatusMentions } from "./mention-store";
 import { findNotificationPolicy, isSenderAccepted } from "./notification-policy-store";
 import { RemoteAccountId } from "./remote-account-id";
@@ -188,15 +189,23 @@ const senderProfile = async (
       published: undefined,
     }));
   }
-  const [moderation, actor] = await Promise.all([
+  const [moderation, domainLimits, actor] = await Promise.all([
     getRemoteActorModeration(db, sender.actorUri),
+    listDomainBlockLimits(db, [sender.actorUri]),
     findRemoteActorByUri(db, sender.actorUri),
   ]);
   if (moderation.isErr()) {
     return err(moderation.error);
   }
+  if (domainLimits.isErr()) {
+    return err(domainLimits.error);
+  }
+  // A domain block's silence counts as the admin's own, as Mastodon's
+  // `filter_limited_accounts?` reads `silenced?`.
+  const own = moderation.value.standing;
+  const domainSilenced = domainLimits.value.get(sender.actorUri)?.silenced === true;
   return actor.map((found) => ({
-    standing: moderation.value.standing,
+    standing: own.kind === "InGoodStanding" && domainSilenced ? { kind: "Silenced" } : own,
     bot: found?.profile.bot ?? false,
     published: found?.profile.publishedAt ?? undefined,
   }));

@@ -9,7 +9,7 @@ import {
   listRemoteActorModerations as listRemoteActorModerationsSql,
   upsertRemoteActorModeration as upsertRemoteActorModerationSql,
 } from "./generated/prisma/sql";
-import { queryTyped, runTyped } from "./typed-sql";
+import { queryTyped, runTyped, type TypedSqlLike } from "./typed-sql";
 
 const ModerationColumnsSchema = z.object({
   moderation: z.string().nullable(),
@@ -62,6 +62,20 @@ export const listRemoteActorModerations = async (
     return new Map(rows.map((row) => [row.actor_uri, moderationOf(row)]));
   });
 
+/** The statement that stores an actor's moderation; the default state keeps no row. */
+export const remoteActorModerationSql = (
+  actorUri: string,
+  moderation: RemoteActorModeration,
+): TypedSqlLike =>
+  RemoteActorModeration.isDefault(moderation)
+    ? deleteRemoteActorModerationSql(actorUri)
+    : upsertRemoteActorModerationSql(
+        actorUri,
+        moderation.standing.kind === "InGoodStanding" ? null : moderation.standing.kind,
+        moderation.sensitized ? 1 : 0,
+        nowIso(),
+      );
+
 /** Store an actor's moderation; the default state keeps no row. */
 export const setRemoteActorModeration = async (
   db: D1Database,
@@ -69,17 +83,5 @@ export const setRemoteActorModeration = async (
   moderation: RemoteActorModeration,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    if (RemoteActorModeration.isDefault(moderation)) {
-      await runTyped(db, deleteRemoteActorModerationSql(actorUri));
-      return;
-    }
-    await runTyped(
-      db,
-      upsertRemoteActorModerationSql(
-        actorUri,
-        moderation.standing.kind === "InGoodStanding" ? null : moderation.standing.kind,
-        moderation.sensitized ? 1 : 0,
-        nowIso(),
-      ),
-    );
+    await runTyped(db, remoteActorModerationSql(actorUri, moderation));
   });

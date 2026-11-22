@@ -16,7 +16,7 @@ import { nowIso } from "./clock";
 import { jsonStringArray, okValues, parseRows, type RepositoryError, runD1 } from "./d1";
 import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
-import { queryTyped, runTyped, runTypedBatch } from "./typed-sql";
+import { queryTyped, runTyped, runTypedBatch, type TypedSqlLike } from "./typed-sql";
 import { RemoteAccountId } from "./remote-account-id";
 import { removedBoostsFromRows } from "./removed-boost";
 import {
@@ -59,6 +59,7 @@ import {
   purgeRemoteActorMutes as purgeRemoteActorMutesSql,
   purgeRemoteActorNotes as purgeRemoteActorNotesSql,
   purgeRemoteActorDomainLimits as purgeRemoteActorDomainLimitsSql,
+  purgeRemoteActorDomainLifts as purgeRemoteActorDomainLiftsSql,
   purgeRemoteActorNotificationDismissals as purgeRemoteActorNotificationDismissalsSql,
   purgeRemoteActorNotifications as purgeRemoteActorNotificationsSql,
   purgeRemoteActorRequestAcceptances as purgeRemoteActorRequestAcceptancesSql,
@@ -887,6 +888,7 @@ export const purgeRemoteActor = async (
     purgeRemoteActorEndorsementsSql(actorUri),
     purgeRemoteActorNotesSql(actorUri),
     purgeRemoteActorDomainLimitsSql(actorUri),
+    purgeRemoteActorDomainLiftsSql(actorUri),
     deleteRemoteActorSql(actorUri),
   ]);
   if (batched.isErr()) {
@@ -897,6 +899,27 @@ export const purgeRemoteActor = async (
   }
   return ok({ boosts: removedBoostsFromRows(batched.value[0]?.results) });
 };
+
+/**
+ * The statements that empty a remote actor's content and keep the actor, as
+ * Mastodon's `BlockDomainService` runs `DeleteAccountService` with
+ * `reserve_username` on each account a suspension suspends: its statuses
+ * (with their tags, mentions and local boosts, by cascade), its own boosts,
+ * favourites and announces, and the notifications it sent. The first one
+ * lists the local boosts of its statuses, which go with them.
+ */
+export const emptyRemoteActorContentSql = (actorUri: string): ReadonlyArray<TypedSqlLike> => [
+  listLocalBoostsOfRemoteActorSql(actorUri),
+  purgeRemoteActorStatusMutesSql(actorUri),
+  purgeRemoteActorConversationReadsSql(actorUri),
+  purgeRemoteActorConversationHidesSql(actorUri),
+  purgeRemoteActorNotificationDismissalsSql(actorUri),
+  purgeRemoteActorNotificationsSql(actorUri),
+  { sql: "DELETE FROM remote_boosts WHERE actor_uri = $1", values: [actorUri] },
+  { sql: "DELETE FROM remote_announces WHERE remote_actor_uri = $1", values: [actorUri] },
+  { sql: "DELETE FROM remote_favourites WHERE remote_actor_uri = $1", values: [actorUri] },
+  { sql: "DELETE FROM remote_statuses WHERE actor_uri = $1", values: [actorUri] },
+];
 
 /**
  * Home timeline entries a purge of the actor takes away from every follower,
