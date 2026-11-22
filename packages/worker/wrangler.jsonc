@@ -44,6 +44,7 @@
     "INSTANCE_RULES": "[\"Be kind to others.\",\"No spam or harassment.\"]",
     "REGISTRATION_APPROVAL": "false",
     "POLL_UPDATE_DELAY_SECONDS": "180",
+    "USER_ACTIVE_DAYS": "7",
     "REGISTRATIONS_OPEN": "true",
     "ADMIN_USERNAMES": "",
     "CUSTOM_EMOJIS": "[{\"shortcode\":\"tstodon\",\"url\":\"https://media.example.com/emoji/tstodon.png\"}]",

@@ -329,22 +329,22 @@ describe("the status notification of a followed remote actor's note", () => {
   });
 
   // `followers_for_local_distribution` keeps the followers whose user signed
-  // in within `User::ACTIVE_DURATION` (7 days).
+  // in within `User::ACTIVE_DURATION` (7 days) of now: an instant, not a day.
   it("goes to no follower who has not signed in for a week", async () => {
     const author = await remoteActor("rsninactive", "rsn-inactive.example");
     await followRemote("rsn-inactive-away@example.com", author, { notify: true });
     await followRemote("rsn-inactive-recent@example.com", author, { notify: true });
     const away = await signedInAccount("rsn-inactive-away@example.com");
     const recent = await signedInAccount("rsn-inactive-recent@example.com");
-    const daysAgo = (days: number) =>
-      new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const week = 7 * 86_400_000;
+    const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
     await env.DB.batch([
-      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
-        daysAgo(8),
+      env.DB.prepare("UPDATE accounts SET current_sign_in_at = ? WHERE id = ?").bind(
+        ago(week + 60_000),
         away.id,
       ),
-      env.DB.prepare("UPDATE account_activity_days SET day = ? WHERE account_id = ?").bind(
-        daysAgo(6),
+      env.DB.prepare("UPDATE accounts SET current_sign_in_at = ? WHERE id = ?").bind(
+        ago(week - 60_000),
         recent.id,
       ),
     ]);

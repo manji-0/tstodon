@@ -178,6 +178,44 @@ describe("home streams of local followers", () => {
     listener.close();
   });
 
+  // `FeedManager#push_to_home` and `#push_to_list` push only to a user who
+  // signed in within `USER_ACTIVE_DAYS`, as the fan-out reads
+  // `followers_for_local_distribution`.
+  it("are not told when their user has not signed in within USER_ACTIVE_DAYS", async () => {
+    const author = "hs-away-author@example.com";
+    const away = await openStream("hs-away-follower@example.com");
+    const recent = await openStream("hs-away-recent@example.com");
+    await follow("hs-away-follower@example.com", author);
+    await follow("hs-away-recent@example.com", author);
+    await env.DB.prepare("UPDATE accounts SET current_sign_in_at = ? WHERE id = ?")
+      .bind(new Date(Date.now() - 8 * 86_400_000).toISOString(), away.account.id)
+      .run();
+
+    const id = await post(author, "only for the recently active");
+    expect(statusOf(await recent.next()).id).toBe(id);
+    expect(await away.heardNothing()).toBe(true);
+
+    const identity = parseInstanceIdentity(env);
+    const job = OutboxJob.parse({
+      kind: "FanOutHome",
+      event: "update",
+      entryId: id,
+      author: { kind: "LocalAccount", accountId: (await signedInAccount(author)).id },
+      afterAccountId: "",
+    });
+    if (identity.isErr() || job.isErr() || job.value.kind !== "FanOutHome") {
+      throw new Error("fan-out fixture rejected");
+    }
+    const monthly = new Proxy(env, {
+      get: (target, key) => (key === "USER_ACTIVE_DAYS" ? "30" : Reflect.get(target, key)),
+    });
+    const page = await fanOutHomePage(monthly, identity.value, job.value);
+    expect(page.isOk() && page.value.recipients).toBe(2);
+    expect(statusOf(await away.next()).id).toBe(id);
+    away.close();
+    recent.close();
+  });
+
   it("are told one page of followers at a time", async () => {
     const author = "hs-paged-author@example.com";
     const opened = [

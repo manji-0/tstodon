@@ -523,12 +523,13 @@ export const accessLogin = async (
     return { kind: "NoAccount" };
   }
   const role = await roleOf(env.DB, user.value.id);
-  await recordAccountActivity(env.DB, found.value.account.id, request);
+  const signedInAt = new Date(session.value.createdAt);
+  await recordAccountActivity(env.DB, found.value.account.id, request, new Date(), signedInAt);
   return {
     kind: "Account",
     account: found.value.account,
     role: role.isOk() ? role.value : FediRole.User,
-    signedInAt: new Date(session.value.createdAt),
+    signedInAt,
     userId: user.value.id,
     sessionId: session.value.id,
     sessionToken: session.value.token,

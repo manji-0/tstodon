@@ -48,6 +48,7 @@ export type AccountsMinAggregateOutputType = {
   bio_text: string | null;
   avatar_object_key: string | null;
   header_object_key: string | null;
+  current_sign_in_at: string | null;
 };
 
 export type AccountsMaxAggregateOutputType = {
@@ -65,6 +66,7 @@ export type AccountsMaxAggregateOutputType = {
   bio_text: string | null;
   avatar_object_key: string | null;
   header_object_key: string | null;
+  current_sign_in_at: string | null;
 };
 
 export type AccountsCountAggregateOutputType = {
@@ -82,6 +84,7 @@ export type AccountsCountAggregateOutputType = {
   bio_text: number;
   avatar_object_key: number;
   header_object_key: number;
+  current_sign_in_at: number;
   _all: number;
 };
 
@@ -108,6 +111,7 @@ export type AccountsMinAggregateInputType = {
   bio_text?: true;
   avatar_object_key?: true;
   header_object_key?: true;
+  current_sign_in_at?: true;
 };
 
 export type AccountsMaxAggregateInputType = {
@@ -125,6 +129,7 @@ export type AccountsMaxAggregateInputType = {
   bio_text?: true;
   avatar_object_key?: true;
   header_object_key?: true;
+  current_sign_in_at?: true;
 };
 
 export type AccountsCountAggregateInputType = {
@@ -142,6 +147,7 @@ export type AccountsCountAggregateInputType = {
   bio_text?: true;
   avatar_object_key?: true;
   header_object_key?: true;
+  current_sign_in_at?: true;
   _all?: true;
 };
 
@@ -249,6 +255,7 @@ export type AccountsGroupByOutputType = {
   bio_text: string;
   avatar_object_key: string | null;
   header_object_key: string | null;
+  current_sign_in_at: string | null;
   _count: AccountsCountAggregateOutputType | null;
   _avg: AccountsAvgAggregateOutputType | null;
   _sum: AccountsSumAggregateOutputType | null;
@@ -286,6 +293,7 @@ export type accountsWhereInput = {
   bio_text?: Prisma.StringFilter<"accounts"> | string;
   avatar_object_key?: Prisma.StringNullableFilter<"accounts"> | string | null;
   header_object_key?: Prisma.StringNullableFilter<"accounts"> | string | null;
+  current_sign_in_at?: Prisma.StringNullableFilter<"accounts"> | string | null;
   account_list_members?: Prisma.Account_list_membersListRelationFilter;
   account_lists?: Prisma.Account_listsListRelationFilter;
   bookmarks?: Prisma.BookmarksListRelationFilter;
@@ -331,6 +339,7 @@ export type accountsOrderByWithRelationInput = {
   bio_text?: Prisma.SortOrder;
   avatar_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
   header_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  current_sign_in_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   account_list_members?: Prisma.account_list_membersOrderByRelationAggregateInput;
   account_lists?: Prisma.account_listsOrderByRelationAggregateInput;
   bookmarks?: Prisma.bookmarksOrderByRelationAggregateInput;
@@ -377,6 +386,7 @@ export type accountsWhereUniqueInput = Prisma.AtLeast<
     bio_text?: Prisma.StringFilter<"accounts"> | string;
     avatar_object_key?: Prisma.StringNullableFilter<"accounts"> | string | null;
     header_object_key?: Prisma.StringNullableFilter<"accounts"> | string | null;
+    current_sign_in_at?: Prisma.StringNullableFilter<"accounts"> | string | null;
     account_list_members?: Prisma.Account_list_membersListRelationFilter;
     account_lists?: Prisma.Account_listsListRelationFilter;
     bookmarks?: Prisma.BookmarksListRelationFilter;
@@ -424,6 +434,7 @@ export type accountsOrderByWithAggregationInput = {
   bio_text?: Prisma.SortOrder;
   avatar_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
   header_object_key?: Prisma.SortOrderInput | Prisma.SortOrder;
+  current_sign_in_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.accountsCountOrderByAggregateInput;
   _avg?: Prisma.accountsAvgOrderByAggregateInput;
   _max?: Prisma.accountsMaxOrderByAggregateInput;
@@ -453,6 +464,7 @@ export type accountsScalarWhereWithAggregatesInput = {
   bio_text?: Prisma.StringWithAggregatesFilter<"accounts"> | string;
   avatar_object_key?: Prisma.StringNullableWithAggregatesFilter<"accounts"> | string | null;
   header_object_key?: Prisma.StringNullableWithAggregatesFilter<"accounts"> | string | null;
+  current_sign_in_at?: Prisma.StringNullableWithAggregatesFilter<"accounts"> | string | null;
 };
 
 export type accountsCreateInput = {
@@ -470,6 +482,7 @@ export type accountsCreateInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -512,6 +525,7 @@ export type accountsUncheckedCreateInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -554,6 +568,7 @@ export type accountsUpdateInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -596,6 +611,7 @@ export type accountsUncheckedUpdateInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -638,6 +654,7 @@ export type accountsCreateManyInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
 };
 
 export type accountsUpdateManyMutationInput = {
@@ -655,6 +672,7 @@ export type accountsUpdateManyMutationInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type accountsUncheckedUpdateManyInput = {
@@ -672,6 +690,7 @@ export type accountsUncheckedUpdateManyInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type AccountsScalarRelationFilter = {
@@ -694,6 +713,7 @@ export type accountsCountOrderByAggregateInput = {
   bio_text?: Prisma.SortOrder;
   avatar_object_key?: Prisma.SortOrder;
   header_object_key?: Prisma.SortOrder;
+  current_sign_in_at?: Prisma.SortOrder;
 };
 
 export type accountsAvgOrderByAggregateInput = {
@@ -715,6 +735,7 @@ export type accountsMaxOrderByAggregateInput = {
   bio_text?: Prisma.SortOrder;
   avatar_object_key?: Prisma.SortOrder;
   header_object_key?: Prisma.SortOrder;
+  current_sign_in_at?: Prisma.SortOrder;
 };
 
 export type accountsMinOrderByAggregateInput = {
@@ -732,6 +753,7 @@ export type accountsMinOrderByAggregateInput = {
   bio_text?: Prisma.SortOrder;
   avatar_object_key?: Prisma.SortOrder;
   header_object_key?: Prisma.SortOrder;
+  current_sign_in_at?: Prisma.SortOrder;
 };
 
 export type accountsSumOrderByAggregateInput = {
@@ -1417,6 +1439,7 @@ export type accountsCreateWithoutAccount_list_membersInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
   conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
@@ -1458,6 +1481,7 @@ export type accountsUncheckedCreateWithoutAccount_list_membersInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
@@ -1527,6 +1551,7 @@ export type accountsUpdateWithoutAccount_list_membersInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
   conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
@@ -1568,6 +1593,7 @@ export type accountsUncheckedUpdateWithoutAccount_list_membersInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -1609,6 +1635,7 @@ export type accountsCreateWithoutAccount_listsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
   conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
@@ -1650,6 +1677,7 @@ export type accountsUncheckedCreateWithoutAccount_listsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
@@ -1719,6 +1747,7 @@ export type accountsUpdateWithoutAccount_listsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
   conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
@@ -1760,6 +1789,7 @@ export type accountsUncheckedUpdateWithoutAccount_listsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -1801,6 +1831,7 @@ export type accountsCreateWithoutBookmarksInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   conversation_hides?: Prisma.conversation_hidesCreateNestedManyWithoutAccountsInput;
@@ -1842,6 +1873,7 @@ export type accountsUncheckedCreateWithoutBookmarksInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   conversation_hides?: Prisma.conversation_hidesUncheckedCreateNestedManyWithoutAccountsInput;
@@ -1911,6 +1943,7 @@ export type accountsUpdateWithoutBookmarksInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   conversation_hides?: Prisma.conversation_hidesUpdateManyWithoutAccountsNestedInput;
@@ -1952,6 +1985,7 @@ export type accountsUncheckedUpdateWithoutBookmarksInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   conversation_hides?: Prisma.conversation_hidesUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -1993,6 +2027,7 @@ export type accountsCreateWithoutConversation_hidesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -2034,6 +2069,7 @@ export type accountsUncheckedCreateWithoutConversation_hidesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2103,6 +2139,7 @@ export type accountsUpdateWithoutConversation_hidesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -2144,6 +2181,7 @@ export type accountsUncheckedUpdateWithoutConversation_hidesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2185,6 +2223,7 @@ export type accountsCreateWithoutConversation_readsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -2226,6 +2265,7 @@ export type accountsUncheckedCreateWithoutConversation_readsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2295,6 +2335,7 @@ export type accountsUpdateWithoutConversation_readsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -2336,6 +2377,7 @@ export type accountsUncheckedUpdateWithoutConversation_readsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2377,6 +2419,7 @@ export type accountsCreateWithoutFavouritesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -2418,6 +2461,7 @@ export type accountsUncheckedCreateWithoutFavouritesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2487,6 +2531,7 @@ export type accountsUpdateWithoutFavouritesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -2528,6 +2573,7 @@ export type accountsUncheckedUpdateWithoutFavouritesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2569,6 +2615,7 @@ export type accountsCreateWithoutFiltersInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -2610,6 +2657,7 @@ export type accountsUncheckedCreateWithoutFiltersInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2679,6 +2727,7 @@ export type accountsUpdateWithoutFiltersInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -2720,6 +2769,7 @@ export type accountsUncheckedUpdateWithoutFiltersInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -2761,6 +2811,7 @@ export type accountsCreateWithoutFollows_follows_target_account_idToaccountsInpu
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -2802,6 +2853,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_target_account_idToacc
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2851,6 +2903,7 @@ export type accountsCreateWithoutFollows_follows_follower_account_idToaccountsIn
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -2892,6 +2945,7 @@ export type accountsUncheckedCreateWithoutFollows_follows_follower_account_idToa
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -2961,6 +3015,7 @@ export type accountsUpdateWithoutFollows_follows_target_account_idToaccountsInpu
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -3002,6 +3057,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_target_account_idToacc
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3064,6 +3120,7 @@ export type accountsUpdateWithoutFollows_follows_follower_account_idToaccountsIn
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -3105,6 +3162,7 @@ export type accountsUncheckedUpdateWithoutFollows_follows_follower_account_idToa
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3146,6 +3204,7 @@ export type accountsCreateWithoutMarkersInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -3187,6 +3246,7 @@ export type accountsUncheckedCreateWithoutMarkersInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3256,6 +3316,7 @@ export type accountsUpdateWithoutMarkersInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -3297,6 +3358,7 @@ export type accountsUncheckedUpdateWithoutMarkersInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3338,6 +3400,7 @@ export type accountsCreateWithoutMedia_attachmentsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -3379,6 +3442,7 @@ export type accountsUncheckedCreateWithoutMedia_attachmentsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3448,6 +3512,7 @@ export type accountsUpdateWithoutMedia_attachmentsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -3489,6 +3554,7 @@ export type accountsUncheckedUpdateWithoutMedia_attachmentsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3530,6 +3596,7 @@ export type accountsCreateWithoutNotifications_notifications_account_idToaccount
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -3571,6 +3638,7 @@ export type accountsUncheckedCreateWithoutNotifications_notifications_account_id
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3641,6 +3709,7 @@ export type accountsUpdateWithoutNotifications_notifications_account_idToaccount
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -3682,6 +3751,7 @@ export type accountsUncheckedUpdateWithoutNotifications_notifications_account_id
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3723,6 +3793,7 @@ export type accountsCreateWithoutOutbound_activitiesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -3764,6 +3835,7 @@ export type accountsUncheckedCreateWithoutOutbound_activitiesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -3833,6 +3905,7 @@ export type accountsUpdateWithoutOutbound_activitiesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -3874,6 +3947,7 @@ export type accountsUncheckedUpdateWithoutOutbound_activitiesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -3915,6 +3989,7 @@ export type accountsCreateWithoutPoll_votesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -3956,6 +4031,7 @@ export type accountsUncheckedCreateWithoutPoll_votesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4025,6 +4101,7 @@ export type accountsUpdateWithoutPoll_votesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -4066,6 +4143,7 @@ export type accountsUncheckedUpdateWithoutPoll_votesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4107,6 +4185,7 @@ export type accountsCreateWithoutRemote_followsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -4148,6 +4227,7 @@ export type accountsUncheckedCreateWithoutRemote_followsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4217,6 +4297,7 @@ export type accountsUpdateWithoutRemote_followsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -4258,6 +4339,7 @@ export type accountsUncheckedUpdateWithoutRemote_followsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4299,6 +4381,7 @@ export type accountsCreateWithoutReports_reports_target_account_idToaccountsInpu
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -4340,6 +4423,7 @@ export type accountsUncheckedCreateWithoutReports_reports_target_account_idToacc
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4389,6 +4473,7 @@ export type accountsCreateWithoutReports_reports_account_idToaccountsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -4430,6 +4515,7 @@ export type accountsUncheckedCreateWithoutReports_reports_account_idToaccountsIn
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4499,6 +4585,7 @@ export type accountsUpdateWithoutReports_reports_target_account_idToaccountsInpu
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -4540,6 +4627,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_target_account_idToacc
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4601,6 +4689,7 @@ export type accountsUpdateWithoutReports_reports_account_idToaccountsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -4642,6 +4731,7 @@ export type accountsUncheckedUpdateWithoutReports_reports_account_idToaccountsIn
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4683,6 +4773,7 @@ export type accountsCreateWithoutRemote_status_mentionsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -4724,6 +4815,7 @@ export type accountsUncheckedCreateWithoutRemote_status_mentionsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4793,6 +4885,7 @@ export type accountsUpdateWithoutRemote_status_mentionsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -4834,6 +4927,7 @@ export type accountsUncheckedUpdateWithoutRemote_status_mentionsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -4875,6 +4969,7 @@ export type accountsCreateWithoutStatus_mentionsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -4916,6 +5011,7 @@ export type accountsUncheckedCreateWithoutStatus_mentionsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -4985,6 +5081,7 @@ export type accountsUpdateWithoutStatus_mentionsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -5026,6 +5123,7 @@ export type accountsUncheckedUpdateWithoutStatus_mentionsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -5067,6 +5165,7 @@ export type accountsCreateWithoutScheduled_statusesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -5108,6 +5207,7 @@ export type accountsUncheckedCreateWithoutScheduled_statusesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -5177,6 +5277,7 @@ export type accountsUpdateWithoutScheduled_statusesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -5218,6 +5319,7 @@ export type accountsUncheckedUpdateWithoutScheduled_statusesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -5259,6 +5361,7 @@ export type accountsCreateWithoutNotification_request_groupsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -5300,6 +5403,7 @@ export type accountsUncheckedCreateWithoutNotification_request_groupsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -5369,6 +5473,7 @@ export type accountsUpdateWithoutNotification_request_groupsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -5410,6 +5515,7 @@ export type accountsUncheckedUpdateWithoutNotification_request_groupsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -5451,6 +5557,7 @@ export type accountsCreateWithoutStatusesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -5492,6 +5599,7 @@ export type accountsUncheckedCreateWithoutStatusesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -5561,6 +5669,7 @@ export type accountsUpdateWithoutStatusesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -5602,6 +5711,7 @@ export type accountsUncheckedUpdateWithoutStatusesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -5643,6 +5753,7 @@ export type accountsCreateWithoutRemote_poll_own_votesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -5684,6 +5795,7 @@ export type accountsUncheckedCreateWithoutRemote_poll_own_votesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -5753,6 +5865,7 @@ export type accountsUpdateWithoutRemote_poll_own_votesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -5794,6 +5907,7 @@ export type accountsUncheckedUpdateWithoutRemote_poll_own_votesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -5835,6 +5949,7 @@ export type accountsCreateWithoutOutbound_followsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -5876,6 +5991,7 @@ export type accountsUncheckedCreateWithoutOutbound_followsInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -5945,6 +6061,7 @@ export type accountsUpdateWithoutOutbound_followsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -5986,6 +6103,7 @@ export type accountsUncheckedUpdateWithoutOutbound_followsInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -6027,6 +6145,7 @@ export type accountsCreateWithoutStatuses_cleanup_policiesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksCreateNestedManyWithoutAccountsInput;
@@ -6068,6 +6187,7 @@ export type accountsUncheckedCreateWithoutStatuses_cleanup_policiesInput = {
   bio_text?: string;
   avatar_object_key?: string | null;
   header_object_key?: string | null;
+  current_sign_in_at?: string | null;
   account_list_members?: Prisma.account_list_membersUncheckedCreateNestedManyWithoutAccountsInput;
   account_lists?: Prisma.account_listsUncheckedCreateNestedManyWithoutAccountsInput;
   bookmarks?: Prisma.bookmarksUncheckedCreateNestedManyWithoutAccountsInput;
@@ -6137,6 +6257,7 @@ export type accountsUpdateWithoutStatuses_cleanup_policiesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUpdateManyWithoutAccountsNestedInput;
@@ -6178,6 +6299,7 @@ export type accountsUncheckedUpdateWithoutStatuses_cleanup_policiesInput = {
   bio_text?: Prisma.StringFieldUpdateOperationsInput | string;
   avatar_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   header_object_key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  current_sign_in_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   account_list_members?: Prisma.account_list_membersUncheckedUpdateManyWithoutAccountsNestedInput;
   account_lists?: Prisma.account_listsUncheckedUpdateManyWithoutAccountsNestedInput;
   bookmarks?: Prisma.bookmarksUncheckedUpdateManyWithoutAccountsNestedInput;
@@ -6522,6 +6644,7 @@ export type accountsSelect<
     bio_text?: boolean;
     avatar_object_key?: boolean;
     header_object_key?: boolean;
+    current_sign_in_at?: boolean;
     account_list_members?: boolean | Prisma.accounts$account_list_membersArgs<ExtArgs>;
     account_lists?: boolean | Prisma.accounts$account_listsArgs<ExtArgs>;
     bookmarks?: boolean | Prisma.accounts$bookmarksArgs<ExtArgs>;
@@ -6582,6 +6705,7 @@ export type accountsSelectCreateManyAndReturn<
     bio_text?: boolean;
     avatar_object_key?: boolean;
     header_object_key?: boolean;
+    current_sign_in_at?: boolean;
   },
   ExtArgs["result"]["accounts"]
 >;
@@ -6604,6 +6728,7 @@ export type accountsSelectUpdateManyAndReturn<
     bio_text?: boolean;
     avatar_object_key?: boolean;
     header_object_key?: boolean;
+    current_sign_in_at?: boolean;
   },
   ExtArgs["result"]["accounts"]
 >;
@@ -6623,6 +6748,7 @@ export type accountsSelectScalar = {
   bio_text?: boolean;
   avatar_object_key?: boolean;
   header_object_key?: boolean;
+  current_sign_in_at?: boolean;
 };
 
 export type accountsOmit<
@@ -6641,7 +6767,8 @@ export type accountsOmit<
   | "updated_at"
   | "bio_text"
   | "avatar_object_key"
-  | "header_object_key",
+  | "header_object_key"
+  | "current_sign_in_at",
   ExtArgs["result"]["accounts"]
 >;
 export type accountsInclude<
@@ -6738,6 +6865,7 @@ export type $accountsPayload<
       bio_text: string;
       avatar_object_key: string | null;
       header_object_key: string | null;
+      current_sign_in_at: string | null;
     },
     ExtArgs["result"]["accounts"]
   >;
@@ -7619,6 +7747,7 @@ export interface accountsFieldRefs {
   readonly bio_text: Prisma.FieldRef<"accounts", "String">;
   readonly avatar_object_key: Prisma.FieldRef<"accounts", "String">;
   readonly header_object_key: Prisma.FieldRef<"accounts", "String">;
+  readonly current_sign_in_at: Prisma.FieldRef<"accounts", "String">;
 }
 
 // Custom InputTypes
