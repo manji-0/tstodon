@@ -363,3 +363,17 @@ export const serializeSfItem = (item: SfItem): string =>
 
 export const serializeSfInnerList = (list: SfInnerList): string =>
   `(${list.items.map(serializeSfItem).join(" ")})${serializeSfParameters(list.params)}`;
+
+/** A dictionary member's value (an item or an inner list), as RFC 8941 section 4.1.2 serializes it. */
+export const serializeSfMember = (member: SfMember): string =>
+  member.kind === "InnerList" ? serializeSfInnerList(member) : serializeSfItem(member);
+
+/** A dictionary, as RFC 8941 section 4.1.2 serializes it: a `true` item is its key alone. */
+export const serializeSfDictionary = (dictionary: SfDictionary): string =>
+  dictionary
+    .map(([key, member]) =>
+      member.kind === "Item" && member.value.kind === "Boolean" && member.value.value
+        ? key + serializeSfParameters(member.params)
+        : `${key}=${serializeSfMember(member)}`,
+    )
+    .join(", ");

@@ -161,7 +161,11 @@ const withCollections = async (
   if (!refreshed || refreshed.isErr()) {
     return actor;
   }
-  const stored = await cacheFetchedActor(env.DB, identity, refreshed.value, options);
+  // Only its collections are wanted: the actor is written under its stored
+  // handle, as its own `Update` is, without a WebFinger round trip.
+  const stored = await cacheFetchedActor(env.DB, identity, refreshed.value, options, {
+    kind: "KeepStored",
+  });
   return stored.isOk() ? stored.value : actor;
 };
 
