@@ -10,6 +10,7 @@ import {
   ACTIVITY_STREAMS,
   type ApActivityDocumentOf,
   type ApActorDocumentJSON,
+  type ApEmojiDocumentJSON,
   type ApEmojiJSON,
   type ApHashtagJSON,
   type ApImageJSON,
@@ -23,7 +24,12 @@ import {
 import type { z } from "zod";
 import { type AccountProfile, EMPTY_ACCOUNT_PROFILE } from "./account-profile-store";
 import type { ActivityJsonSchema } from "./activitypub-wire";
-import { type CustomEmoji, emojisInTexts } from "./emoji";
+import {
+  type CustomEmoji,
+  emojisInTexts,
+  type UploadedCustomEmoji,
+  type UploadedEmojiSource,
+} from "./emoji";
 import { formatFieldValue, textToHtml } from "./html";
 import { mediaPublicUrl } from "./media-keys";
 import { emptyNoteReplies } from "./note-replies";
@@ -66,11 +72,41 @@ const ACTOR_CONTEXT_TERMS = {
   Emoji: "toot:Emoji",
 } as const;
 
-/** A custom emoji an actor or a note uses, as its `Emoji` tag. */
-const emojiTag = (emoji: CustomEmoji): ApEmojiJSON => ({
+/**
+ * A custom emoji an actor or a note uses, as its `Emoji` tag. As Mastodon's
+ * `ActivityPub::EmojiSerializer`, an uploaded emoji's tag names its own
+ * document and dates its last change; an emoji the `CUSTOM_EMOJIS` var
+ * configures has no document, so its tag names neither.
+ */
+const emojiTag =
+  (identity: InstanceIdentity) =>
+  (emoji: CustomEmoji): ApEmojiJSON =>
+    emoji.source.kind === "Uploaded"
+      ? uploadedEmojiTag(identity, emoji, emoji.source)
+      : { type: "Emoji", name: `:${emoji.shortcode}:`, icon: { type: "Image", url: emoji.url } };
+
+const uploadedEmojiTag = (
+  identity: InstanceIdentity,
+  emoji: CustomEmoji,
+  source: UploadedEmojiSource,
+): Omit<ApEmojiDocumentJSON, "@context"> => ({
+  id: InstanceIdentity.emojiUrl(identity, source.id),
   type: "Emoji",
   name: `:${emoji.shortcode}:`,
-  icon: { type: "Image", url: emoji.url },
+  updated: source.updatedAt,
+  icon: { type: "Image", mediaType: source.contentType, url: emoji.url },
+});
+
+/** The `@context` of an emoji's own document (`context_extensions :emoji`). */
+const EMOJI_CONTEXT_TERMS = { toot: "http://joinmastodon.org/ns#", Emoji: "toot:Emoji" } as const;
+
+/** An uploaded emoji's own document (`GET /emojis/:id`, `EmojisController#show`). */
+export const emojiDocument = (
+  identity: InstanceIdentity,
+  emoji: UploadedCustomEmoji,
+): ApEmojiDocumentJSON => ({
+  "@context": [ACTIVITY_STREAMS, EMOJI_CONTEXT_TERMS],
+  ...uploadedEmojiTag(identity, emoji, emoji.source),
 });
 
 /** An avatar or header as an `Image`, with its stored content type when known. */
@@ -155,7 +191,7 @@ export const actorDocument = (
       owner: id,
       publicKeyPem: account.publicKeyPem,
     },
-    tag: shown.kind === "Shown" ? shown.emojis.map(emojiTag) : [],
+    tag: shown.kind === "Shown" ? shown.emojis.map(emojiTag(identity)) : [],
     attachment: (profile?.fields ?? []).map((field) => ({
       type: "PropertyValue",
       name: field.name,
@@ -606,7 +642,7 @@ export const noteDocument = (
         name: mention.name,
       })),
       ...hashtags.map((name) => hashtagObject(identity, name)),
-      ...emojis.map(emojiTag),
+      ...emojis.map(emojiTag(identity)),
     ],
     interactionPolicy: { canQuote: { automaticApproval } },
   };

@@ -1,13 +1,29 @@
 import type { ApiCustomEmojiJSON } from "@tstodon/api";
 
-/** A custom emoji configured on this instance (`CUSTOM_EMOJIS`). */
+/**
+ * Where a custom emoji of this instance comes from. One an admin uploaded
+ * (`custom_emojis`) has its own ActivityPub document (`/emojis/:id`), dated
+ * by its last change, as Mastodon's `CustomEmoji`; one the `CUSTOM_EMOJIS`
+ * var configures has none.
+ */
+export type CustomEmojiSource =
+  | Readonly<{ kind: "Uploaded"; id: string; updatedAt: string; contentType: string }>
+  | Readonly<{ kind: "Configured" }>;
+
+export type UploadedEmojiSource = Extract<CustomEmojiSource, { kind: "Uploaded" }>;
+
+/** A custom emoji of this instance. */
 export type CustomEmoji = Readonly<{
   shortcode: string;
   url: string;
   static_url: string;
   visible_in_picker: boolean;
   category?: string;
+  source: CustomEmojiSource;
 }>;
+
+/** An emoji an admin uploaded. */
+export type UploadedCustomEmoji = CustomEmoji & Readonly<{ source: UploadedEmojiSource }>;
 
 export const customEmojiJson = (emoji: CustomEmoji): ApiCustomEmojiJSON => ({
   shortcode: emoji.shortcode,

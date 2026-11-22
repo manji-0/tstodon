@@ -28,6 +28,13 @@ const CHANGING = { tstodon: "tstodon_changing", mastodon: "interop_changing" } a
 
 const AdminEmojis = z.array(z.looseObject({ id: z.string(), shortcode: z.string() }));
 
+const EmojiDocument = z.looseObject({
+  id: z.string(),
+  type: z.literal("Emoji"),
+  name: z.literal(`:${TSTODON_EMOJI}:`),
+  updated: z.string(),
+});
+
 /**
  * Give tstodon's emoji `shortcode` a new image through the admin API, or,
  * with `create`, add it unless it is there.
@@ -118,6 +125,24 @@ export const emojiScenarios = async ({ stamp, mona }: Cast): Promise<void> => {
       throw new StepFailure(`the copy's emojis are ${JSON.stringify(copy.emojis)}`);
     }
     await loadsAsImage(to, emoji.url);
+  });
+
+  // `process_emoji` keeps the tag's `id` as the emoji's `uri`.
+  await step("Mastodon names tstodon's emoji by its document, which tstodon serves", async () => {
+    const out = mastodonRails(
+      `emoji = CustomEmoji.find_by!(shortcode: "${TSTODON_EMOJI}", domain: Account.find_by!(uri: "${alice.uri}").domain); puts "EMOJI #{emoji.uri}"`,
+    );
+    const uri = /EMOJI (\S+)/.exec(out)?.[1];
+    if (uri === undefined || new URL(uri).origin !== new URL(alice.uri).origin) {
+      throw new StepFailure(`Mastodon's emoji has the uri ${String(uri)}: ${out.slice(-300)}`);
+    }
+    const response = await fetch(new URL(new URL(uri).pathname, A), {
+      headers: { accept: "application/activity+json" },
+    });
+    const document = EmojiDocument.safeParse(await response.json().catch(() => undefined));
+    if (!response.ok || !document.success || document.data.id !== uri) {
+      throw new StepFailure(`${uri} answers ${response.status} ${JSON.stringify(document)}`);
+    }
   });
 
   await bothWays(

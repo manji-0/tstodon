@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param shortcode
  */
 export const findCustomEmojiByShortcode = $runtime.makeTypedQueryFactory(
-  "SELECT id, shortcode, object_key, content_type, visible_in_picker, category\nFROM custom_emojis WHERE shortcode = $1 LIMIT 1",
+  "SELECT id, shortcode, object_key, content_type, visible_in_picker, category, updated_at\nFROM custom_emojis WHERE shortcode = $1 LIMIT 1",
 ) as (
   shortcode: string,
 ) => $runtime.TypedSql<findCustomEmojiByShortcode.Parameters, findCustomEmojiByShortcode.Result>;
@@ -22,5 +22,6 @@ export namespace findCustomEmojiByShortcode {
     content_type: string;
     visible_in_picker: number;
     category: string | null;
+    updated_at: string;
   };
 }

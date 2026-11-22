@@ -105,6 +105,7 @@ export const parseCustomEmojis = (raw: string): ReadonlyArray<CustomEmoji> =>
       url: entry.url,
       static_url: entry.static_url ?? entry.url,
       visible_in_picker: entry.visible_in_picker ?? true,
+      source: { kind: "Configured" },
     };
     return entry.category !== undefined ? { ...emoji, category: entry.category } : emoji;
   });

@@ -25,6 +25,7 @@ import {
   localQuoteAuthorization,
   quoteAuthorizationDeleteActivity,
 } from "./quote-authorization-document";
+import type { CustomEmoji } from "./emoji";
 
 /*
  * One of each activity tstodon signs, built by the builders that send them,
@@ -62,11 +63,12 @@ const alice = LocalAccount.schema.parse({
 });
 
 const MASTODON_ALICE = "https://mastodon.example/users/alice";
-const blob = {
+const blob: CustomEmoji = {
   shortcode: "blob",
   url: "https://media.tstodon.example/emoji/1.png",
   static_url: "https://media.tstodon.example/emoji/1.png",
   visible_in_picker: true,
+  source: { kind: "Configured" },
 };
 
 const note = (fields: Readonly<Record<string, unknown>>): LocalNote => {
