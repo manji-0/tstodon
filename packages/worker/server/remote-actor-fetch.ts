@@ -27,6 +27,7 @@ import { ActorDocumentSchema, refId } from "./activitypub-wire";
 import { type PublishedKey, publishedKeys, resolvePublishedKeys } from "./actor-keys";
 import { actorFields } from "./remote-actor-fields";
 import { actorEmojis } from "./remote-emoji-document";
+import { recordRemoteEmojiImages } from "./remote-emoji-refresh";
 import {
   claimRemoteActorKeyRefetch,
   claimRemoteActorRefresh,
@@ -498,6 +499,25 @@ const cacheActorWithKeys = async (
   keys: ReadonlyArray<RemoteActorKey>,
   options: FederatedFetchOptions,
   check: HandleCheck = { kind: "RoundTrip" },
+): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
+  const stored = await writeFetchedActor(db, identity, fetched, keys, options, check);
+  // As `ProcessAccountService#process_emojis` on every fetch of an account.
+  if (stored.isOk()) {
+    const { profile, fetchedAt } = stored.value;
+    await recordRemoteEmojiImages(db, stored.value, profile.emojis, fetchedAt, {
+      kind: "Profile",
+    });
+  }
+  return stored;
+};
+
+const writeFetchedActor = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  fetched: FetchedRemoteActor,
+  keys: ReadonlyArray<RemoteActorKey>,
+  options: FederatedFetchOptions,
+  check: HandleCheck,
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
   const { actor, declaredHandle } = fetched;
   const now = IsoInstant.parse(nowIso());
