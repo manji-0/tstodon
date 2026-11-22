@@ -294,6 +294,7 @@ describe("rate limits keyed on the client address", () => {
       ["app_registration", "POST", "/api/v1/apps"],
       ["federation_fetch", "GET", "/.well-known/webfinger?resource=acct:a@example.com"],
       ["federation_fetch", "GET", "/users/alice"],
+      ["federation_fetch", "GET", "/emojis/1"],
       ["inbox_ip", "POST", "/inbox"],
       ["inbox_ip", "POST", "/users/alice/inbox"],
     ] as const;
