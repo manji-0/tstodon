@@ -31,7 +31,11 @@ const api = async (email: string, path: string, init: RequestInit = {}) => {
     ...init,
     headers: { "content-type": "application/json", ...(await authHeaders(email)) },
   });
-  return { status: response.status, body: await response.json() };
+  return {
+    status: response.status,
+    body: await response.json(),
+    link: response.headers.get("link") ?? "",
+  };
 };
 
 const Entry = z.object({
@@ -278,6 +282,76 @@ describe("a followed hashtag on the home timeline", () => {
       minId = ids[0] ?? "";
     }
     expect(newer).toEqual(pairs(posted).map((pair) => pair.toReversed()));
+  });
+
+  it("links past a hidden flood deeper than one request reads, to the post below it", async () => {
+    const reader = "ftag-budget-reader@example.com";
+    const spammer = await signedInAccount("ftag-budget-spammer@example.com");
+    await followTag(reader, "ftagbudget");
+    expect(
+      (await api(reader, `/api/v1/accounts/${spammer.id}/mute`, { method: "POST", body: "{}" }))
+        .status,
+    ).toBe(200);
+    const worth = await post("ftag-budget-author@example.com", "worth reading #ftagbudget");
+    // At limit=1 a request reads four horizons of four posts each.
+    for (let n = 0; n < 24; n += 1) {
+      await post("ftag-budget-spammer@example.com", `spam ${n} #ftagbudget`);
+    }
+
+    const first = await api(reader, "/api/v1/timelines/home?limit=1");
+    expect(read(z.array(Entry), first.body)).toEqual([]);
+    const next = /<[^>]*[?&]max_id=(\d+)[^>]*>; rel="next"/.exec(first.link)?.[1];
+    expect(next).toBeDefined();
+    const second = await api(reader, `/api/v1/timelines/home?limit=1&max_id=${next ?? ""}`);
+    expect(read(z.array(Entry), second.body).map((entry) => entry.uri)).toEqual([worth.uri]);
+  });
+
+  it("pages past a post under several followed hashtags without skipping a followed account's", async () => {
+    const reader = "ftag-skip-reader@example.com";
+    const friendEmail = "ftag-skip-friend@example.com";
+    const spammerEmail = "ftag-skip-spammer@example.com";
+    const friend = await signedInAccount(friendEmail);
+    const spammer = await signedInAccount(spammerEmail);
+    for (const [target, action] of [
+      [friend.id, "follow"],
+      [spammer.id, "mute"],
+    ] as const) {
+      expect(
+        (await api(reader, `/api/v1/accounts/${target}/${action}`, { method: "POST", body: "{}" }))
+          .status,
+      ).toBe(200);
+    }
+    const tags = Array.from({ length: 8 }, (_, n) => `ftagskip${n}`);
+    for (const tag of tags) {
+      await followTag(reader, tag);
+    }
+    const everyTag = tags.map((tag) => `#${tag}`).join(" ");
+    const shown: string[] = [];
+    shown.push((await post(friendEmail, "friend 1")).id);
+    for (let n = 0; n < 3; n += 1) {
+      await post(spammerEmail, `spam ${n} ${everyTag}`);
+    }
+    shown.push((await post(friendEmail, "friend 2")).id);
+    shown.push((await post(friendEmail, "friend 3")).id);
+    shown.push((await post("ftag-skip-stranger@example.com", `every tag ${everyTag}`)).id);
+    shown.push((await post(friendEmail, "friend 4")).id);
+
+    const walk = async (start: string, rel: "next" | "prev"): Promise<string[]> => {
+      const seen: string[] = [];
+      for (let query = start, n = 0; n < 12; n += 1) {
+        const page = await api(reader, `/api/v1/timelines/home?limit=2${query}`);
+        const ids = read(z.array(Entry), page.body).map((entry) => entry.id);
+        seen.push(...(rel === "next" ? ids : ids.toReversed()));
+        const link = new RegExp(`<[^>]*[?&](max_id|min_id)=(\\d+)[^>]*>; rel="${rel}"`).exec(
+          page.link,
+        );
+        if (ids.length === 0 || link === null) break;
+        query = `&${link[1]}=${link[2]}`;
+      }
+      return seen;
+    };
+    expect(await walk("", "next")).toEqual(shown.toReversed());
+    expect(await walk("&min_id=0", "prev")).toEqual(shown);
   });
 
   it("brings the posts of every followed hashtag, however many the reader follows", async () => {

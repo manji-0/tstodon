@@ -203,13 +203,39 @@ const FOLLOWED_TAG_SIDES = {
  */
 export const HOME_FOLLOWED_TAG_DEPTH = 4;
 
-/** The viewer's followed hashtags, with the id floor of each follow. */
-const followedTagsCte = `ft AS (
-  SELECT tag_name,
-    printf('%0${ENTITY_ID_DIGITS}d',
-      CAST(round((julianday(created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor
-  FROM followed_tags WHERE account_id = ?
-)`;
+/**
+ * How many followed hashtags home reads, the most recently followed first.
+ * Mastodon reads none on a home page and sets no limit on them: it delivers
+ * each post to its hashtags' followers once
+ * (`FanOutOnWriteService#deliver_to_hashtag_followers`). Here a page costs a
+ * few rows per followed hashtag, so this keeps a page's cost bounded for an
+ * account that follows a great many.
+ */
+export const HOME_FOLLOWED_TAG_LIMIT = 1000;
+
+/**
+ * The CTE `ft(tag_name, floor)`: the viewer's {@link HOME_FOLLOWED_TAG_LIMIT}
+ * most recently followed hashtags, with the id floor of each follow. For a
+ * single entry (`onlyId`, the streaming fan-out's question), the followed
+ * hashtags among the entry's, found from its tags and the follow's primary
+ * key rather than from every hashtag the viewer follows: ranking the follow
+ * against the limit would read the follows newer than it, so a viewer past
+ * the limit hears an entry under an older hashtag that a page does not
+ * show. Binds the viewer, then the entry for `onlyId`.
+ */
+const followedTagsCte = (tags: string, onlyId: boolean): string => {
+  const floor = `printf('%0${ENTITY_ID_DIGITS}d',
+      CAST(round((julianday(f.created_at) - 2440587.5) * 86400000) AS INTEGER) << 16) AS floor`;
+  return onlyId
+    ? `ft AS (
+      SELECT f.tag_name, ${floor} FROM followed_tags f
+      WHERE f.account_id = ? AND f.tag_name IN (SELECT tag FROM ${tags} WHERE status_id = ?)
+    )`
+    : `ft AS (
+      SELECT f.tag_name, ${floor} FROM followed_tags f WHERE f.account_id = ?
+      ORDER BY f.created_at DESC, f.rowid LIMIT ${HOME_FOLLOWED_TAG_LIMIT}
+    )`;
+};
 
 /**
  * The bounds on a tag index row `t` of followed hashtag `ft`: its id floor,
@@ -246,14 +272,16 @@ const tagIndexBounds = (
 
 /**
  * How far a home page can vouch for the notes under the viewer's followed
- * hashtags: the entry {@link HOME_FOLLOWED_TAG_DEPTH} pages below the cursor
+ * hashtags: the note {@link HOME_FOLLOWED_TAG_DEPTH} pages below the cursor
  * (above it for a `min_id` page) in the local and remote indexes of all of
- * them together, or NULL when they hold fewer. A recursive CTE merges the
- * indexes: its queue holds the next entry of each hashtag and side, newest
- * first (oldest for `min_id`), and each entry it takes queues the one after
- * it in the same index. The outer `LIMIT` stops it there, so a page reads
- * two index seeks per followed hashtag and one per entry it passes, however
- * many hashtags the viewer follows or notes they hold. One row, `horizon`.
+ * them together, a note under several of them counted once, or NULL when
+ * they hold fewer. A recursive CTE merges the indexes: its queue holds the
+ * next entry of each hashtag and side, newest first (oldest for `min_id`),
+ * and each entry it takes queues the one after it in the same index. The
+ * outer `LIMIT` stops it there, so a page reads two index seeks per followed
+ * hashtag and one per entry it passes, however many notes the hashtags hold.
+ * Hidden notes count, so a hidden flood costs a bounded read. One row,
+ * `horizon`.
  */
 export const followedTagHorizonSql = (
   viewerId: string,
@@ -279,10 +307,12 @@ export const followedTagHorizonSql = (
       ORDER BY t.status_id ${order} LIMIT 1
     )`;
   return {
-    sql: `WITH RECURSIVE ${followedTagsCte}, c(lo, hi) AS (SELECT ?, ?),
+    sql: `WITH RECURSIVE ${followedTagsCte("", false)}, c(lo, hi) AS (SELECT ?, ?),
       merged(id, side, tag_name, floor) AS (
-        SELECT ${next("local_status_tags", within)}, 0, tag_name, floor FROM ft
-        UNION ALL SELECT ${next("remote_status_tags", within)}, 1, tag_name, floor FROM ft
+        SELECT * FROM (
+          SELECT ${next("local_status_tags", within)} AS id, 0, tag_name, floor FROM ft
+          UNION ALL SELECT ${next("remote_status_tags", within)}, 1, tag_name, floor FROM ft
+        ) WHERE id IS NOT NULL
         UNION ALL SELECT CASE ft.side
             WHEN 0 THEN ${next("local_status_tags", past.join(" AND "))}
             ELSE ${next("remote_status_tags", past.join(" AND "))}
@@ -291,7 +321,7 @@ export const followedTagHorizonSql = (
         ORDER BY 1 ${order}
       )
       SELECT (
-        SELECT id FROM merged WHERE id IS NOT NULL LIMIT 1 OFFSET ${deep}
+        SELECT DISTINCT id FROM merged WHERE id IS NOT NULL LIMIT 1 OFFSET ${deep}
       ) AS horizon`,
     binds: [viewerId, ...bounds],
   };
@@ -320,9 +350,10 @@ export const followedTagNoteIdsSql = (
   const { tags, notes, shown } = FOLLOWED_TAG_SIDES[side];
   const hidden = FOLLOWED_TAG_SIDES[side].hidden(viewerId, now);
   const { bounds, sql: within } = tagIndexBounds(cursor, horizon !== undefined);
+  const { onlyId } = idCursorBounds(cursor);
   return {
     sql: `(
-      WITH ${followedTagsCte}, c(lo, hi) AS (SELECT ?, ?), w(h) AS (SELECT ?),
+      WITH ${followedTagsCte(tags, onlyId.length > 0)}, c(lo, hi) AS (SELECT ?, ?), w(h) AS (SELECT ?),
       hidden(id) AS MATERIALIZED (
         ${hidden.sql}
       )
@@ -331,24 +362,15 @@ export const followedTagNoteIdsSql = (
       CROSS JOIN ${notes} n ON n.id = t.status_id
       WHERE t.tag = ft.tag_name AND ${within} AND ${shown}
     )`,
-    binds: [viewerId, ...bounds, horizon ?? "", ...hidden.binds],
+    binds: [
+      viewerId,
+      ...(onlyId.length > 0 ? [onlyId] : []),
+      ...bounds,
+      horizon ?? "",
+      ...hidden.binds,
+    ],
   };
 };
-
-/**
- * Keep the home entries a page with this `horizon` can vouch for: none past
- * it, as the notes of the followed hashtags past it were not read.
- */
-export const withinHorizon = <T extends Readonly<{ id: string }>>(
-  entries: ReadonlyArray<T>,
-  cursor: IdCursor,
-  horizon: string | undefined,
-): T[] =>
-  horizon === undefined
-    ? [...entries]
-    : entries.filter((entry) =>
-        idCursorBounds(cursor).ascending ? entry.id <= horizon : entry.id >= horizon,
-      );
 
 /**
  * The local `statuses` rows a feed of the viewer keeps by the viewer's follow
