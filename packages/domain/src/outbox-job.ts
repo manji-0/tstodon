@@ -78,12 +78,15 @@ const DomainBlockLimitsCursorSchema = z.object({
  * actor after `cursor`, as Mastodon's `BlockDomainService` sets
  * `silenced_at` / `suspended_at`; once it is a `noop` or removed, delete the
  * rows it left. The block's current severity is what the rows mean, so a
- * change takes effect before the job runs.
+ * change takes effect before the job runs. `seenBy` records only the actors
+ * first seen by then: a block made before its actors were recorded, whose
+ * last change Mastodon's `BlockDomainService` ran at (hourly backfill).
  */
 const RecordDomainBlockLimitsSchema = z.object({
   kind: z.literal("RecordDomainBlockLimits"),
   domainBlockId: z.string().min(1),
   cursor: DomainBlockLimitsCursorSchema,
+  seenBy: z.string().optional(),
 });
 /**
  * Queue the deletion of the rows each removed or `noop` block left in

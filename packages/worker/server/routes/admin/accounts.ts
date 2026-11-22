@@ -28,6 +28,7 @@ import {
   findAdminRemoteActor,
   moderateLocalAccount,
   moderateRemoteActor,
+  withDomainBlockStandings,
   purgeAccount,
   takeAccountAction,
 } from "../../admin-actions";
@@ -350,6 +351,10 @@ const remoteAdminAccounts = async (
   if (moderations.isErr()) {
     return err(moderations.error);
   }
+  const seen = await withDomainBlockStandings(env.DB, moderations.value, uris.value);
+  if (seen.isErr()) {
+    return err(seen.error);
+  }
   return ok(
     uris.value.flatMap((uri) => {
       const actor = actors.value.get(uri);
@@ -358,7 +363,7 @@ const remoteAdminAccounts = async (
             remoteActorDocument(
               identity,
               actor,
-              moderations.value.get(uri) ?? RemoteActorModeration.inGoodStanding,
+              seen.value.get(uri) ?? RemoteActorModeration.inGoodStanding,
             ),
           ]
         : [];

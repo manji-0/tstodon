@@ -144,7 +144,8 @@ export const listAdminAccountIds = async (
 /**
  * The remote actors an admin's `origin=remote` list shows, as actor URIs in
  * username order. A remote actor can be limited, suspended, or have its media
- * marked sensitive; it has no sign-up, login, email, or IP here, so
+ * marked sensitive, by an admin or, the first two, by a domain block (as
+ * Mastodon's `silenced_at` / `suspended_at`); it has no sign-up, login, email, or IP here, so
  * `pending`, `disabled`, `email`, `ip`, and `staff` match nothing.
  */
 export const listAdminRemoteActorUris = async (
@@ -165,8 +166,14 @@ export const listAdminRemoteActorUris = async (
   >,
 ): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
   runD1(async () => {
+    // The stronger of the admin's own moderation and a domain block's, as
+    // `withDomainBlockStandings` reads them.
+    const limitedBy = (moderation: string, severity: string): string =>
+      `(EXISTS (SELECT 1 FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri AND m.moderation = '${moderation}')
+        OR EXISTS (SELECT 1 FROM remote_actor_domain_rules v WHERE v.actor_uri = a.actor_uri AND v.severity = '${severity}'))`;
     const standing = (comparison: string): string =>
-      `COALESCE((SELECT moderation FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri), '') ${comparison}`;
+      `(CASE WHEN ${limitedBy("Suspended", "suspend")} THEN 'Suspended'
+        WHEN ${limitedBy("Silenced", "silence")} THEN 'Silenced' ELSE '' END) ${comparison}`;
     const statusCondition: Record<AdminAccountFilters["status"], string> = {
       all: "1",
       active: standing("<> 'Suspended'"),

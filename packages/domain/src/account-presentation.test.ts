@@ -15,16 +15,44 @@ describe("AccountPresentation", () => {
   it("hides a remote actor whose domain does not federate, whatever its standing", () => {
     for (const standing of [AccountStanding.inGoodStanding, suspended]) {
       expect(
-        AccountPresentation.ofRemote({ federates: false, domainSuspended: false, standing }).kind,
+        AccountPresentation.ofRemote({
+          federates: false,
+          domainSuspended: false,
+          suspendedByDomainBlock: false,
+          standing,
+        }).kind,
       ).toBe("Hidden");
       expect(
-        AccountPresentation.ofRemote({ federates: true, domainSuspended: true, standing }).kind,
+        AccountPresentation.ofRemote({
+          federates: true,
+          domainSuspended: true,
+          suspendedByDomainBlock: true,
+          standing,
+        }).kind,
       ).toBe("Hidden");
     }
     expect(
-      AccountPresentation.ofRemote({ federates: true, domainSuspended: false, standing: suspended })
-        .kind,
+      AccountPresentation.ofRemote({
+        federates: true,
+        domainSuspended: false,
+        suspendedByDomainBlock: false,
+        standing: suspended,
+      }).kind,
     ).toBe("Suspended");
+  });
+
+  it("empties an actor a domain suspension suspended on a host it no longer covers", () => {
+    for (const standing of [AccountStanding.inGoodStanding, silenced, suspended]) {
+      expect(
+        AccountPresentation.ofRemote({
+          federates: true,
+          domainSuspended: false,
+          suspendedByDomainBlock: true,
+          standing,
+        }).kind,
+      ).toBe("Emptied");
+    }
+    expect(AccountPresentation.available({ kind: "Emptied" })).toBe(false);
   });
 
   it("counts only shown accounts as available", () => {

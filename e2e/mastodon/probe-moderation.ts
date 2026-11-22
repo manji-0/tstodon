@@ -1,10 +1,12 @@
 /**
  * Sweep area INT-7: what a block does on the other server, a forwarded report
  * reaching the remote moderators, and what an admin suspension does there.
+ * FED-17: how each server's admin views a peer account its domain silence
+ * limits, and lifts it.
  */
 import { z } from "zod";
-import { A, signUp, sleep, type E2eUser } from "../lib.js";
-import { mastodonUser } from "./lib.js";
+import { A, A_DOMAIN, signUp, sleep, type E2eUser } from "../lib.js";
+import { MASTODON_DOMAIN, mastodonUser } from "./lib.js";
 import {
   Anything,
   bothWays,
@@ -35,6 +37,50 @@ const AdminReports = z.array(
 );
 const FiledReport = z.looseObject({ id: z.string(), forwarded: z.boolean() });
 const SuspendedFlag = z.looseObject({ suspended: z.boolean().optional() });
+const SilencedFlag = z.looseObject({ silenced: z.boolean() });
+const DomainBlockId = z.looseObject({ id: z.string() });
+
+/**
+ * `admin` silences `domain`, where `target` is already known: the admin view
+ * shows it silenced (`BlockDomainService` sets `silenced_at`), the admin's
+ * unsilence lifts it, and saving the block again silences it again
+ * (`DomainBlockWorker` runs on every update). The block goes at the end.
+ */
+const domainSilenceLifted = async (
+  admin: E2eUser,
+  target: E2eUser,
+  domain: string,
+): Promise<void> => {
+  const accountId = (await resolveAccount(admin, target)).id;
+  const silenced = async (): Promise<boolean> =>
+    (await call(admin, `/api/v1/admin/accounts/${accountId}`, SilencedFlag)).silenced;
+  const created = await call(admin, "/api/v1/admin/domain_blocks", DomainBlockId, {
+    method: "POST",
+    body: { domain, severity: "silence" },
+  });
+  try {
+    await eventually(`${admin.origin} shows the account silenced`, async () =>
+      (await silenced()) ? true : undefined,
+    );
+    await call(admin, `/api/v1/admin/accounts/${accountId}/unsilence`, Anything, {
+      method: "POST",
+      body: {},
+    });
+    if (await silenced()) {
+      throw new StepFailure(`${admin.origin} still shows the account silenced after unsilence`);
+    }
+    await call(admin, `/api/v1/admin/domain_blocks/${created.id}`, Anything, {
+      method: "PUT",
+      body: { severity: "silence", public_comment: "saved again" },
+    });
+    await eventually(
+      `${admin.origin} silences the account again once the block is saved`,
+      async () => ((await silenced()) ? true : undefined),
+    );
+  } finally {
+    await call(admin, `/api/v1/admin/domain_blocks/${created.id}`, Anything, { method: "DELETE" });
+  }
+};
 
 const block = (user: E2eUser, accountId: string, action: "block" | "unblock") =>
   call(user, `/api/v1/accounts/${accountId}/${action}`, Anything, { method: "POST", body: {} });
@@ -205,6 +251,18 @@ export const moderationScenarios = async ({ stamp, erin }: Cast): Promise<void> 
     await eventually("Mastodon shows the account again", async () =>
       (await shownSuspended()) ? undefined : true,
     );
+  });
+
+  await step("a domain silence shows on the admin view until lifted: on tstodon", async () => {
+    const [target] = await mastodonUsers([`dsil_${stamp}`]);
+    if (!target) {
+      throw new StepFailure("no Mastodon user");
+    }
+    await domainSilenceLifted(await tstodonAdmin(tstodonModerator), target, MASTODON_DOMAIN);
+  });
+  await step("a domain silence shows on the admin view until lifted: on Mastodon", async () => {
+    const target = await signUp(A, "dsil");
+    await domainSilenceLifted(mastodonModerator, target, A_DOMAIN);
   });
 
   await step("suspending a Mastodon account on tstodon ends its follow there", async () => {

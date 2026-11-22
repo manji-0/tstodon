@@ -82,6 +82,16 @@ export type account_moderation = Prisma.account_moderationModel;
  */
 export type remote_actor_domain_limits = Prisma.remote_actor_domain_limitsModel;
 /**
+ * Model remote_actor_domain_lifts
+ *
+ */
+export type remote_actor_domain_lifts = Prisma.remote_actor_domain_liftsModel;
+/**
+ * Model domain_block_limit_backfills
+ *
+ */
+export type domain_block_limit_backfills = Prisma.domain_block_limit_backfillsModel;
+/**
  * Model remote_actor_moderation
  *
  */

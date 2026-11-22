@@ -1,5 +1,6 @@
 import {
   AccountActionType,
+  AccountStanding,
   type LocalAccount,
   type LocalAccountActionEffect,
   LocalAccountModeration,
@@ -45,7 +46,11 @@ import {
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
-import { startDomainBlockLimits } from "./domain-block-limits";
+import {
+  liftDomainBlockLimits,
+  listDomainBlockStandings,
+  startDomainBlockLimits,
+} from "./domain-block-limits";
 import type { RepositoryError } from "./d1";
 import {
   findReportById,
@@ -127,11 +132,35 @@ export const findAdminAccount = async (
   return states.map((found) => found[0]);
 };
 
-/** A remote actor with the moderation an admin applied to it. */
+/**
+ * A remote actor with the moderation an admin sees: its own, with the
+ * standing the instance domain blocks hold on it when that one is stronger.
+ */
 export type AdminRemoteActorState = Readonly<{
   actor: RemoteActorValue;
   moderation: RemoteActorModeration;
 }>;
+
+/**
+ * Each actor's moderation as an admin sees it: Mastodon's `silenced?` and
+ * `suspended?` read `silenced_at` / `suspended_at`, which a domain block
+ * sets on the accounts it covers as an admin's own action does.
+ */
+export const withDomainBlockStandings = async (
+  db: D1Database,
+  moderations: ReadonlyMap<string, RemoteActorModeration>,
+  actorUris: ReadonlyArray<string>,
+): Promise<Result<ReadonlyMap<string, RemoteActorModeration>, RepositoryError>> =>
+  (await listDomainBlockStandings(db, actorUris)).map(
+    (standings) =>
+      new Map(
+        actorUris.map((uri) => {
+          const own = moderations.get(uri) ?? RemoteActorModeration.inGoodStanding;
+          const domain = standings.get(uri) ?? AccountStanding.inGoodStanding;
+          return [uri, { ...own, standing: AccountStanding.stronger(own.standing, domain) }];
+        }),
+      ),
+  );
 
 /** The cached remote actor at `actorUri` with its moderation, if there is one. */
 export const findAdminRemoteActor = async (
@@ -146,12 +175,22 @@ export const findAdminRemoteActor = async (
   if (!found) {
     return ok(undefined);
   }
-  const moderation = await getRemoteActorModeration(db, actorUri);
-  return moderation.map((standing) => ({ actor: found, moderation: standing }));
+  const own = await getRemoteActorModeration(db, actorUri);
+  if (own.isErr()) {
+    return err(own.error);
+  }
+  const seen = await withDomainBlockStandings(db, new Map([[actorUri, own.value]]), [actorUri]);
+  return seen.map((byUri) => ({
+    actor: found,
+    moderation: byUri.get(actorUri) ?? own.value,
+  }));
 };
 
 /**
  * Apply one moderation transition to a remote actor and store the result.
+ * Unsilencing or unsuspending also lifts the silence or suspension an
+ * instance domain block holds on the actor, as Mastodon's `unsilence!` /
+ * `unsuspend!` clear `silenced_at` / `suspended_at` whoever set them.
  * Suspending an actor removes the follows between it and local accounts
  * (`account_suspension` in `/severed_relationships`) and tells its server
  * with a `Reject(Follow)` or `Undo(Follow)` for each, in pages
@@ -171,6 +210,9 @@ export const moderateRemoteActor = async (
   }
   const next = RemoteActorModeration.apply(current.value, action);
   const stored = await setRemoteActorModeration(env.DB, actorUri, next);
+  if (stored.isOk() && (action === "unsilence" || action === "unsuspend")) {
+    return liftDomainBlockLimits(env.DB, actorUri, action === "unsilence" ? "silence" : "suspend");
+  }
   if (
     stored.isErr() ||
     next.standing.kind !== "Suspended" ||
