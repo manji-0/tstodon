@@ -6,19 +6,20 @@ import { instanceActorFetchSigner } from "./instance-actor";
 
 /**
  * How much one cron run may refresh: at most `actors` actors, none started
- * once `ms` have passed. An actor costs at most thirteen subrequests (its
- * document and up to three WebFinger lookups of up to four requests each, one
- * plus three redirects; or, when the document fails, one lookup of its stored
- * handle), each document and each lookup cut off after 5 s.
+ * once `ms` have passed. An actor costs at most seventeen subrequests (its
+ * document, up to three WebFinger lookups in its round trip and, when the
+ * refetch fails, one lookup of its stored handle, each lookup up to four
+ * requests, one plus three redirects), each document and each lookup cut off
+ * after 5 s.
  */
 export type RefreshBudget = Readonly<{ actors: number; ms: number }>;
 
 /**
- * 200 actors keep a run at most 2600 fetches and about 610 D1 queries, inside
+ * 200 actors keep a run at most 3400 fetches and about 610 D1 queries, inside
  * the Workers Paid limits of 10,000 subrequests and 1000 D1 queries per
  * invocation, and refresh up to 4800 actors a day. With four at a time and
  * none started after 45 s, a run whose servers all time out ends within about
- * 65 s.
+ * 70 s.
  */
 const RUN_BUDGET: RefreshBudget = { actors: 200, ms: 45_000 };
 
@@ -38,7 +39,7 @@ const PAGE = 25;
  * holding the head of the queue, and an actor a handle lookup refreshed
  * meanwhile is not fetched twice. Rows cached before the round trip carry
  * the URI host and take the confirmed handle this way; a confirmed handle
- * whose WebFinger stopped vouching moves back to the URI host.
+ * whose own WebFinger now links another actor moves back to the URI host.
  */
 export const refreshStaleRemoteActors = async (
   env: Env,

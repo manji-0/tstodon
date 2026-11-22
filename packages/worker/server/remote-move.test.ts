@@ -165,7 +165,18 @@ const mover = async (slug: string): Promise<Mover> => {
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return href === target.actorUri ? jsonResponse(document(aliases)) : original(input, init);
+      if (href === target.actorUri) {
+        return jsonResponse(document(aliases));
+      }
+      // The target's WebFinger, which Mastodon's `check_webfinger!` asks too.
+      const url = new URL(href);
+      if (url.host === "new.example" && url.pathname === "/.well-known/webfinger") {
+        return jsonResponse({
+          subject: `acct:mover-${slug}@new.example`,
+          links: [{ rel: "self", type: "application/activity+json", href: target.actorUri }],
+        });
+      }
+      return original(input, init);
     };
     try {
       return await work();

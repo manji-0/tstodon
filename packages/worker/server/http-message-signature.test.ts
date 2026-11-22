@@ -632,8 +632,8 @@ describe("messageSignatureBase", () => {
     ["a repeated component", '"@method" "@method"'],
     ["@signature-params", '"@signature-params"'],
     ["@status, a response's", '"@status"'],
-    ["a parameterized component", '"accept";sf'],
-    ["@query-param", '"@query-param";name="page"'],
+    ["a field ;sf cannot read as a dictionary", '"accept";sf'],
+    ["a query parameter the query does not have", '"@query-param";name="pages"'],
     ["a name that is no field name", '"not a field"'],
   ])("has none for %s", (_, components) => {
     expect(base(components)).toBeUndefined();
