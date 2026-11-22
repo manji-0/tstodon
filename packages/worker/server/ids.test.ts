@@ -26,6 +26,23 @@ describe("entityIdAt", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("gives distinct ids at one instant from a second copy of this module in the isolate", async () => {
+    // A Worker test loads the server source beside the built Worker, so the
+    // isolate holds two copies of this module; a frozen test clock puts every
+    // id both draw on one instant.
+    const secondCopy = "./ids.ts?second-copy";
+    const copy: unknown = await import(/* @vite-ignore */ secondCopy);
+    const copyEntityIdAt: unknown = Reflect.get(Object(copy), "entityIdAt");
+    if (typeof copyEntityIdAt !== "function" || copyEntityIdAt === entityIdAt) {
+      throw new Error("no second copy of ./ids");
+    }
+    const at = Date.parse("2024-03-04T00:00:00.000Z");
+    const ids = Array.from({ length: 2000 }, (_, n): unknown =>
+      n % 2 === 0 ? entityIdAt(at) : Reflect.apply(copyEntityIdAt, undefined, [at]),
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("does not reveal a neighbor's id at one instant", () => {
     const at = Date.parse("2024-04-04T00:00:00.000Z");
     const lows = Array.from({ length: 64 }, () => Number(BigInt(entityIdAt(at)) & 0xffffn));

@@ -18,27 +18,52 @@ const LOW_VALUES = 1 << Number(LOW_BITS);
 const REMEMBERED_LOW_VALUES = LOW_VALUES;
 const REMEMBERED_INSTANTS = 256;
 
-/** Low values handed out per instant, in the order each instant was first drawn. */
-const usedLowValues = new Map<bigint, Set<number>>();
-let rememberedCount = 0;
+/** Low values handed out per instant, in the order each instant was first drawn, and their count. */
+type DrawnIds = { usedLowValues: Map<bigint, Set<number>>; rememberedCount: number };
+
+const isDrawnIds = (value: unknown): value is DrawnIds =>
+  typeof value === "object" &&
+  value !== null &&
+  Reflect.get(value, "usedLowValues") instanceof Map &&
+  typeof Reflect.get(value, "rememberedCount") === "number";
+
+/**
+ * The isolate's memory, kept on `globalThis` rather than in this module: a
+ * Worker test loads the server source beside the built Worker, two copies of
+ * this module in one isolate, and each would otherwise hand out the other's
+ * ids at an instant they share.
+ */
+const drawn: DrawnIds = (() => {
+  const key = Symbol.for("tstodon.drawn-entity-ids");
+  const shared: unknown = Reflect.get(globalThis, key);
+  if (isDrawnIds(shared)) {
+    return shared;
+  }
+  const fresh: DrawnIds = { usedLowValues: new Map(), rememberedCount: 0 };
+  Reflect.set(globalThis, key, fresh);
+  return fresh;
+})();
 
 const randomLowValue = (): number => crypto.getRandomValues(new Uint16Array(1))[0] ?? 0;
 
 const forgetOldInstants = (keep: bigint): void => {
-  for (const [at, used] of usedLowValues) {
-    if (rememberedCount <= REMEMBERED_LOW_VALUES && usedLowValues.size <= REMEMBERED_INSTANTS) {
+  for (const [at, used] of drawn.usedLowValues) {
+    if (
+      drawn.rememberedCount <= REMEMBERED_LOW_VALUES &&
+      drawn.usedLowValues.size <= REMEMBERED_INSTANTS
+    ) {
       return;
     }
     if (at === keep) continue;
-    usedLowValues.delete(at);
-    rememberedCount -= used.size;
+    drawn.usedLowValues.delete(at);
+    drawn.rememberedCount -= used.size;
   }
 };
 
 const remember = (at: bigint, used: Set<number>, low: number): void => {
   if (used.has(low)) return;
   used.add(low);
-  rememberedCount += 1;
+  drawn.rememberedCount += 1;
   forgetOldInstants(at);
 };
 
@@ -48,10 +73,10 @@ const remember = (at: bigint, used: Set<number>, low: number): void => {
  * later instant could pass `Date.now()`, which workerd holds still between I/O.
  */
 const freshLowValue = (at: bigint, taken?: number): bigint => {
-  let used = usedLowValues.get(at);
+  let used = drawn.usedLowValues.get(at);
   if (used === undefined) {
     used = new Set();
-    usedLowValues.set(at, used);
+    drawn.usedLowValues.set(at, used);
   }
   if (taken !== undefined) remember(at, used, taken);
   if (used.size >= LOW_VALUES) {
