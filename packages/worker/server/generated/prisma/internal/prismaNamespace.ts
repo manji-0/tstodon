@@ -398,6 +398,7 @@ export const ModelName = {
   account_notes: "account_notes",
   announcements: "announcements",
   account_moderation: "account_moderation",
+  remote_actor_domain_limits: "remote_actor_domain_limits",
   remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
   push_subscriptions: "push_subscriptions",
@@ -505,6 +506,7 @@ export type TypeMap<
       | "account_notes"
       | "announcements"
       | "account_moderation"
+      | "remote_actor_domain_limits"
       | "remote_actor_moderation"
       | "account_domain_blocks"
       | "push_subscriptions"
@@ -1116,6 +1118,82 @@ export type TypeMap<
           args: Prisma.account_moderationCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_moderationCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    remote_actor_domain_limits: {
+      payload: Prisma.$remote_actor_domain_limitsPayload<ExtArgs>;
+      fields: Prisma.remote_actor_domain_limitsFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_actor_domain_limitsFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_actor_domain_limitsFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_actor_domain_limitsFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_actor_domain_limitsFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_actor_domain_limitsFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>[];
+        };
+        create: {
+          args: Prisma.remote_actor_domain_limitsCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_actor_domain_limitsCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_actor_domain_limitsCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_actor_domain_limitsDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>;
+        };
+        update: {
+          args: Prisma.remote_actor_domain_limitsUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_actor_domain_limitsDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_actor_domain_limitsUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_actor_domain_limitsUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_actor_domain_limitsUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_actor_domain_limitsPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_actor_domain_limitsAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_actor_domain_limits>;
+        };
+        groupBy: {
+          args: Prisma.remote_actor_domain_limitsGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_actor_domain_limitsGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_actor_domain_limitsCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_actor_domain_limitsCountAggregateOutputType>
             | number;
         };
       };
@@ -7284,6 +7362,14 @@ export const Account_moderationScalarFieldEnum = {
 export type Account_moderationScalarFieldEnum =
   (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
 
+export const Remote_actor_domain_limitsScalarFieldEnum = {
+  domain_block_id: "domain_block_id",
+  actor_uri: "actor_uri",
+} as const;
+
+export type Remote_actor_domain_limitsScalarFieldEnum =
+  (typeof Remote_actor_domain_limitsScalarFieldEnum)[keyof typeof Remote_actor_domain_limitsScalarFieldEnum];
+
 export const Remote_actor_moderationScalarFieldEnum = {
   actor_uri: "actor_uri",
   moderation: "moderation",
@@ -8451,6 +8537,7 @@ export type GlobalOmitConfig = {
   account_notes?: Prisma.account_notesOmit;
   announcements?: Prisma.announcementsOmit;
   account_moderation?: Prisma.account_moderationOmit;
+  remote_actor_domain_limits?: Prisma.remote_actor_domain_limitsOmit;
   remote_actor_moderation?: Prisma.remote_actor_moderationOmit;
   account_domain_blocks?: Prisma.account_domain_blocksOmit;
   push_subscriptions?: Prisma.push_subscriptionsOmit;

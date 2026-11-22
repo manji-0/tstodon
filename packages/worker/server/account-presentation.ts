@@ -14,6 +14,7 @@ import type { AccountRef } from "./account-ref";
 import { findAccountsByIds } from "./account-store";
 import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
+import { listDomainSuspendedActors } from "./domain-block-limits";
 import { RemoteAccountId } from "./remote-account-id";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -37,14 +38,16 @@ const remotePresenter = async (
   if (actors.length === 0) {
     return ok(() => AccountPresentation.ofLocal(AccountStanding.inGoodStanding));
   }
-  const [allowHosts, blockedHosts, moderations] = await Promise.all([
+  const actorUris = actors.map((actor) => actor.actorUri);
+  const [allowHosts, blockedHosts, moderations, domainSuspended] = await Promise.all([
     federationAllowHosts(env),
     suspendedDomains(env.DB),
-    listRemoteActorModerations(
-      env.DB,
-      actors.map((actor) => actor.actorUri),
-    ),
+    listRemoteActorModerations(env.DB, actorUris),
+    listDomainSuspendedActors(env.DB, actorUris),
   ]);
+  if (domainSuspended.isErr()) {
+    return err(domainSuspended.error);
+  }
   return moderations.map(
     (byUri) => (actor) =>
       AccountPresentation.ofRemote({
@@ -52,7 +55,9 @@ const remotePresenter = async (
         federates:
           allowListAdmits(allowHosts, actor.domain) &&
           allowListAdmits(allowHosts, Hostname.ofUri(actor.actorUri) ?? actor.domain),
-        domainSuspended: RemoteActor.onAnyHost(actor, blockedHosts),
+        // A suspension covering the actor now, or one that suspended it when made.
+        domainSuspended:
+          RemoteActor.onAnyHost(actor, blockedHosts) || domainSuspended.value.has(actor.actorUri),
         standing: byUri.get(actor.actorUri)?.standing ?? AccountStanding.inGoodStanding,
       }),
   );

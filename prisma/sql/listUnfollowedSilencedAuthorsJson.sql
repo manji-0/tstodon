@@ -7,8 +7,9 @@
 -- account domain or its URI's host, as `RemoteActor.onAnyHost`. Each host follows its most
 -- specific rule, as Mastodon's `DomainBlock.rule_for`: the host and each domain above it
 -- (`domain_variants`) are sought by key, a block's domain being stored lower case (`Hostname`,
--- migration 0160), and the longest one found decides. Suspension is not checked here: a
--- suspended author's status is not rendered at all.
+-- migration 0160), and the longest one found decides. A silence made while the actor was known
+-- keeps it silenced under a narrower rule, as Mastodon's `silenced_at` (migration 0169).
+-- Suspension is not checked here: a suspended author's status is not rendered at all.
 SELECT m.account_id AS author FROM account_moderation AS m
 WHERE m.account_id IN (SELECT value FROM json_each($2))
   AND m.moderation = 'Silenced'
@@ -25,6 +26,11 @@ WHERE r.actor_uri IN (SELECT value FROM json_each($3))
     EXISTS (
       SELECT 1 FROM remote_actor_moderation AS am
       WHERE am.actor_uri = r.actor_uri AND am.moderation = 'Silenced'
+    )
+    OR EXISTS (
+      SELECT 1 FROM remote_actor_domain_limits AS l
+      JOIN domain_blocks AS b ON b.id = l.domain_block_id
+      WHERE l.actor_uri = r.actor_uri AND b.severity = 'silence'
     )
     OR 'silence' IN (
       SELECT (

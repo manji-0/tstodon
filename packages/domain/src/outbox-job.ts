@@ -62,6 +62,19 @@ const ApplyDomainBlockEffectsSchema = z.object({
   domain: Hostname.schema,
 });
 /**
+ * Bring the limitation the instance domain block `domainBlockId` keeps on the
+ * actors cached at or under its domain in line with the block, a page at a
+ * time (self-chaining): while the block silences or suspends, record each
+ * actor not yet recorded, as Mastodon's `BlockDomainService` sets
+ * `silenced_at` / `suspended_at`; once it is a `noop` or removed, delete the
+ * rows it left. The block's current severity is what the rows mean, so a
+ * change takes effect before the job runs.
+ */
+const RecordDomainBlockLimitsSchema = z.object({
+  kind: z.literal("RecordDomainBlockLimits"),
+  domainBlockId: z.string().min(1),
+});
+/**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
  */
@@ -510,6 +523,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   FoldTagNamesSchema,
   AsciiDomainNamesSchema,
   ApplyDomainBlockEffectsSchema,
+  RecordDomainBlockLimitsSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

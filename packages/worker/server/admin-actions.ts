@@ -41,9 +41,11 @@ import {
   findDomainBlockByDomain,
   findDomainBlockById,
   findDomainBlockRule,
+  deleteDomainBlock,
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
+import { startDomainBlockLimits } from "./domain-block-limits";
 import type { RepositoryError } from "./d1";
 import {
   findReportById,
@@ -368,8 +370,10 @@ const savedBlock = async (
 
 /**
  * What making a block does to what is stored: the media of `reject_media`
- * cleared, the follows of a suspension severed. Both find nothing the second
- * time, so a block can be applied again.
+ * cleared, the actors at or under the domain limited as the block says (in
+ * queued pages, `startDomainBlockLimits`), the follows of a suspension
+ * severed. Each finds nothing the second time, so a block can be applied
+ * again, and applying a changed block lifts what its old severity set.
  */
 const blockEffects = async (
   env: Env,
@@ -379,6 +383,7 @@ const blockEffects = async (
   if (block.reject_media !== 0) {
     await clearRemoteMediaForDomain(env.DB, host);
   }
+  await startDomainBlockLimits(env, block.id);
   if (block.severity === "suspend") {
     return severAndNotify(env, {
       scope: { kind: "Domain", domain: host },
@@ -474,4 +479,20 @@ export const changeDomainBlock = async (
     return err(updated.error);
   }
   return updated.value ? savedBlock(env, id) : ok(undefined);
+};
+
+/**
+ * Remove a domain block; `false` when there is none. What it limited is
+ * lifted at once, as `UnblockDomainService`, and the rows it left go in
+ * queued pages.
+ */
+export const removeDomainBlock = async (
+  env: Env,
+  id: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const removed = await deleteDomainBlock(env.DB, id);
+  if (removed.isOk() && removed.value) {
+    await startDomainBlockLimits(env, id);
+  }
+  return removed;
 };

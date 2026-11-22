@@ -8,9 +8,9 @@ import {
   createDomainBlock,
   type CreateDomainBlockError,
   type DomainBlockSettings,
+  removeDomainBlock,
 } from "../../admin-actions";
 import {
-  deleteDomainBlock,
   DomainBlockSeveritySchema,
   findDomainBlockByDomain,
   listDomainBlocks,
@@ -191,7 +191,7 @@ export const postAdminInstance = async (
     if (!existing.value) {
       return notFound(c, "domain block");
     }
-    const removed = await deleteDomainBlock(c.env.DB, existing.value.id);
+    const removed = await removeDomainBlock(c.env, existing.value.id);
     return removed.isErr()
       ? serverError(c, removed.error)
       : pageRedirect(c, withNotice("/admin/instances", "block_removed"), 303);
