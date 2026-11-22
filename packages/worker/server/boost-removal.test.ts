@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { openStream as openSocket } from "../test/stream-fixture";
 import { persistOutboxTarget } from "./outbox-store";
@@ -183,11 +184,13 @@ describe("purging a remote actor", () => {
     ]);
 
     expect(
-      await actor.send({
-        id: "https://remote.example/activities/br-purge-delete",
-        type: "Delete",
-        object: actor.actorUri,
-      }),
+      await withQueueDrained(["FanOutRemovedStatuses"], () =>
+        actor.send({
+          id: "https://remote.example/activities/br-purge-delete",
+          type: "Delete",
+          object: actor.actorUri,
+        }),
+      ),
     ).toBe(202);
 
     expect(await remoteFollower.next()).toEqual({

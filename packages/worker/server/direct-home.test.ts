@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { type Heard, openStream } from "../test/stream-fixture";
 import { parseRows } from "./d1";
@@ -402,11 +403,13 @@ describe("a remote direct note on the home timeline", () => {
     expect(await heardUpdate(stream, id)).toBe(true);
 
     expect(
-      await author.send({
-        id: `${author.actorUri}#delete`,
-        type: "Delete",
-        object: author.actorUri,
-      }),
+      await withQueueDrained(["FanOutRemovedStatuses"], () =>
+        author.send({
+          id: `${author.actorUri}#delete`,
+          type: "Delete",
+          object: author.actorUri,
+        }),
+      ),
     ).toBe(202);
 
     let heard = await stream.next();
