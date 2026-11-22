@@ -53,6 +53,22 @@ export const RepliesPage = {
     return `?${params.toString()}`;
   },
   /**
+   * The query string of a served page's own `id`: the `min_id` and
+   * `only_other_accounts` it was asked with, as given, and `page=true`, as
+   * Mastodon's `params_slice(:only_other_accounts, :min_id).merge(page: true)`.
+   */
+  askedQuery: (query: RepliesPageQuery): string => {
+    const params = new URLSearchParams();
+    if (query.min_id !== undefined) {
+      params.set("min_id", query.min_id);
+    }
+    if (query.only_other_accounts !== undefined) {
+      params.set("only_other_accounts", query.only_other_accounts);
+    }
+    params.set("page", "true");
+    return `?${params.toString()}`;
+  },
+  /**
    * The page after a served page of `page`'s stage that held `replyIds`,
    * read with `limit`: more of the stage when the page was full, else the
    * other accounts' replies; `undefined` after those.

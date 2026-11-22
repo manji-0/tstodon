@@ -283,7 +283,7 @@ const federate = async (
     pending.activity === "Update" && pending.editedAt !== undefined
       ? { ...status.value, editedAt }
       : status.value;
-  const read = await readNoteObject(env, identity, account.value, note);
+  const read = await readNoteObject(env, identity, account.value, note, pending.activity);
   if (read.isErr()) {
     return failed(env, pending, read.error.cause);
   }

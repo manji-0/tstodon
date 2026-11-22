@@ -1,5 +1,10 @@
 import type { ApRepliesServedPageJSON } from "@tstodon/api/activitypub";
-import { type InstanceIdentity, type LocalNote, RepliesPage } from "@tstodon/domain";
+import {
+  type InstanceIdentity,
+  type LocalNote,
+  RepliesPage,
+  type RepliesPageQuery,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { findAccountsByIds } from "./account-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
@@ -9,8 +14,8 @@ import {
   listRepliesPage,
   type RepliedNote,
   type ReplyRef,
+  repliesCollectionUri,
   repliesPageDocument,
-  repliesPageUri,
 } from "./note-replies";
 import { findStatusesByIds } from "./status-store";
 
@@ -70,13 +75,17 @@ const servedItems = async (
   );
 };
 
-/** One served page of a note's `replies`, up to `RepliesPage.LIMIT` replies ({@link servedItems}). */
+/**
+ * The served page of a note's `replies` that `query` asks for, up to
+ * `RepliesPage.LIMIT` replies ({@link servedItems}), its `id` echoing the query.
+ */
 export const loadNoteRepliesPage = async (
   env: Env,
   identity: InstanceIdentity,
   note: RepliedNote,
-  page: RepliesPage,
+  query: RepliesPageQuery,
 ): Promise<Result<ApRepliesServedPageJSON, RepositoryError>> => {
+  const page = RepliesPage.fromQuery(query);
   const replies = await listRepliesPage(env.DB, note, page, RepliesPage.LIMIT);
   if (replies.isErr()) {
     return err(replies.error);
@@ -91,7 +100,7 @@ export const loadNoteRepliesPage = async (
     RepliesPage.LIMIT,
   );
   return ok({
-    id: repliesPageUri(note.uri, page),
+    id: `${repliesCollectionUri(note.uri)}${RepliesPage.askedQuery(query)}`,
     ...repliesPageDocument(note, replies.value, next),
     items: items.value,
   });

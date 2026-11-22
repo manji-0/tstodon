@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: the UPDATEs without WHERE backfill the new key columns of every actor.)
 -- The public keys of remote actors, as Mastodon's `keypairs` (FED-8): each key
 -- an actor document publishes (each `publicKey`, each FEP-521a
 -- `assertionMethod` Multikey), under its id, so that a signature finds the key

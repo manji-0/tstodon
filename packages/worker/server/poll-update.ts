@@ -19,6 +19,7 @@ import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
 import { deferToOwedActivity } from "./pending-status-federation";
 import { loadNoteMedia } from "./note-attachments";
+import { loadNotesReplies, repliedNote } from "./note-replies";
 import { loadNoteReply } from "./reply-target";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
@@ -96,6 +97,13 @@ const distributePollUpdate = async (
     );
     return;
   }
+  const replies = await loadNotesReplies(env.DB, [repliedNote(identity, author.value, note.id)]);
+  if (replies.isErr()) {
+    console.error(
+      JSON.stringify({ kind: "PollUpdateNotFederated", statusId: note.id, cause: "replies" }),
+    );
+    return;
+  }
   const update = noteUpdateActivity(
     noteDocument(identity, author.value, note, {
       // Best effort: the `Update` of a poll's counts carries no newer
@@ -104,6 +112,7 @@ const distributePollUpdate = async (
       quote: (await noteQuote(env, identity, note.id)).unwrapOr(undefined),
       mentions: await loadNoteMentions(env.DB, identity, note.id),
       reply: await loadNoteReply(env.DB, identity, note),
+      replies: replies.value.get(note.id),
       poll,
       media: media.value,
       quotePolicy: await loadNoteQuotePolicy(env.DB, author.value, note),

@@ -51,6 +51,9 @@ jobs:
       - name: Check D1 result calls take no type argument
         run: node scripts/check-d1-type-arguments.mjs
 
+      - name: Check destructive migrations carry Void's pragma
+        run: node scripts/check-migrations.mjs
+
       # Mastodon's web frontend (packages/worker/src) on the workspace's
       # TypeScript and Vitest.
       - name: Typecheck web frontend

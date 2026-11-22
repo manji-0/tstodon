@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: the triggers are dropped to be created again with the new count.)
 -- `account_stats.statuses_count` leaves direct statuses out, as Mastodon's
 -- `Status#increment_counter_caches` does: the REST `statuses_count` and the
 -- ActivityPub outbox's `totalItems` no longer reveal how many direct

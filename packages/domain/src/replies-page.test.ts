@@ -47,6 +47,14 @@ describe("RepliesPage", () => {
     expect(RepliesPage.query({ kind: "SelfReplies", afterId: "5" })).toBe("?min_id=5&page=true");
   });
 
+  it("names a served page by the parameters it was asked with, as Mastodon's params_slice", () => {
+    expect(RepliesPage.askedQuery({})).toBe("?page=true");
+    expect(RepliesPage.askedQuery({ only_other_accounts: "1", min_id: "9" })).toBe(
+      "?min_id=9&only_other_accounts=1&page=true",
+    );
+    expect(RepliesPage.askedQuery({ min_id: "" })).toBe("?min_id=&page=true");
+  });
+
   it("stays on the author's replies while a page is full, then lists the other accounts'", () => {
     expect(RepliesPage.next({ kind: "SelfReplies" }, ["1", "2"], 2)).toEqual({
       kind: "SelfReplies",

@@ -197,6 +197,15 @@ describe("a local note's replies collection", () => {
     // `page` is read as Rails casts a boolean.
     const afterFirst = await repliesPage(`${collectionUri}?min_id=${own.id}&page=yes`);
     expect(itemIds(afterFirst.items)).toEqual([ownUnlisted.uri]);
+
+    // A page's `id` echoes what it was asked with, as `params_slice`; a blank
+    // `min_id` is ignored, as `paginate_by_min_id`.
+    const othersAsked = await repliesPage(`${collectionUri}?only_other_accounts=1&page=true`);
+    expect(othersAsked.id).toBe(`${collectionUri}?only_other_accounts=1&page=true`);
+    expect(itemIds(othersAsked.items)).toEqual([earlyRemote, theirs.uri, lateRemote]);
+    const blankMinId = await repliesPage(`${collectionUri}?min_id=&page=true`);
+    expect(blankMinId.id).toBe(`${collectionUri}?min_id=&page=true`);
+    expect(itemIds(blankMinId.items)).toEqual([own.uri, ownUnlisted.uri]);
   });
 
   it("leaves out the replies of a suspended account", async () => {
@@ -242,6 +251,37 @@ describe("a local note's replies collection", () => {
         replies: {
           id: `${note.uri}/replies`,
           first: { items: [], next: `${note.uri}/replies?only_other_accounts=true&page=true` },
+        },
+      },
+    });
+  });
+
+  it("is carried as it is now in an edit's Update", async () => {
+    const email = "replies-update@example.com";
+    const note = await post(email, { status: "a note to edit" });
+    const reply = await post(email, { status: "my reply", in_reply_to_id: note.id });
+    const edited = await SELF.fetch(`${ORIGIN}/api/v1/statuses/${note.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "an edited note" }),
+    });
+    expect(edited.status).toBe(200);
+    const row = await env.DB.prepare(
+      "SELECT payload_json FROM outbound_activities WHERE kind = 'Update' AND instr(payload_json, ?) > 0",
+    )
+      .bind(note.uri)
+      .first();
+    const update = expectContract(
+      ApActivityDocument,
+      JSON.parse(read(z.object({ payload_json: z.string() }), row).payload_json),
+    );
+    // As Mastodon's `UpdateNoteSerializer`.
+    expect(update).toMatchObject({
+      type: "Update",
+      object: {
+        replies: {
+          id: `${note.uri}/replies`,
+          first: { items: [reply.uri], next: `${note.uri}/replies?min_id=${reply.id}&page=true` },
         },
       },
     });

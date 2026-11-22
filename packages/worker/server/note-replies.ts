@@ -60,7 +60,7 @@ export const repliedNote = (
 /** The URI of a note's `replies` collection. */
 export const repliesCollectionUri = (noteUri: string): string => `${noteUri}/replies`;
 
-export const repliesPageUri = (noteUri: string, page: RepliesPage): string =>
+const repliesPageUri = (noteUri: string, page: RepliesPage): string =>
   `${repliesCollectionUri(noteUri)}${RepliesPage.query(page)}`;
 
 const localReplyUri = (note: RepliedNote, username: string, id: string): string =>

@@ -119,7 +119,7 @@ const parseActivityJson = schemaResult(ActivityJsonSchema);
 const RepliesQuerySchema = z.object({
   page: z.string().optional(),
   only_other_accounts: z.string().optional(),
-  min_id: z.string().min(1).max(64).optional(),
+  min_id: z.string().max(64).optional(),
 });
 const parseRepliesQuery = schemaResult(RepliesQuerySchema);
 
@@ -355,12 +355,7 @@ export const getUsersByUsernameStatusesByIdReplies = async (
     }
   }
   const note = repliedNote(identity.value, account, status.value.id);
-  const page = await loadNoteRepliesPage(
-    c.env,
-    identity.value,
-    note,
-    RepliesPage.fromQuery(query.value),
-  );
+  const page = await loadNoteRepliesPage(c.env, identity.value, note, query.value);
   if (page.isErr()) {
     return jsonRepositoryError(c, page.error.message);
   }

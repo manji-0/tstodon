@@ -1,3 +1,5 @@
+-- void:allow-destructive
+-- (Void gate: the UPDATEs without WHERE backfill the new host keys of every row.)
 -- An instance domain rule (silence, suspension, reject_media, reject_reports)
 -- covers the domain it names and every subdomain of it, and a host follows
 -- its most specific rule only, as Mastodon's `DomainBlock.rule_for`.
