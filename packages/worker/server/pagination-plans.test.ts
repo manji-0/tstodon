@@ -7,6 +7,7 @@ import {
   pageAccountDomainBlocks,
   pageFollowedTags,
 } from "./generated/prisma/sql";
+import { pageEngagedTargetsSql } from "./status-interaction-store";
 import { d1PrepareTyped, type TypedSqlLike } from "./typed-sql";
 
 const plan = async (typed: TypedSqlLike): Promise<string[]> => {
@@ -57,6 +58,24 @@ describe("paged list statements", () => {
       ),
     );
   });
+
+  it.each(["favourites", "bookmarks"] as const)(
+    "walks an account's %s by (account_id, id)",
+    async (table) => {
+      const page = pageEngagedTargetsSql(table, "a", 20, { sinceId: "1", maxId: "9" });
+      const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${page.sql}`)
+        .bind(...page.binds)
+        .all();
+      const details = z
+        .array(z.object({ detail: z.string() }))
+        .parse(results)
+        .map((row) => row.detail);
+
+      expect(details).toEqual([
+        `SEARCH ${table} USING INDEX idx_${table}_account_id (account_id=? AND id>? AND id<?)`,
+      ]);
+    },
+  );
 
   it("counts unread notifications in (account_id, id) order", async () => {
     const details = await plan(countUnreadNotifications("a", "", "", 100));

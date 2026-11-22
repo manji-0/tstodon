@@ -770,3 +770,41 @@ describe("grouped notification pages over long runs", () => {
     expect(empty.groups.map((group) => group.type)).toEqual(["mention"]);
   });
 });
+
+/**
+ * Mastodon v4.7.5 counts `paginate_groups_by_min_id(limit, min_id: marker)`:
+ * up to `limit` groups past the read marker, however many notifications.
+ */
+describe("the grouped unread count", () => {
+  it("counts every group past the marker up to limit", async () => {
+    const email = "group-unread-many@example.com";
+    const reader = await credentials(email);
+    const sender = await credentials("group-unread-sender@example.com");
+    const id = (index: number): string => `97${String(index).padStart(ENTITY_ID_DIGITS - 2, "0")}`;
+    // Ungrouped follows (no stored key): one group each.
+    await env.DB.batch(
+      Array.from({ length: 251 }, (_, index) =>
+        env.DB.prepare(
+          `INSERT INTO notifications (id, account_id, from_account_id, kind, created_at)
+           VALUES (?, ?, ?, 'follow', ?)`,
+        ).bind(id(index), reader.id, sender.id, new Date().toISOString()),
+      ),
+    );
+    const count = async (suffix: string): Promise<number> =>
+      read(
+        z.object({ count: z.number() }),
+        (await json(`/api/v2/notifications/unread_count${suffix}`, { headers: await auth(email) }))
+          .body,
+      ).count;
+    expect(await count("?limit=1000")).toBe(251);
+    expect(await count("")).toBe(100);
+
+    const marked = await json("/api/v1/markers", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ notifications: { last_read_id: id(20) } }),
+    });
+    expect(marked.status).toBe(200);
+    expect(await count("?limit=1000")).toBe(230);
+  });
+});

@@ -727,7 +727,10 @@ export const postV1StatusesByIdUnbookmark = (
   c: Context<{ Bindings: Env }, "/api/v1/statuses/:id/unbookmark">,
 ) => setBookmarked(c, false);
 
-/** The viewer's favourites or bookmarks, local and remote statuses alike, newest status first. */
+/**
+ * The viewer's favourites or bookmarks, local and remote statuses alike,
+ * newest first, paged by the favourite or bookmark row id as Mastodon's.
+ */
 const engagedStatuses = async (
   c: Context<{ Bindings: Env }>,
   list: typeof listFavouritedTargets,
@@ -745,8 +748,12 @@ const engagedStatuses = async (
   if (targets.isErr()) {
     return jsonRepositoryError(c, targets.error.message);
   }
-  const ids = targets.value.map((target) => target.statusId);
-  setPaginationLinks(c, ids, limit);
+  const ids = targets.value.map((engaged) => engaged.target.statusId);
+  setPaginationLinks(
+    c,
+    targets.value.map((engaged) => engaged.id),
+    limit,
+  );
   const documents = await statusDocumentsByIds(c.env, identity.value, ids, user.value.id);
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);

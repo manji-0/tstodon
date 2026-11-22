@@ -294,7 +294,7 @@ describe("boosting a remote status", () => {
 });
 
 describe("bookmarking a remote status", () => {
-  it("lists remote and local bookmarks together, newest status first, with a cursor", async () => {
+  it("lists remote and local bookmarks together, newest bookmark first, with a cursor", async () => {
     const author = await remoteActor("engage-bookmark-author");
     const reader = "engage-bookmark@example.com";
     const older = await remoteNote(author, "engage-bookmark-older");
@@ -313,8 +313,10 @@ describe("bookmarking a remote status", () => {
 
     const page = await call(reader, "/api/v1/bookmarks?limit=2");
     expect(statuses(page.body).map((s) => s.id)).toEqual([newer.id, local.id]);
-    expect(page.headers.get("link")).toContain(`max_id=${local.id}`);
-    const next = await call(reader, `/api/v1/bookmarks?limit=2&max_id=${local.id}`);
+    // The cursor is the bookmark's row id, as Mastodon's.
+    const cursor = /max_id=(\d+)/.exec(page.headers.get("link") ?? "")?.[1] ?? "";
+    expect(cursor).not.toBe(local.id);
+    const next = await call(reader, `/api/v1/bookmarks?limit=2&max_id=${cursor}`);
     expect(statuses(next.body).map((s) => s.id)).toEqual([older.id]);
 
     const removed = await call(reader, `/api/v1/statuses/${newer.id}/unbookmark`, "POST");

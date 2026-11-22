@@ -483,9 +483,18 @@ describe("min_id pages", () => {
       await send(email, `/api/v1/statuses/${id}/bookmark`);
       statuses.push(id);
     }
-    const [first = "", ...rest] = statuses;
-    await expectNewestFirst(ApiStatus, email, "/api/v1/favourites", first, rest);
-    await expectNewestFirst(ApiStatus, email, "/api/v1/bookmarks", first, rest);
+    const [, ...rest] = statuses;
+    for (const path of ["/api/v1/favourites", "/api/v1/bookmarks"]) {
+      // These page by row id: the first status's row is the last of a full page.
+      const firstRow =
+        (await page(ApiStatus, email, `${path}?limit=4`)).links.next?.searchParams.get("max_id") ??
+        "";
+      const result = await page(ApiStatus, email, `${path}?limit=2&min_id=${firstRow}`);
+      expect(result.items.map((item) => item.id)).toEqual(rest.slice(0, 2).toReversed());
+      const prev = result.links.prev?.searchParams.get("min_id") ?? "";
+      const next = result.links.next?.searchParams.get("max_id") ?? "";
+      expect(next > firstRow && prev > next).toBe(true);
+    }
   });
 });
 
@@ -517,5 +526,196 @@ describe("unread_count limit", () => {
         .count;
     expect(await groups("?limit=1")).toBe(1);
     expect(await groups("?limit=0")).toBe(0);
+    // The three follows are one group, counted under the list's own filters.
+    expect(await groups("")).toBe(1);
+    expect(await groups("?exclude_types[]=follow")).toBe(0);
+    expect(await groups("?types[]=mention")).toBe(0);
   });
+});
+
+/**
+ * Mastodon v4.7.5 pages an account's pins as its other statuses
+ * (`AccountStatusesFilter#pinned_scope` under `to_a_paginated_by_id`): newest
+ * pin first, bounded by status id, with the `Link` of a full page.
+ */
+describe("pinned statuses", () => {
+  it("pages an account's pins by status id, keeping pinned", async () => {
+    const email = "links-pinned@example.com";
+    const account = await me(email);
+    const posted: string[] = [];
+    for (const n of [1, 2, 3]) {
+      const id = await post(email, `pin ${n}`);
+      await send(email, `/api/v1/statuses/${id}/pin`);
+      posted.push(id);
+    }
+    await post(email, "not pinned");
+    const [first = "", second = "", third = ""] = posted;
+    const path = `/api/v1/accounts/${account.id}/statuses`;
+
+    const full = await page(ApiStatus, undefined, `${path}?pinned=true&limit=2`);
+    expect(full.items.map((status) => status.id)).toEqual([third, second]);
+    expect(full.links.next?.pathname).toBe(path);
+    expect(query(full.links.next)).toEqual({ limit: ["2"], pinned: ["true"], max_id: [second] });
+    expect(query(full.links.prev)).toEqual({ limit: ["2"], pinned: ["true"], min_id: [third] });
+
+    const rest = await page(
+      ApiStatus,
+      undefined,
+      `${full.links.next?.pathname}${full.links.next?.search}`,
+    );
+    expect(rest.items.map((status) => status.id)).toEqual([first]);
+    expect(rest.links.next).toBeUndefined();
+
+    const newer = await page(ApiStatus, undefined, `${path}?pinned=true&limit=1&min_id=${first}`);
+    expect(newer.items.map((status) => status.id)).toEqual([second]);
+  });
+});
+
+/**
+ * Mastodon's `paginate_by_max_id` applies `max_id` and `since_id` together,
+ * and `paginate_by_min_id` `min_id` and `max_id` together.
+ */
+describe("both bounds of an id page", () => {
+  it("bounds scheduled statuses by max_id with since_id or min_id", async () => {
+    const email = "links-bounds-scheduled@example.com";
+    for (const n of [1, 2, 3, 4]) {
+      const at = new Date(Date.now() + (60 + n) * 60_000).toISOString();
+      await send(email, "/api/v1/statuses", { status: `bounded ${n}`, scheduled_at: at });
+    }
+    const all = (await page(ApiScheduledStatus, email, "/api/v1/scheduled_statuses")).items.map(
+      (status) => status.id,
+    );
+    expect(all).toHaveLength(4);
+    const [d = "", c = "", b = "", a = ""] = all;
+
+    const since = await page(
+      ApiScheduledStatus,
+      email,
+      `/api/v1/scheduled_statuses?since_id=${a}&max_id=${d}`,
+    );
+    expect(since.items.map((status) => status.id)).toEqual([c, b]);
+
+    const min = await page(
+      ApiScheduledStatus,
+      email,
+      `/api/v1/scheduled_statuses?min_id=${a}&max_id=${c}&limit=5`,
+    );
+    expect(min.items.map((status) => status.id)).toEqual([b]);
+  });
+
+  it("bounds v1 notifications by max_id with since_id or min_id", async () => {
+    const email = "links-bounds-notified@example.com";
+    const target = (await me(email)).id;
+    for (const name of ["a", "b", "c", "d"]) {
+      await send(`links-bounds-follower-${name}@example.com`, `/api/v1/accounts/${target}/follow`);
+    }
+    const all = (await page(ApiNotification, email, "/api/v1/notifications")).items.map(
+      (item) => item.id,
+    );
+    expect(all).toHaveLength(4);
+    const [d = "", c = "", b = "", a = ""] = all;
+
+    const since = await page(
+      ApiNotification,
+      email,
+      `/api/v1/notifications?since_id=${a}&max_id=${d}`,
+    );
+    expect(since.items.map((item) => item.id)).toEqual([c, b]);
+
+    const min = await page(ApiNotification, email, `/api/v1/notifications?min_id=${a}&max_id=${c}`);
+    expect(min.items.map((item) => item.id)).toEqual([b]);
+  });
+
+  it("bounds follow requests by max_id and since_id", async () => {
+    const email = "links-bounds-locked@example.com";
+    await send(email, "/api/v1/accounts/update_credentials", { locked: true }, "PATCH");
+    const target = (await me(email)).id;
+    const requesters: string[] = [];
+    for (const name of ["a", "b", "c"]) {
+      const requester = `links-bounds-requester-${name}@example.com`;
+      await send(requester, `/api/v1/accounts/${target}/follow`);
+      requesters.push((await me(requester)).id);
+    }
+    // The follow row ids, newest first, as each one-row page names it in `rel="next"`.
+    const rowIds: string[] = [];
+    let path = "/api/v1/follow_requests?limit=1";
+    for (const _ of requesters) {
+      const next = (await page(ApiAccount, email, path)).links.next;
+      rowIds.push(next?.searchParams.get("max_id") ?? "");
+      path = `${next?.pathname}${next?.search}`;
+    }
+    const [newest = "", , oldest = ""] = rowIds;
+
+    const between = await page(
+      ApiAccount,
+      email,
+      `/api/v1/follow_requests?since_id=${oldest}&max_id=${newest}`,
+    );
+    expect(between.items.map((account) => account.id)).toEqual([requesters[1]]);
+  });
+
+  it("bounds notification requests by max_id with since_id or min_id", async () => {
+    const email = "links-bounds-requests@example.com";
+    const username = (await me(email)).username;
+    for (const name of ["a", "b", "c"]) {
+      await post(`links-bounds-stranger-${name}@example.com`, `@${username} psst`, {
+        visibility: "direct",
+      });
+    }
+    const all = (
+      await page(ApiNotificationRequest, email, "/api/v1/notifications/requests")
+    ).items.map((request) => request.id);
+    expect(all).toHaveLength(3);
+    const [newest = "", middle = "", oldest = ""] = all;
+
+    const since = await page(
+      ApiNotificationRequest,
+      email,
+      `/api/v1/notifications/requests?since_id=${oldest}&max_id=${newest}`,
+    );
+    expect(since.items.map((request) => request.id)).toEqual([middle]);
+
+    const min = await page(
+      ApiNotificationRequest,
+      email,
+      `/api/v1/notifications/requests?min_id=${oldest}&max_id=${newest}`,
+    );
+    expect(min.items.map((request) => request.id)).toEqual([middle]);
+  });
+});
+
+/**
+ * Mastodon pages favourites and bookmarks by the `Favourite` and `Bookmark`
+ * row id: the newest favourite first, whatever the status's age, and the
+ * `Link` names row ids.
+ */
+describe("favourites and bookmarks by row id", () => {
+  it.each(["favourite", "bookmark"] as const)(
+    "lists %ss newest first and links by row id",
+    async (action) => {
+      const email = `links-rows-${action}@example.com`;
+      const older = await post(email, "older");
+      const newer = await post(email, "newer");
+      await send(email, `/api/v1/statuses/${newer}/${action}`);
+      await send(email, `/api/v1/statuses/${older}/${action}`);
+      const path = `/api/v1/${action}s`;
+
+      const all = await page(ApiStatus, email, path);
+      expect(all.items.map((status) => status.id)).toEqual([older, newer]);
+
+      const full = await page(ApiStatus, email, `${path}?limit=1`);
+      expect(full.items.map((status) => status.id)).toEqual([older]);
+      const rowId = full.links.next?.searchParams.get("max_id") ?? "";
+      expect(rowId).not.toBe(older);
+      expect(full.links.prev?.searchParams.get("min_id")).toBe(rowId);
+
+      const rest = await page(ApiStatus, email, `${path}?limit=1&max_id=${rowId}`);
+      expect(rest.items.map((status) => status.id)).toEqual([newer]);
+      const restRowId = rest.links.next?.searchParams.get("max_id") ?? "";
+      expect(restRowId < rowId).toBe(true);
+
+      const back = await page(ApiStatus, email, `${path}?min_id=${restRowId}`);
+      expect(back.items.map((status) => status.id)).toEqual([older]);
+    },
+  );
 });

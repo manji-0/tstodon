@@ -88,59 +88,76 @@ export const unbookmarkStatus = async (
     return rows[0]?.id;
   });
 
-const TargetRowSchema = z.object({
+const EngagedRowSchema = z.object({
+  id: z.string(),
   local_status_id: z.string().nullable(),
   remote_status_id: z.string().nullable(),
 });
 
-/** The statuses an account favourited or bookmarked, by status id under the cursor. */
+/** A favourite or bookmark: its row id, which pages the list, and its status. */
+export type EngagedTarget = Readonly<{ id: string; target: StatusTargetValue }>;
+
+/**
+ * A page of an account's favourites or bookmarks by row id, as Mastodon's
+ * `current_account.favourites.to_a_paginated_by_id`; read through the
+ * `(account_id, id)` index.
+ */
+export const pageEngagedTargetsSql = (
+  table: "favourites" | "bookmarks",
+  accountId: string,
+  limit: number,
+  cursor: IdCursor,
+): Readonly<{ sql: string; binds: ReadonlyArray<string | number> }> => {
+  const { where, order, binds } = idCursorFragment(cursor);
+  return {
+    sql: `SELECT id, local_status_id, remote_status_id FROM ${table}
+      WHERE account_id = ? ${where} ${order} LIMIT ?`,
+    binds: [accountId, ...binds, limit],
+  };
+};
+
 const listEngagedTargets = async (
   db: D1Database,
   table: "favourites" | "bookmarks",
   accountId: string,
   limit: number,
   cursor: IdCursor,
-): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+): Promise<Result<ReadonlyArray<EngagedTarget>, RepositoryError>> =>
   runD1(async () => {
-    const { where, order, binds } = idCursorFragment(cursor);
+    const page = pageEngagedTargetsSql(table, accountId, limit, cursor);
     const { results } = await db
-      .prepare(
-        `SELECT local_status_id, remote_status_id FROM (
-           SELECT COALESCE(local_status_id, remote_status_id) AS id, local_status_id, remote_status_id
-           FROM ${table} WHERE account_id = ?
-         ) WHERE 1 = 1 ${where} ${order} LIMIT ?`,
-      )
-      .bind(accountId, ...binds, limit)
+      .prepare(page.sql)
+      .bind(...page.binds)
       .all();
     return newestFirst(
       cursor,
-      parseRows(TargetRowSchema, results).flatMap((row) => {
+      parseRows(EngagedRowSchema, results).flatMap((row) => {
         const target = StatusTarget.parse(
           row.local_status_id
             ? { kind: "LocalStatus", statusId: row.local_status_id }
             : { kind: "RemoteStatus", statusId: row.remote_status_id },
         );
-        return target.isOk() ? [target.value] : [];
+        return target.isOk() ? [{ id: row.id, target: target.value }] : [];
       }),
     );
   });
 
-/** The account's favourites, local and remote statuses alike, paged by status id. */
+/** The account's favourites, local and remote statuses alike, newest favourite first. */
 export const listFavouritedTargets = (
   db: D1Database,
   accountId: string,
   limit: number,
   cursor: IdCursor = {},
-): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+): Promise<Result<ReadonlyArray<EngagedTarget>, RepositoryError>> =>
   listEngagedTargets(db, "favourites", accountId, limit, cursor);
 
-/** The account's bookmarks, local and remote statuses alike, paged by status id. */
+/** The account's bookmarks, local and remote statuses alike, newest bookmark first. */
 export const listBookmarkedTargets = (
   db: D1Database,
   accountId: string,
   limit: number,
   cursor: IdCursor = {},
-): Promise<Result<ReadonlyArray<StatusTargetValue>, RepositoryError>> =>
+): Promise<Result<ReadonlyArray<EngagedTarget>, RepositoryError>> =>
   listEngagedTargets(db, "bookmarks", accountId, limit, cursor);
 
 export type StatusInteractionCounts = Readonly<{

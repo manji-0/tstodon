@@ -264,6 +264,39 @@ describe("a remote actor's Add and Remove", () => {
     expect(await pinnedUris(remote)).toEqual([second.id, first.id]);
   });
 
+  it("pages the pins by status id, as Mastodon pages an account's pins", async () => {
+    const remote = await pinningActor("pinner-paged", "pins.example");
+    const notes = ["paged-a", "paged-b", "paged-c"].map((slug) => remoteNote(remote, slug));
+    for (const [index, note] of notes.entries()) {
+      await deliver(remote, note);
+      expect(await sendAt(remote, collectionActivity(remote, "Add", note.id), 50 - index)).toBe(
+        202,
+      );
+    }
+    const path = `/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}/statuses`;
+    const pinnedPage = async (query: string) => {
+      const response = await SELF.fetch(`${ORIGIN}${path}?pinned=true&${query}`);
+      expect(response.status).toBe(200);
+      return {
+        statuses: read(
+          z.array(z.object({ id: z.string(), uri: z.string() })),
+          await response.json(),
+        ),
+        link: response.headers.get("Link") ?? "",
+      };
+    };
+
+    const full = await pinnedPage("limit=2");
+    expect(full.statuses.map((status) => status.uri)).toEqual([notes[2]?.id, notes[1]?.id]);
+    const last = full.statuses[1]?.id ?? "";
+    expect(full.link).toContain(`max_id=${last}`);
+    expect(full.link).toContain("pinned=true");
+
+    const rest = await pinnedPage(`limit=2&max_id=${last}`);
+    expect(rest.statuses.map((status) => status.uri)).toEqual([notes[0]?.id]);
+    expect(rest.link).not.toContain('rel="next"');
+  });
+
   it("answers a redelivery of the same signed request without applying it twice", async () => {
     const remote = await pinningActor("pinner-twice", "pins.example");
     const note = remoteNote(remote, "pin-twice");

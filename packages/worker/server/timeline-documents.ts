@@ -14,7 +14,7 @@ import {
   loadViewerFilters,
 } from "./filter-match";
 import type { FollowedFeed, ListFeed } from "./followed-feed";
-import type { IdCursor } from "./id-cursor";
+import { type IdCursor, pageInOrder } from "./id-cursor";
 import { type AccountList, listListTimelineStatuses } from "./list-store";
 import { mastodonStatuses } from "./local-status-documents";
 import { listRemoteActorPinnedStatuses } from "./remote-actor-pin-store";
@@ -470,36 +470,43 @@ const pastHorizon = (cursor: IdCursor, horizon: string | undefined): IdCursor | 
   if (horizon === undefined || (cursor.onlyId ?? "") !== "" || (cursor.sinceId ?? "") !== "") {
     return undefined;
   }
-  return (cursor.minId ?? "") !== "" ? { minId: horizon } : { maxId: horizon };
+  return (cursor.minId ?? "") !== "" ? { minId: horizon, maxId: cursor.maxId } : { maxId: horizon };
 };
 
 /**
  * The notes a remote actor pinned, in its order, as `pinned=true` on its
- * profile shows them: public and unlisted, with `filtered` on them.
+ * profile shows them: public and unlisted, with `filtered` on them. A page of
+ * them by status id, as Mastodon pages an account's `StatusPin`s; `ids` are
+ * the notes the page read, for its `Link`.
  */
 export const remoteAccountPinnedDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   actorUri: string,
   viewerId: string | undefined,
-): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
+  page: Readonly<{ limit: number; cursor?: IdCursor | undefined }>,
+): Promise<Result<Readonly<{ statuses: ApiStatusJSON[]; ids: string[] }>, RepositoryError>> => {
   const pinned = await listRemoteActorPinnedStatuses(env.DB, actorUri, viewerId);
   if (pinned.isErr()) {
     return err(pinned.error);
   }
-  const rendered = await remoteTimelineDocuments(env, identity, pinned.value, viewerId, () => true);
+  const read = pageInOrder(pinned.value, page.cursor ?? {}, page.limit);
+  const rendered = await remoteTimelineDocuments(env, identity, read, viewerId, () => true);
   if (rendered.isErr()) {
     return err(rendered.error);
   }
-  return ok([
-    ...(await attachFilteredToRemoteStatuses(
-      env.DB,
-      viewerId,
-      "public",
-      rendered.value.statuses,
-      rendered.value.documents,
-    )),
-  ]);
+  return ok({
+    statuses: [
+      ...(await attachFilteredToRemoteStatuses(
+        env.DB,
+        viewerId,
+        "public",
+        rendered.value.statuses,
+        rendered.value.documents,
+      )),
+    ],
+    ids: read.map((status) => status.id),
+  });
 };
 
 /**

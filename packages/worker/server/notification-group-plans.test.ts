@@ -129,6 +129,7 @@ describe("grouped notification statements", () => {
         "1",
         0,
         "follow-493000",
+        "",
       ),
     ],
   ])("walks the account in id order for a group's senders read %s", async (_name, typed) => {
