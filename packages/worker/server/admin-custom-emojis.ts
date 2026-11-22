@@ -131,6 +131,15 @@ export const uploadCustomEmoji = async (
     : err({ kind: "RepositoryError", message: "emoji missing after insert" });
 };
 
+/** Delete an image no row names; one that stays is only unused storage, so a failure is logged. */
+const deleteEmojiObject = async (env: Env, objectKey: string): Promise<void> => {
+  try {
+    await env.MEDIA.delete(objectKey);
+  } catch {
+    console.error(JSON.stringify({ kind: "EmojiImageNotDeleted", objectKey }));
+  }
+};
+
 /**
  * Change an emoji: `undefined` leaves a field alone, `null` clears the
  * category. `undefined` in the result means there is no such emoji. A new
@@ -183,9 +192,10 @@ export const changeCustomEmoji = async (
       stored?.size ?? bytes.byteLength,
     );
     if (replaced.isErr()) {
+      await deleteEmojiObject(env, objectKey);
       return err(replaced.error);
     }
-    await env.MEDIA.delete(row.value.object_key);
+    await deleteEmojiObject(env, row.value.object_key);
   }
   return findCustomEmojiRowById(env.DB, id);
 };

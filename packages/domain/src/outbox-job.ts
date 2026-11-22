@@ -92,18 +92,43 @@ const RecordDomainBlockLimitsSchema = z.object({
  */
 const ResumeLiftedDomainBlockLimitsSchema = unitKind("ResumeLiftedDomainBlockLimits");
 /**
- * Show a remote server's custom emoji `shortcode` with the image this server
- * last read for it (`remote_custom_emojis`) on every post, earlier version
- * and profile of that server's actors cached here, a page of actors after
- * `cursor` at a time (self-chaining), as Mastodon keeps one emoji per
- * shortcode and server and renders each post with it.
+ * Where a `RefreshRemoteEmoji` chain is: the posts of the domain's actors
+ * (with their earlier versions) after a status, in the order of the actors'
+ * `(username, rowid)` and then the status id, then the actors' profiles.
+ */
+const RemoteEmojiRefreshCursorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("Statuses"),
+    afterUsername: z.string(),
+    afterRowId: z.number().int(),
+    afterActorUri: z.string(),
+    afterStatusId: z.string(),
+  }),
+  z.object({
+    kind: z.literal("Profiles"),
+    afterUsername: z.string(),
+    afterRowId: z.number().int(),
+  }),
+]);
+/**
+ * Bring the copies of a remote domain's custom emoji kept with its posts,
+ * their earlier versions and its actors' profiles to the images
+ * `remote_custom_emojis` holds, a page at a time (self-chaining), as
+ * Mastodon renders every post of a domain with its one emoji per shortcode.
+ * The chain is for `generation` of the domain's images and stops once a
+ * newer one exists, whose own chain refreshes it.
  */
 const RefreshRemoteEmojiSchema = z.object({
   kind: z.literal("RefreshRemoteEmoji"),
   domain: z.string().min(1),
-  shortcode: z.string().min(1),
-  cursor: z.object({ afterUsername: z.string(), afterRowId: z.number().int() }),
+  generation: z.number().int(),
+  cursor: RemoteEmojiRefreshCursorSchema,
 });
+/**
+ * Start a `RefreshRemoteEmoji` chain for each domain whose newest images have
+ * none, or whose chain stopped (hourly cron).
+ */
+const ResumeRemoteEmojiRefreshesSchema = unitKind("ResumeRemoteEmojiRefreshes");
 /**
  * Move the next batch of attachments after `afterId` (empty for the first)
  * that are still at an id-derived key to a random key (cron, self-chaining).
@@ -556,6 +581,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   RecordDomainBlockLimitsSchema,
   ResumeLiftedDomainBlockLimitsSchema,
   RefreshRemoteEmojiSchema,
+  ResumeRemoteEmojiRefreshesSchema,
   RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,

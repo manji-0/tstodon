@@ -1,10 +1,12 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { authHeaders } from "../test/auth-fixture";
 import { holdQueue, kindOf, withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { upsertRemoteActor } from "./remote-actor-store";
 
@@ -52,11 +54,16 @@ const historyEmojis = async (id: string): Promise<Array<Record<string, string>>>
     (version) => Object.fromEntries(version.emojis.map((emoji) => [emoji.shortcode, emoji.url])),
   );
 
-const emojiTag = (shortcode: string, url: string) => ({
+/** An `Emoji` tag; Mastodon dates each with the emoji's `updated_at`. */
+const emojiTag = (shortcode: string, url: string, updated?: string) => ({
   type: "Emoji",
   name: `:${shortcode}:`,
   icon: { type: "Image", mediaType: "image/png", url },
+  ...(updated === undefined ? {} : { updated }),
 });
+
+const refreshJobs = (bodies: ReadonlyArray<unknown>): number =>
+  bodies.filter((body) => kindOf(body) === REFRESH).length;
 
 const noteOf = (
   author: Remote,
@@ -177,7 +184,7 @@ describe("a remote custom emoji whose image changes", () => {
     } finally {
       held.release();
     }
-    expect(held.bodies.map(kindOf)).not.toContain(REFRESH);
+    expect(refreshJobs(held.bodies)).toBe(0);
   });
 
   it("refreshes every actor of a server, a page at a time", async () => {
@@ -244,5 +251,164 @@ describe("a remote custom emoji whose image changes", () => {
 
     expect(await accountEmojis(author.actorUri)).toEqual({ cat: changed });
     expect(await statusEmojis(id)).toEqual({ cat: changed });
+  });
+
+  // Mastodon keeps its stored image when the one a late delivery names does
+  // not download, and the server has deleted the replaced file.
+  it("keeps the newer image when a delivery dated before it comes later", async () => {
+    const host = "emoji-change-late.example";
+    const old = `https://${host}/system/late-1.png`;
+    const changed = `https://${host}/system/late-2.png`;
+    const author = await remoteActor("hana", host);
+    const first = await post(author, "first", "<p>:late:</p>", [
+      emojiTag("late", old, "2026-11-01T00:00:00Z"),
+    ]);
+    const second = await withQueueDrained([REFRESH], () =>
+      post(author, "second", "<p>:late:</p>", [emojiTag("late", changed, "2026-11-10T00:00:00Z")]),
+    );
+
+    const held = holdQueue();
+    let retried = "";
+    try {
+      retried = await post(author, "retried", "<p>:late:</p>", [
+        emojiTag("late", old, "2026-11-01T00:00:00Z"),
+      ]);
+    } finally {
+      held.release();
+    }
+
+    expect(refreshJobs(held.bodies)).toBe(0);
+    expect(await statusEmojis(first)).toEqual({ late: changed });
+    expect(await statusEmojis(second)).toEqual({ late: changed });
+    expect(await statusEmojis(retried)).toEqual({ late: changed });
+  });
+
+  it("refreshes a server once for a note that changes several of its images", async () => {
+    const host = "emoji-change-several.example";
+    const author = await remoteActor("ivan", host);
+    const image = (name: string) => `https://${host}/system/${name}.png`;
+    const first = await post(author, "first", "<p>:one: :two:</p>", [
+      emojiTag("one", image("one-1")),
+      emojiTag("two", image("two-1")),
+    ]);
+
+    const held = holdQueue();
+    try {
+      await post(author, "second", "<p>:one: :two:</p>", [
+        emojiTag("one", image("one-2")),
+        emojiTag("two", image("two-2")),
+      ]);
+      await post(author, "third", "<p>:one: :two:</p>", [
+        emojiTag("one", image("one-2")),
+        emojiTag("two", image("two-2")),
+      ]);
+    } finally {
+      held.release();
+    }
+
+    expect(refreshJobs(held.bodies)).toBe(1);
+    await withQueueDrained([REFRESH], async () => {
+      for (const body of held.bodies) {
+        await env.OUTBOX_PROCESS_QUEUE.send(body);
+      }
+    });
+    expect(await statusEmojis(first)).toEqual({ one: image("one-2"), two: image("two-2") });
+  });
+
+  it("ends a refresh that a newer image overtook, and shows the newest one", async () => {
+    const host = "emoji-change-overtaken.example";
+    const image = (n: number) => `https://${host}/system/fast-${n}.png`;
+    const author = await remoteActor("jun", host);
+    const first = await post(author, "first", "<p>:fast:</p>", [emojiTag("fast", image(1))]);
+
+    await withQueueDrained([REFRESH], async () => {
+      await post(author, "second", "<p>:fast:</p>", [emojiTag("fast", image(2))]);
+      await post(author, "third", "<p>:fast:</p>", [emojiTag("fast", image(3))]);
+    });
+
+    expect(await statusEmojis(first)).toEqual({ fast: image(3) });
+  });
+
+  it("refreshes an actor with more posts than a page, a page of posts at a time", async () => {
+    const host = "emoji-change-prolific.example";
+    const old = `https://${host}/system/busy-1.png`;
+    const changed = `https://${host}/system/busy-2.png`;
+    const author = await remoteActor("kai", host);
+    const first = await post(author, "first", "<p>:busy:</p>", [emojiTag("busy", old)]);
+    const copies = 450;
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?2)
+       INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, emojis_json)
+       SELECT CAST(CAST(s.id AS INTEGER) + n.i AS TEXT), s.actor_uri, s.object_uri || '/' || n.i,
+         s.content_html, s.visibility, s.published_at, s.emojis_json
+       FROM remote_statuses s, n WHERE s.id = ?1`,
+    )
+      .bind(first, copies)
+      .run();
+    const copy = (n: number) => (BigInt(first) + BigInt(n)).toString();
+
+    await withQueueDrained([REFRESH], () =>
+      post(author, "second", "<p>:busy:</p>", [emojiTag("busy", changed)]),
+    );
+
+    for (const id of [first, copy(1), copy(199), copy(200), copy(201), copy(copies)]) {
+      expect(await statusEmojis(id)).toEqual({ busy: changed });
+    }
+  });
+
+  it("starts a refresh that could not be queued from the hourly cron", async () => {
+    const host = "emoji-change-unqueued.example";
+    const old = `https://${host}/system/lost-1.png`;
+    const changed = `https://${host}/system/lost-2.png`;
+    const author = await remoteActor("lena", host);
+    const first = await post(author, "first", "<p>:lost:</p>", [emojiTag("lost", old)]);
+
+    const proto = Object.getPrototypeOf(env.OUTBOX_PROCESS_QUEUE);
+    const send = vi.spyOn(proto, "send").mockImplementation((body: unknown) => {
+      if (kindOf(body) === REFRESH) {
+        throw new Error("queue unavailable");
+      }
+    });
+    try {
+      await post(author, "second", "<p>:lost:</p>", [emojiTag("lost", changed)]);
+    } finally {
+      send.mockRestore();
+    }
+    expect(await statusEmojis(first)).toEqual({ lost: old });
+
+    await withQueueDrained([REFRESH], () =>
+      processOutboxJob(env, { kind: "ResumeRemoteEmojiRefreshes" }),
+    );
+
+    expect(await statusEmojis(first)).toEqual({ lost: changed });
+  });
+
+  // `skip_download?`: Mastodon stores no emoji of a domain whose media it rejects.
+  it("records no image of a server whose media is rejected", async () => {
+    const host = "emoji-change-rejected.example";
+    const old = `https://${host}/system/no-1.png`;
+    const changed = `https://${host}/system/no-2.png`;
+    const blocked = await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
+      method: "POST",
+      headers: {
+        ...(await authHeaders("emoji-reject-admin@example.com", { admin: true })),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ domain: host, severity: "noop", reject_media: true }),
+    });
+    expect(blocked.status).toBe(200);
+    await blocked.arrayBuffer();
+    const author = await remoteActor("mio", host);
+    const first = await post(author, "first", "<p>:no:</p>", [emojiTag("no", old)]);
+
+    const held = holdQueue();
+    try {
+      await post(author, "second", "<p>:no:</p>", [emojiTag("no", changed)]);
+    } finally {
+      held.release();
+    }
+
+    expect(refreshJobs(held.bodies)).toBe(0);
+    expect(await statusEmojis(first)).toEqual({ no: old });
   });
 });

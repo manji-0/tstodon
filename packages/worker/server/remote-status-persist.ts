@@ -12,7 +12,7 @@ import {
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { CreateDocumentSchema, refId } from "./activitypub-wire";
-import { recordRemoteEmojis } from "./remote-emoji-refresh";
+import { recordNoteEmojis } from "./remote-emoji-refresh";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
@@ -1424,10 +1424,7 @@ const storeRemoteNote = async (
       ? storedMeanwhile(env, identity, actor, raw, status.objectUri, options)
       : ok(undefined);
   }
-  const emojis = await recordRemoteEmojis(env, actor.actorUri, stored.value.emojis);
-  if (emojis.isErr()) {
-    return err(emojis.error);
-  }
+  await recordNoteEmojis(env, actor, stored.value);
   const finished = await finishRemoteNote(env, identity, {
     kind: "Created",
     actor,

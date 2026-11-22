@@ -82,6 +82,11 @@ export type account_moderation = Prisma.account_moderationModel;
  */
 export type remote_custom_emojis = Prisma.remote_custom_emojisModel;
 /**
+ * Model remote_emoji_refreshes
+ *
+ */
+export type remote_emoji_refreshes = Prisma.remote_emoji_refreshesModel;
+/**
  * Model remote_actor_domain_limits
  *
  */

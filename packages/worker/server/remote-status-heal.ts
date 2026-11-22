@@ -2,7 +2,7 @@ import { IsoInstant, type RemoteActor, type RemoteStatusValue } from "@tstodon/d
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
-import { recordRemoteEmojis } from "./remote-emoji-refresh";
+import { recordNoteEmojis } from "./remote-emoji-refresh";
 import { contentChanged, isNewer } from "./remote-status-edit";
 import {
   applyMediaPolicy,
@@ -138,10 +138,7 @@ export const settleInvalidRemoteStatus = async (
   if (replaced.isErr()) {
     return err(replaced.error);
   }
-  const emojis = await recordRemoteEmojis(env, status.actorUri, status.emojis);
-  if (emojis.isErr()) {
-    return err(emojis.error);
-  }
+  await recordNoteEmojis(env, signer, status);
   console.warn(
     JSON.stringify({ kind: "InvalidRemoteStatusRowReplaced", statusId: invalid.id, activity }),
   );

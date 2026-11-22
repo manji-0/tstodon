@@ -1,6 +1,6 @@
 import type { ApiCustomEmojiJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
-import { type RemoteEmoji, RemoteEmojiSchema } from "@tstodon/domain";
+import { IsoInstant, type RemoteEmoji, RemoteEmojiSchema } from "@tstodon/domain";
 import { z } from "zod";
 import { httpUrl } from "./sanitize-html";
 
@@ -13,6 +13,7 @@ const parseEmojiTag = schemaResult(
     .object({
       type: z.string().optional(),
       name: z.string().optional(),
+      updated: z.unknown().optional(),
       icon: z.object({ url: z.string().optional() }).passthrough().optional(),
     })
     .passthrough(),
@@ -64,7 +65,10 @@ export const declaredEmojis = (
       continue;
     }
     seen.add(sameAs(shortcode));
-    const parsed = parseRemoteEmoji({ shortcode, url });
+    const updated = IsoInstant.parseRemote(tag.updated);
+    const parsed = parseRemoteEmoji(
+      updated.isOk() ? { shortcode, url, updated: updated.value } : { shortcode, url },
+    );
     if (parsed.isOk()) {
       emojis.push(parsed.value);
     }

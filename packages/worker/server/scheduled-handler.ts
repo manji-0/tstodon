@@ -93,6 +93,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Delete the rows left by domain blocks lifted while their deletion chain
   // stopped; one walk of the distinct block ids when none did.
   { kind: "Inline", job: { kind: "ResumeLiftedDomainBlockLimits" } },
+  // Start the custom emoji refresh of up to 20 domains whose newest images
+  // have no chain, or whose chain stalled; one indexed query when none.
+  { kind: "Inline", job: { kind: "ResumeRemoteEmojiRefreshes" } },
   // A page tells up to 50 voters and announces up to 50 polls.
   { kind: "Queued", job: { kind: "ProcessExpiredPolls" }, due: hasExpiredPollWork },
   // Publish the scheduled posts whose time has come, 5 a run, chained while

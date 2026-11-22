@@ -97,10 +97,19 @@ model remote_custom_emojis {
   domain     String
   shortcode  String
   image_url  String
-  revision   Int    @default(0)
   updated_at String
 
   @@id([domain, shortcode])
+}
+
+model remote_emoji_refreshes {
+  domain               String  @id
+  generation           Int     @default(0)
+  queued_generation    Int     @default(0)
+  queued_at            String?
+  refreshed_generation Int     @default(0)
+
+  @@index([domain], map: "idx_remote_emoji_refreshes_unfinished")
 }
 
 model remote_actor_domain_limits {
