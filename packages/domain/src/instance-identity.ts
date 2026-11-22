@@ -38,6 +38,9 @@ export const InstanceIdentity = {
     `${origin(identity)}/@${username}/${statusId}`,
   webfingerSubject: (identity: InstanceIdentity, username: string): string =>
     `acct:${username}@${identity.domain}`,
+  /** A local custom emoji's ActivityPub document (Mastodon's `emoji_url`). */
+  emojiUrl: (identity: InstanceIdentity, emojiId: string): string =>
+    `${origin(identity)}/emojis/${encodeURIComponent(emojiId)}`,
   sharedInboxUrl: (identity: InstanceIdentity): string => `${origin(identity)}/inbox`,
   /** Mastodon's instance actor: the Application that speaks for the server itself. */
   instanceActorUrl: (identity: InstanceIdentity): string => `${origin(identity)}/actor`,

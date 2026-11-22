@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import {
   type AccountHandle,
   Hostname,
@@ -27,7 +28,7 @@ import { ActorDocumentSchema, refId } from "./activitypub-wire";
 import { type PublishedKey, publishedKeys, resolvePublishedKeys } from "./actor-keys";
 import { actorFields } from "./remote-actor-fields";
 import { actorEmojis } from "./remote-emoji-document";
-import { recordRemoteEmojiImages } from "./remote-emoji-refresh";
+import { recordProfileEmojis } from "./remote-emoji-refresh";
 import {
   claimRemoteActorKeyRefetch,
   claimRemoteActorRefresh,
@@ -491,7 +492,13 @@ export const cacheFetchedActor = async (
     : cacheActorWithKeys(db, identity, fetched, keys.value, options, check);
 };
 
-/** {@link cacheFetchedActor} once its keys are read. */
+/**
+ * {@link cacheFetchedActor} once its keys are read, then the profile's emoji
+ * ({@link recordProfileEmojis}). The `RefreshRemoteEmoji` job that a
+ * replaced image starts is sent on the Worker's own `OUTBOX_PROCESS_QUEUE`,
+ * read from `cloudflare:workers`'s global `env`, since the fetch paths carry
+ * only `db`: a queue a caller injects elsewhere is not used for that send.
+ */
 const cacheActorWithKeys = async (
   db: D1Database,
   identity: InstanceIdentity,
@@ -501,12 +508,11 @@ const cacheActorWithKeys = async (
   check: HandleCheck = { kind: "RoundTrip" },
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
   const stored = await writeFetchedActor(db, identity, fetched, keys, options, check);
-  // As `ProcessAccountService#process_emojis` on every fetch of an account.
   if (stored.isOk()) {
-    const { profile, fetchedAt } = stored.value;
-    await recordRemoteEmojiImages(db, stored.value, profile.emojis, fetchedAt, {
-      kind: "Profile",
-    });
+    await recordProfileEmojis(
+      { DB: db, OUTBOX_PROCESS_QUEUE: env.OUTBOX_PROCESS_QUEUE },
+      stored.value,
+    );
   }
   return stored;
 };

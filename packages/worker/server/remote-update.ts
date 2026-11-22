@@ -16,7 +16,7 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import type { ReceivedActivity } from "./activity-forward";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
-import { recordNoteEmojis, startRemoteEmojiRefresh } from "./remote-emoji-refresh";
+import { recordNoteEmojis } from "./remote-emoji-refresh";
 import { findMoveTarget } from "./remote-move";
 import { contentChanged, isNewer, remoteRevisionStatement } from "./remote-status-edit";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
@@ -301,9 +301,6 @@ const applyActorUpdate = async (
       default:
         return ok(undefined);
     }
-  }
-  if (stored.value.profile.emojis.length > 0) {
-    await startRemoteEmojiRefresh(env, stored.value.actorUri);
   }
   const movedTo = actorMovedTo(target.raw);
   if (movedTo === signer.movedTo) {

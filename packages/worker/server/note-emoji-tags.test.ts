@@ -1,7 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { ApStatusDocument, ApStatusObject } from "@tstodon/api/activitypub";
+import { ApEmojiDocument, ApStatusDocument, ApStatusObject } from "@tstodon/api/activitypub";
 import { authHeaders } from "../test/auth-fixture";
 
 const Created = z.object({
@@ -45,6 +45,19 @@ const noteDocument = async (uri: string) => {
   return ApStatusDocument.parse(await response.json());
 };
 
+/** An admin-managed emoji's tag, as Mastodon's `ActivityPub::EmojiSerializer` writes it. */
+const storedTag = (
+  emoji: z.infer<typeof AdminEmoji>,
+  shortcode: string,
+  mediaType = "image/png",
+) => ({
+  id: `https://example.com/emojis/${emoji.id}`,
+  type: "Emoji",
+  name: `:${shortcode}:`,
+  updated: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+  icon: { type: "Image", mediaType, url: emoji.url },
+});
+
 const emojiTags = (document: Pick<z.infer<typeof ApStatusObject>, "tag">) =>
   document.tag.filter((tag) => tag.type === "Emoji");
 
@@ -63,9 +76,9 @@ describe("custom emoji in a federated note", () => {
     });
 
     const expected = [
-      { type: "Emoji", name: ":notewave:", icon: { type: "Image", url: wave.url } },
-      { type: "Emoji", name: ":notewarn:", icon: { type: "Image", url: warn.url } },
-      { type: "Emoji", name: ":notevote:", icon: { type: "Image", url: vote.url } },
+      storedTag(wave, "notewave"),
+      storedTag(warn, "notewarn"),
+      storedTag(vote, "notevote"),
     ];
     const served = await noteDocument(sent.uri);
     expect(emojiTags(served)).toEqual(expected);
@@ -101,9 +114,7 @@ describe("custom emoji in a federated note", () => {
     expect(other.emojis).toEqual([]);
 
     const same = await post(email, { status: "saying :casewave: after :CaseWave:" });
-    expect(emojiTags(await noteDocument(same.uri))).toEqual([
-      { type: "Emoji", name: ":casewave:", icon: { type: "Image", url: wave.url } },
-    ]);
+    expect(emojiTags(await noteDocument(same.uri))).toEqual([storedTag(wave, "casewave")]);
     expect(same.emojis.map((emoji) => emoji.shortcode)).toEqual(["casewave"]);
   });
 
@@ -129,7 +140,7 @@ describe("custom emoji in a federated note", () => {
     expect(after.url).not.toBe(before.url);
 
     expect(emojiTags(await noteDocument(sent.uri))).toEqual([
-      { type: "Emoji", name: ":replacedwave:", icon: { type: "Image", url: after.url } },
+      storedTag(after, "replacedwave", "image/gif"),
     ]);
     const shown = await SELF.fetch(`https://example.com/api/v1/statuses/${sent.id}`);
     expect(
@@ -146,5 +157,67 @@ describe("custom emoji in a federated note", () => {
     const gone = await served(before.url);
     expect(gone.status).toBe(404);
     await gone.arrayBuffer();
+  });
+});
+
+const EmojiDocument = ApEmojiDocument.extend({ updated: z.string() });
+
+const emojiDocument = async (id: string) => {
+  const response = await SELF.fetch(`https://example.com/emojis/${id}`, {
+    headers: { accept: "application/activity+json" },
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("application/activity+json");
+  expect(response.headers.get("cache-control")).toBe("max-age=180, public");
+  return EmojiDocument.parse(await response.json());
+};
+
+// `EmojisController#show`: a local emoji's own document, which the `id` of
+// its tag names.
+describe("GET /emojis/:id", () => {
+  it("serves the document the tag names, with the same id and date", async () => {
+    const email = "emoji-document@example.com";
+    const emoji = await uploadEmoji(email, "documentwave");
+    const sent = await post(email, { status: "hi :documentwave:" });
+    const [tag] = emojiTags(await noteDocument(sent.uri));
+
+    const document = await emojiDocument(emoji.id);
+    expect(document).toEqual({
+      "@context": [
+        "https://www.w3.org/ns/activitystreams",
+        { toot: "http://joinmastodon.org/ns#", Emoji: "toot:Emoji" },
+      ],
+      ...storedTag(emoji, "documentwave"),
+    });
+    expect(tag).toEqual(expect.objectContaining({ id: document.id, updated: document.updated }));
+  });
+
+  // Rails' `iso8601` writes whole seconds; a change of the emoji moves it.
+  it("dates the document by the emoji's last change, to the second", async () => {
+    const email = "emoji-document-date@example.com";
+    const emoji = await uploadEmoji(email, "documentdate");
+    await env.DB.prepare("UPDATE custom_emojis SET updated_at = ? WHERE id = ?")
+      .bind("2026-01-02T03:04:05.678Z", emoji.id)
+      .run();
+    expect((await emojiDocument(emoji.id)).updated).toBe("2026-01-02T03:04:05Z");
+
+    const change = new FormData();
+    change.set("visible_in_picker", "false");
+    const changed = await SELF.fetch(`https://example.com/api/v1/admin/custom_emojis/${emoji.id}`, {
+      method: "PATCH",
+      headers: await authHeaders(email, { admin: true }),
+      body: change,
+    });
+    expect(changed.status).toBe(200);
+    await changed.arrayBuffer();
+    expect(Date.parse((await emojiDocument(emoji.id)).updated)).toBeGreaterThan(
+      Date.parse("2026-01-02T03:04:05Z"),
+    );
+  });
+
+  it("answers 404 for an id no emoji has", async () => {
+    const response = await SELF.fetch("https://example.com/emojis/nosuchemoji");
+    expect(response.status).toBe(404);
+    await response.arrayBuffer();
   });
 });

@@ -19,6 +19,7 @@ locals {
     "oauth/revoke",
     ".well-known/*",
     "users/*",
+    "emojis/*",
     "@*",
     "inbox",
     "actor",

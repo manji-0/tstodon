@@ -10,6 +10,7 @@ import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { parseRows, runD1, type RepositoryError } from "./d1";
 import { measureJobPage } from "./metrics";
+import { undeclaredShortcodes } from "./remote-emoji-document";
 
 /**
  * A remote server's custom emoji whose image changes, as Mastodon v4.7.5
@@ -27,7 +28,9 @@ import { measureJobPage } from "./metrics";
  * back a replaced image (Mastodon keeps its stored file when the new one
  * does not download). Each replacement moves the domain to a new generation
  * (a trigger), and one `RefreshRemoteEmoji` chain per generation brings the
- * domain's copies to the stored images.
+ * domain's copies to the stored images. A post or profile that writes a
+ * shortcode it does not declare gets a copy of the domain's emoji stored
+ * then; one first stored later is not added to it.
  */
 
 type RefreshJob = Extract<OutboxJob, { kind: "RefreshRemoteEmoji" }>;
@@ -89,50 +92,111 @@ const profilesRefreshSql = (actorUris: string, domain: string): string =>
   `UPDATE remote_actors SET profile_json = ${refreshedSql("profile_json", "$.emojis", domain)}
    WHERE actor_uri IN (${actorUris}) AND ${staleSql("profile_json", "$.emojis", domain)}`;
 
+/**
+ * SQL that adds to the emoji list at `path` of `column` each emoji of domain
+ * `domain` that the JSON list `shortcodes` names and the list does not hold,
+ * with the image `remote_custom_emojis` holds for it.
+ */
+const addedSql = (column: string, path: string, domain: string, shortcodes: string) => {
+  const known = `SELECT r.shortcode, r.image_url
+     FROM json_each(${shortcodes}) w
+     JOIN remote_custom_emojis r ON r.domain = ${domain} AND r.shortcode = w.value
+     WHERE NOT EXISTS (
+       SELECT 1 FROM json_each(${column}, '${path}') e
+       WHERE json_extract(e.value, '$.shortcode') = w.value
+     )`;
+  return {
+    set: `json_set(${column}, '${path}', json((
+       SELECT json_group_array(json(v)) FROM (
+         SELECT e.value AS v FROM json_each(${column}, '${path}') e
+         UNION ALL
+         SELECT json_object('shortcode', k.shortcode, 'url', k.image_url) FROM (${known}) k
+       ))))`,
+    when: `EXISTS (${known})`,
+  };
+};
+
+const statusAddedSql = (id: string, domain: string, shortcodes: string): string => {
+  const added = addedSql("emojis_json", "$", domain, shortcodes);
+  return `UPDATE remote_statuses SET emojis_json = ${added.set} WHERE id = ${id} AND ${added.when}`;
+};
+
+const profileAddedSql = (actorUri: string, domain: string, shortcodes: string): string => {
+  const added = addedSql("profile_json", "$.emojis", domain, shortcodes);
+  return `UPDATE remote_actors SET profile_json = ${added.set}
+    WHERE actor_uri = ${actorUri} AND ${added.when}`;
+};
+
 /** Where the document a recorded emoji came from is kept, to show the stored images. */
 export type EmojiSource =
   | Readonly<{ kind: "Status"; statusId: string }>
   | Readonly<{ kind: "Profile" }>;
 
+/** The custom emoji a note or a profile writes. */
+export type WrittenEmojis = Readonly<{
+  /** Those its `Emoji` tags declare. */
+  declared: ReadonlyArray<RemoteEmoji>;
+  /** The shortcodes it writes without declaring them (`undeclaredShortcodes`). */
+  undeclared: ReadonlyArray<string>;
+}>;
+
 /**
- * Store the images `actor`'s note or profile names for its domain's emoji,
- * as `process_emoji` does, and show the stored images in that note (with
- * its earlier versions) or profile. A tag without `updated` is dated
- * `dated`. Best effort, as the document is stored already: a failure is
- * logged.
+ * Store the images `actor`'s note or profile declares for its domain's
+ * emoji, as `process_emoji` does, and show the stored images in that note
+ * (with its earlier versions) or profile. A tag without `updated` is dated
+ * `dated`. The note or profile also shows each emoji of the domain stored
+ * here that it writes without declaring, as Mastodon renders every emoji
+ * `CustomEmoji.from_text` finds for the author's domain. Best effort, as the
+ * document is stored already: a failure is logged.
  */
 export const recordRemoteEmojiImages = async (
   db: D1Database,
   actor: RemoteActor,
-  emojis: ReadonlyArray<RemoteEmoji>,
+  { declared, undeclared }: WrittenEmojis,
   dated: string,
   source: EmojiSource,
 ): Promise<void> => {
-  if (emojis.length === 0 || RemoteActor.onAnyHost(actor, await mediaRejectedDomains(db))) {
+  const recording =
+    declared.length > 0 && !RemoteActor.onAnyHost(actor, await mediaRejectedDomains(db));
+  if (!recording && undeclared.length === 0) {
     return;
   }
   const domain = "(SELECT domain FROM remote_actors WHERE actor_uri = ?1)";
+  const shortcodes = JSON.stringify(undeclared);
+  const record = recording
+    ? [
+        db
+          .prepare(
+            `INSERT INTO remote_custom_emojis (domain, shortcode, image_url, updated_at)
+             SELECT a.domain, json_extract(e.value, '$.shortcode'), json_extract(e.value, '$.url'),
+               coalesce(json_extract(e.value, '$.updated'), ?3)
+             FROM remote_actors a, json_each(?2) e WHERE a.actor_uri = ?1
+             ON CONFLICT (domain, shortcode) DO UPDATE SET
+               image_url = excluded.image_url,
+               updated_at = excluded.updated_at
+             WHERE excluded.image_url IS NOT image_url AND excluded.updated_at >= updated_at`,
+          )
+          .bind(actor.actorUri, JSON.stringify(declared), dated),
+        ...(source.kind === "Status"
+          ? [
+              db.prepare(statusesRefreshSql("?2", domain)).bind(actor.actorUri, source.statusId),
+              db.prepare(editsRefreshSql("?2", domain)).bind(actor.actorUri, source.statusId),
+            ]
+          : [db.prepare(profilesRefreshSql("?1", domain)).bind(actor.actorUri)]),
+      ]
+    : [];
+  const add =
+    undeclared.length === 0
+      ? []
+      : [
+          source.kind === "Status"
+            ? db
+                .prepare(statusAddedSql("?2", domain, "?3"))
+                .bind(actor.actorUri, source.statusId, shortcodes)
+            : db.prepare(profileAddedSql("?1", domain, "?2")).bind(actor.actorUri, shortcodes),
+        ];
   const recorded = await runD1(async () => {
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO remote_custom_emojis (domain, shortcode, image_url, updated_at)
-           SELECT a.domain, json_extract(e.value, '$.shortcode'), json_extract(e.value, '$.url'),
-             coalesce(json_extract(e.value, '$.updated'), ?3)
-           FROM remote_actors a, json_each(?2) e WHERE a.actor_uri = ?1
-           ON CONFLICT (domain, shortcode) DO UPDATE SET
-             image_url = excluded.image_url,
-             updated_at = excluded.updated_at
-           WHERE excluded.image_url IS NOT image_url AND excluded.updated_at >= updated_at`,
-        )
-        .bind(actor.actorUri, JSON.stringify(emojis), dated),
-      ...(source.kind === "Status"
-        ? [
-            db.prepare(statusesRefreshSql("?2", domain)).bind(actor.actorUri, source.statusId),
-            db.prepare(editsRefreshSql("?2", domain)).bind(actor.actorUri, source.statusId),
-          ]
-        : [db.prepare(profilesRefreshSql("?1", domain)).bind(actor.actorUri)]),
-    ]);
+    await db.batch([...record, ...add]);
   });
   if (recorded.isErr()) {
     console.error(
@@ -153,17 +217,65 @@ export const recordRemoteEmojiImages = async (
 export const recordNoteEmojis = async (
   env: Env,
   actor: RemoteActor,
-  status: Pick<RemoteStatusValue, "id" | "emojis" | "publishedAt" | "editedAt">,
+  status: Pick<
+    RemoteStatusValue,
+    "id" | "emojis" | "publishedAt" | "editedAt" | "contentHtml" | "spoilerText" | "poll"
+  >,
 ): Promise<void> => {
-  if (status.emojis.length === 0) {
-    return;
-  }
+  // As `Status#emojis`: the spoiler, the text and the poll's options.
+  const undeclared = undeclaredShortcodes(
+    [
+      status.spoilerText,
+      status.contentHtml,
+      ...(status.poll.kind === "NoPoll" ? [] : status.poll.options.map((option) => option.title)),
+    ],
+    status.emojis,
+  );
   const dated = status.editedAt.kind === "Edited" ? status.editedAt.at : status.publishedAt;
-  await recordRemoteEmojiImages(env.DB, actor, status.emojis, dated, {
+  await recordRemoteEmojiImages(env.DB, actor, { declared: status.emojis, undeclared }, dated, {
     kind: "Status",
     statusId: status.id,
   });
-  await startRemoteEmojiRefresh(env, actor.actorUri);
+  if (status.emojis.length > 0) {
+    await startRemoteEmojiRefresh(env, actor.actorUri);
+  }
+};
+
+/** What {@link startRemoteEmojiRefresh} reads and queues on. */
+export type EmojiRefreshBindings = Pick<Env, "DB" | "OUTBOX_PROCESS_QUEUE">;
+
+/**
+ * {@link recordRemoteEmojiImages} for the profile of `actor` as its document
+ * was just read, by a fetch or from its own `Update`, as
+ * `ProcessAccountService#process_emojis` on every fetch of an account; then
+ * {@link startRemoteEmojiRefresh}, so an image it changes shows on the
+ * domain's posts at once. A tag without `updated` is dated as the fetch.
+ */
+export const recordProfileEmojis = async (
+  stores: EmojiRefreshBindings,
+  actor: RemoteActor,
+): Promise<void> => {
+  const { profile } = actor;
+  // As `Account#emojifiable_text`: the note, the name, the fields' names and values.
+  const undeclared = undeclaredShortcodes(
+    [
+      profile.note,
+      actor.displayName,
+      ...profile.fields.map((field) => field.name),
+      ...profile.fields.map((field) => field.value),
+    ],
+    profile.emojis,
+  );
+  await recordRemoteEmojiImages(
+    stores.DB,
+    actor,
+    { declared: profile.emojis, undeclared },
+    actor.fetchedAt,
+    { kind: "Profile" },
+  );
+  if (profile.emojis.length > 0) {
+    await startRemoteEmojiRefresh(stores, actor.actorUri);
+  }
 };
 
 const Claimed = z.object({ domain: z.string(), generation: z.number() });
@@ -181,7 +293,10 @@ const refreshJob = ({ domain, generation }: z.infer<typeof Claimed>): RefreshJob
  * documents name it. A chain that cannot be queued is left to the hourly
  * cron. Best effort: a failure is logged.
  */
-export const startRemoteEmojiRefresh = async (env: Env, actorUri: string): Promise<void> => {
+export const startRemoteEmojiRefresh = async (
+  env: EmojiRefreshBindings,
+  actorUri: string,
+): Promise<void> => {
   const claimed = await runD1(async () => {
     const { results } = await env.DB.prepare(
       `UPDATE remote_emoji_refreshes SET queued_generation = generation, queued_at = ?2
@@ -360,9 +475,7 @@ export const processRefreshRemoteEmojiJob = (env: Env, job: RefreshJob) =>
 
 /**
  * Start a chain for each domain whose newest images have none, because it
- * could not be queued or no request that stores a document started it (an
- * actor's profile read by a fetch), or whose chain ran no page for an hour
- * (hourly cron).
+ * could not be queued, or whose chain ran no page for an hour (hourly cron).
  */
 export const processResumeRemoteEmojiRefreshesJob = (env: Env) =>
   measureJobPage(env, "ResumeRemoteEmojiRefreshes", async () => {

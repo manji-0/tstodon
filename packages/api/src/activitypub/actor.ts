@@ -9,13 +9,24 @@ export const ApImage = z.object({
 });
 export type ApImageJSON = z.infer<typeof ApImage>;
 
-/** A custom emoji its name, bio or fields use (`toot:Emoji`). */
+/**
+ * A custom emoji its name, bio or fields use (`toot:Emoji`). An emoji an
+ * admin manages has its own document, which `id` names, and the date of its
+ * last change (`ActivityPub::EmojiSerializer`); one the `CUSTOM_EMOJIS` var
+ * configures has neither.
+ */
 export const ApEmoji = z.object({
+  id: ApUri.optional(),
   type: z.literal("Emoji"),
   name: z.string().regex(/^:[^:\s]+:$/),
+  updated: z.iso.datetime().optional(),
   icon: ApImage,
 });
 export type ApEmojiJSON = z.infer<typeof ApEmoji>;
+
+/** An emoji's own document (`GET /emojis/:id`, `EmojisController#show`). */
+export const ApEmojiDocument = withContext(ApEmoji.required({ id: true, updated: true }));
+export type ApEmojiDocumentJSON = z.infer<typeof ApEmojiDocument>;
 
 /** A profile field (`schema:PropertyValue`): `value` is HTML. */
 export const ApPropertyValue = z.object({

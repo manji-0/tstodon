@@ -3,7 +3,7 @@ import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
-import { customEmojiJson, type CustomEmoji } from "./emoji";
+import { customEmojiJson, type CustomEmoji, type UploadedCustomEmoji } from "./emoji";
 import {
   deleteCustomEmoji as deleteCustomEmojiSql,
   findCustomEmojiById as findCustomEmojiByIdSql,
@@ -19,6 +19,19 @@ import { queryTyped, runTyped } from "./typed-sql";
 const IdRow = z.object({ id: z.string() });
 const ObjectKeyRow = z.object({ object_key: z.string() });
 
+/**
+ * `updated_at` as Rails' `iso8601` writes Mastodon's: UTC, to the second. A
+ * row inserted without one holds SQLite's `CURRENT_TIMESTAMP`, UTC as well.
+ */
+const UpdatedAt = z.string().transform((at, ctx) => {
+  const milliseconds = Date.parse(at.includes("T") ? at : `${at.replace(" ", "T")}Z`);
+  if (Number.isNaN(milliseconds)) {
+    ctx.issues.push({ code: "custom", message: "not a calendar instant", input: at });
+    return z.NEVER;
+  }
+  return new Date(milliseconds).toISOString().replace(/\.\d{3}Z$/, "Z");
+});
+
 export const CustomEmojiRowSchema = z.object({
   id: z.string().min(1),
   shortcode: z.string().min(1),
@@ -26,6 +39,7 @@ export const CustomEmojiRowSchema = z.object({
   content_type: z.string().min(1),
   visible_in_picker: z.number(),
   category: z.string().nullable(),
+  updated_at: UpdatedAt,
 });
 
 export type CustomEmojiRow = z.infer<typeof CustomEmojiRowSchema>;
@@ -36,13 +50,19 @@ const objectUrl = (mediaPublicBaseUrl: string, objectKey: string): string =>
 export const customEmojiFromRow = (
   row: CustomEmojiRow,
   mediaPublicBaseUrl: string,
-): CustomEmoji => {
+): UploadedCustomEmoji => {
   const url = objectUrl(mediaPublicBaseUrl, row.object_key);
-  const emoji: CustomEmoji = {
+  const emoji: UploadedCustomEmoji = {
     shortcode: row.shortcode,
     url,
     static_url: url,
     visible_in_picker: row.visible_in_picker !== 0,
+    source: {
+      kind: "Uploaded",
+      id: row.id,
+      updatedAt: row.updated_at,
+      contentType: row.content_type,
+    },
   };
   return row.category ? { ...emoji, category: row.category } : emoji;
 };

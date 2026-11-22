@@ -69,7 +69,9 @@ describe("the custom emoji of a remote account", () => {
     expect(shown.emojis).toEqual([emoji("blobcat"), emoji("Party")]);
   });
 
-  it("leaves out an emoji without a name or an http(s) image, and drops them when the tags go", async () => {
+  // With its tags gone, the name still writes `:ok:`, which Mastodon knows
+  // for the actor's domain (`CustomEmoji.from_text`).
+  it("leaves out an emoji without a name or an http(s) image, and drops them when the text goes", async () => {
     const author = await remoteActor("emoji-profile-invalid");
     await updateProfile(author, {
       name: ":ok: :script: :nameless:",
@@ -82,6 +84,9 @@ describe("the custom emoji of a remote account", () => {
     expect((await account(author.actorUri)).emojis).toEqual([emoji("ok")]);
 
     await updateProfile(author, { name: ":ok: still" });
+    expect((await account(author.actorUri)).emojis).toEqual([emoji("ok")]);
+
+    await updateProfile(author, { name: "no emoji" });
     expect((await account(author.actorUri)).emojis).toEqual([]);
   });
 

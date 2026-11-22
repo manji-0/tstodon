@@ -91,6 +91,36 @@ export const remoteEmojisInTexts = (
   return emojis.filter((emoji) => used.has(emoji.shortcode.toLowerCase()));
 };
 
+/**
+ * Mastodon's `CustomEmoji::SCAN_RE`: two or more of `[a-zA-Z0-9_]` between
+ * colons, with no letter, mark, digit or colon on either side (Onigmo's
+ * `[[:alnum:]]` is Letter, Mark and Decimal_Number).
+ */
+const SCAN_RE = /(?<=^|[^\p{L}\p{M}\p{Nd}:]):([a-zA-Z0-9_]{2,}):(?=[^\p{L}\p{M}\p{Nd}:]|$)/gu;
+
+/** A document writes far fewer; this only bounds a hostile one. */
+const MAX_UNDECLARED = 50;
+
+/**
+ * The shortcodes `texts` write, as `CustomEmoji.from_text` scans them, that
+ * no emoji of `declared` names: the emoji Mastodon shows from those it
+ * knows for the author's domain though the document does not declare them.
+ * A shortcode matches as written, case and all, as `EntityCache#emoji`
+ * looks it up.
+ */
+export const undeclaredShortcodes = (
+  texts: ReadonlyArray<string>,
+  declared: ReadonlyArray<RemoteEmoji>,
+): ReadonlyArray<string> => {
+  const named = new Set(declared.map((emoji) => emoji.shortcode));
+  const written = [...texts.join(" ").matchAll(SCAN_RE)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+  return [...new Set(written)]
+    .filter((shortcode) => !named.has(shortcode))
+    .slice(0, MAX_UNDECLARED);
+};
+
 /** A profile writes far fewer; this only bounds a hostile document. */
 const MAX_ACTOR_EMOJIS = 50;
 
