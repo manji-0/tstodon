@@ -66,6 +66,30 @@ describe("the sign-in time an authenticated request records", () => {
     expect(await signInOf(account.id)).toBe(login.toISOString());
   });
 
+  // The web UI starts with several requests at once; one write is enough.
+  it("is written once for requests that arrive together", async () => {
+    const account = await signedInAccount("aa-parallel@example.com");
+    const now = new Date("2026-03-02T08:00:00.000Z");
+    let batches = 0;
+    const counted = new Proxy(env.DB, {
+      get: (target, key) => {
+        const value = Reflect.get(target, key);
+        if (key === "batch" && typeof value === "function") {
+          return (...args: unknown[]) => {
+            batches += 1;
+            return Reflect.apply(value, target, args);
+          };
+        }
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    await Promise.all([0, 1, 2, 3].map(() => recordAccountActivity(counted, account.id, api, now)));
+
+    expect(batches).toBe(1);
+    expect(await signInOf(account.id)).toBe(now.toISOString());
+  });
+
   // Mastodon's streaming server is not Rails, so a stream is no sign-in.
   it("is not moved by a streaming connection", async () => {
     const account = await signedInAccount("aa-stream@example.com");
@@ -98,5 +122,18 @@ describe("the activity window", () => {
     expect(signedInRecentlySince({ USER_ACTIVE_DAYS: "soon" }, now)).toBe(
       new Date(now.getTime() - 7 * DAY_MS).toISOString(),
     );
+  });
+
+  // `USER_ACTIVE_DAYS` past what a date can hold counts every user who
+  // ever signed in, as a cutoff that far back does in Mastodon.
+  it("reaches back to the earliest date for a window past the date range", () => {
+    const now = new Date("2026-03-10T12:34:56.789Z");
+    const earliest = new Date(-8.64e15).toISOString();
+
+    for (const days of ["200000000", "9".repeat(400)]) {
+      const since = signedInRecentlySince({ USER_ACTIVE_DAYS: days }, now);
+      expect(since).toBe(earliest);
+      expect(since < "1970-01-01T00:00:00.000Z").toBe(true);
+    }
   });
 });

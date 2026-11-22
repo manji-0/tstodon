@@ -40,6 +40,9 @@ const utcDay = (now: Date): string => now.toISOString().slice(0, 10);
  */
 const DEFAULT_USER_ACTIVE_DAYS = 7;
 
+/** The earliest instant a `Date` holds; a longer window reaches back to it. */
+const EARLIEST_DATE_MS = -8.64e15;
+
 /**
  * The earliest sign-in time that counts as signed in recently
  * (`User.signed_in_recently`): `USER_ACTIVE_DAYS` (a whole number of days)
@@ -51,7 +54,7 @@ export const signedInRecentlySince = (
 ): string => {
   const raw = (env.USER_ACTIVE_DAYS ?? "").trim();
   const days = /^\d+$/.test(raw) ? Number(raw) : DEFAULT_USER_ACTIVE_DAYS;
-  return new Date(now.getTime() - days * DAY_MS).toISOString();
+  return new Date(Math.max(now.getTime() - days * DAY_MS, EARLIEST_DATE_MS)).toISOString();
 };
 
 /**
@@ -113,6 +116,11 @@ export const recordAccountActivity = async (
     signIns.clear();
   }
   remembered.add(key);
+  // Taken before the write, so requests arriving together send it once.
+  const knownSignIn = signIns.get(accountId);
+  if (signInWanted) {
+    signIns.set(accountId, Math.max(now.getTime(), signedInAt?.getTime() ?? 0));
+  }
   const statements = [
     ...(dayDue ? [recordAccountActivityDay(accountId, day)] : []),
     ...(dayDue && ip !== undefined ? [recordAccountIp(accountId, ip, now.toISOString())] : []),
@@ -131,6 +139,11 @@ export const recordAccountActivity = async (
   const written = await runTypedBatch(db, statements);
   if (written.isErr()) {
     remembered.delete(key);
+    if (signInWanted && knownSignIn === undefined) {
+      signIns.delete(accountId);
+    } else if (signInWanted && knownSignIn !== undefined) {
+      signIns.set(accountId, knownSignIn);
+    }
     return;
   }
   const [stored] = signInWanted ? parseRows(SignInRow, written.value.at(-1)?.results) : [];
