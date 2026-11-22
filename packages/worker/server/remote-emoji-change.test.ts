@@ -493,9 +493,25 @@ describe("a known remote custom emoji a document writes without declaring it", (
     // A letter, digit or colon next to it is no shortcode; nor is a name of another case.
     const glued = await post(bob, "glued", "<p>x:blob: :blob:: :Blob:</p>", []);
     expect(await statusEmojis(glued)).toEqual({});
+    // Onigmo's `[[:alnum:]]` holds the marks: a combining accent before it ends no word.
+    const marked = await post(bob, "marked", "<p>é:blob:</p>", []);
+    expect(await statusEmojis(marked)).toEqual({});
     // Another server's emoji of the same name is its own.
     const other = await post(elsewhere, "other", "<p>:blob:</p>", []);
     expect(await statusEmojis(other)).toEqual({});
+  });
+
+  // `EntityCache#emoji` looks each shortcode up as written, so `:Blob:` is
+  // its own emoji, though the post declares `blob`.
+  it("tells a shortcode from a declared one of another case", async () => {
+    const host = "emoji-undeclared-case.example";
+    const lower = `https://${host}/system/blob.png`;
+    const upper = `https://${host}/system/Blob.png`;
+    const alice = await remoteActor("alice", host);
+    await post(alice, "upper", "<p>:Blob:</p>", [emojiTag("Blob", upper)]);
+
+    const both = await post(alice, "both", "<p>:blob: :Blob:</p>", [emojiTag("blob", lower)]);
+    expect(await statusEmojis(both)).toEqual({ blob: lower, Blob: upper });
   });
 
   it("shows on a profile of the emoji's server, and takes a new image", async () => {

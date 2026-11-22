@@ -94,8 +94,8 @@ const profilesRefreshSql = (actorUris: string, domain: string): string =>
 
 /**
  * SQL that adds to the emoji list at `path` of `column` each emoji of domain
- * `domain` that the JSON list `shortcodes` names and the list does not hold
- * in any case, with the image `remote_custom_emojis` holds for it.
+ * `domain` that the JSON list `shortcodes` names and the list does not hold,
+ * with the image `remote_custom_emojis` holds for it.
  */
 const addedSql = (column: string, path: string, domain: string, shortcodes: string) => {
   const known = `SELECT r.shortcode, r.image_url
@@ -103,7 +103,7 @@ const addedSql = (column: string, path: string, domain: string, shortcodes: stri
      JOIN remote_custom_emojis r ON r.domain = ${domain} AND r.shortcode = w.value
      WHERE NOT EXISTS (
        SELECT 1 FROM json_each(${column}, '${path}') e
-       WHERE lower(json_extract(e.value, '$.shortcode')) = lower(w.value)
+       WHERE json_extract(e.value, '$.shortcode') = w.value
      )`;
   return {
     set: `json_set(${column}, '${path}', json((
