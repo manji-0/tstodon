@@ -34,6 +34,8 @@ export const RemoteEmojiSchema = z.object({
   /** The name between the colons, without them. */
   shortcode: z.string().min(1),
   url: z.url(),
+  /** The tag's `updated`: when the emoji last changed on its server. */
+  updated: IsoInstant.schema.optional(),
 });
 
 export type RemoteEmoji = z.infer<typeof RemoteEmojiSchema>;

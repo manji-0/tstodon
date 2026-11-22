@@ -167,7 +167,11 @@ const cachePolicy = (objectKey: string): Readonly<{ header: string; edge: boolea
   if (isLegacyAttachmentObjectKey(objectKey)) {
     return { header: "no-store", edge: false };
   }
-  // An admin replaces a custom emoji's image under the same key.
+  // A new custom emoji image goes under a new `emoji/<entityId>` key and the
+  // old one is deleted, so the bytes under a key never change; an emoji is
+  // still kept off the edge cache so that a deleted image stops answering,
+  // and an emoji stored before keys changed with the image may have been
+  // replaced in place.
   if (objectKey.startsWith("emoji/")) {
     return { header: "public, max-age=3600", edge: false };
   }

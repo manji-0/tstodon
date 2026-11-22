@@ -16,6 +16,7 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import type { ReceivedActivity } from "./activity-forward";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
+import { recordNoteEmojis, startRemoteEmojiRefresh } from "./remote-emoji-refresh";
 import { findMoveTarget } from "./remote-move";
 import { contentChanged, isNewer, remoteRevisionStatement } from "./remote-status-edit";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
@@ -217,6 +218,7 @@ const applyNoteUpdate = async (
   if (stored.value === undefined) {
     return ok(undefined);
   }
+  await recordNoteEmojis(env, signer, stored.value);
   // A note stored from a `Create`, or from an `Update` handled as one, whose
   // late steps failed left its marker. A delivery that edits nothing, with no
   // edit pending, finishes them as a redelivered `Create` does, once the
@@ -299,6 +301,9 @@ const applyActorUpdate = async (
       default:
         return ok(undefined);
     }
+  }
+  if (stored.value.profile.emojis.length > 0) {
+    await startRemoteEmojiRefresh(env, stored.value.actorUri);
   }
   const movedTo = actorMovedTo(target.raw);
   if (movedTo === signer.movedTo) {

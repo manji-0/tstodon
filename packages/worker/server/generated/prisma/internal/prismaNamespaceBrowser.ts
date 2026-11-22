@@ -55,6 +55,8 @@ export const ModelName = {
   account_notes: "account_notes",
   announcements: "announcements",
   account_moderation: "account_moderation",
+  remote_custom_emojis: "remote_custom_emojis",
+  remote_emoji_refreshes: "remote_emoji_refreshes",
   remote_actor_domain_limits: "remote_actor_domain_limits",
   remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
@@ -228,6 +230,27 @@ export const Account_moderationScalarFieldEnum = {
 
 export type Account_moderationScalarFieldEnum =
   (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
+
+export const Remote_custom_emojisScalarFieldEnum = {
+  domain: "domain",
+  shortcode: "shortcode",
+  image_url: "image_url",
+  updated_at: "updated_at",
+} as const;
+
+export type Remote_custom_emojisScalarFieldEnum =
+  (typeof Remote_custom_emojisScalarFieldEnum)[keyof typeof Remote_custom_emojisScalarFieldEnum];
+
+export const Remote_emoji_refreshesScalarFieldEnum = {
+  domain: "domain",
+  generation: "generation",
+  queued_generation: "queued_generation",
+  queued_at: "queued_at",
+  refreshed_generation: "refreshed_generation",
+} as const;
+
+export type Remote_emoji_refreshesScalarFieldEnum =
+  (typeof Remote_emoji_refreshesScalarFieldEnum)[keyof typeof Remote_emoji_refreshesScalarFieldEnum];
 
 export const Remote_actor_domain_limitsScalarFieldEnum = {
   domain_block_id: "domain_block_id",

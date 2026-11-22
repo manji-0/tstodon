@@ -398,6 +398,8 @@ export const ModelName = {
   account_notes: "account_notes",
   announcements: "announcements",
   account_moderation: "account_moderation",
+  remote_custom_emojis: "remote_custom_emojis",
+  remote_emoji_refreshes: "remote_emoji_refreshes",
   remote_actor_domain_limits: "remote_actor_domain_limits",
   remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
@@ -506,6 +508,8 @@ export type TypeMap<
       | "account_notes"
       | "announcements"
       | "account_moderation"
+      | "remote_custom_emojis"
+      | "remote_emoji_refreshes"
       | "remote_actor_domain_limits"
       | "remote_actor_moderation"
       | "account_domain_blocks"
@@ -1118,6 +1122,158 @@ export type TypeMap<
           args: Prisma.account_moderationCountArgs<ExtArgs>;
           result:
             | runtime.Types.Utils.Optional<Prisma.Account_moderationCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    remote_custom_emojis: {
+      payload: Prisma.$remote_custom_emojisPayload<ExtArgs>;
+      fields: Prisma.remote_custom_emojisFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_custom_emojisFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_custom_emojisFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_custom_emojisFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_custom_emojisFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_custom_emojisFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>[];
+        };
+        create: {
+          args: Prisma.remote_custom_emojisCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_custom_emojisCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_custom_emojisCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_custom_emojisDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>;
+        };
+        update: {
+          args: Prisma.remote_custom_emojisUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_custom_emojisDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_custom_emojisUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_custom_emojisUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_custom_emojisUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_custom_emojisPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_custom_emojisAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_custom_emojis>;
+        };
+        groupBy: {
+          args: Prisma.remote_custom_emojisGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_custom_emojisGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_custom_emojisCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_custom_emojisCountAggregateOutputType>
+            | number;
+        };
+      };
+    };
+    remote_emoji_refreshes: {
+      payload: Prisma.$remote_emoji_refreshesPayload<ExtArgs>;
+      fields: Prisma.remote_emoji_refreshesFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.remote_emoji_refreshesFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.remote_emoji_refreshesFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>;
+        };
+        findFirst: {
+          args: Prisma.remote_emoji_refreshesFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.remote_emoji_refreshesFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>;
+        };
+        findMany: {
+          args: Prisma.remote_emoji_refreshesFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>[];
+        };
+        create: {
+          args: Prisma.remote_emoji_refreshesCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>;
+        };
+        createMany: {
+          args: Prisma.remote_emoji_refreshesCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.remote_emoji_refreshesCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>[];
+        };
+        delete: {
+          args: Prisma.remote_emoji_refreshesDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>;
+        };
+        update: {
+          args: Prisma.remote_emoji_refreshesUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>;
+        };
+        deleteMany: {
+          args: Prisma.remote_emoji_refreshesDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.remote_emoji_refreshesUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.remote_emoji_refreshesUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>[];
+        };
+        upsert: {
+          args: Prisma.remote_emoji_refreshesUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$remote_emoji_refreshesPayload>;
+        };
+        aggregate: {
+          args: Prisma.Remote_emoji_refreshesAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateRemote_emoji_refreshes>;
+        };
+        groupBy: {
+          args: Prisma.remote_emoji_refreshesGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Remote_emoji_refreshesGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.remote_emoji_refreshesCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Remote_emoji_refreshesCountAggregateOutputType>
             | number;
         };
       };
@@ -7362,6 +7518,27 @@ export const Account_moderationScalarFieldEnum = {
 export type Account_moderationScalarFieldEnum =
   (typeof Account_moderationScalarFieldEnum)[keyof typeof Account_moderationScalarFieldEnum];
 
+export const Remote_custom_emojisScalarFieldEnum = {
+  domain: "domain",
+  shortcode: "shortcode",
+  image_url: "image_url",
+  updated_at: "updated_at",
+} as const;
+
+export type Remote_custom_emojisScalarFieldEnum =
+  (typeof Remote_custom_emojisScalarFieldEnum)[keyof typeof Remote_custom_emojisScalarFieldEnum];
+
+export const Remote_emoji_refreshesScalarFieldEnum = {
+  domain: "domain",
+  generation: "generation",
+  queued_generation: "queued_generation",
+  queued_at: "queued_at",
+  refreshed_generation: "refreshed_generation",
+} as const;
+
+export type Remote_emoji_refreshesScalarFieldEnum =
+  (typeof Remote_emoji_refreshesScalarFieldEnum)[keyof typeof Remote_emoji_refreshesScalarFieldEnum];
+
 export const Remote_actor_domain_limitsScalarFieldEnum = {
   domain_block_id: "domain_block_id",
   actor_uri: "actor_uri",
@@ -8537,6 +8714,8 @@ export type GlobalOmitConfig = {
   account_notes?: Prisma.account_notesOmit;
   announcements?: Prisma.announcementsOmit;
   account_moderation?: Prisma.account_moderationOmit;
+  remote_custom_emojis?: Prisma.remote_custom_emojisOmit;
+  remote_emoji_refreshes?: Prisma.remote_emoji_refreshesOmit;
   remote_actor_domain_limits?: Prisma.remote_actor_domain_limitsOmit;
   remote_actor_moderation?: Prisma.remote_actor_moderationOmit;
   account_domain_blocks?: Prisma.account_domain_blocksOmit;

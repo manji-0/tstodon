@@ -106,4 +106,45 @@ describe("custom emoji in a federated note", () => {
     ]);
     expect(same.emojis.map((emoji) => emoji.shortcode)).toEqual(["casewave"]);
   });
+
+  // Mastodon fetches a remote emoji's image again only when the tag names
+  // another URL (`process_emoji`), so a new image has to come under a new one.
+  it("names a replaced image by a new URL, in earlier notes too, and serves the old one no more", async () => {
+    const email = "note-emoji-replaced@example.com";
+    const before = await uploadEmoji(email, "replacedwave");
+    const sent = await post(email, { status: "hi :replacedwave:" });
+
+    const replacement = new FormData();
+    replacement.set(
+      "image",
+      new File([new Uint8Array([71, 73, 70, 56])], "emoji.gif", { type: "image/gif" }),
+    );
+    const replaced = await SELF.fetch(
+      `https://example.com/api/v1/admin/custom_emojis/${before.id}`,
+      { method: "PATCH", headers: await authHeaders(email, { admin: true }), body: replacement },
+    );
+    expect(replaced.status).toBe(200);
+    const after = AdminEmoji.parse(await replaced.json());
+    expect(after.id).toBe(before.id);
+    expect(after.url).not.toBe(before.url);
+
+    expect(emojiTags(await noteDocument(sent.uri))).toEqual([
+      { type: "Emoji", name: ":replacedwave:", icon: { type: "Image", url: after.url } },
+    ]);
+    const shown = await SELF.fetch(`https://example.com/api/v1/statuses/${sent.id}`);
+    expect(
+      z
+        .object({ emojis: z.array(z.object({ url: z.string() })) })
+        .parse(await shown.json())
+        .emojis.map((emoji) => emoji.url),
+    ).toEqual([after.url]);
+
+    const served = (url: string) => SELF.fetch(`https://example.com${new URL(url).pathname}`);
+    const image = await served(after.url);
+    expect(image.headers.get("content-type")).toBe("image/gif");
+    expect([...new Uint8Array(await image.arrayBuffer())]).toEqual([71, 73, 70, 56]);
+    const gone = await served(before.url);
+    expect(gone.status).toBe(404);
+    await gone.arrayBuffer();
+  });
 });

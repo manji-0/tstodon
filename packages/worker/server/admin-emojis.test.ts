@@ -70,7 +70,7 @@ describe("admin custom emojis", () => {
     const served = await SELF.fetch(`https://example.com${path}`);
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("image/png");
-    // An admin can replace the image under this URL, so it is not cached for good.
+    // A replaced image is deleted, so it is not cached for good.
     expect(served.headers.get("cache-control")).toBe("public, max-age=3600");
     expect([...new Uint8Array(await served.arrayBuffer())]).toEqual([137, 80, 78, 71]);
 
