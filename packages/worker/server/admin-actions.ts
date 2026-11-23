@@ -204,10 +204,10 @@ export const findAdminRemoteActor = async (
  * as Mastodon's `unsilence!` / `unsuspend!` clear `silenced_at` /
  * `suspended_at` whoever set them, a suspension of its domain too. Its
  * domain stays refused where Mastodon's `domain_not_allowed?` refuses
- * (lookup, resolve, the inbox, signed fetches). Lifting a block's suspension also empties
- * the actor's content from before, which Mastodon's `BlockDomainService`
- * deleted (`DeleteAccountService` with `reserve_username`), so it does not
- * come back.
+ * (lookup, resolve, the inbox, signed fetches). Lifting a block's
+ * suspension also empties the actor's content from before, which Mastodon's
+ * `BlockDomainService` deleted (`DeleteAccountService` with
+ * `reserve_username`), so it does not come back.
  */
 const liftRemoteActor = async (
   env: Env,

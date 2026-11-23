@@ -813,7 +813,7 @@ describe("an instance rule on the URI host of an actor with another account doma
     expect(reports).toEqual([]);
   });
 
-  it("suspension severs its follows and hides its account", async () => {
+  it("suspension severs its follows and renders its account suspended", async () => {
     const remote = await splitActor("sid", "wf-severed");
     const email = "wf-severed-followed@example.com";
     const account = await signedInAccount(email);
@@ -836,9 +836,11 @@ describe("an instance rule on the URI host of an actor with another account doma
       )
     ).map((notification) => notification.event);
     expect(events).toEqual([{ type: "domain_block", followers_count: 1 }]);
-    expect((await call(`/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}`)).status).toBe(
-      404,
-    );
+    // Mastodon's `set_account` finds the account by id; `domain_not_allowed?`
+    // stops only lookups, the inbox and signed fetches.
+    const shown = await call(`/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}`);
+    expect(shown.status).toBe(200);
+    expect(await read(z.object({ suspended: z.boolean() }), shown)).toEqual({ suspended: true });
   });
 
   it("a user's block on the URI host screens it", async () => {
