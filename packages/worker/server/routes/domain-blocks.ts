@@ -117,11 +117,9 @@ export const deleteV1DomainBlocks = async (
     return c.json({ error: "domain is required", kind: "ValidationError" }, 422);
   }
   const removed = await unblockDomain(c.env.DB, user.value.id, domain);
+  // Mastodon answers 200 for a domain that was not blocked too (`block&.destroy`).
   if (removed.isErr()) {
     return jsonRepositoryError(c, removed.error.message);
-  }
-  if (!removed.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json({});
 };
