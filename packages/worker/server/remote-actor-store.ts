@@ -930,8 +930,11 @@ export const purgeRemoteActor = async (
  * Mastodon's `BlockDomainService` runs `DeleteAccountService` with
  * `reserve_username` on each account a suspension suspends: its statuses
  * (with their tags, mentions and local boosts, by cascade), its own boosts,
- * favourites and announces, and the notifications it sent. The first one
- * lists the local boosts of its statuses, which go with them.
+ * favourites and announces, and the notifications it sent with the requests
+ * they made (`NotificationRequest.where(from_account:)`; the acceptances,
+ * Mastodon's `NotificationPermission`s, stay with the kept account). The
+ * first one lists the local boosts of its statuses, which go with them.
+ * `PurgeSuspendedActorContent` deletes the same, in pages.
  */
 export const emptyRemoteActorContentSql = (actorUri: string): ReadonlyArray<TypedSqlLike> => [
   listLocalBoostsOfRemoteActorSql(actorUri),
@@ -940,6 +943,7 @@ export const emptyRemoteActorContentSql = (actorUri: string): ReadonlyArray<Type
   purgeRemoteActorConversationHidesSql(actorUri),
   purgeRemoteActorNotificationDismissalsSql(actorUri),
   purgeRemoteActorNotificationsSql(actorUri),
+  purgeRemoteActorRequestGroupsSql(RemoteAccountId.encode(actorUri)),
   { sql: "DELETE FROM remote_boosts WHERE actor_uri = $1", values: [actorUri] },
   { sql: "DELETE FROM remote_announces WHERE remote_actor_uri = $1", values: [actorUri] },
   { sql: "DELETE FROM remote_favourites WHERE remote_actor_uri = $1", values: [actorUri] },

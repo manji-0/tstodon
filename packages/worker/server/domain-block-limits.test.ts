@@ -8,6 +8,7 @@ import { patchD1 } from "../test/meter";
 import {
   drainHeld,
   holdQueue,
+  kindOf,
   QUEUE_INVOCATION_BUDGET,
   withQueueDrained,
 } from "../test/queue-hold";
@@ -20,7 +21,11 @@ import {
 import { listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
-import { SUSPENDED_CONTENT_PAGE } from "./suspended-actor-content";
+import {
+  SUSPENDED_CONTENT_BOOST_PAGE,
+  SUSPENDED_CONTENT_PAGE,
+  startSuspendedActorContentPurge,
+} from "./suspended-actor-content";
 import { d1PrepareTyped } from "./typed-sql";
 
 /**
@@ -935,6 +940,98 @@ describe("the content a domain suspension emptied", () => {
       );
     },
   );
+
+  it("announces a bounded number of local boosts a page", { timeout: 60_000 }, async () => {
+    const { actor } = await knownOnDomain("empty-boosts.example");
+    const reblogId = await boostedBothWays(actor);
+    const count = SUSPENDED_CONTENT_BOOST_PAGE * 2 + 3;
+    await env.DB.prepare(
+      `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?2)
+       INSERT INTO statuses (id, account_id, kind, reblog_of_id, reblog_of_remote_id, content_text,
+                             content_html, visibility, sensitive, spoiler_text, created_at, updated_at)
+       SELECT printf('%d', 910000000000 + n), s.account_id, 'LocalReblog', NULL, s.reblog_of_remote_id,
+              '', '', 'public', 0, '', s.created_at, s.updated_at
+       FROM series CROSS JOIN statuses s WHERE s.id = ?1`,
+    )
+      .bind(reblogId, count - 1)
+      .run();
+    const localBoosts = async (): Promise<number> => {
+      const row = await env.DB.prepare(
+        `SELECT count(*) AS n FROM statuses s JOIN remote_statuses r ON r.id = s.reblog_of_remote_id
+         WHERE r.actor_uri = ?`,
+      )
+        .bind(actor.actorUri)
+        .first();
+      return z.object({ n: z.number() }).parse(row).n;
+    };
+    expect(await localBoosts()).toBe(count);
+    patchD1();
+    const queued = holdQueue();
+    let most = 0;
+    try {
+      const response = await adminFetch("/api/v1/admin/domain_blocks", "POST", {
+        domain: "empty-boosts.example",
+        severity: "suspend",
+      });
+      expect(response.status).toBe(200);
+      most = await drainHeld(queued, ["RecordDomainBlockLimits"]);
+      expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
+      // The status waits for a later page, until its last local boost is gone.
+      expect(await localBoosts()).toBe(count - SUSPENDED_CONTENT_BOOST_PAGE);
+      expect(await statusRows(actor.actorUri)).toBe(1);
+      most = Math.max(most, await drainHeld(queued, ["PurgeSuspendedActorContent"]));
+    } finally {
+      queued.release();
+    }
+
+    expect(await localBoosts()).toBe(0);
+    expect(await statusRows(actor.actorUri)).toBe(0);
+    expect(most, `one queue invocation made ${most} statements`).toBeLessThan(
+      QUEUE_INVOCATION_BUDGET,
+    );
+  });
+
+  it("starts no second chain while one holds the lease", async () => {
+    const actor = await remoteActor("leased", "empty-lease.example");
+    await env.DB.prepare(
+      "INSERT INTO remote_actor_content_purges (actor_uri, before) VALUES (?, ?)",
+    )
+      .bind(actor.actorUri, new Date().toISOString())
+      .run();
+    const queued = holdQueue();
+    const started = () =>
+      queued.bodies.filter((body) => kindOf(body) === "PurgeSuspendedActorContent").length;
+    try {
+      await startSuspendedActorContentPurge(env);
+      await startSuspendedActorContentPurge(env);
+      expect(started()).toBe(1);
+
+      // A lease no page stamped for ten minutes is a chain that stopped.
+      await env.DB.prepare("UPDATE remote_actor_content_purge_lease SET stamped_at = ?")
+        .bind(new Date(Date.now() - 11 * 60 * 1000).toISOString())
+        .run();
+      await startSuspendedActorContentPurge(env);
+      expect(started()).toBe(2);
+
+      // The last page gives the lease back.
+      expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
+      const lease = await env.DB.prepare(
+        "SELECT count(*) AS n FROM remote_actor_content_purge_lease",
+      ).first();
+      expect(z.object({ n: z.number() }).parse(lease).n).toBe(0);
+    } finally {
+      queued.release();
+    }
+  });
+
+  it("keeps what an actor an admin suspended first had", async () => {
+    const { actor } = await knownOnDomain("empty-own.example");
+    await moderate(actor.actorUri, "suspend");
+
+    await block("empty-own.example", "suspend");
+
+    expect(await statusRows(actor.actorUri)).toBe(1);
+  });
 
   it("is emptied by the hourly sweep for a suspension recorded before", async () => {
     const { actor } = await knownOnDomain("empty-old.example");

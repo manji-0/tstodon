@@ -7,7 +7,7 @@ import { hostKeyRange } from "./host-key";
 import { startJob } from "./inline-job";
 import { measureJobPage } from "./metrics";
 import { nowIso } from "./clock";
-import { processPurgeSuspendedActorContentJob } from "./suspended-actor-content";
+import { startSuspendedActorContentPurge } from "./suspended-actor-content";
 import type { TypedSqlLike } from "./typed-sql";
 
 /**
@@ -62,8 +62,10 @@ const isStart = (cursor: Cursor): boolean =>
  * Record the actors of the page after `cursor` under block `blockId`, unless
  * the block no longer silences or suspends by the time the statement runs,
  * so a block changed or removed meanwhile leaves no rows. Under a
- * suspension, each actor recorded and not lifted gets its content's purge
- * ({@link processPurgeSuspendedActorContentJob}). The first page of
+ * suspension, each actor recorded gets its content's purge, unless an admin
+ * lifted the block on it or suspended it first, as Mastodon's
+ * `suspend_accounts!` empties only the accounts it suspends
+ * ({@link startSuspendedActorContentPurge}). The first page of
  * an `Apply` run forgets the admin's lifts of the block and a pending
  * backfill in the same batch, so a failure is retried with the page. A
  * `Backfill` run records only the actors first seen by its `seenBy`, and
@@ -116,6 +118,10 @@ const recordPage = (
              AND NOT EXISTS (
                SELECT 1 FROM remote_actor_domain_lifts x
                WHERE x.domain_block_id = ?1 AND x.actor_uri = p.actor_uri AND x.severity = 'suspend'
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM remote_actor_moderation m
+               WHERE m.actor_uri = p.actor_uri AND m.moderation = 'Suspended'
              )`,
         )
         .bind(...binds, nowIso()),
@@ -192,12 +198,7 @@ export const processRecordDomainBlockLimitsJob = (env: Env, job: RecordJob) =>
     if (next.value !== undefined) {
       await env.OUTBOX_PROCESS_QUEUE.send({ ...job, cursor: next.value });
     } else {
-      await startJob(
-        env,
-        { kind: "PurgeSuspendedActorContent" },
-        processPurgeSuspendedActorContentJob,
-        "Queued",
-      );
+      await startSuspendedActorContentPurge(env);
     }
     return { outcome: "ok", size: -1, chained: next.value !== undefined, step: job.cursor.host };
   });

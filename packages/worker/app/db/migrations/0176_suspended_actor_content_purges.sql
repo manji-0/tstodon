@@ -13,6 +13,14 @@ CREATE TABLE remote_actor_content_purges (
     before TEXT NOT NULL
 );
 
+-- The one chain of `PurgeSuspendedActorContent` pages that runs: each page
+-- stamps `stamped_at`, the last one deletes the row, and a chain starts only
+-- when the row is missing or no page stamped it for ten minutes.
+CREATE TABLE remote_actor_content_purge_lease (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    stamped_at TEXT NOT NULL
+);
+
 -- The suspensions recorded before this kept their actors' content: record
 -- each again, in the backfill's pages (migration 0171), for the actors first
 -- seen by its last change, which writes their rows here.

@@ -6,7 +6,7 @@ import { hasExpiredPollWork } from "./poll-expiry";
 import { hasDueScheduledStatuses } from "./scheduled-status-publish";
 import { processOutboxJob } from "./outbox-job";
 import { hasSeveranceNotices } from "./severance-notices";
-import { hasSuspendedActorContent } from "./suspended-actor-content";
+import { claimSuspendedActorContentPurge } from "./suspended-actor-content";
 import { hasDueStatusFederations } from "./pending-status-federation";
 import { queueDueProfileLinkChecks } from "./profile-link-verification";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
@@ -98,12 +98,12 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Delete the rows left by domain blocks lifted while their deletion chain
   // stopped; one walk of the distinct block ids when none did.
   { kind: "Inline", job: { kind: "ResumeLiftedDomainBlockLimits" } },
-  // Delete what domain suspensions' actors had, for a chain that stopped,
-  // 100 rows of each kind a page; one indexed read when none is left.
+  // Delete what domain suspensions' actors had, when no chain stamped the
+  // lease for ten minutes; one indexed write when none is left.
   {
     kind: "Queued",
     job: { kind: "PurgeSuspendedActorContent" },
-    due: hasSuspendedActorContent,
+    due: claimSuspendedActorContentPurge,
   },
   // Start the custom emoji refresh of up to 20 domains whose newest images
   // have no chain, or whose chain stalled; one indexed query when none.
