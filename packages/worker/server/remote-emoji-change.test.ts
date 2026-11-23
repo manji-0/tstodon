@@ -521,6 +521,48 @@ describe("a known remote custom emoji a document writes without declaring it", (
     expect(await statusEmojis(both)).toEqual({ blob: lower, Blob: upper });
   });
 
+  // `process_emoji` stores each declared shortcode as written, and
+  // `CustomEmoji.from_text` finds `:Blob:` only under `Blob`.
+  it("shows no declared emoji for a shortcode written in another case", async () => {
+    const host = "emoji-declared-case.example";
+    const lower = `https://${host}/system/blob.png`;
+    const upper = `https://${host}/system/Blob.png`;
+    const alice = await remoteActor("alice", host);
+
+    const other = await post(alice, "other-case", "<p>:Blob:</p>", [emojiTag("blob", lower)]);
+    expect(await statusEmojis(other)).toEqual({});
+
+    const object = noteOf(alice, "poll", "<p>vote</p>", [emojiTag("blob", lower)], {
+      type: "Question",
+      endTime: "2099-01-01T00:00:00.000Z",
+      oneOf: [":Blob:", "no"].map((name) => ({
+        type: "Note",
+        name,
+        replies: { type: "Collection", totalItems: 0 },
+      })),
+    });
+    expect(await alice.send({ id: `${object.id}/activity`, type: "Create", object })).toBe(202);
+    const pollId = read(
+      z.object({ id: z.string() }),
+      await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+        .bind(object.id)
+        .first(),
+    ).id;
+    const poll = read(
+      z.object({ emojis: z.array(z.unknown()), poll: z.object({ emojis: Emojis }) }),
+      await get(`/api/v1/statuses/${pollId}`),
+    );
+    expect(poll.emojis).toEqual([]);
+    expect(poll.poll.emojis).toEqual([]);
+
+    // Both cases declared: each is its own emoji, the first not hiding the second.
+    const both = await post(alice, "both-declared", "<p>:Blob:</p>", [
+      emojiTag("blob", lower),
+      emojiTag("Blob", upper),
+    ]);
+    expect(await statusEmojis(both)).toEqual({ Blob: upper });
+  });
+
   it("shows on a profile of the emoji's server, and takes a new image", async () => {
     const host = "emoji-undeclared-profile.example";
     const old = `https://${host}/system/cat-1.png`;
