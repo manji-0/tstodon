@@ -1,5 +1,5 @@
 import { assertNever } from "@tstodon/core";
-import type { LocalStatus, OutboxJob } from "@tstodon/domain";
+import type { EndingPoll, LocalStatus, OutboxJob } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
@@ -7,6 +7,7 @@ import { documentsById } from "./documents-by-id";
 import { mastodonStatuses } from "./local-status-documents";
 import { measureJobPage } from "./metrics";
 import { notifyAccount, notifyFromRemote } from "./notify";
+import { claimPollEnd, findPollEndQueued } from "./poll-end-store";
 import { scheduleFinalPollUpdate } from "./poll-update";
 import {
   claimLocalPollExpiryNotice,
@@ -178,41 +179,73 @@ const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
 const POLL_END_GRACE_MS = 5 * 60_000;
 
 /**
- * Queue the `AwaitPollEnd` job that runs `ProcessExpiredPolls` at `at`, as
- * Mastodon's `PollExpirationNotifyWorker.perform_at`. Each job sweeps every
- * ended poll, so one that a later edit made early or late does no harm, and
- * the hourly cron still sweeps what a lost message leaves.
+ * How far ahead an end is queued: past Mastodon's longest poll (a month) and
+ * the five minutes after it. A remote poll may name any end; one further off
+ * than this is left to the hourly cron rather than to a job that queues
+ * itself again for years.
  */
-export const schedulePollEnd = async (env: Env, at: string): Promise<void> => {
+const MAX_QUEUED_END_MS = 32 * 86_400_000;
+
+const sendAwaitPollEnd = async (env: Env, poll: EndingPoll, at: string): Promise<void> => {
   const delaySeconds = Math.min(
     Math.max(Math.ceil((Date.parse(at) - Date.now()) / 1000), 0),
     MAX_QUEUE_DELAY_SECONDS,
   );
   try {
     await env.OUTBOX_PROCESS_QUEUE.send(
-      { kind: "AwaitPollEnd", at },
+      { kind: "AwaitPollEnd", poll, at },
       delaySeconds > 0 ? { delaySeconds } : undefined,
     );
   } catch {
-    console.error(JSON.stringify({ kind: "PollEndNotQueued", at }));
+    // The poll keeps `at` as queued; the hourly cron sweeps it.
+    console.error(JSON.stringify({ kind: "PollEndNotQueued", poll, at }));
+  }
+};
+
+/**
+ * Queue the `AwaitPollEnd` job that runs `ProcessExpiredPolls` at `at`, as
+ * Mastodon's `PollExpirationNotifyWorker.perform_at`, once per poll and
+ * instant: the instant is recorded on the poll first, and a poll already
+ * queued for it queues nothing. A remote poll is queued only once a local
+ * account has voted on it.
+ */
+export const schedulePollEnd = async (env: Env, poll: EndingPoll, at: string): Promise<void> => {
+  if (Date.parse(at) - Date.now() > MAX_QUEUED_END_MS) {
+    return;
+  }
+  const claimed = await claimPollEnd(env.DB, poll, at);
+  if (claimed.isOk() && claimed.value) {
+    await sendAwaitPollEnd(env, poll, at);
   }
 };
 
 /**
  * {@link schedulePollEnd} five minutes past `endsAt`, as Mastodon schedules
  * the check after a vote (`VoteService#queue_final_poll_check!`) or an edit
- * (`UpdateStatusService#queue_poll_notifications!`).
+ * (`UpdateStatusService#queue_poll_notifications!`,
+ * `ActivityPub::ProcessStatusUpdateService#queue_poll_notifications!`).
  */
-export const scheduleFinalPollCheck = (env: Env, endsAt: string): Promise<void> =>
-  schedulePollEnd(env, new Date(Date.parse(endsAt) + POLL_END_GRACE_MS).toISOString());
+export const scheduleFinalPollCheck = (env: Env, poll: EndingPoll, endsAt: string): Promise<void> =>
+  schedulePollEnd(env, poll, new Date(Date.parse(endsAt) + POLL_END_GRACE_MS).toISOString());
 
-/** The `AwaitPollEnd` job: queued again until `at`, then the expired-polls run. */
+/**
+ * The `AwaitPollEnd` job. One whose instant the poll no longer holds (an
+ * edit moved it, or the poll is gone) stops; one not yet due queues itself
+ * again; a due one runs `ProcessExpiredPolls`.
+ */
 export const processAwaitPollEnd = async (
   env: Env,
   job: Extract<OutboxJob, { kind: "AwaitPollEnd" }>,
 ): Promise<"ok" | "retry"> => {
+  const queued = await findPollEndQueued(env.DB, job.poll);
+  if (queued.isErr()) {
+    return "retry";
+  }
+  if (queued.value !== job.at) {
+    return "ok";
+  }
   if (Date.parse(job.at) > Date.now()) {
-    await schedulePollEnd(env, job.at);
+    await sendAwaitPollEnd(env, job.poll, job.at);
     return "ok";
   }
   return processExpiredPolls(env);

@@ -44,9 +44,13 @@ const create = async (author: Remote, object: Readonly<{ id: string }>): Promise
   return id;
 };
 
-/** Serve `document` at its id while the test runs; the count of fetches of it. */
+/**
+ * Serve `document`, and each of `others`, at its id while the test runs; the
+ * count of fetches of `document`, and every request served.
+ */
 const serve = (
   document: Readonly<{ id: string }>,
+  others: ReadonlyArray<Readonly<{ id: string }>> = [],
 ): {
   fetches: () => number;
   requests: () => ReadonlyArray<Request>;
@@ -61,11 +65,17 @@ const serve = (
     .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (href !== document.id) {
+      const served = [document, ...others].find((candidate) => candidate.id === href);
+      if (served === undefined) {
         return original(input, init);
       }
-      fetches += 1;
       requests.push(new Request(input, init));
+      if (served !== document) {
+        return new Response(JSON.stringify(served), {
+          headers: { "content-type": "application/activity+json" },
+        });
+      }
+      fetches += 1;
       if (failing !== undefined) {
         return new Response("unavailable", { status: failing });
       }
@@ -141,6 +151,32 @@ describe("refreshing a remote poll a client reads", () => {
           publicKeyPem: account.publicKeyPem,
         })),
     ).toBe(true);
+  });
+
+  it("makes the fetches that apply the refreshed note as the instance actor, as ProcessStatusUpdateService", async () => {
+    const author = await remoteActor("poll-refresh-quote", "poll-refresh-quote.example");
+    const id = await create(author, question(author, "quoting", [1, 0]));
+    const quoted = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: `https://${new URL(author.actorUri).host}/notes/quoted`,
+      type: "Note",
+      attributedTo: author.actorUri,
+      content: "<p>quoted</p>",
+      published: "2026-10-19T00:00:00.000Z",
+      to: [PUBLIC],
+    };
+    const quoting = { ...question(author, "quoting", [2, 0]), quote: quoted.id };
+    const origin = serve(quoting, [quoted]);
+
+    await readPoll(id, await authHeaders("poll-refresh-quote@example.com"));
+
+    const keyIds = origin
+      .requests()
+      .map((request) => [
+        request.url,
+        parseSignatureHeader(request.headers.get("Signature") ?? "")?.keyId,
+      ]);
+    expect(keyIds).toContainEqual([quoted.id, "https://example.com/actor#main-key"]);
   });
 
   it("does not refresh a poll through the status it belongs to", async () => {

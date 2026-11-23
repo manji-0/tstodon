@@ -208,12 +208,15 @@ const resolvePollRevision = async (
   );
 };
 
-/** Write the revision; answers when the edited poll ends, or undefined without one. */
+/** The poll an edit leaves, and when it ends. */
+type EditedPoll = Readonly<{ pollId: string; expiresAt: string }>;
+
+/** Write the revision; answers the poll it leaves, or undefined without one. */
 const applyPollRevision = async (
   db: D1Database,
   statusId: string,
   revision: PollRevision,
-): Promise<Result<string | undefined, ApiRefusal>> => {
+): Promise<Result<EditedPoll | undefined, ApiRefusal>> => {
   const applied = await (async () => {
     switch (revision.kind) {
       case "Unchanged":
@@ -230,12 +233,18 @@ const applyPollRevision = async (
             options: revision.poll.options,
             hideTotals: revision.poll.hideTotals,
           })
-        ).map(() => expiresAt);
+        ).map((pollId) => ({ pollId, expiresAt }));
       }
       case "Renewed":
-        return (await renewPoll(db, revision)).map(() => revision.expiresAt);
+        return (await renewPoll(db, revision)).map(() => ({
+          pollId: revision.pollId,
+          expiresAt: revision.expiresAt,
+        }));
       case "Replaced":
-        return (await replacePollQuestion(db, revision)).map(() => revision.expiresAt);
+        return (await replacePollQuestion(db, revision)).map(() => ({
+          pollId: revision.pollId,
+          expiresAt: revision.expiresAt,
+        }));
       default:
         return assertNever(revision);
     }
@@ -454,7 +463,8 @@ const editNote = async (
     return err(pollApplied.error);
   }
   if (pollApplied.value !== undefined) {
-    await scheduleFinalPollCheck(env, pollApplied.value);
+    const { pollId, expiresAt } = pollApplied.value;
+    await scheduleFinalPollCheck(env, { kind: "LocalPoll", pollId }, expiresAt);
   }
   if (policy !== undefined) {
     const stored = await setStatusQuotePolicy(env.DB, existing.id, policy);

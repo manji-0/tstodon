@@ -209,6 +209,7 @@ export {
   FORWARD_MAX_ACCOUNTS,
   OutboxJob,
   type DeadOutboxJobSelection,
+  type EndingPoll,
   type MovePhase,
   type OutboxJob as OutboxJobValue,
 } from "./outbox-job";

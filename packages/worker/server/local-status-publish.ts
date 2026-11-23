@@ -268,7 +268,7 @@ export const publishLocalNote = async (
     if (poll.isErr()) {
       return err(poll.error);
     }
-    await schedulePollEnd(env, expiresAt);
+    await schedulePollEnd(env, { kind: "LocalPoll", pollId: poll.value }, expiresAt);
   }
   startLinkCard(env, "Status", note.id, note.text);
   const attributes = await mediaAttributeChanges(

@@ -122,8 +122,8 @@ export const voteOnRemotePoll = async (
       });
     }
   }
-  if (poll.ends.kind === "At") {
-    await scheduleFinalPollCheck(env, poll.ends.at);
+  if (poll.ends.kind === "At" && recorded.value.length > 0) {
+    await scheduleFinalPollCheck(env, { kind: "RemotePoll", statusId: status.id }, poll.ends.at);
   }
   const after = await findRemotePollVotes(env.DB, voter.id, [status]);
   return ok(remotePollJson(status.id, poll, after.get(status.id), status.emojis));

@@ -31,13 +31,23 @@ const DeliverTargetSchema = z.object({
   inboxUrl: z.url(),
 });
 const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
+/** The poll an `AwaitPollEnd` job waits on: a local one, or a remote status's. */
+const EndingPollSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("LocalPoll"), pollId: z.string().min(1) }),
+  z.object({ kind: z.literal("RemotePoll"), statusId: z.string().min(1) }),
+]);
+
+export type EndingPoll = z.infer<typeof EndingPollSchema>;
+
 /**
- * Run `ProcessExpiredPolls` at `at`, when a poll ends, as Mastodon's
+ * Run `ProcessExpiredPolls` at `at`, when `poll` ends, as Mastodon's
  * `PollExpirationNotifyWorker.perform_at`. A Queues delay is at most 12
- * hours, so a job queued for later queues itself again until `at`.
+ * hours, so a job queued for later queues itself again until `at`; one whose
+ * `at` is no longer the instant queued on the poll stops.
  */
 const AwaitPollEndSchema = z.object({
   kind: z.literal("AwaitPollEnd"),
+  poll: EndingPollSchema,
   at: z.iso.datetime(),
 });
 /** Refresh previews whose cache entry has aged out (cron driven). */
