@@ -141,4 +141,45 @@ describe("a Follow from a silenced remote actor", () => {
     expect(await followKind(account.id, follower.actorUri)).toBe("Accepted");
     expect(await queuedAccepts(account.id)).toBe(2);
   });
+
+  it("keeps a follow it holds when a locked account's follower sends the Follow again", async () => {
+    const account = await signedInAccount("locked-follow-again@example.com");
+    const follower = await remoteActor("locked-again", "locked-again.example");
+    await sendFollow(follower, account.username);
+    await env.DB.prepare("UPDATE accounts SET locked = 1 WHERE id = ?").bind(account.id).run();
+
+    await sendFollow(follower, account.username, 2);
+
+    expect(await followKind(account.id, follower.actorUri)).toBe("Accepted");
+    expect(await queuedAccepts(account.id)).toBe(2);
+  });
+
+  it("keeps a request it holds pending when the Follow comes again, unsilenced", async () => {
+    const account = await signedInAccount("silenced-request-again@example.com");
+    const follower = await remoteActor("request-again", "request-again.example");
+    await env.DB.prepare(
+      "INSERT INTO remote_actor_moderation (actor_uri, moderation) VALUES (?, 'Silenced')",
+    )
+      .bind(follower.actorUri)
+      .run();
+    await sendFollow(follower, account.username);
+    await env.DB.prepare("DELETE FROM remote_actor_moderation WHERE actor_uri = ?")
+      .bind(follower.actorUri)
+      .run();
+
+    // Mastodon's `existing_follow_request` keeps the request, with the new id.
+    await sendFollow(follower, account.username, 2);
+
+    expect(await followKind(account.id, follower.actorUri)).toBe("None");
+    expect(await queuedAccepts(account.id)).toBe(0);
+    expect(
+      (
+        await env.DB.prepare(
+          "SELECT follow_activity_id FROM remote_follows WHERE target_account_id = ? AND remote_actor_uri = ?",
+        )
+          .bind(account.id, follower.actorUri)
+          .first<{ follow_activity_id: string }>()
+      )?.follow_activity_id,
+    ).toBe(`${follower.actorUri}/follows/2`);
+  });
 });

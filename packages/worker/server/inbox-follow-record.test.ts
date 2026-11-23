@@ -2,33 +2,31 @@ import type { InboxFollow, InboxFollowRecord, RepositoryError } from "@tstodon/d
 import { err, ok } from "neverthrow";
 import { describe, expect, it } from "vite-plus/test";
 import { testLocalAccount } from "../test/domain-fixture";
-import { recordInboxFollow } from "./inbox/follow";
+import { type HeldFollow, recordInboxFollow } from "./inbox/follow";
 
 const actorUri = "https://remote.example/users/bob";
 const followId = "https://remote.example/follows/1";
 const failure = { kind: "RepositoryError", message: "down" } as const satisfies RepositoryError;
 const unlocked = testLocalAccount("100", "alice");
-const follower = { actorUri, silenced: false };
 const locked = { ...unlocked, locked: true };
 
-const recording = (already: boolean, record: InboxFollowRecord = "Recorded") => {
+const follower = (held: HeldFollow = "None", silenced = false) => ({ actorUri, silenced, held });
+
+const recording = (record: InboxFollowRecord = "Recorded") => {
   const recorded: InboxFollow[] = [];
   return {
     recorded,
-    contracts: {
-      hasRemoteFollow: async () => ok(already),
-      recordInboxFollow: async (follow: InboxFollow) => {
-        recorded.push(follow);
-        return ok(record);
-      },
+    record: async (follow: InboxFollow) => {
+      recorded.push(follow);
+      return ok(record);
     },
   };
 };
 
 describe("recordInboxFollow", () => {
   it("records a first follow of an unlocked account, notifies it and accepts at once", async () => {
-    const store = recording(false);
-    const outcome = await recordInboxFollow(store.contracts, unlocked, follower, followId);
+    const store = recording();
+    const outcome = await recordInboxFollow(store.record, unlocked, follower(), followId);
     expect(outcome).toEqual({ notify: "follow", sendAccept: true });
     expect(store.recorded).toEqual([
       { actorUri, targetAccountId: "100", requiresApproval: false, followActivityId: followId },
@@ -36,42 +34,67 @@ describe("recordInboxFollow", () => {
   });
 
   it("asks a locked account to approve, without accepting", async () => {
-    const store = recording(false);
-    const outcome = await recordInboxFollow(store.contracts, locked, follower, followId);
+    const store = recording();
+    const outcome = await recordInboxFollow(store.record, locked, follower(), followId);
     expect(outcome).toEqual({ notify: "follow_request", sendAccept: false });
     expect(store.recorded[0]?.requiresApproval).toBe(true);
   });
 
   it("asks an unlocked account to approve a silenced follower, without accepting", async () => {
-    const store = recording(false);
+    const store = recording();
     const outcome = await recordInboxFollow(
-      store.contracts,
+      store.record,
       unlocked,
-      { actorUri, silenced: true },
+      follower("None", true),
       followId,
     );
     expect(outcome).toEqual({ notify: "follow_request", sendAccept: false });
     expect(store.recorded[0]?.requiresApproval).toBe(true);
   });
 
-  it("does not notify again for a redelivered Follow", async () => {
-    const store = recording(true);
-    const outcome = await recordInboxFollow(store.contracts, unlocked, follower, followId);
-    expect(outcome).toEqual({ notify: undefined, sendAccept: true });
+  it("accepts again a Follow of a follow it holds, locked or silenced, without notifying", async () => {
+    for (const [target, silenced] of [
+      [unlocked, false],
+      [locked, false],
+      [unlocked, true],
+    ] as const) {
+      const store = recording();
+      const outcome = await recordInboxFollow(
+        store.record,
+        target,
+        follower("Following", silenced),
+        followId,
+      );
+      expect(outcome).toEqual({ notify: undefined, sendAccept: true });
+      expect(store.recorded[0]?.requiresApproval).toBe(false);
+    }
+  });
+
+  it("keeps a request it holds pending, with the new Follow's id, without notifying", async () => {
+    const store = recording();
+    const outcome = await recordInboxFollow(
+      store.record,
+      unlocked,
+      follower("Requested"),
+      followId,
+    );
+    expect(outcome).toEqual({ notify: undefined, sendAccept: false });
+    expect(store.recorded).toEqual([
+      { actorUri, targetAccountId: "100", requiresApproval: true, followActivityId: followId },
+    ]);
   });
 
   it("neither notifies nor accepts a Follow whose Undo was handled first", async () => {
-    const store = recording(false, "UndoneFirst");
-    const outcome = await recordInboxFollow(store.contracts, unlocked, follower, followId);
+    const store = recording("UndoneFirst");
+    const outcome = await recordInboxFollow(store.record, unlocked, follower(), followId);
     expect(outcome).toEqual({ notify: undefined, sendAccept: false });
   });
 
   it("does not notify when the follow could not be recorded", async () => {
-    const store = recording(false);
     const outcome = await recordInboxFollow(
-      { ...store.contracts, recordInboxFollow: async () => err(failure) },
+      async () => err(failure),
       unlocked,
-      follower,
+      follower(),
       followId,
     );
     expect(outcome.notify).toBeUndefined();
