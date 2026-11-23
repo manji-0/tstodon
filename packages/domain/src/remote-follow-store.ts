@@ -5,7 +5,11 @@ import type { RepositoryError } from "./repository-error";
 export type InboxFollow = Readonly<{
   actorUri: string;
   targetAccountId: string;
-  targetLocked: boolean;
+  /**
+   * The target approves it first: it is locked, or the follower silenced
+   * (Mastodon's `target_account.locked? || @account.silenced?`).
+   */
+  requiresApproval: boolean;
   followActivityId: string | null;
 }>;
 
@@ -15,7 +19,7 @@ export type InboxFollow = Readonly<{
  */
 export type InboxFollowRecord = "Recorded" | "UndoneFirst";
 
-/** Record the follow: queued for a locked account, fulfilled otherwise. */
+/** Record the follow: queued when it requires approval, fulfilled otherwise. */
 export type RecordInboxFollow = (
   follow: InboxFollow,
 ) => Promise<Result<InboxFollowRecord, RepositoryError>>;

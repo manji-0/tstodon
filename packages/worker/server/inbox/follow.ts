@@ -1,6 +1,5 @@
 import type { ApActivityDocumentOf } from "@tstodon/api/activitypub";
 import {
-  type HasRemoteFollow,
   InstanceIdentity,
   type LocalAccount,
   type RecordInboxFollow,
@@ -14,6 +13,7 @@ import { enqueueTargetedActivity } from "../delivery";
 import { isActorDomainBlocked } from "../domain-block-store";
 import { followAccount } from "../follow-store";
 import { notifyFromRemote, notifyNewFollow } from "../notify";
+import { isRemoteActorSilenced } from "../remote-actor-moderation-store";
 import { findRemoteFollow, upsertRemoteFollow } from "../remote-actor-store";
 import { sendFollowReject } from "../remote-follower";
 import type { ActivityOf, InboxHandler, LocalDelivery, RemoteDelivery } from "./handler";
@@ -54,30 +54,39 @@ export type InboxFollowOutcome = Readonly<{
   sendAccept: boolean;
 }>;
 
+/** What the actor already holds of the target when its `Follow` arrives. */
+export type HeldFollow = "None" | "Requested" | "Following";
+
 /**
- * Record a remote actor's `Follow` of `target`. A redelivered Follow keeps
- * its row and must not notify again; nothing is notified when the follow
- * could not be recorded. A Follow whose `Undo` was handled first is dropped:
- * no notification and no `Accept`.
+ * Record a remote actor's `Follow` of `target`, as Mastodon's
+ * `ActivityPub::Activity::Follow`. A first Follow waits for approval when the
+ * target is locked or the follower silenced, and notifies. A Follow of a
+ * request already held keeps it a request, with the new activity id
+ * (`existing_follow_request`); one of a follow already held is accepted again
+ * (`existing_follow`), locked or silenced. Neither notifies. Nothing is
+ * notified when the follow could not be recorded. A Follow whose `Undo` was
+ * handled first is dropped: no notification and no `Accept`.
  */
 export const recordInboxFollow = async (
-  contracts: Readonly<{ hasRemoteFollow: HasRemoteFollow; recordInboxFollow: RecordInboxFollow }>,
+  record: RecordInboxFollow,
   target: LocalAccount,
-  actorUri: string,
+  follower: Readonly<{ actorUri: string; silenced: boolean; held: HeldFollow }>,
   followActivityId: string,
 ): Promise<InboxFollowOutcome> => {
-  const existing = await contracts.hasRemoteFollow(target.id, actorUri);
-  const followed = await contracts.recordInboxFollow({
-    actorUri,
+  const requiresApproval =
+    follower.held === "Requested" ||
+    (follower.held === "None" && (target.locked || follower.silenced));
+  const followed = await record({
+    actorUri: follower.actorUri,
     targetAccountId: target.id,
-    targetLocked: target.locked,
+    requiresApproval,
     followActivityId,
   });
   const undoneFirst = followed.isOk() && followed.value === "UndoneFirst";
-  const firstFollow = followed.isOk() && !undoneFirst && existing.isOk() && !existing.value;
+  const firstFollow = followed.isOk() && !undoneFirst && follower.held === "None";
   return {
-    notify: firstFollow ? (target.locked ? "follow_request" : "follow") : undefined,
-    sendAccept: !target.locked && !undoneFirst,
+    notify: firstFollow ? (requiresApproval ? "follow_request" : "follow") : undefined,
+    sendAccept: !requiresApproval && !undoneFirst,
   };
 };
 
@@ -91,10 +100,11 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
   if (!target) {
     return ok(undefined);
   }
-  const [blocked, domainBlocked, existing] = await Promise.all([
+  const [blocked, domainBlocked, existing, silenced] = await Promise.all([
     findBlock(env.DB, target.id, signer.actorUri),
     isActorDomainBlocked(env.DB, target.id, signer.actorUri),
     findRemoteFollow(env.DB, target.id, signer.actorUri),
+    isRemoteActorSilenced(env.DB, signer.actorUri),
   ]);
   // Mastodon's `ActivityPub::Activity::Follow` rejects a follower that the
   // target blocks, by account or by domain.
@@ -106,13 +116,22 @@ export const receiveRemoteFollow: InboxHandler<RemoteDelivery<"Follow">> = async
     await sendFollowReject(env, identity, target, signer, activity.id);
     return ok(undefined);
   }
+  if (silenced.isErr()) {
+    return err(silenced.error);
+  }
+  if (existing.isErr()) {
+    return err(existing.error);
+  }
+  const held: HeldFollow =
+    existing.value === undefined
+      ? "None"
+      : existing.value.requestKind === "Fulfilled"
+        ? "Following"
+        : "Requested";
   const outcome = await recordInboxFollow(
-    {
-      hasRemoteFollow: async () => existing.map((follow) => follow !== undefined),
-      recordInboxFollow: (follow) => upsertRemoteFollow(env.DB, follow),
-    },
+    (follow) => upsertRemoteFollow(env.DB, follow),
     target,
-    signer.actorUri,
+    { actorUri: signer.actorUri, silenced: silenced.value, held },
     activity.id,
   );
   if (outcome.notify) {

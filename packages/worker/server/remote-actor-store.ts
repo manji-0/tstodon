@@ -563,7 +563,7 @@ export const upsertRemoteFollow = async (
   follow: InboxFollow,
   nowMs: number = Date.now(),
 ): Promise<Result<InboxFollowRecord, RepositoryError>> => {
-  const state = FollowRequest.initial("RemoteFollower", follow.targetLocked);
+  const state = FollowRequest.initial("RemoteFollower", follow.requiresApproval);
   if (state.kind !== "RemoteFollower") {
     return err(toRepositoryError("expected remote follower"));
   }

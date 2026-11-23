@@ -80,14 +80,12 @@ describe("domain blocks", () => {
     const after = await json("/api/v1/domain_blocks", { headers: await auth(email) });
     expect(read(z.array(z.string()), after.body)).toEqual([]);
 
-    expect(
-      (
-        await json("/api/v1/domain_blocks?domain=nothing.example", {
-          method: "DELETE",
-          headers: await auth(email),
-        })
-      ).status,
-    ).toBe(404);
+    // Mastodon's `unblock_domain!` finds nothing and answers 200 all the same.
+    const notBlocked = await json("/api/v1/domain_blocks?domain=nothing.example", {
+      method: "DELETE",
+      headers: await auth(email),
+    });
+    expect(notBlocked).toEqual({ status: 200, body: {} });
   });
 
   it("reports domain_blocking for a remote account on a blocked domain", async () => {
