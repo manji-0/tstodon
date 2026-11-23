@@ -12,6 +12,7 @@ import { mastodonUser } from "./lib.js";
 import { upload } from "./media.js";
 import { authorizedFetchScenarios } from "./probe-authorized-fetch.js";
 import { directScenarios } from "./probe-direct.js";
+import { domainBlockScenarios } from "./probe-domain-blocks.js";
 import { editScenarios } from "./probe-edits.js";
 import { emojiScenarios } from "./probe-emoji.js";
 import { hashtagScenarios } from "./probe-hashtags.js";
@@ -351,6 +352,8 @@ const areas: ReadonlyArray<readonly [name: string, run: (cast: Cast) => Promise<
   ["quotes", quoteScenarios],
   ["move", moveScenarios],
   ["signatures", signatureScenarios],
+  // Last: a domain suspension purges what the other server holds of this one.
+  ["domain-blocks", domainBlockScenarios],
 ];
 
 /** `E2E_PROBE_AREAS=search,threads` runs those areas only. */
