@@ -2,11 +2,12 @@ import { onTestFinished, vi } from "vite-plus/test";
 
 /**
  * Answer the link-preview fetches for `urls` with a 404 while a test runs,
- * and wait for them; other fetches fall through to the real one.
+ * and wait for them; other fetches fall through to the test pool's, which
+ * answers 502 (`outboundService` in the root `vite.config.ts`).
  *
  * Storing a status unfurls its first link in the test file's isolate after
- * the request has answered. A link on an unresolvable `*.example` host fails
- * its DNS lookup, which the unfurl treats as transient, so it is queued as a
+ * the request has answered. The pool's 502 for a `*.example` host is a
+ * failure the unfurl treats as transient, so it is queued as a
  * `ProcessLinkCard` job, retried, exhausted and dead-lettered, logging
  * `OutboxJobExhausted` and `OutboxJobDeadLettered` seconds later. When such
  * a log lands as the test file ends, Vitest closes the file's RPC with the
@@ -14,9 +15,9 @@ import { onTestFinished, vi } from "vite-plus/test";
  * "onUserConsoleLog" was pending`.
  *
  * A 404 settles the unfurl on its first attempt (a non-HTML or missing page is
- * never retried) and stores no card, as the unresolvable host did; `settled`
- * waits until every expected fetch was answered, so no unfurl of the test
- * is left to reach DNS or log after it.
+ * never retried) and stores no card, as the 502 does; `settled` waits until
+ * every expected fetch was answered, so no unfurl of the test is left to log
+ * after it.
  *
  * `urls` lists one entry per unfurl: two statuses whose first link is the
  * same URL unfurl it twice and fetch it twice. Call it inside a test: the
