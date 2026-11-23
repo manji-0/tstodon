@@ -4,7 +4,12 @@ import { z } from "zod";
 import { accessTokenFor, authHeaders } from "../test/auth-fixture";
 import { ORIGIN, read, signUp } from "../test/passkey-browser";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { type OutboxJob, Hostname } from "@tstodon/domain";
+import { meter, patchD1, resetMeter } from "../test/meter";
+import { drainJobs, queueCapturingEnv } from "../test/queue-capture";
 import { RemoteAccountId } from "./remote-account-id";
+import { SEVERANCE_NOTICE_PAGE_SIZE } from "./severance-notices";
+import { severAndNotify } from "./severance";
 
 const json = (path: string, init: RequestInit = {}) => SELF.fetch(`${ORIGIN}${path}`, init);
 
@@ -184,6 +189,101 @@ describe("severed relationships", () => {
     );
     const followers = await alice.fetcher(`/severed_relationships/${eventId}/followers.csv`);
     expect(await followers.text()).toBe("Account address\nfan@sev-bad.example\n");
+  });
+
+  it("tells the suspended server of each follow it removes in bounded pages, as Mastodon's `DeleteAccountService`", async () => {
+    const carol = await person("sev_carol");
+    const gone = await remoteActor("told", "sev-told.example");
+    const pending = await remoteActor("toldpending", "sev-told.example");
+    const fans = await Promise.all(
+      Array.from({ length: SEVERANCE_NOTICE_PAGE_SIZE * 2 + 2 }, (_, index) =>
+        remoteActor(`toldfan${index}`, "sev-told.example"),
+      ),
+    );
+    await follow(carol, gone, true);
+    await follow(carol, pending, false);
+    for (const fan of fans) {
+      await followedBy(carol, fan);
+    }
+    const followId = (
+      await env.DB.prepare(
+        "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",
+      )
+        .bind(carol.id, gone.actorUri)
+        .first<{ follow_activity_id: string }>()
+    )?.follow_activity_id;
+    await env.DB.prepare(
+      "INSERT INTO domain_blocks (id, domain, severity) VALUES ('sev-told', 'sev-told.example', 'suspend')",
+    ).run();
+    const sent: OutboxJob[] = [];
+    const target = queueCapturingEnv(sent);
+
+    const severed = await severAndNotify(target, {
+      scope: { kind: "Domain", domain: Hostname.ofAuthority("sev-told.example") },
+      type: "domain_block",
+      targetName: "sev-told.example",
+    });
+    expect(severed.isOk()).toBe(true);
+    // The notices are stored with the removal, before any is sent.
+    expect(
+      (
+        await env.DB.prepare("SELECT count(*) AS n FROM severance_notices WHERE account_id = ?")
+          .bind(carol.id)
+          .first<{ n: number }>()
+      )?.n,
+    ).toBe(fans.length + 1);
+
+    patchD1();
+    const statements: number[] = [];
+    const outcomes = await drainJobs(target, sent, "SendSeveranceNotices", async (run) => {
+      resetMeter();
+      const outcome = await run();
+      statements.push(meter.tally.statements);
+      return outcome;
+    });
+    expect(outcomes).toEqual(["ok", "ok", "ok"]);
+    for (const count of statements) {
+      expect(count).toBeLessThan(500);
+    }
+    expect(
+      (await env.DB.prepare("SELECT count(*) AS n FROM severance_notices").first<{ n: number }>())
+        ?.n,
+    ).toBe(0);
+
+    // `undo_follows!` for the local follow and `reject_follows!` for each
+    // remote one, each to the remote account's inbox though its domain is
+    // suspended; a pending request goes without a notice.
+    const { results } = await env.DB.prepare(
+      `SELECT a.kind, a.payload_json, d.inbox_url FROM outbound_activities a
+       JOIN outbox_deliveries d ON d.activity_id = a.id AND d.inbox_url IS NOT NULL
+       WHERE a.account_id = ? AND a.kind IN ('Undo', 'Reject')`,
+    )
+      .bind(carol.id)
+      .all<{ kind: string; payload_json: string; inbox_url: string }>();
+    const Notice = z.object({
+      object: z.object({ type: z.literal("Follow"), id: z.string(), actor: z.string() }),
+    });
+    const notices = results.map((row) => ({
+      kind: row.kind,
+      inbox: row.inbox_url,
+      follow: read(Notice, JSON.parse(row.payload_json)).object,
+    }));
+    expect(notices.filter((notice) => notice.kind === "Undo")).toEqual([
+      {
+        kind: "Undo",
+        inbox: `${gone.actorUri}/inbox`,
+        follow: expect.objectContaining({ id: followId }),
+      },
+    ]);
+    expect(
+      notices
+        .filter((notice) => notice.kind === "Reject")
+        .map((notice) => notice.follow.actor)
+        .sort(),
+    ).toEqual(fans.map((fan) => fan.actorUri).sort());
+    expect(notices.every((notice) => notice.inbox.startsWith("https://sev-told.example/"))).toBe(
+      true,
+    );
   });
 
   it("serves an event's lists only to the account that lost them", async () => {

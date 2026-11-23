@@ -5,6 +5,7 @@ import { writeMetric } from "./metrics";
 import { hasExpiredPollWork } from "./poll-expiry";
 import { hasDueScheduledStatuses } from "./scheduled-status-publish";
 import { processOutboxJob } from "./outbox-job";
+import { hasSeveranceNotices } from "./severance-notices";
 import { hasDueStatusFederations } from "./pending-status-federation";
 import { queueDueProfileLinkChecks } from "./profile-link-verification";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
@@ -90,6 +91,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Restart the severance of up to 5 suspended actors whose pages stalled;
   // one query over the suspended actors when none did.
   { kind: "Inline", job: { kind: "ResumeSuspendedActorSeverances" } },
+  // Send the follow notices a domain suspension stored whose pages stopped,
+  // 20 a page; one indexed read when none is left.
+  { kind: "Queued", job: { kind: "SendSeveranceNotices" }, due: hasSeveranceNotices },
   // Delete the rows left by domain blocks lifted while their deletion chain
   // stopped; one walk of the distinct block ids when none did.
   { kind: "Inline", job: { kind: "ResumeLiftedDomainBlockLimits" } },

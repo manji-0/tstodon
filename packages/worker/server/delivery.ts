@@ -115,8 +115,9 @@ export const enqueueTargetedActivity = (
   kind: string,
   payload: ApActivityDocumentJSON,
   inboxUrl: string,
+  reach: DeliveryReach = "Federating",
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(env, kind, { kind: "Own", account, activity: payload }, [inboxUrl]);
+  enqueueSignedActivity(env, kind, { kind: "Own", account, activity: payload }, [inboxUrl], reach);
 
 /**
  * {@link enqueueTargetedActivity} to several inboxes as one activity, for an
@@ -165,16 +166,27 @@ export const enqueueInstanceActorActivity = (
   );
 
 /**
+ * Which inboxes an activity may reach: those of the servers this one
+ * federates with, or also those on a suspended domain. Only the notices a
+ * domain suspension sends take the second: Mastodon's `DeleteAccountService`
+ * delivers its `Reject` and `Undo` of each follow to the account it purges,
+ * after its domain is suspended.
+ */
+export type DeliveryReach = "Federating" | "AlsoSuspended";
+
+/**
  * `inboxUrls` without repeats and without those this server never contacts:
- * on a suspended domain, or outside the federation allow list.
+ * on a suspended domain (unless `reach` says otherwise), or outside the
+ * federation allow list.
  */
 export const admittedInboxes = async (
   env: Env,
   inboxUrls: ReadonlyArray<string>,
   federationAllowList?: ReadonlySet<string>,
+  reach: DeliveryReach = "Federating",
 ): Promise<string[]> => {
   const [suspended, allowHosts] = await Promise.all([
-    suspendedDomains(env.DB),
+    reach === "AlsoSuspended" ? CoveredHosts.none : suspendedDomains(env.DB),
     federationAllowList ?? federationAllowHosts(env),
   ]);
   return [...new Set(inboxUrls)].filter((inboxUrl) => {
@@ -198,11 +210,12 @@ const enqueueSignedActivity = async (
   kind: string,
   outbound: OutboundBody,
   inboxUrls: ReadonlyArray<string>,
+  reach: DeliveryReach = "Federating",
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   const allowHosts = await federationAllowHosts(env);
   // An inbox this server never contacts is dropped quietly, before anything
   // is signed for it.
-  const admitted = await admittedInboxes(env, inboxUrls, allowHosts);
+  const admitted = await admittedInboxes(env, inboxUrls, allowHosts, reach);
   if (admitted.length === 0) {
     return ok(undefined);
   }

@@ -115,6 +115,7 @@ export const Relationships = z.array(
     requested: z.boolean(),
     requested_by: z.boolean().optional(),
     blocked_by: z.boolean().optional(),
+    domain_blocking: z.boolean().optional(),
     notifying: z.boolean().optional(),
   }),
 );

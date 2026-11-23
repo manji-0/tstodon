@@ -95,6 +95,11 @@ const AccountIdRowSchema = z.object({ local_account_id: z.string() });
  * is made for each local account that lost a follow. Nothing is written for a
  * decision that affects nobody.
  *
+ * The same batch writes a `severance_notices` row for each accepted follow
+ * removed, the `Reject(Follow)` or `Undo(Follow)` the actor's server is owed,
+ * which the `SendSeveranceNotices` pages send: a notice outlives a failure
+ * after the batch.
+ *
  * It resolves to the account events made, for the caller to notify. The
  * accounts are listed before the batch, so an account that gains its first
  * follow of the scope in between loses it without an event of its own.
@@ -132,6 +137,25 @@ export const severRelationships = async (
   const eventId = newEntityId();
   const accountEvents = affected.value.map((accountId) => ({ id: newEntityId(), accountId }));
   const removals = [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO severance_notices
+           (id, kind, account_id, actor_uri, follow_activity_id, created_at)
+         SELECT 'Undo:' || o.id, 'Undo', o.account_id, o.actor_uri, o.follow_activity_id, ?
+         FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
+         WHERE o.state = 'Accepted' AND o.follow_activity_id IS NOT NULL AND ${match}`,
+      )
+      .bind(now, ...binds),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO severance_notices
+           (id, kind, account_id, actor_uri, follow_activity_id, created_at)
+         SELECT 'Reject:' || f.id, 'Reject', f.target_account_id, f.remote_actor_uri,
+                f.follow_activity_id, ?
+         FROM remote_follows f JOIN remote_actors r ON r.actor_uri = f.remote_actor_uri
+         WHERE f.follow_kind = 'Accepted' AND ${match}`,
+      )
+      .bind(now, ...binds),
     db
       .prepare(`DELETE FROM outbound_follows WHERE actor_uri IN (${matchingActors})`)
       .bind(...binds),

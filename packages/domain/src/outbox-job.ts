@@ -419,6 +419,13 @@ const SeverSuspendedActorFollowsSchema = z.object({
 const ResumeSuspendedActorSeverancesSchema = unitKind("ResumeSuspendedActorSeverances");
 
 /**
+ * Send the next page of the `Reject(Follow)` and `Undo(Follow)` notices a
+ * domain suspension stored (`severance_notices`): the notices still unsent
+ * are the next page, so the job carries no cursor.
+ */
+const SendSeveranceNoticesSchema = unitKind("SendSeveranceNotices");
+
+/**
  * Accept the next page of a local account's pending follow requests after it
  * was unlocked (Mastodon's `AuthorizeFollowWorker`s): those still pending are
  * the next page, so the job carries no cursor.
@@ -641,6 +648,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   AuthorizeFollowRequestsSchema,
   SeverSuspendedActorFollowsSchema,
   ResumeSuspendedActorSeverancesSchema,
+  SendSeveranceNoticesSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
   FederatePendingStatusesSchema,

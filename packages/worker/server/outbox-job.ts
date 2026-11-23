@@ -67,6 +67,7 @@ import {
   processResumeSuspendedActorSeverancesJob,
   processSeverSuspendedActorFollowsJob,
 } from "./suspended-actor-severance";
+import { processSendSeveranceNoticesJob } from "./severance-notices";
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 import { processFederatePendingStatusesJob } from "./pending-status-federation";
 import { processVerifyProfileLinksJob } from "./profile-link-verification";
@@ -422,6 +423,8 @@ export const processOutboxJob = async (
       return processSeverSuspendedActorFollowsJob(env, job);
     case "ResumeSuspendedActorSeverances":
       return processResumeSuspendedActorSeverancesJob(env);
+    case "SendSeveranceNotices":
+      return processSendSeveranceNoticesJob(env, job);
     case "FanOutHome":
       return processFanOutHomeJob(env, job);
     case "FanOutRemovedStatuses":

@@ -18,7 +18,11 @@ import { parseLocalActorUsername } from "./activitypub";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { findBlock } from "./block-mute-store";
 import type { RepositoryError } from "./d1";
-import { type EnqueueLocalActivityError, enqueueTargetedActivity } from "./delivery";
+import {
+  type DeliveryReach,
+  type EnqueueLocalActivityError,
+  enqueueTargetedActivity,
+} from "./delivery";
 import { isActorDomainBlocked } from "./domain-block-store";
 import type { FollowOptions } from "./follow-store";
 import { newEntityId } from "./ids";
@@ -148,6 +152,7 @@ export const sendFollowUndo = (
   follower: LocalAccount,
   actor: RemoteActor,
   followActivityId: string,
+  reach: DeliveryReach = "Federating",
 ): Promise<Result<void, EnqueueLocalActivityError>> => {
   const followerUrl = InstanceIdentity.actorUrl(identity, follower.username);
   return enqueueTargetedActivity(
@@ -162,6 +167,7 @@ export const sendFollowUndo = (
       object: followActivity(followerUrl, followActivityId, actor.actorUri),
     },
     actor.inboxUri,
+    reach,
   );
 };
 

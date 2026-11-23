@@ -105,8 +105,9 @@ describe("asciiDomainNames", () => {
   it("rewrites the domains stored in Unicode to their ASCII form, merging into a row already there", async () => {
     const account = await accountId(USER);
     await seedLegacyRows(account);
-    // The unblock finds nothing to remove: the row is stored in Unicode.
-    expect(await call(USER, "DELETE", "/api/v1/domain_blocks?domain=konto-ü.example")).toBe(404);
+    // The unblock finds nothing to remove: the row is stored in Unicode. It
+    // answers 200 all the same, as Mastodon's.
+    expect(await call(USER, "DELETE", "/api/v1/domain_blocks?domain=konto-ü.example")).toBe(200);
     expect(
       await rows(
         "SELECT domain FROM account_domain_blocks WHERE account_id = ?1 ORDER BY domain",
