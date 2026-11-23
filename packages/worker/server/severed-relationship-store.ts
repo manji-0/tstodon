@@ -87,6 +87,42 @@ const actorMatch = (scope: SeveranceScope): Readonly<{ sql: string; binds: strin
 
 const AccountIdRowSchema = z.object({ local_account_id: z.string() });
 
+/** An accepted follow a decision removed, between a local account and a remote actor. */
+export type ScopeFollow = Readonly<{
+  accountId: string;
+  actorUri: string;
+  followActivityId: string | null;
+}>;
+
+/** What {@link severRelationships} did: the account events, and the accepted follows it removed. */
+export type SeveredScope = Readonly<{
+  events: ReadonlyArray<AccountSeveranceEvent>;
+  /** Local accounts' follows of the scope's actors. */
+  unfollowed: ReadonlyArray<ScopeFollow>;
+  /** The scope's actors' follows of local accounts. */
+  rejected: ReadonlyArray<ScopeFollow>;
+}>;
+
+const ScopeFollowRowSchema = z.object({
+  account_id: z.string(),
+  actor_uri: z.string(),
+  follow_activity_id: z.string().nullable(),
+  accepted: z.number(),
+});
+
+const scopeFollows = (result: D1Result | undefined): ScopeFollow[] =>
+  parseRows(ScopeFollowRowSchema, result?.results).flatMap((row) =>
+    row.accepted === 0
+      ? []
+      : [
+          {
+            accountId: row.account_id,
+            actorUri: row.actor_uri,
+            followActivityId: row.follow_activity_id,
+          },
+        ],
+  );
+
 /**
  * Record and remove the follows between local accounts and the actors in
  * `scope`: accepted follows by a local account (`outbound_follows`) and of it
@@ -95,14 +131,15 @@ const AccountIdRowSchema = z.object({ local_account_id: z.string() });
  * is made for each local account that lost a follow. Nothing is written for a
  * decision that affects nobody.
  *
- * It resolves to the account events made, for the caller to notify. The
+ * It resolves to the account events made, for the caller to notify, and the
+ * accepted follows removed, for the caller to tell the actors' server. The
  * accounts are listed before the batch, so an account that gains its first
  * follow of the scope in between loses it without an event of its own.
  */
 export const severRelationships = async (
   db: D1Database,
   input: SeveranceInput,
-): Promise<Result<ReadonlyArray<AccountSeveranceEvent>, RepositoryError>> => {
+): Promise<Result<SeveredScope, RepositoryError>> => {
   const { sql: match, binds } = actorMatch(input.scope);
   const matchingActors = `SELECT r.actor_uri FROM remote_actors r WHERE ${match}`;
   const affected = await runD1(async () => {
@@ -133,15 +170,26 @@ export const severRelationships = async (
   const accountEvents = affected.value.map((accountId) => ({ id: newEntityId(), accountId }));
   const removals = [
     db
-      .prepare(`DELETE FROM outbound_follows WHERE actor_uri IN (${matchingActors})`)
+      .prepare(
+        `DELETE FROM outbound_follows WHERE actor_uri IN (${matchingActors})
+         RETURNING account_id, actor_uri, follow_activity_id, state = 'Accepted' AS accepted`,
+      )
       .bind(...binds),
     db
-      .prepare(`DELETE FROM remote_follows WHERE remote_actor_uri IN (${matchingActors})`)
+      .prepare(
+        `DELETE FROM remote_follows WHERE remote_actor_uri IN (${matchingActors})
+         RETURNING target_account_id AS account_id, remote_actor_uri AS actor_uri,
+                   follow_activity_id, follow_kind = 'Accepted' AS accepted`,
+      )
       .bind(...binds),
   ];
+  const removed = (results: ReadonlyArray<D1Result>) => ({
+    unfollowed: scopeFollows(results.at(-2)),
+    rejected: scopeFollows(results.at(-1)),
+  });
   if (accountEvents.length === 0) {
-    const removed = await runD1Batch(db, removals);
-    return removed.map(() => []);
+    const written = await runD1Batch(db, removals);
+    return written.map((results) => ({ events: [], ...removed(results) }));
   }
   const written = await runD1Batch(db, [
     db
@@ -189,10 +237,11 @@ export const severRelationships = async (
   if (written.isErr()) {
     return err(written.error);
   }
-  return findAccountSeveranceEvents(
+  const events = await findAccountSeveranceEvents(
     db,
     accountEvents.map(({ id }) => id),
   );
+  return events.map((found) => ({ events: found, ...removed(written.value) }));
 };
 
 const ActorUriRowSchema = z.object({ actor_uri: z.string() });

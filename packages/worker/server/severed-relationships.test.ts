@@ -186,6 +186,57 @@ describe("severed relationships", () => {
     expect(await followers.text()).toBe("Account address\nfan@sev-bad.example\n");
   });
 
+  it("tells the suspended server of each follow it removes, as Mastodon's `DeleteAccountService`", async () => {
+    const carol = await person("sev_carol");
+    const gone = await remoteActor("told", "sev-told.example");
+    const goneFan = await remoteActor("toldfan", "sev-told.example");
+    const pending = await remoteActor("toldpending", "sev-told.example");
+    await follow(carol, gone, true);
+    await follow(carol, pending, false);
+    await followedBy(carol, goneFan);
+    const followId = (
+      await env.DB.prepare(
+        "SELECT follow_activity_id FROM outbound_follows WHERE account_id = ? AND actor_uri = ?",
+      )
+        .bind(carol.id, gone.actorUri)
+        .first<{ follow_activity_id: string }>()
+    )?.follow_activity_id;
+
+    await blockDomain("sev-told.example", "suspend");
+
+    // `undo_follows!` for the local follow and `reject_follows!` for the
+    // remote one, each to the remote account's inbox; a pending request
+    // goes without a notice.
+    const { results } = await env.DB.prepare(
+      `SELECT a.kind, a.payload_json, d.inbox_url FROM outbound_activities a
+       JOIN outbox_deliveries d ON d.activity_id = a.id AND d.inbox_url IS NOT NULL
+       WHERE a.account_id = ? AND a.kind IN ('Undo', 'Reject') ORDER BY a.kind`,
+    )
+      .bind(carol.id)
+      .all<{ kind: string; payload_json: string; inbox_url: string }>();
+    const Notice = z.object({
+      object: z.object({ type: z.literal("Follow"), id: z.string(), actor: z.string() }),
+    });
+    expect(
+      results.map((row) => ({
+        kind: row.kind,
+        inbox: row.inbox_url,
+        follow: read(Notice, JSON.parse(row.payload_json)).object,
+      })),
+    ).toEqual([
+      {
+        kind: "Reject",
+        inbox: expect.stringContaining("sev-told.example"),
+        follow: { type: "Follow", id: goneFan.actorUri, actor: goneFan.actorUri },
+      },
+      {
+        kind: "Undo",
+        inbox: `${gone.actorUri}/inbox`,
+        follow: expect.objectContaining({ id: followId }),
+      },
+    ]);
+  });
+
   it("serves an event's lists only to the account that lost them", async () => {
     const carol = await person("sev_carol");
     const dave = await person("sev_dave");

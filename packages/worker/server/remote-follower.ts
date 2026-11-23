@@ -1,7 +1,7 @@
 import { InstanceIdentity, type LocalAccount, RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { enqueueTargetedActivity } from "./delivery";
+import { type DeliveryReach, enqueueTargetedActivity } from "./delivery";
 import { deleteRemoteFollow, findRemoteFollow } from "./remote-actor-store";
 
 /**
@@ -14,6 +14,7 @@ export const sendFollowReject = async (
   account: LocalAccount,
   actor: RemoteActor,
   followActivityId: string,
+  reach: DeliveryReach = "Federating",
 ): Promise<void> => {
   const actorUrl = InstanceIdentity.actorUrl(identity, account.username);
   await enqueueTargetedActivity(
@@ -28,6 +29,7 @@ export const sendFollowReject = async (
       object: { id: followActivityId, type: "Follow", actor: actor.actorUri, object: actorUrl },
     },
     RemoteActor.deliveryInbox(actor),
+    reach,
   );
 };
 
