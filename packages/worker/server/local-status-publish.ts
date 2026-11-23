@@ -24,6 +24,7 @@ import { noteCreateActivity } from "./activitypub";
 import { readNoteObject, requestQuoteApproval } from "./local-note-object";
 import { deferStatusActivity } from "./pending-status-federation";
 import { mentionedPost, notifyAccount } from "./notify";
+import { schedulePollEnd } from "./poll-expiry";
 import { insertPoll } from "./poll-store";
 import { startLinkCard } from "./link-card";
 import type { MediaAttribute } from "./status-body-schema";
@@ -267,6 +268,7 @@ export const publishLocalNote = async (
     if (poll.isErr()) {
       return err(poll.error);
     }
+    await schedulePollEnd(env, { kind: "LocalPoll", pollId: poll.value }, expiresAt);
   }
   startLinkCard(env, "Status", note.id, note.text);
   const attributes = await mediaAttributeChanges(

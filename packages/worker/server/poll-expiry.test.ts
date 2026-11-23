@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
@@ -643,5 +643,118 @@ describe("who hears a local poll's Update", () => {
     }
 
     expect(await updateTargets(poll)).toEqual([`${kept.actorUri}/inbox`]);
+  });
+});
+
+describe("the end of a poll, on time", () => {
+  const QUEUED = { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
+
+  const spyQueue = () => {
+    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+    onTestFinished(() => send.mockRestore());
+    return send;
+  };
+
+  const localPoll = (pollId: string) => ({ kind: "LocalPoll", pollId });
+
+  /** The delays of the `AwaitPollEnd` jobs queued for `pollId` at `at`. */
+  const queuedDelays = (send: ReturnType<typeof spyQueue>, pollId: string, at: string) => {
+    const queued = JSON.stringify({ kind: "AwaitPollEnd", poll: localPoll(pollId), at });
+    return send.mock.calls
+      .filter(([job]) => JSON.stringify(job) === queued)
+      .map(([, options]) => options?.delaySeconds ?? 0);
+  };
+
+  const awaitJobs = (send: ReturnType<typeof spyQueue>) =>
+    send.mock.calls.filter(([job]) => JSON.stringify(job).includes('"AwaitPollEnd"'));
+
+  const expiresAt = async (pollId: string): Promise<string> => {
+    const row = await env.DB.prepare("SELECT expires_at FROM polls WHERE id = ?")
+      .bind(pollId)
+      .first();
+    return read(z.object({ expires_at: z.string() }), row).expires_at;
+  };
+
+  /** The end recorded as queued, as a job queued earlier left it. */
+  const setQueuedEnd = (pollId: string, at: string) =>
+    env.DB.prepare("UPDATE polls SET end_queued_at = ? WHERE id = ?").bind(at, pollId).run();
+
+  it("queues a new poll's end for when it ends, as PostStatusService schedules PollExpirationNotifyWorker", async () => {
+    const send = spyQueue();
+    const poll = await createPoll("poll-end-queued@example.com");
+
+    const [delay, ...more] = queuedDelays(send, poll.pollId, await expiresAt(poll.pollId));
+    expect(more).toEqual([]);
+    expect(delay).toBeGreaterThan(3_590);
+    expect(delay).toBeLessThanOrEqual(3_600);
+  });
+
+  it("queues an edited poll's end five minutes after it, as UpdateStatusService", async () => {
+    const email = "poll-end-edited@example.com";
+    const poll = await createPoll(email);
+    const send = spyQueue();
+    const edited = await json(`/api/v1/statuses/${poll.statusId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "poll", poll: { options: ["yes", "no"], expires_in: 600 } }),
+    });
+    expect(edited.status).toBe(200);
+
+    const at = new Date(Date.parse(await expiresAt(poll.pollId)) + 300_000).toISOString();
+    const [delay] = queuedDelays(send, poll.pollId, at);
+    expect(delay).toBeGreaterThan(890);
+    expect(delay).toBeLessThanOrEqual(900);
+  });
+
+  it("queues itself again while the end is further away than one Queues delay", async () => {
+    const poll = await createPoll("poll-end-far@example.com");
+    const at = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    await setQueuedEnd(poll.pollId, at);
+    const send = spyQueue();
+
+    await runJob(env, { kind: "AwaitPollEnd", poll: localPoll(poll.pollId), at });
+
+    expect(queuedDelays(send, poll.pollId, at)).toEqual([12 * 60 * 60]);
+  });
+
+  it("stops a job whose end the poll no longer holds, as an edit moved it", async () => {
+    const email = "poll-end-moved@example.com";
+    const poll = await createPoll(email);
+    await endPoll(poll.pollId);
+    const send = spyQueue();
+
+    await runJob(env, {
+      kind: "AwaitPollEnd",
+      poll: localPoll(poll.pollId),
+      at: "2020-01-01T00:00:00.000Z",
+    });
+
+    expect(awaitJobs(send)).toEqual([]);
+    expect(await pollNotifications(email)).toEqual([]);
+  });
+
+  it("announces the poll once: two runs of its job and the cron's send one notification each and one Update", async () => {
+    const email = "poll-end-reached@example.com";
+    const voter = "poll-end-reached-voter@example.com";
+    const poll = await createPoll(email);
+    await vote(voter, poll.pollId, [1]);
+    // The vote's debounced Update has gone out by the time the poll ends.
+    await runJob(env, { kind: "DistributePollUpdate", pollId: poll.pollId });
+    await endPoll(poll.pollId);
+    const at = "2020-01-01T00:00:00.000Z";
+    await setQueuedEnd(poll.pollId, at);
+    const recording = recordingEnv();
+    const job = { kind: "AwaitPollEnd", poll: localPoll(poll.pollId), at };
+
+    await runJob(recording.env, job);
+    await runJob(recording.env, job);
+    await runExpiryJob(recording.env);
+
+    const expected = [{ type: "poll", status: { id: poll.statusId } }];
+    expect(await pollNotifications(email)).toMatchObject(expected);
+    expect(await pollNotifications(voter)).toMatchObject(expected);
+    expect(
+      sentJobs(recording.sent, { kind: "DistributePollUpdate", pollId: poll.pollId }),
+    ).toHaveLength(1);
   });
 });

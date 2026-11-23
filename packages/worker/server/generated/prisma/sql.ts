@@ -28,6 +28,8 @@ export * from "./sql/claimAccountMove";
 
 export * from "./sql/claimInboxActivity";
 
+export * from "./sql/claimLocalPollEnd";
+
 export * from "./sql/claimLocalPollExpiryNotice";
 
 export * from "./sql/claimPollUpdate";
@@ -37,6 +39,8 @@ export * from "./sql/claimRemoteActorKeyRefetch";
 export * from "./sql/claimRemoteActorRefresh";
 
 export * from "./sql/claimRemoteOutboxBackfill";
+
+export * from "./sql/claimRemotePollEnd";
 
 export * from "./sql/claimRemotePollExpiryNotice";
 
@@ -324,6 +328,8 @@ export * from "./sql/findLinkCard";
 
 export * from "./sql/findListForAccount";
 
+export * from "./sql/findLocalPollEndQueued";
+
 export * from "./sql/findLocalReblog";
 
 export * from "./sql/findMediaById";
@@ -387,6 +393,8 @@ export * from "./sql/findRemoteBoostById";
 export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteFollowsJson";
+
+export * from "./sql/findRemotePollEndQueued";
 
 export * from "./sql/findRemotePollFetchedAt";
 

@@ -8303,6 +8303,7 @@ export const PollsScalarFieldEnum = {
   expiry_notified_at: "expiry_notified_at",
   update_queued_at: "update_queued_at",
   update_distributed_at: "update_distributed_at",
+  end_queued_at: "end_queued_at",
 } as const;
 
 export type PollsScalarFieldEnum = (typeof PollsScalarFieldEnum)[keyof typeof PollsScalarFieldEnum];
@@ -8398,6 +8399,7 @@ export const Remote_statusesScalarFieldEnum = {
   updated_at: "updated_at",
   quote_policy_json: "quote_policy_json",
   poll_fetched_at: "poll_fetched_at",
+  poll_end_queued_at: "poll_end_queued_at",
 } as const;
 
 export type Remote_statusesScalarFieldEnum =

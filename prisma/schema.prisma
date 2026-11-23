@@ -705,7 +705,7 @@ model poll_votes {
   polls              polls    @relation(fields: [poll_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([poll_id, account_id, option_index])
-  @@index([poll_id], map: "idx_poll_votes_expiry_pending", where: raw("expiry_notified_at IS NULL"))
+  @@index([poll_id, account_id], map: "idx_poll_votes_unnotified", where: raw("expiry_notified_at IS NULL"))
 }
 
 model remote_poll_votes {
@@ -728,6 +728,7 @@ model polls {
   expiry_notified_at String?
   update_queued_at   String?
   update_distributed_at String?
+  end_queued_at      String?
   poll_votes        poll_votes[]
   remote_poll_votes  remote_poll_votes[]
   statuses          statuses     @relation(fields: [status_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -844,6 +845,7 @@ model remote_statuses {
   updated_at    String        @default("CURRENT_TIMESTAMP")
   quote_policy_json String?
   poll_fetched_at String?
+  poll_end_queued_at String?
   remote_actors remote_actors @relation(fields: [actor_uri], references: [actor_uri], onDelete: Cascade, onUpdate: NoAction)
   remote_status_tags remote_status_tags[]
   remote_status_mentions remote_status_mentions[]
@@ -1105,6 +1107,7 @@ model remote_poll_own_votes {
 
   @@id([status_id, account_id, choice_index])
   @@index([account_id], map: "idx_remote_poll_own_votes_account")
+  @@index([status_id, account_id], map: "idx_remote_poll_own_votes_unnotified", where: raw("expiry_notified_at IS NULL"))
 }
 
 model outbound_follows {

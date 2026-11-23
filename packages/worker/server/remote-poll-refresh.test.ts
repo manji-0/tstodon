@@ -2,8 +2,9 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { ApiPoll, ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
-import { authHeaders } from "../test/auth-fixture";
+import { accessTokenFor, authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { parseSignatureHeader, verifySignedFetch } from "./http-signature";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -43,11 +44,20 @@ const create = async (author: Remote, object: Readonly<{ id: string }>): Promise
   return id;
 };
 
-/** Serve `document` at its id while the test runs; the count of fetches of it. */
+/**
+ * Serve `document`, and each of `others`, at its id while the test runs; the
+ * count of fetches of `document`, and every request served.
+ */
 const serve = (
   document: Readonly<{ id: string }>,
-): { fetches: () => number; failWith: (status: number | undefined) => void } => {
+  others: ReadonlyArray<Readonly<{ id: string }>> = [],
+): {
+  fetches: () => number;
+  requests: () => ReadonlyArray<Request>;
+  failWith: (status: number | undefined) => void;
+} => {
   let fetches = 0;
+  const requests: Request[] = [];
   let failing: number | undefined;
   const original = globalThis.fetch;
   const spy = vi
@@ -55,8 +65,15 @@ const serve = (
     .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const href =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (href !== document.id) {
+      const served = [document, ...others].find((candidate) => candidate.id === href);
+      if (served === undefined) {
         return original(input, init);
+      }
+      requests.push(new Request(input, init));
+      if (served !== document) {
+        return new Response(JSON.stringify(served), {
+          headers: { "content-type": "application/activity+json" },
+        });
       }
       fetches += 1;
       if (failing !== undefined) {
@@ -69,6 +86,7 @@ const serve = (
   onTestFinished(() => spy.mockRestore());
   return {
     fetches: () => fetches,
+    requests: () => requests,
     failWith: (status) => {
       failing = status;
     },
@@ -111,6 +129,54 @@ describe("refreshing a remote poll a client reads", () => {
     await setFetchedAt(id, new Date(Date.now() - 61_000).toISOString());
     await readPoll(id, reader);
     expect(origin.fetches()).toBe(2);
+  });
+
+  it("signs the fetch as the reader, as FetchRemotePollService passes current_account", async () => {
+    const author = await remoteActor("poll-refresh-signer", "poll-refresh-signer.example");
+    const id = await create(author, question(author, "signer", [1, 0]));
+    const origin = serve(question(author, "signer", [2, 0]));
+    const account = await signedInAccount("poll-refresh-signer@example.com");
+    const reader = { Authorization: `Bearer ${await accessTokenFor(account.id)}` };
+
+    await readPoll(id, reader);
+
+    const [request] = origin.requests();
+    const parsed = parseSignatureHeader(request?.headers.get("Signature") ?? "");
+    expect(parsed?.keyId).toBe(`https://example.com/users/${account.username}#main-key`);
+    expect(
+      request !== undefined &&
+        parsed !== undefined &&
+        (await verifySignedFetch(request, parsed, {
+          kind: "Rsa",
+          publicKeyPem: account.publicKeyPem,
+        })),
+    ).toBe(true);
+  });
+
+  it("makes the fetches that apply the refreshed note as the instance actor, as ProcessStatusUpdateService", async () => {
+    const author = await remoteActor("poll-refresh-quote", "poll-refresh-quote.example");
+    const id = await create(author, question(author, "quoting", [1, 0]));
+    const quoted = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: `https://${new URL(author.actorUri).host}/notes/quoted`,
+      type: "Note",
+      attributedTo: author.actorUri,
+      content: "<p>quoted</p>",
+      published: "2026-10-19T00:00:00.000Z",
+      to: [PUBLIC],
+    };
+    const quoting = { ...question(author, "quoting", [2, 0]), quote: quoted.id };
+    const origin = serve(quoting, [quoted]);
+
+    await readPoll(id, await authHeaders("poll-refresh-quote@example.com"));
+
+    const keyIds = origin
+      .requests()
+      .map((request) => [
+        request.url,
+        parseSignatureHeader(request.headers.get("Signature") ?? "")?.keyId,
+      ]);
+    expect(keyIds).toContainEqual([quoted.id, "https://example.com/actor#main-key"]);
   });
 
   it("does not refresh a poll through the status it belongs to", async () => {

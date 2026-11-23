@@ -3,8 +3,11 @@ import {
   IsoInstant,
   type InstanceIdentity,
   type RemoteActor,
+  type RemotePoll,
+  type RemoteStatus,
   type RemoteStatusValue,
 } from "@tstodon/domain";
+import { scheduleFinalPollCheck } from "./poll-expiry";
 import { schemaResult } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -98,6 +101,31 @@ export const classifyUpdateObject = (raw: unknown): UpdateTarget => {
     return { kind: "ActorUpdate", raw };
   }
   return { kind: "Unsupported" };
+};
+
+/**
+ * Queue the end of the updated poll for the local accounts that voted on it,
+ * as `ActivityPub::ProcessStatusUpdateService#queue_poll_notifications!`:
+ * not when the poll had already ended, whose voters were told or are about
+ * to be. A poll queued for the same end queues nothing.
+ */
+const queuePollNotifications = async (
+  env: Env,
+  previous: RemotePoll,
+  status: RemoteStatus,
+): Promise<void> => {
+  if (status.poll.kind === "NoPoll" || status.poll.ends.kind !== "At") {
+    return;
+  }
+  const previousEnd = previous.kind === "NoPoll" ? undefined : previous.ends;
+  if (previousEnd?.kind === "At" && Date.parse(previousEnd.at) <= Date.now()) {
+    return;
+  }
+  await scheduleFinalPollCheck(
+    env,
+    { kind: "RemotePoll", statusId: status.id },
+    status.poll.ends.at,
+  );
 };
 
 /**
@@ -219,6 +247,7 @@ const applyNoteUpdate = async (
     return ok(undefined);
   }
   await recordNoteEmojis(env, signer, stored.value);
+  await queuePollNotifications(env, cached.value.poll, stored.value);
   // A note stored from a `Create`, or from an `Update` handled as one, whose
   // late steps failed left its marker. A delivery that edits nothing, with no
   // edit pending, finishes them as a redelivered `Create` does, once the

@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -9,6 +9,8 @@ import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+
+const QUEUED = { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
@@ -532,6 +534,140 @@ describe("remote polls", () => {
       await runExpiryJob();
       expect(await pollNotifications(voter)).toMatchObject([{ type: "poll", status: { id } }]);
       expect(await pollNotifications(bystander)).toEqual([]);
+    });
+
+    const spyQueue = () => {
+      const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+      onTestFinished(() => send.mockRestore());
+      return send;
+    };
+
+    /** The `AwaitPollEnd` jobs queued for the remote status `id`, with their delays. */
+    const awaitJobs = (send: ReturnType<typeof spyQueue>, id: string) =>
+      send.mock.calls.flatMap(([job, options]) => {
+        const parsed = OutboxJob.parse(job);
+        return parsed.isOk() &&
+          parsed.value.kind === "AwaitPollEnd" &&
+          parsed.value.poll.kind === "RemotePoll" &&
+          parsed.value.poll.statusId === id
+          ? [{ at: parsed.value.at, delaySeconds: options?.delaySeconds ?? 0 }]
+          : [];
+      });
+
+    const fivePast = (at: string) => new Date(Date.parse(at) + 300_000).toISOString();
+
+    it("queues the end five minutes after the poll ends, once per poll, as VoteService#queue_final_poll_check!", async () => {
+      const author = await remoteActor("poll-expiry-queued");
+      const endsAt = new Date(Date.now() + 3_600_000).toISOString();
+      const id = await create(author, question(author, "expiry-queued", { endTime: endsAt }));
+      const send = spyQueue();
+
+      expect((await vote("poll-expiry-queued@example.com", id)).status).toBe(200);
+      expect((await vote("poll-expiry-queued-2@example.com", id)).status).toBe(200);
+      expect((await vote("poll-expiry-queued@example.com", id)).status).toBe(422);
+
+      const [queued, ...more] = awaitJobs(send, id);
+      expect(more).toEqual([]);
+      expect(queued?.at).toBe(fivePast(endsAt));
+      expect(queued?.delaySeconds).toBeGreaterThan(3_890);
+      expect(queued?.delaySeconds).toBeLessThanOrEqual(3_900);
+    });
+
+    it("queues no end for a poll that ends further off than Mastodon's longest poll", async () => {
+      const author = await remoteActor("poll-expiry-far");
+      const id = await create(author, question(author, "expiry-far"));
+      const send = spyQueue();
+
+      expect((await vote("poll-expiry-far@example.com", id)).status).toBe(200);
+
+      expect(awaitJobs(send, id)).toEqual([]);
+    });
+
+    it("queues the end again when an Update moves it, as ProcessStatusUpdateService#queue_poll_notifications!", async () => {
+      const author = await remoteActor("poll-expiry-moved");
+      const endsAt = new Date(Date.now() + 3_600_000).toISOString();
+      const movedTo = new Date(Date.now() + 7_200_000).toISOString();
+      const id = await create(author, question(author, "expiry-moved", { endTime: endsAt }));
+      expect((await vote("poll-expiry-moved@example.com", id)).status).toBe(200);
+      const send = spyQueue();
+
+      expect(
+        await update(
+          author,
+          "expiry-moved",
+          question(author, "expiry-moved", { endTime: movedTo }),
+        ),
+      ).toBe(202);
+      expect(
+        await update(
+          author,
+          "expiry-moved-again",
+          question(author, "expiry-moved", { endTime: movedTo }),
+        ),
+      ).toBe(202);
+
+      expect(awaitJobs(send, id).map((job) => job.at)).toEqual([fivePast(movedTo)]);
+    });
+
+    it("queues no end on an Update of a poll nobody here voted on, or one that had ended", async () => {
+      const author = await remoteActor("poll-expiry-update-none");
+      const later = new Date(Date.now() + 3_600_000).toISOString();
+      const unvoted = await create(author, question(author, "expiry-unvoted-update"));
+      const ended = await create(
+        author,
+        question(author, "expiry-ended-update", {
+          endTime: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      );
+      expect((await vote("poll-expiry-update-none@example.com", ended)).status).toBe(200);
+      await endPoll(ended);
+      const send = spyQueue();
+
+      await update(
+        author,
+        "expiry-unvoted",
+        question(author, "expiry-unvoted-update", { endTime: later }),
+      );
+      await update(
+        author,
+        "expiry-ended",
+        question(author, "expiry-ended-update", { endTime: later }),
+      );
+
+      expect(awaitJobs(send, unvoted)).toEqual([]);
+      expect(awaitJobs(send, ended)).toEqual([]);
+    });
+
+    it("tells the local voter when the job queued by the vote runs", async () => {
+      const author = await remoteActor("poll-expiry-job");
+      const id = await create(
+        author,
+        question(author, "expiry-job", { endTime: new Date(Date.now() + 3_600_000).toISOString() }),
+      );
+      const voter = "poll-expiry-job@example.com";
+      const send = spyQueue();
+      expect((await vote(voter, id)).status).toBe(200);
+      const [queued] = awaitJobs(send, id);
+      send.mockRestore();
+      expect(queued).toBeDefined();
+      // Five minutes past the end: the poll ended, and the job is due.
+      const at = "2020-01-01T00:05:00.000Z";
+      await endPoll(id);
+      await env.DB.prepare("UPDATE remote_statuses SET poll_end_queued_at = ? WHERE id = ?")
+        .bind(at, id)
+        .run();
+
+      const job = OutboxJob.parse({
+        kind: "AwaitPollEnd",
+        poll: { kind: "RemotePoll", statusId: id },
+        at,
+      });
+      if (job.isErr()) {
+        throw new Error("AwaitPollEnd job rejected");
+      }
+      await processOutboxJob(env, job.value);
+
+      expect(await pollNotifications(voter)).toMatchObject([{ type: "poll", status: { id } }]);
     });
 
     it("does not announce a poll nobody voted on", async () => {
