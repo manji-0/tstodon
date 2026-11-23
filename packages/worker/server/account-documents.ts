@@ -23,7 +23,8 @@ import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { remoteEmojisJson } from "./remote-emoji-document";
-import { leadingLinkHref, sanitizeRemoteHtml } from "./sanitize-html";
+import { leadingLinkRawHref, sanitizeRemoteHtml } from "./sanitize-html";
+import { decodeEntities } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { type CustomEmoji, customEmojiJson, emojisInTexts, profileEmojiTexts } from "./emoji";
 import {
@@ -516,11 +517,11 @@ export const mastodonRemoteAccount = (
  * A remote field's value as Mastodon's `account_field_value_format`: a
  * verified one is its link rebuilt (`TextFormatter.shortened_link`), the
  * check having found the value to be that one `<a>`; another is its HTML
- * sanitised.
+ * sanitised. The link is read as `remoteFieldLink` read the one it checked.
  */
 const remoteFieldValue = (field: ProfileField): string => {
-  const link = field.verifiedAt === undefined ? undefined : leadingLinkHref(field.value);
-  return link === undefined ? sanitizeRemoteHtml(field.value) : shortenedLink(link);
+  const href = field.verifiedAt === undefined ? undefined : leadingLinkRawHref(field.value);
+  return href === undefined ? sanitizeRemoteHtml(field.value) : shortenedLink(decodeEntities(href));
 };
 
 /** One account's document as lookup and `GET /accounts/:id` answer it; `undefined` when hidden. */

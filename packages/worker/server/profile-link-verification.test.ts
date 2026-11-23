@@ -213,6 +213,28 @@ describe("a remote account's profile field links", () => {
     );
   });
 
+  it("shows a verified field's link as the check read it, an entity without `;` kept as written", async () => {
+    const profileUrl = "https://links-ampx.example/@hal";
+    const site = "https://hal-site.example/?q=&ampx";
+    await remoteActor("hal", "links-ampx.example", {
+      profileUrl,
+      fields: [{ name: "site", value: `<a href="${site}">${site}</a>` }],
+    });
+    const pages = servePages({ [site]: { html: linkingTo(profileUrl) } });
+    const actorUri = "https://links-ampx.example/users/hal";
+    expect(await verifyJob({ kind: "RemoteActor", actorUri })).toBe("ok");
+    expect(pages.fetched).toEqual([`GET ${site}`]);
+
+    const shown = await SELF.fetch(
+      `https://example.com/api/v1/accounts/${RemoteAccountId.encode(actorUri)}`,
+    );
+    const [field] = expectContract(ApiAccount, await shown.json()).fields;
+    expect(field?.verified_at).not.toBeNull();
+    expect(field?.value).toBe(
+      '<a href="https://hal-site.example/?q=&amp;ampx" target="_blank" rel="nofollow noopener" translate="no"><span class="invisible">https://</span><span class="">hal-site.example/?q=&amp;ampx</span><span class="invisible"></span></a>',
+    );
+  });
+
   it("does not take a url on another host as the profile to link back to", async () => {
     const victim = "https://victim.example/@alice";
     const author = await remoteActor("mallory", "links-spoof.example", {

@@ -109,7 +109,7 @@ export const decodeEntities = (text: string): string =>
     return ENTITIES[entity.toLowerCase()] ?? match;
   });
 
-/** What Rails' `ActiveModel::Type::Boolean` casts to false; `""` casts to null, any other value to true. */
+/** What Rails' `ActiveModel::Type::Boolean` casts to false; any other value but `""` to true. */
 const RAILS_FALSE: ReadonlySet<unknown> = new Set([
   false,
   0,
@@ -125,6 +125,7 @@ const RAILS_FALSE: ReadonlySet<unknown> = new Set([
 /**
  * An actor's `discoverable` or `indexable`, as Mastodon's
  * `ProcessAccountService` stores `@json[flag] || false` in a boolean column.
+ * An absent flag, `null`, `""` and a value Rails casts to false read as false.
  */
 const actorFlag = (value: unknown): boolean =>
   value !== undefined && value !== null && value !== "" && !RAILS_FALSE.has(value);
