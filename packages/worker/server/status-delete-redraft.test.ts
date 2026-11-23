@@ -51,6 +51,9 @@ const deleteStatus = async (email: string, id: string) => {
   return { raw: deleted.body, document: expectContract(ApiSourceStatus, deleted.body) };
 };
 
+const boost = async (email: string, id: string) =>
+  json(`/api/v1/statuses/${id}/reblog`, { method: "POST", headers: await auth(email) });
+
 const keysOf = (value: unknown): string[] =>
   typeof value === "object" && value !== null ? Object.keys(value) : [];
 
@@ -148,6 +151,13 @@ describe("delete returns a redraft source", () => {
     const quotedId = read(IdSchema, row).id;
     const statusId = await post(email, { status: "quoting", quoted_status_id: quotedId });
 
+    // A boost of it has no quote of its own; what it boosts keeps its quote.
+    const boostId = read(IdSchema, (await boost(email, statusId)).body).id;
+    const boosted = (await deleteStatus(email, boostId)).document;
+    expect(boosted.quote).toBeNull();
+    expect(boosted.reblog?.quote?.state).toBe("pending");
+    expect(boosted.reblog?.quote?.quoted_status?.id).toBe(quotedId);
+
     const { raw, document } = await deleteStatus(email, statusId);
     expect(document.quote?.state).toBe("pending");
     expect(document.quote?.quoted_status?.id).toBe(quotedId);
@@ -166,5 +176,63 @@ describe("delete returns a redraft source", () => {
       state: "pending",
       quoted_status_id: quotedId,
     });
+  });
+
+  it("deletes a boost of a status from a host outside the allow list", async () => {
+    const email = "redraft-boost-outside@example.com";
+    await signedInAccount(email);
+    const carol = await remoteActor("redraft-outside-carol", "outside.example");
+    const uri = "https://outside.example/notes/redraft-outside";
+    const sent = await carol.send({
+      id: `${uri}/activity`,
+      type: "Create",
+      object: {
+        id: uri,
+        type: "Note",
+        attributedTo: carol.actorUri,
+        content: "<p>boost me</p>",
+        published: "2026-11-01T00:00:00.000Z",
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        cc: [`${carol.actorUri}/followers`],
+      },
+    });
+    expect(sent).toBe(202);
+    const row = await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(uri)
+      .first();
+    const boosted = await boost(email, read(IdSchema, row).id);
+    expect(boosted.status).toBe(200);
+    const boostId = read(IdSchema, boosted.body).id;
+
+    const admin = await authHeaders("redraft-allows-admin@example.com", { admin: true });
+    const allowed = await json("/api/v1/admin/domain_allows", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...admin },
+      body: JSON.stringify({ domain: "friend.example" }),
+    });
+    expect(allowed.status).toBe(200);
+    try {
+      // Mastodon deletes the caller's own boost whatever became of what it boosts.
+      const { document } = await deleteStatus(email, boostId);
+      expect(document.id).toBe(boostId);
+      expect(document.text).toBe("");
+      expect(document.quote).toBeNull();
+      expect((await json(`/api/v1/statuses/${boostId}`)).status).toBe(404);
+    } finally {
+      await json(`/api/v1/admin/domain_allows/${read(IdSchema, allowed.body).id}`, {
+        method: "DELETE",
+        headers: admin,
+      });
+    }
+  });
+
+  it("does not delete another account's status", async () => {
+    const statusId = await post("redraft-owner@example.com", { status: "mine" });
+    const refused = await json(`/api/v1/statuses/${statusId}`, {
+      method: "DELETE",
+      headers: await auth("redraft-other@example.com"),
+    });
+    expect(refused.status).toBe(404);
+    expect((await json(`/api/v1/statuses/${statusId}`)).status).toBe(200);
   });
 });

@@ -113,15 +113,13 @@ export const deleteV1StatusesById = async (
   if (existing.isErr()) {
     return jsonRepositoryError(c, existing.error.message);
   }
-  if (!existing.value) {
+  // `Status.where(account: current_account).find`: only the caller's own.
+  if (!existing.value || existing.value.accountId !== user.value.id) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
-  const document = await mastodonSourceStatus(c.env, identity.value, existing.value, user.value.id);
+  const document = await mastodonSourceStatus(c.env, identity.value, user.value, existing.value);
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
-  }
-  if (!document.value) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const deleted = await deleteLocalStatus(
     c.env,

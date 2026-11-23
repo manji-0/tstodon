@@ -327,6 +327,7 @@ export const editScenarios = async ({ stamp, mona, erin }: Cast): Promise<void> 
       }
       await gone(to, copy.id, "the deleted post's copy is gone");
       // Mastodon detaches the image in `RemovalWorker`, after the delete answers.
+      let refused: StepFailure | undefined;
       const redraft = await eventually("the redraft reattaches the image", async () => {
         try {
           return await post(from, {
@@ -338,10 +339,16 @@ export const editScenarios = async ({ stamp, mona, erin }: Cast): Promise<void> 
           });
         } catch (error) {
           if (error instanceof StepFailure && error.message.includes(" → 422 ")) {
+            refused = error;
             return undefined;
           }
           throw error;
         }
+      }).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new StepFailure(
+          refused === undefined ? message : `${message}; last refusal: ${refused.message}`,
+        );
       });
       await onHome(
         to,
