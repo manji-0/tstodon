@@ -164,10 +164,7 @@ export const noteEmojis = (
   raw: unknown,
   texts: ReadonlyArray<string>,
 ): ReadonlyArray<RemoteEmoji> =>
-  remoteEmojisInTexts(
-    texts,
-    declaredEmojis(raw, (shortcode) => shortcode.toLowerCase()),
-  ).slice(0, MAX_EMOJIS);
+  remoteEmojisInTexts(texts, declaredEmojis(raw)).slice(0, MAX_EMOJIS);
 
 const TaggedSchema = z.object({ tag: z.unknown().optional() });
 const HashtagTagSchema = z.object({

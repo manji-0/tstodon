@@ -43,14 +43,11 @@ const MAX_EMOJI_URL_LENGTH = 2048;
 
 /**
  * The custom emoji a note or an actor declares in the `Emoji` objects of its
- * `tag` (a list or one object), the first of each shortcode. `sameAs` gives the form in which two
- * shortcodes are one. A tag whose image URL is longer than
- * `MAX_EMOJI_URL_LENGTH` is left out.
+ * `tag` (a list or one object), the first of each shortcode, case and all, as
+ * Mastodon keeps one `CustomEmoji` per shortcode as written. A tag whose
+ * image URL is longer than `MAX_EMOJI_URL_LENGTH` is left out.
  */
-export const declaredEmojis = (
-  raw: unknown,
-  sameAs: (shortcode: string) => string,
-): ReadonlyArray<RemoteEmoji> => {
+export const declaredEmojis = (raw: unknown): ReadonlyArray<RemoteEmoji> => {
   const seen = new Set<string>();
   const emojis: RemoteEmoji[] = [];
   for (const tag of tagEntries(raw)) {
@@ -61,11 +58,11 @@ export const declaredEmojis = (
       !shortcode ||
       !url ||
       url.length > MAX_EMOJI_URL_LENGTH ||
-      seen.has(sameAs(shortcode))
+      seen.has(shortcode)
     ) {
       continue;
     }
-    seen.add(sameAs(shortcode));
+    seen.add(shortcode);
     const updated = IsoInstant.parseRemote(tag.updated);
     const parsed = parseRemoteEmoji(
       updated.isOk() ? { shortcode, url, updated: updated.value } : { shortcode, url },
@@ -77,13 +74,16 @@ export const declaredEmojis = (
   return emojis;
 };
 
-/** The emoji whose `:shortcode:` appears in one of `texts`. */
+/**
+ * The emoji whose `:shortcode:` appears in one of `texts`. A shortcode
+ * matches as written, case and all, as `CustomEmoji.from_text` looks it up.
+ */
 export const remoteEmojisInTexts = (
   texts: ReadonlyArray<string>,
   emojis: ReadonlyArray<RemoteEmoji>,
 ): ReadonlyArray<RemoteEmoji> => {
-  const used = new Set(scannedShortcodes(texts).map((shortcode) => shortcode.toLowerCase()));
-  return emojis.filter((emoji) => used.has(emoji.shortcode.toLowerCase()));
+  const used = new Set(scannedShortcodes(texts));
+  return emojis.filter((emoji) => used.has(emoji.shortcode));
 };
 
 /** A document writes far fewer; this only bounds a hostile one. */
@@ -117,12 +117,8 @@ const MAX_ACTOR_EMOJIS = 50;
 export const actorEmojis = (
   raw: unknown,
   texts: ReadonlyArray<string>,
-): ReadonlyArray<RemoteEmoji> => {
-  const written = new Set(scannedShortcodes(texts));
-  return declaredEmojis(raw, (shortcode) => shortcode)
-    .filter((emoji) => written.has(emoji.shortcode))
-    .slice(0, MAX_ACTOR_EMOJIS);
-};
+): ReadonlyArray<RemoteEmoji> =>
+  remoteEmojisInTexts(texts, declaredEmojis(raw)).slice(0, MAX_ACTOR_EMOJIS);
 
 /** CustomEmoji entities of a remote note's emoji; one whose image is not an http(s) URL is left out. */
 export const remoteEmojisJson = (emojis: ReadonlyArray<RemoteEmoji>): ApiCustomEmojiJSON[] =>
