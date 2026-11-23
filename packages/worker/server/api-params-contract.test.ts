@@ -21,6 +21,7 @@ import {
   ApiRelationship,
   ApiReport,
   ApiSearchResults,
+  ApiSourceStatus,
   ApiStatus,
   ApiSuggestion,
 } from "@tstodon/api";
@@ -852,7 +853,7 @@ describe("REST request params: statuses, media and compose search (web UI compos
     ];
 
     const [bodyDeleted, queryDeleted] = await bothAccepted(
-      ApiStatus,
+      ApiSourceStatus,
       "DELETE /api/v1/statuses/:id",
       sendJson(email, "DELETE", `/api/v1/statuses/${bodyNote.id}`, { delete_media: true }),
       sendDelete(email, `/api/v1/statuses/${queryNote.id}?delete_media=true`),
@@ -863,7 +864,7 @@ describe("REST request params: statuses, media and compose search (web UI compos
     expect(await mediaAnswer(email, queryMedia.id)).toBe(404);
 
     const redrafted = accepted(
-      ApiStatus,
+      ApiSourceStatus,
       await sendDelete(email, `/api/v1/statuses/${keptNote.id}?delete_media=false`),
       "DELETE /api/v1/statuses/:id (redraft)",
     );

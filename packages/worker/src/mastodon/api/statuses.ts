@@ -1,6 +1,7 @@
 import type {
   ApiCreateStatusParams,
   ApiDeleteStatusParams,
+  ApiSourceStatusJSON,
   ApiStatusEditJSON,
   ApiTranslationJSON,
   ApiUpdateStatusParams,
@@ -82,7 +83,7 @@ export const apiSubmitStatus = async ({
 export const apiDeleteStatus = (
   statusId: string,
   params: ApiDeleteStatusParams,
-) => apiRequestDelete<ApiStatusJSON>(`v1/statuses/${statusId}`, params);
+) => apiRequestDelete<ApiSourceStatusJSON>(`v1/statuses/${statusId}`, params);
 
 export const apiMuteStatus = (statusId: string) =>
   apiRequestPost<ApiStatusJSON>(`v1/statuses/${statusId}/mute`);
