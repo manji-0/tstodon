@@ -78,14 +78,14 @@ export const getV1AccountsLookup = async (
   }
   // `ResolveAccountService` stops at `domain_not_allowed?` before it reads the
   // account, so an actor an admin unsuspended there is not found either.
-  if (
-    ref.value.kind === "RemoteActor" &&
-    isDomainNotAllowed(ref.value.actor.domain, {
-      allowHosts: await federationAllowHosts(c.env),
-      blockedHosts: await suspendedDomains(c.env.DB),
-    })
-  ) {
-    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  if (ref.value.kind === "RemoteActor") {
+    const [allowHosts, blockedHosts] = await Promise.all([
+      federationAllowHosts(c.env),
+      suspendedDomains(c.env.DB),
+    ]);
+    if (isDomainNotAllowed(ref.value.actor.domain, { allowHosts, blockedHosts })) {
+      return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+    }
   }
   const document = await accountRefDocument(c.env, identity.value, ref.value);
   if (document.isErr()) {

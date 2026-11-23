@@ -1,12 +1,16 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAdminAccount, type ApiAdminAccountJSON } from "@tstodon/api";
 import { authHeaders } from "../test/auth-fixture";
 import { postForm, signUp } from "../test/passkey-browser";
 import { withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
-import { recordPageSql } from "./domain-block-limits";
+import {
+  listDomainBlockLimits,
+  listLimitingDomainBlockIds,
+  recordPageSql,
+} from "./domain-block-limits";
 import { listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
@@ -24,6 +28,48 @@ import { d1PrepareTyped } from "./typed-sql";
  */
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+
+const HeldRow = z.object({ actor_uri: z.string(), block_id: z.string(), severity: z.string() });
+
+// The readers seek the blocks by each host's parent domains; after every
+// scenario here they must find what the view `remote_actor_domain_rules`
+// yields for every cached actor.
+afterEach(async () => {
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT actor_uri, domain_block_id AS block_id, severity FROM remote_actor_domain_rules
+     WHERE severity IN ('silence', 'suspend')`,
+  ).all();
+  const view = z.array(HeldRow).parse(results);
+  const actors = await env.DB.prepare("SELECT actor_uri FROM remote_actors").all();
+  const uris = z
+    .array(z.object({ actor_uri: z.string() }))
+    .parse(actors.results)
+    .map((row) => row.actor_uri);
+  const limits = (await listDomainBlockLimits(env.DB, uris))._unsafeUnwrap();
+  const fromView = new Map<string, { silenced: boolean; suspended: boolean }>();
+  for (const row of view) {
+    const held = fromView.get(row.actor_uri) ?? { silenced: false, suspended: false };
+    fromView.set(row.actor_uri, {
+      silenced: held.silenced || row.severity === "silence",
+      suspended: held.suspended || row.severity === "suspend",
+    });
+  }
+  expect(new Map(limits)).toEqual(fromView);
+  for (const severity of ["silence", "suspend"] as const) {
+    for (const uri of new Set(view.map((row) => row.actor_uri))) {
+      const ids = (await listLimitingDomainBlockIds(env.DB, uri, severity))._unsafeUnwrap();
+      expect(ids.toSorted()).toEqual(
+        [
+          ...new Set(
+            view
+              .filter((row) => row.actor_uri === uri && row.severity === severity)
+              .map((row) => row.block_id),
+          ),
+        ].toSorted(),
+      );
+    }
+  }
+});
 
 type Severity = "silence" | "suspend" | "noop";
 
