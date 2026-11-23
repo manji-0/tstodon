@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   isBlockedFederatedHost,
+  isDomainNotAllowed,
   isFederatedHostRefused,
   parseFederatedUrl,
   webfingerScheme,
@@ -88,6 +89,20 @@ describe("isFederatedHostRefused", () => {
     const allowHosts = new Set(["127.0.0.1"]);
     expect(isFederatedHostRefused("127.0.0.1", "127.0.0.1:8792", { allowHosts })).toBe(false);
     expect(isFederatedHostRefused("127.0.0.1.", "127.0.0.1:8792", { allowHosts })).toBe(false);
+  });
+});
+
+describe("isDomainNotAllowed", () => {
+  it("reads an account domain that carries a port by its host", () => {
+    const allowHosts = new Set(["127.0.0.1"]);
+    expect(isDomainNotAllowed("127.0.0.1:8791", { allowHosts })).toBe(false);
+    expect(isDomainNotAllowed("10.0.0.1:8791", { allowHosts })).toBe(true);
+  });
+
+  it("still reads an unbracketed IPv6 literal", () => {
+    const allowHosts = new Set(["::1"]);
+    expect(isDomainNotAllowed("::1", { allowHosts })).toBe(false);
+    expect(isDomainNotAllowed("[::1]:8791", { allowHosts })).toBe(false);
   });
 });
 
