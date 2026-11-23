@@ -8,7 +8,6 @@ import {
   type LocalAccountModerationAction,
   type LocalAccountModerationValue,
   type RemoteActorValue,
-  RemoteActor,
   RemoteActorModeration,
   type RemoteActorAdminFlags,
   type RemoteActorModerationAction,
@@ -49,7 +48,6 @@ import {
   findDomainBlockById,
   findDomainBlockRule,
   deleteDomainBlock,
-  suspendedDomains,
   insertDomainBlock,
   updateDomainBlock,
 } from "./admin-domain-block-store";
@@ -201,37 +199,12 @@ export const findAdminRemoteActor = async (
 };
 
 /**
- * The blocks an unsilence or unsuspend of the actor lifts: those that hold
- * that severity on it now. None while a suspension covers the actor's host:
- * Mastodon's unsuspended account stays behind `domain_not_allowed?` there
- * (lookup, inbox, signed fetches), and tstodon hides it on every read path
- * (`AccountPresentation` `Hidden`), so the actor stays suspended as a whole.
- */
-const liftedDomainBlockIds = async (
-  db: D1Database,
-  actorUri: string,
-  severity: LiftedSeverity,
-): Promise<Result<string[], RepositoryError>> => {
-  if (severity === "suspend") {
-    const [actor, blockedHosts] = await Promise.all([
-      findRemoteActorByUri(db, actorUri),
-      suspendedDomains(db),
-    ]);
-    if (actor.isErr()) {
-      return err(actor.error);
-    }
-    if (actor.value === undefined || RemoteActor.onAnyHost(actor.value, blockedHosts)) {
-      return ok([]);
-    }
-  }
-  return listLimitingDomainBlockIds(db, actorUri, severity);
-};
-
-/**
  * Unsilence or unsuspend a remote actor: its own moderation and the
  * limitation of each block that holds that severity on it go in one batch,
  * as Mastodon's `unsilence!` / `unsuspend!` clear `silenced_at` /
- * `suspended_at` whoever set them. Lifting a block's suspension also empties
+ * `suspended_at` whoever set them, a suspension of its domain too. Its
+ * domain stays refused where Mastodon's `domain_not_allowed?` refuses
+ * (lookup, resolve, the inbox, signed fetches). Lifting a block's suspension also empties
  * the actor's content from before, which Mastodon's `BlockDomainService`
  * deleted (`DeleteAccountService` with `reserve_username`), so it does not
  * come back.
@@ -242,7 +215,7 @@ const liftRemoteActor = async (
   next: RemoteActorModeration,
   severity: LiftedSeverity,
 ): Promise<Result<void, RepositoryError>> => {
-  const blockIds = await liftedDomainBlockIds(env.DB, actorUri, severity);
+  const blockIds = await listLimitingDomainBlockIds(env.DB, actorUri, severity);
   if (blockIds.isErr()) {
     return err(blockIds.error);
   }

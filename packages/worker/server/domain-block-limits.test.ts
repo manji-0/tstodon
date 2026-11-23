@@ -477,19 +477,6 @@ describe("lifting a domain block's limitation of one actor", () => {
     });
   });
 
-  it("leaves an actor suspended while a suspension covers its host", async () => {
-    const onDomain = await remoteActor("plain", "host-susp.example");
-    await block("host-susp.example", "suspend");
-
-    // Mastodon keeps such an account behind `domain_not_allowed?` (lookup,
-    // inbox, signed fetches); tstodon hides it on every read path, so it
-    // lifts nothing rather than half of it.
-    expect(await moderate(onDomain.actorUri, "unsuspend")).toMatchObject({ suspended: true });
-    expect(await lookup("plain@host-susp.example")).toBe("NotFound");
-    expect(await listedV2("suspended", "host-susp.example")).toEqual([onDomain.actorUri]);
-    expect(await liftRows(onDomain.actorUri)).toBe(0);
-  });
-
   it("forgets the lift with the actor's own account Delete", async () => {
     const { known } = await knownUnderNoop("lift-del.example");
     await block("lift-del.example", "silence");
@@ -532,6 +519,145 @@ const liftRows = async (actorUri: string): Promise<number> => {
     .first();
   return z.object({ n: z.number() }).parse(row).n;
 };
+
+const VIEWER = "domain-limits-viewer@example.com";
+
+const viewerFetch = async (path: string, init?: RequestInit): Promise<Response> =>
+  SELF.fetch(`https://example.com${path}`, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...(await authHeaders(VIEWER)),
+    },
+  });
+
+/** `GET /api/v1/accounts/:id`: 404, or whether it renders `suspended`. */
+const accountById = async (actorUri: string): Promise<"NotFound" | "Suspended" | "Shown"> => {
+  const response = await SELF.fetch(
+    `https://example.com/api/v1/accounts/${RemoteAccountId.encode(actorUri)}`,
+  );
+  expect([200, 404]).toContain(response.status);
+  if (response.status === 404) {
+    return "NotFound";
+  }
+  const { suspended } = z
+    .object({ suspended: z.boolean().optional() })
+    .parse(await response.json());
+  return suspended === true ? "Suspended" : "Shown";
+};
+
+const accountStatusUris = async (actorUri: string): Promise<string[]> => {
+  const response = await viewerFetch(
+    `/api/v1/accounts/${RemoteAccountId.encode(actorUri)}/statuses`,
+  );
+  expect(response.status).toBe(200);
+  return z
+    .array(z.object({ uri: z.string() }))
+    .parse(await response.json())
+    .map((status) => status.uri);
+};
+
+const relationshipIds = async (actorUri: string): Promise<string[]> => {
+  const response = await viewerFetch(
+    `/api/v1/accounts/relationships?id[]=${RemoteAccountId.encode(actorUri)}`,
+  );
+  expect(response.status).toBe(200);
+  return z
+    .array(z.object({ id: z.string() }))
+    .parse(await response.json())
+    .map((relationship) => relationship.id);
+};
+
+const searchedAccountUris = async (q: string): Promise<string[]> => {
+  const response = await viewerFetch(
+    `/api/v2/search?type=accounts&resolve=true&q=${encodeURIComponent(q)}`,
+  );
+  expect(response.status).toBe(200);
+  return z
+    .object({ accounts: z.array(z.object({ url: z.string(), uri: z.string().optional() })) })
+    .parse(await response.json())
+    .accounts.map((account) => account.uri ?? account.url);
+};
+
+const notificationSenders = async (): Promise<string[]> => {
+  const response = await viewerFetch("/api/v1/notifications");
+  expect(response.status).toBe(200);
+  return z
+    .array(z.object({ account: z.object({ id: z.string() }) }))
+    .parse(await response.json())
+    .map((notification) => notification.account.id);
+};
+
+/** An actor on `domain` that posted a public note and liked the viewer's status. */
+const knownOnDomain = async (
+  domain: string,
+): Promise<Readonly<{ actor: Remote; note: string }>> => {
+  const actor = await remoteActor("plain", domain);
+  const note = `https://${domain}/notes/before`;
+  expect(await createNote(actor, note)).toBe(202);
+  const posted = await viewerFetch("/api/v1/statuses", {
+    method: "POST",
+    body: JSON.stringify({ status: `liked from ${domain}` }),
+  });
+  expect(posted.status).toBe(200);
+  const { uri } = z.object({ uri: z.string() }).parse(await posted.json());
+  expect(
+    await actor.send({ id: `${actor.actorUri}#like`, type: "Like", object: uri, to: [PUBLIC] }),
+  ).toBe(202);
+  expect(await accountStatusUris(actor.actorUri)).toEqual([note]);
+  expect(await notificationSenders()).toContain(RemoteAccountId.encode(actor.actorUri));
+  return { actor, note };
+};
+
+/**
+ * Mastodon v4.7.5 refuses an account on a domain a suspension covers only at
+ * `domain_not_allowed?`: `ResolveAccountService` (account lookup, search's
+ * `resolve`), the inbox and signed fetches. Elsewhere the account is a record
+ * like any other: `Api::V1::AccountsController#set_account` finds it by id
+ * and `REST::AccountSerializer` renders it `suspended: true`, with the
+ * statuses, favourites and notifications `BlockDomainService` deleted. Its
+ * per-account `unsuspend!` clears `suspended_at`, so it renders again, its
+ * domain still refused.
+ */
+describe("an actor on a host a suspension covers", () => {
+  it("renders suspended by id, with nothing it posted, and is refused by lookup", async () => {
+    const { actor, note } = await knownOnDomain("host-susp.example");
+    const id = RemoteAccountId.encode(actor.actorUri);
+
+    await block("host-susp.example", "suspend");
+
+    expect(await accountById(actor.actorUri)).toBe("Suspended");
+    expect(await relationshipIds(actor.actorUri)).toEqual([id]);
+    expect(await accountStatusUris(actor.actorUri)).toEqual([]);
+    expect(await publicRemoteUris()).not.toContain(note);
+    expect(await notificationSenders()).not.toContain(id);
+    expect(await lookup("plain@host-susp.example")).toBe("NotFound");
+    expect(await searchedAccountUris("plain@host-susp.example")).toEqual([]);
+    expect(await createNote(actor, "https://host-susp.example/notes/after")).toBe(403);
+  });
+
+  it("renders again once an admin unsuspends it, its domain still refused", async () => {
+    const { actor, note } = await knownOnDomain("host-lift.example");
+    const id = await block("host-lift.example", "suspend");
+
+    expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
+
+    expect(await liftRows(actor.actorUri)).toBe(1);
+    expect(await accountById(actor.actorUri)).toBe("Shown");
+    expect(await listedV2("suspended", "host-lift.example")).toEqual([]);
+    // `DeleteAccountService` deleted what the account had when suspended.
+    expect(await accountStatusUris(actor.actorUri)).toEqual([]);
+    expect(await publicRemoteUris()).not.toContain(note);
+    expect(await notificationSenders()).not.toContain(RemoteAccountId.encode(actor.actorUri));
+    expect(await lookup("plain@host-lift.example")).toBe("NotFound");
+    expect(await createNote(actor, "https://host-lift.example/notes/after")).toBe(403);
+
+    await editBlock(id, "suspend");
+
+    expect(await accountById(actor.actorUri)).toBe("Suspended");
+    expect(await adminAccount(actor.actorUri)).toMatchObject({ suspended: true });
+  });
+});
 
 describe("a silence or suspension made before its actors were recorded", () => {
   it("records the actors first seen by its last change, from the hourly sweep", async () => {

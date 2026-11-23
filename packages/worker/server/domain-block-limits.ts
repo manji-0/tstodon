@@ -13,8 +13,9 @@ import type { TypedSqlLike } from "./typed-sql";
  * The limitation an instance domain block keeps on the actors it found when
  * it was made (`remote_actor_domain_limits`, migration 0169), as Mastodon's
  * `BlockDomainService` stores `silenced_at` / `suspended_at` on each account
- * at or under the domain. SQL reads it through `remote_actor_domain_rules`;
- * the Worker's own per-actor checks read {@link listDomainSuspendedActors}.
+ * at or under the domain. SQL reads it through `remote_actor_domain_rules`,
+ * as does account presentation ({@link listDomainBlockLimits}); the inbox and
+ * signed fetches read {@link listDomainSuspendedActors}.
  */
 
 type RecordJob = Extract<OutboxJob, { kind: "RecordDomainBlockLimits" }>;

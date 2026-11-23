@@ -127,15 +127,30 @@ export const isFederatedHostRefused = (
   hostname: string,
   instanceDomain: string,
   options: FederatedHostOptions = {},
+): boolean =>
+  isDomainNotAllowed(hostname, options) ||
+  isBlockedFederatedHost(
+    hostname,
+    instanceDomain,
+    hostsExemptFromAddressChecks(options.allowHosts),
+  );
+
+/**
+ * Mastodon's `domain_not_allowed?`: the host is off a non-empty allow list
+ * (limited federation), or a suspension covers it.
+ */
+export const isDomainNotAllowed = (
+  hostname: string,
+  options: FederatedHostOptions = {},
 ): boolean => {
   const allowHosts = options.allowHosts;
   const host = urlHostname(hostname);
   if (allowHosts && allowHosts.size > 0 && (host === undefined || !namedIn(allowHosts, host))) {
     return true;
   }
-  return (
-    isBlockedFederatedHost(hostname, instanceDomain, hostsExemptFromAddressChecks(allowHosts)) ||
-    CoveredHosts.covers(options.blockedHosts ?? CoveredHosts.none, Hostname.ofAuthority(hostname))
+  return CoveredHosts.covers(
+    options.blockedHosts ?? CoveredHosts.none,
+    Hostname.ofAuthority(hostname),
   );
 };
 

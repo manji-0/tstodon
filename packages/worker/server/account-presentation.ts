@@ -6,15 +6,14 @@ import {
   type InstanceIdentity,
   type LocalAccount,
   LocalAccountModeration,
-  RemoteActor,
+  type RemoteActor,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { listAccountStandings, listLocalAccountModerations } from "./account-moderation-store";
 import type { AccountRef } from "./account-ref";
 import { findAccountsByIds } from "./account-store";
-import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
-import { listDomainSuspendedActors } from "./domain-block-limits";
+import { listDomainBlockLimits } from "./domain-block-limits";
 import { RemoteAccountId } from "./remote-account-id";
 import { listRemoteActorModerations } from "./remote-actor-moderation-store";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -39,14 +38,13 @@ const remotePresenter = async (
     return ok(() => AccountPresentation.ofLocal(AccountStanding.inGoodStanding));
   }
   const actorUris = actors.map((actor) => actor.actorUri);
-  const [allowHosts, blockedHosts, moderations, domainSuspended] = await Promise.all([
+  const [allowHosts, moderations, domainLimits] = await Promise.all([
     federationAllowHosts(env),
-    suspendedDomains(env.DB),
     listRemoteActorModerations(env.DB, actorUris),
-    listDomainSuspendedActors(env.DB, actorUris),
+    listDomainBlockLimits(env.DB, actorUris),
   ]);
-  if (domainSuspended.isErr()) {
-    return err(domainSuspended.error);
+  if (domainLimits.isErr()) {
+    return err(domainLimits.error);
   }
   return moderations.map(
     (byUri) => (actor) =>
@@ -55,8 +53,7 @@ const remotePresenter = async (
         federates:
           allowListAdmits(allowHosts, actor.domain) &&
           allowListAdmits(allowHosts, Hostname.ofUri(actor.actorUri) ?? actor.domain),
-        domainSuspended: RemoteActor.onAnyHost(actor, blockedHosts),
-        suspendedByDomainBlock: domainSuspended.value.has(actor.actorUri),
+        suspendedByDomainBlock: domainLimits.value.get(actor.actorUri)?.suspended === true,
         standing: byUri.get(actor.actorUri)?.standing ?? AccountStanding.inGoodStanding,
       }),
   );
