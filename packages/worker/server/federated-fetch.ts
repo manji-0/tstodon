@@ -51,8 +51,11 @@ const inIpv4Block = (address: number, [network, prefix]: readonly [string, numbe
  */
 const urlHostname = (hostname: string): string | undefined => {
   const host = hostname.trim().toLowerCase().replace(/\.+$/, "");
-  const literal = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  return URL.parse(`http://${literal}/`)?.hostname.replace(/\.+$/, "");
+  // An authority with a port (an account domain such as `127.0.0.1:8791`)
+  // parses as is; a colon that does not parse is an unbracketed IPv6 literal.
+  const parsed =
+    URL.parse(`http://${host}/`) ?? (host.startsWith("[") ? null : URL.parse(`http://[${host}]/`));
+  return parsed?.hostname.replace(/\.+$/, "");
 };
 
 /** True when the list names the host; an IPv6 literal may be listed without brackets. */
@@ -127,15 +130,30 @@ export const isFederatedHostRefused = (
   hostname: string,
   instanceDomain: string,
   options: FederatedHostOptions = {},
+): boolean =>
+  isDomainNotAllowed(hostname, options) ||
+  isBlockedFederatedHost(
+    hostname,
+    instanceDomain,
+    hostsExemptFromAddressChecks(options.allowHosts),
+  );
+
+/**
+ * Mastodon's `domain_not_allowed?`: the host is off a non-empty allow list
+ * (limited federation), or a suspension covers it.
+ */
+export const isDomainNotAllowed = (
+  hostname: string,
+  options: FederatedHostOptions = {},
 ): boolean => {
   const allowHosts = options.allowHosts;
   const host = urlHostname(hostname);
   if (allowHosts && allowHosts.size > 0 && (host === undefined || !namedIn(allowHosts, host))) {
     return true;
   }
-  return (
-    isBlockedFederatedHost(hostname, instanceDomain, hostsExemptFromAddressChecks(allowHosts)) ||
-    CoveredHosts.covers(options.blockedHosts ?? CoveredHosts.none, Hostname.ofAuthority(hostname))
+  return CoveredHosts.covers(
+    options.blockedHosts ?? CoveredHosts.none,
+    Hostname.ofAuthority(hostname),
   );
 };
 

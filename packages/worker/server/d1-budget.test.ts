@@ -14,6 +14,7 @@ import {
 import { drainHeld, holdQueue, QUEUE_BATCH, QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
+import { RemoteAccountId } from "./remote-account-id";
 import { insertScheduledStatus } from "./scheduled-status-store";
 import { HOME_HORIZON_STEPS, homeTimelineDocuments } from "./timeline-documents";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -396,6 +397,48 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       const outbox = await SELF.fetch(`https://example.com${base}/outbox`, ACTIVITY_JSON);
       // Direct statuses are not counted.
       expect(await outbox.json()).toMatchObject({ totalItems: 25 + 3 * NOISE });
+    },
+  );
+
+  it(
+    "keeps rendering remote accounts independent of how many domain blocks there are",
+    { timeout: 120_000 },
+    async () => {
+      const reader = await signedInAccount("budget-blocks-reader@example.com");
+      const token = await accessTokenFor(reader?.id);
+      const actors = 40;
+      const series = (n: number) =>
+        `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${n})`;
+      await env.DB.prepare(
+        `${series(actors)} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+         SELECT printf('https://open%d.budget-blocks.example/users/a', n), 'a',
+                printf('open%d.budget-blocks.example', n), 'https://budget-blocks.example/inbox',
+                printf('https://open%d.budget-blocks.example/users/a#main-key', n), 'x',
+                '2026-11-01T00:00:00.000Z'
+         FROM series`,
+      ).run();
+      const ids = Array.from({ length: actors }, (_, i) =>
+        RemoteAccountId.encode(`https://open${i + 1}.budget-blocks.example/users/a`),
+      );
+      const path = `/api/v1/accounts?${ids.map((id) => `id[]=${encodeURIComponent(id)}`).join("&")}`;
+      patchD1();
+      const before = await get(token, path);
+      await env.DB.prepare(
+        `${series(NOISE)} INSERT INTO domain_blocks (id, domain, severity)
+         SELECT printf('budget-block-%d', n), printf('blocked%d.example', n), 'suspend' FROM series`,
+      ).run();
+      try {
+        const growth = (await get(token, path)) - before;
+        // Each account's hosts seek the blocks by their parent domains' keys,
+        // so the blocks on other domains are not read; joining each block to
+        // the accounts' key ranges read about 4 × accounts × blocks rows.
+        expect(
+          growth,
+          `${actors} accounts read ${growth} more rows after ${NOISE} blocks`,
+        ).toBeLessThan(actors);
+      } finally {
+        await env.DB.prepare("DELETE FROM domain_blocks WHERE id LIKE 'budget-block-%'").run();
+      }
     },
   );
 });

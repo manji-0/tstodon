@@ -384,7 +384,9 @@ describe("an account that moved to an unavailable account", () => {
     expectStripped(moved, await instanceThumbnail());
   });
 
-  it("leaves out a target on a suspended domain", async () => {
+  // Mastodon's `BlockDomainService` suspends the target, which renders as any
+  // suspended account does.
+  it("renders a target on a suspended domain stripped", async () => {
     const source = await cacheActor("mover-hidden", "moved-from-hidden.example");
     const target = await cacheActor("hidden", "moved-to-hidden.example");
     expect((await setRemoteActorMovedTo(env.DB, source.actorUri, target.actorUri)).isOk()).toBe(
@@ -401,6 +403,8 @@ describe("an account that moved to an unavailable account", () => {
     });
     expect(blocked.status).toBe(200);
 
-    expect(await movedOf("mover-hidden@moved-from-hidden.example")).toBeUndefined();
+    const moved = await movedOf("mover-hidden@moved-from-hidden.example");
+    expect(moved?.acct).toBe("hidden@moved-to-hidden.example");
+    expectStripped(moved, await instanceThumbnail());
   });
 });
