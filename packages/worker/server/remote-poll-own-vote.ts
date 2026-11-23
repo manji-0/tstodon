@@ -12,6 +12,7 @@ import { nowIso } from "./clock";
 import { enqueueTargetedActivity } from "./delivery";
 import { isActorDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
+import { scheduleFinalPollCheck } from "./poll-expiry";
 import { pollVoteActivity } from "./poll-vote-activity";
 import { remotePollJson } from "./poll-document";
 import { findRemoteActorByUri } from "./remote-actor-store";
@@ -120,6 +121,9 @@ export const voteOnRemotePoll = async (
         message: "message" in enqueued.error ? enqueued.error.message : enqueued.error.kind,
       });
     }
+  }
+  if (poll.ends.kind === "At") {
+    await scheduleFinalPollCheck(env, poll.ends.at);
   }
   const after = await findRemotePollVotes(env.DB, voter.id, [status]);
   return ok(remotePollJson(status.id, poll, after.get(status.id), status.emojis));

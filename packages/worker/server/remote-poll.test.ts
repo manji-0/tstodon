@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -9,6 +9,8 @@ import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
+
+const QUEUED = { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
 
 const json = async (path: string, init?: RequestInit) => {
   const response = await SELF.fetch(`https://example.com${path}`, init);
@@ -532,6 +534,22 @@ describe("remote polls", () => {
       await runExpiryJob();
       expect(await pollNotifications(voter)).toMatchObject([{ type: "poll", status: { id } }]);
       expect(await pollNotifications(bystander)).toEqual([]);
+    });
+
+    it("queues the end five minutes after the poll ends, as VoteService#queue_final_poll_check!", async () => {
+      const author = await remoteActor("poll-expiry-queued");
+      const endsAt = new Date(Date.now() + 3_600_000).toISOString();
+      const id = await create(author, question(author, "expiry-queued", { endTime: endsAt }));
+      const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+      onTestFinished(() => send.mockRestore());
+
+      expect((await vote("poll-expiry-queued@example.com", id)).status).toBe(200);
+
+      const at = new Date(Date.parse(endsAt) + 300_000).toISOString();
+      const queued = JSON.stringify({ kind: "AwaitPollEnd", at });
+      const [, options] = send.mock.calls.find(([job]) => JSON.stringify(job) === queued) ?? [];
+      expect(options?.delaySeconds).toBeGreaterThan(3_890);
+      expect(options?.delaySeconds).toBeLessThanOrEqual(3_900);
     });
 
     it("does not announce a poll nobody voted on", async () => {

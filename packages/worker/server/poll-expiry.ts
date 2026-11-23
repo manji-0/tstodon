@@ -1,5 +1,5 @@
 import { assertNever } from "@tstodon/core";
-import type { LocalStatus } from "@tstodon/domain";
+import type { LocalStatus, OutboxJob } from "@tstodon/domain";
 import type { Result } from "neverthrow";
 import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
@@ -166,6 +166,56 @@ export const hasExpiredPollWork = async (env: Env): Promise<boolean> => {
     listExpiredUnnotifiedPolls(env.DB, now, 1),
   ]);
   return [remote, local, expired].some((rows) => rows.isErr() || rows.value.length > 0);
+};
+
+/** The longest delay a Queues message takes. */
+const MAX_QUEUE_DELAY_SECONDS = 12 * 60 * 60;
+
+/**
+ * Mastodon's wait after the end of a poll it did not just publish (a vote,
+ * an edit), so the final counts of a remote poll arrive first.
+ */
+const POLL_END_GRACE_MS = 5 * 60_000;
+
+/**
+ * Queue the `AwaitPollEnd` job that runs `ProcessExpiredPolls` at `at`, as
+ * Mastodon's `PollExpirationNotifyWorker.perform_at`. Each job sweeps every
+ * ended poll, so one that a later edit made early or late does no harm, and
+ * the hourly cron still sweeps what a lost message leaves.
+ */
+export const schedulePollEnd = async (env: Env, at: string): Promise<void> => {
+  const delaySeconds = Math.min(
+    Math.max(Math.ceil((Date.parse(at) - Date.now()) / 1000), 0),
+    MAX_QUEUE_DELAY_SECONDS,
+  );
+  try {
+    await env.OUTBOX_PROCESS_QUEUE.send(
+      { kind: "AwaitPollEnd", at },
+      delaySeconds > 0 ? { delaySeconds } : undefined,
+    );
+  } catch {
+    console.error(JSON.stringify({ kind: "PollEndNotQueued", at }));
+  }
+};
+
+/**
+ * {@link schedulePollEnd} five minutes past `endsAt`, as Mastodon schedules
+ * the check after a vote (`VoteService#queue_final_poll_check!`) or an edit
+ * (`UpdateStatusService#queue_poll_notifications!`).
+ */
+export const scheduleFinalPollCheck = (env: Env, endsAt: string): Promise<void> =>
+  schedulePollEnd(env, new Date(Date.parse(endsAt) + POLL_END_GRACE_MS).toISOString());
+
+/** The `AwaitPollEnd` job: queued again until `at`, then the expired-polls run. */
+export const processAwaitPollEnd = async (
+  env: Env,
+  job: Extract<OutboxJob, { kind: "AwaitPollEnd" }>,
+): Promise<"ok" | "retry"> => {
+  if (Date.parse(job.at) > Date.now()) {
+    await schedulePollEnd(env, job.at);
+    return "ok";
+  }
+  return processExpiredPolls(env);
 };
 
 /**

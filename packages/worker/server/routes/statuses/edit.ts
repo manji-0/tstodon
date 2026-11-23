@@ -35,6 +35,7 @@ import {
   requireUser,
 } from "../../http";
 import { mastodonStatus } from "../../local-status-documents";
+import { scheduleFinalPollCheck } from "../../poll-expiry";
 import {
   deletePoll,
   findPollByStatusId,
@@ -207,31 +208,34 @@ const resolvePollRevision = async (
   );
 };
 
+/** Write the revision; answers when the edited poll ends, or undefined without one. */
 const applyPollRevision = async (
   db: D1Database,
   statusId: string,
   revision: PollRevision,
-): Promise<Result<void, ApiRefusal>> => {
+): Promise<Result<string | undefined, ApiRefusal>> => {
   const applied = await (async () => {
     switch (revision.kind) {
       case "Unchanged":
         return ok(undefined);
       case "Removed":
-        return deletePoll(db, revision.pollId);
-      case "Added":
+        return (await deletePoll(db, revision.pollId)).map(() => undefined);
+      case "Added": {
+        const expiresAt = expiresAfter(revision.poll.expiresIn);
         return (
           await insertPoll(db, {
             statusId,
             multiple: revision.poll.multiple,
-            expiresAt: expiresAfter(revision.poll.expiresIn),
+            expiresAt,
             options: revision.poll.options,
             hideTotals: revision.poll.hideTotals,
           })
-        ).map(() => undefined);
+        ).map(() => expiresAt);
+      }
       case "Renewed":
-        return renewPoll(db, revision);
+        return (await renewPoll(db, revision)).map(() => revision.expiresAt);
       case "Replaced":
-        return replacePollQuestion(db, revision);
+        return (await replacePollQuestion(db, revision)).map(() => revision.expiresAt);
       default:
         return assertNever(revision);
     }
@@ -448,6 +452,9 @@ const editNote = async (
   const pollApplied = await applyPollRevision(env.DB, existing.id, pollRevision.value);
   if (pollApplied.isErr()) {
     return err(pollApplied.error);
+  }
+  if (pollApplied.value !== undefined) {
+    await scheduleFinalPollCheck(env, pollApplied.value);
   }
   if (policy !== undefined) {
     const stored = await setStatusQuotePolicy(env.DB, existing.id, policy);

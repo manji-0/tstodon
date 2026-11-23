@@ -31,6 +31,15 @@ const DeliverTargetSchema = z.object({
   inboxUrl: z.url(),
 });
 const ProcessExpiredPollsSchema = unitKind("ProcessExpiredPolls");
+/**
+ * Run `ProcessExpiredPolls` at `at`, when a poll ends, as Mastodon's
+ * `PollExpirationNotifyWorker.perform_at`. A Queues delay is at most 12
+ * hours, so a job queued for later queues itself again until `at`.
+ */
+const AwaitPollEndSchema = z.object({
+  kind: z.literal("AwaitPollEnd"),
+  at: z.iso.datetime(),
+});
 /** Refresh previews whose cache entry has aged out (cron driven). */
 const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Index the tags of remote statuses written before the tag index (cron). */
@@ -582,6 +591,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandForwardSchema,
   DeliverTargetSchema,
   ProcessExpiredPollsSchema,
+  AwaitPollEndSchema,
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
   BackfillLocalNoteTagsSchema,

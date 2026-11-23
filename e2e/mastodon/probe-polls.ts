@@ -168,6 +168,31 @@ export const pollScenarios = async ({ stamp, mona, carol }: Cast): Promise<void>
     },
   );
 
+  // `PollsController#refresh_poll` fetches the note on behalf of the reader.
+  // Mastodon shows a followers-only note only to a signer who follows its
+  // author, so a fetch signed by the instance actor would leave it stale.
+  await step(
+    "a follower reading a followers-only poll fetches its tallies: Mastodon → tstodon",
+    async () => {
+      const sent = await post(mona, {
+        status: `followers-only poll ${stamp}`,
+        visibility: "private",
+        poll: { options: ["here", "there"], expires_in: 3600 },
+      });
+      const copy = await onHome(alice, sent.uri);
+      // New tallies without an `Update`: only a fetch of the note shows them.
+      mastodonRails(`
+        poll = Status.find(${JSON.stringify(sent.id)}).poll
+        poll.update_columns(cached_tallies: [2, 1], votes_count: 3, voters_count: 3)
+        poll.status.touch
+      `);
+      const read = await call(alice, `/api/v1/polls/${copy.poll?.id ?? ""}`, Poll);
+      if (tallies(read) !== "2,1") {
+        throw new StepFailure(`the follower's server reads ${tallies(read)}, not 2,1`);
+      }
+    },
+  );
+
   await step("a poll that ends is closed on the voter's server: Mastodon → tstodon", async () => {
     const sent = await post(mona, {
       status: `ending ${stamp}`,

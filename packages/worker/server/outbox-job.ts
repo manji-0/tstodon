@@ -7,7 +7,7 @@ import {
 import { ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { ensureOutboxTarget, findOutboundActivity } from "./outbox-store";
-import { processExpiredPolls } from "./poll-expiry";
+import { processAwaitPollEnd, processExpiredPolls } from "./poll-expiry";
 import { measureJobPage } from "./metrics";
 import { processLinkCardJob, refreshStaleLinkCards } from "./link-card";
 import {
@@ -205,6 +205,8 @@ export const processOutboxJob = async (
   switch (job.kind) {
     case "ProcessExpiredPolls":
       return processExpiredPolls(env);
+    case "AwaitPollEnd":
+      return processAwaitPollEnd(env, job);
     case "RefreshLinkCards":
       await refreshStaleLinkCards(env);
       return "ok";

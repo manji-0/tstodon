@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { OutboxJob } from "@tstodon/domain";
@@ -643,5 +643,76 @@ describe("who hears a local poll's Update", () => {
     }
 
     expect(await updateTargets(poll)).toEqual([`${kept.actorUri}/inbox`]);
+  });
+});
+
+describe("the end of a poll, on time", () => {
+  const QUEUED = { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
+
+  const spyQueue = () => {
+    const send = vi.spyOn(env.OUTBOX_PROCESS_QUEUE, "send").mockResolvedValue(QUEUED);
+    onTestFinished(() => send.mockRestore());
+    return send;
+  };
+
+  /** The delay of the `AwaitPollEnd` job queued for `at`, or undefined when none was. */
+  const queuedDelay = (send: ReturnType<typeof spyQueue>, at: string) => {
+    const queued = JSON.stringify({ kind: "AwaitPollEnd", at });
+    const call = send.mock.calls.find(([job]) => JSON.stringify(job) === queued);
+    return call === undefined ? undefined : (call[1]?.delaySeconds ?? 0);
+  };
+
+  const expiresAt = async (pollId: string): Promise<string> => {
+    const row = await env.DB.prepare("SELECT expires_at FROM polls WHERE id = ?")
+      .bind(pollId)
+      .first();
+    return read(z.object({ expires_at: z.string() }), row).expires_at;
+  };
+
+  it("queues a new poll's end for when it ends, as PostStatusService schedules PollExpirationNotifyWorker", async () => {
+    const send = spyQueue();
+    const poll = await createPoll("poll-end-queued@example.com");
+
+    const delay = queuedDelay(send, await expiresAt(poll.pollId));
+    expect(delay).toBeGreaterThan(3_590);
+    expect(delay).toBeLessThanOrEqual(3_600);
+  });
+
+  it("queues an edited poll's end five minutes after it, as UpdateStatusService", async () => {
+    const email = "poll-end-edited@example.com";
+    const poll = await createPoll(email);
+    const send = spyQueue();
+    const edited = await json(`/api/v1/statuses/${poll.statusId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...(await authHeaders(email)) },
+      body: JSON.stringify({ status: "poll", poll: { options: ["yes", "no"], expires_in: 600 } }),
+    });
+    expect(edited.status).toBe(200);
+
+    const at = new Date(Date.parse(await expiresAt(poll.pollId)) + 300_000).toISOString();
+    const delay = queuedDelay(send, at);
+    expect(delay).toBeGreaterThan(890);
+    expect(delay).toBeLessThanOrEqual(900);
+  });
+
+  it("queues itself again while the end is further away than one Queues delay", async () => {
+    const send = spyQueue();
+    const at = new Date(Date.now() + 30 * 86_400_000).toISOString();
+
+    await runJob(env, { kind: "AwaitPollEnd", at });
+
+    expect(queuedDelay(send, at)).toBe(12 * 60 * 60);
+  });
+
+  it("announces the poll once its end is reached", async () => {
+    const email = "poll-end-reached@example.com";
+    const poll = await createPoll(email);
+    await endPoll(poll.pollId);
+
+    await runJob(env, { kind: "AwaitPollEnd", at: "2020-01-01T00:00:00.000Z" });
+
+    expect(await pollNotifications(email)).toMatchObject([
+      { type: "poll", status: { id: poll.statusId } },
+    ]);
   });
 });

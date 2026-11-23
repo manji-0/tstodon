@@ -59,8 +59,9 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
     ) {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
-    const shown =
-      viewerId === undefined ? ok(remote.value) : await refreshRemotePoll(c.env, remote.value);
+    const shown = user.isOk()
+      ? await refreshRemotePoll(c.env, remote.value, user.value)
+      : ok(remote.value);
     if (shown.isErr()) {
       return jsonRepositoryError(c, shown.error.message);
     }
