@@ -204,3 +204,33 @@ describe("the profile fields of a remote account", () => {
     expect((await account(author.actorUri)).fields).toEqual([]);
   });
 });
+
+describe("the discoverable and indexable flags of a remote account", () => {
+  it("shows the flags the actor document sets, as Mastodon's ProcessAccountService", async () => {
+    const author = await remoteActor("flags-profile");
+    const unset = await account(author.actorUri);
+    expect([unset.discoverable, unset.indexable]).toEqual([false, false]);
+
+    await updateProfile(author, { discoverable: true, indexable: true });
+    const opted = await account(author.actorUri);
+    expect([opted.discoverable, opted.indexable]).toEqual([true, true]);
+
+    await updateProfile(author, { discoverable: false });
+    const withdrawn = await account(author.actorUri);
+    expect([withdrawn.discoverable, withdrawn.indexable]).toEqual([false, false]);
+  });
+
+  // Mastodon stores `@json['discoverable'] || false` in a boolean column,
+  // which Rails casts: "false", "0", "off" and 0 are false, another value true.
+  it("reads a flag that is not a boolean as Rails casts it, and keeps the actor", async () => {
+    const author = await remoteActor("flags-odd");
+    await updateProfile(author, { name: "Odd flags", discoverable: "yes", indexable: "false" });
+    const shown = await account(author.actorUri);
+    expect(shown.display_name).toBe("Odd flags");
+    expect([shown.discoverable, shown.indexable]).toEqual([true, false]);
+
+    await updateProfile(author, { discoverable: 0, indexable: null });
+    const cast = await account(author.actorUri);
+    expect([cast.discoverable, cast.indexable]).toEqual([false, false]);
+  });
+});

@@ -179,6 +179,40 @@ describe("a remote account's profile field links", () => {
     expect(pages.fetched.some((entry) => entry.includes("carol-http"))).toBe(false);
   });
 
+  // Mastodon's `account_field_value_format`: a verified remote field is
+  // `TextFormatter.shortened_link` of its link, an unverified one its HTML.
+  it("shows a verified field as Mastodon rebuilds its link, and another as sent", async () => {
+    const profileUrl = "https://links-rebuilt.example/@gil";
+    const site = "https://gil-site.example/a/very/long/path/that/is/cut";
+    const other = '<a href="https://gil-none.example/" class="u-url">https://gil-none.example/</a>';
+    await remoteActor("gil", "links-rebuilt.example", {
+      profileUrl,
+      fields: [
+        { name: "site", value: `<a href="${site}" class="u-url" title="mine">${site}</a>` },
+        { name: "other", value: other },
+      ],
+    });
+    servePages({
+      [site]: { html: linkingTo(profileUrl) },
+      "https://gil-none.example/": { html: "<p>no links</p>" },
+    });
+    const actorUri = "https://links-rebuilt.example/users/gil";
+    expect(await verifyJob({ kind: "RemoteActor", actorUri })).toBe("ok");
+
+    const shown = await SELF.fetch(
+      `https://example.com/api/v1/accounts/${RemoteAccountId.encode(actorUri)}`,
+    );
+    const fields = expectContract(ApiAccount, await shown.json()).fields;
+    expect(fields[0]?.verified_at).not.toBeNull();
+    expect(fields[0]?.value).toBe(
+      `<a href="${site}" target="_blank" rel="nofollow noopener" translate="no"><span class="invisible">https://</span><span class="ellipsis">gil-site.example/a/very/long/p</span><span class="invisible">ath/that/is/cut</span></a>`,
+    );
+    expect(fields[1]?.verified_at).toBeNull();
+    expect(fields[1]?.value).toBe(
+      '<a href="https://gil-none.example/" class="u-url" rel="nofollow noopener" target="_blank">https://gil-none.example/</a>',
+    );
+  });
+
   it("does not take a url on another host as the profile to link back to", async () => {
     const victim = "https://victim.example/@alice";
     const author = await remoteActor("mallory", "links-spoof.example", {

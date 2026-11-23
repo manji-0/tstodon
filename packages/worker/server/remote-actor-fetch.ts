@@ -109,6 +109,26 @@ export const decodeEntities = (text: string): string =>
     return ENTITIES[entity.toLowerCase()] ?? match;
   });
 
+/** What Rails' `ActiveModel::Type::Boolean` casts to false; `""` casts to null, any other value to true. */
+const RAILS_FALSE: ReadonlySet<unknown> = new Set([
+  false,
+  0,
+  "0",
+  "f",
+  "F",
+  "false",
+  "FALSE",
+  "off",
+  "OFF",
+]);
+
+/**
+ * An actor's `discoverable` or `indexable`, as Mastodon's
+ * `ProcessAccountService` stores `@json[flag] || false` in a boolean column.
+ */
+const actorFlag = (value: unknown): boolean =>
+  value !== undefined && value !== null && value !== "" && !RAILS_FALSE.has(value);
+
 const actorProfile = (
   actorUri: string,
   document: Readonly<{
@@ -120,6 +140,8 @@ const actorProfile = (
     icon?: unknown;
     image?: unknown;
     manuallyApprovesFollowers?: boolean | null | undefined;
+    discoverable?: unknown;
+    indexable?: unknown;
     published?: string | null | undefined;
   }>,
 ): RemoteActorProfile => {
@@ -136,6 +158,8 @@ const actorProfile = (
       profileUrl !== null && RemoteActor.sameHost(profileUrl, actorUri) ? profileUrl : null,
     locked: document.manuallyApprovesFollowers === true,
     bot: document.type === "Service" || document.type === "Application",
+    discoverable: actorFlag(document.discoverable),
+    indexable: actorFlag(document.indexable),
     publishedAt: published.isOk() ? published.value : null,
     emojis: [
       ...actorEmojis(document, [

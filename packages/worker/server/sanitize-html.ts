@@ -317,6 +317,20 @@ const safeAttributes = (element: string, source: string): string => {
   return element === "a" ? `${out} rel="nofollow noopener" target="_blank"` : out;
 };
 
+/** The `href` of the `<a>` an HTML fragment starts with, its entities read; else undefined. */
+export const leadingLinkHref = (html: string): string | undefined => {
+  const tag = tagAt(html, 0, { places: undefined });
+  if (tag === undefined || tag.closing || tag.name.toLowerCase() !== "a") {
+    return undefined;
+  }
+  for (const [, name = "", double, single, bare] of tag.attributes.matchAll(ATTRIBUTE)) {
+    if (name.toLowerCase() === "href") {
+      return decodeAttribute(double ?? single ?? bare ?? "");
+    }
+  }
+  return undefined;
+};
+
 export const sanitizeRemoteHtml = (html: string): string => {
   let out = "";
   let text = "";

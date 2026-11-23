@@ -125,6 +125,28 @@ export const profileScenarios = async ({ stamp }: Cast): Promise<void> => {
     );
   });
 
+  await step("a tstodon field's mention is a link on Mastodon", async () => {
+    const { url } = await call(
+      alice,
+      `/api/v1/accounts/${(await resolveAccount(alice, mona)).id}`,
+      Account.extend({ url: z.string() }),
+    );
+    await update(alice, (form) => {
+      form.set("fields_attributes[0][name]", "Friend");
+      form.set("fields_attributes[0][value]", mona.acct);
+    });
+    await remoteBecomes(
+      mona,
+      alice,
+      "Mastodon links the mention",
+      (account) => {
+        const value = account.fields[0]?.value ?? "";
+        return value.includes('class="u-url mention"') && value.includes(`href="${url}"`);
+      },
+      (account) => account.fields,
+    );
+  });
+
   await bothWays("an avatar and a header reach the other server", alice, mona, async (from, to) => {
     const before = await remoteBecomes(
       to,

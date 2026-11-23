@@ -374,6 +374,8 @@ export * from "./sql/findRemoteActorKey";
 
 export * from "./sql/findRemoteActorModeration";
 
+export * from "./sql/findRemoteActorsByHandlesJson";
+
 export * from "./sql/findRemoteActorsByUris";
 
 export * from "./sql/findRemoteBlock";
