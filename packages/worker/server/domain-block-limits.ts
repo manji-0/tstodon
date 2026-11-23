@@ -14,7 +14,10 @@ import type { TypedSqlLike } from "./typed-sql";
  * The limitation an instance domain block keeps on the actors it found when
  * it was made (`remote_actor_domain_limits`, migration 0169), as Mastodon's
  * `BlockDomainService` stores `silenced_at` / `suspended_at` on each account
- * at or under the domain. SQL reads it through `remote_actor_domain_rules`,
+ * whose account domain is at or under the domain, and on the actors first
+ * cached while it is their account domain's most specific rule (migration
+ * 0177's trigger), as `ProcessAccountService#create_account` does. SQL reads
+ * it through `remote_actor_domain_rules`,
  * as does account presentation ({@link listDomainBlockLimits}); the inbox and
  * signed fetches read {@link listDomainSuspendedActors}.
  */
@@ -22,28 +25,22 @@ import type { TypedSqlLike } from "./typed-sql";
 type RecordJob = Extract<OutboxJob, { kind: "RecordDomainBlockLimits" }>;
 type Cursor = RecordJob["cursor"];
 
-/** Where a block's recording starts: the actors' account domains, from the first key. */
-const START: Cursor = { host: "AccountDomain", afterKey: "", afterRowId: 0 };
+/** Where a block's recording starts: the first key. */
+const START: Cursor = { afterKey: "", afterRowId: 0 };
 
 /** Rows one page records or deletes. */
 const PAGE = 500;
 
-const KEY_COLUMNS = {
-  AccountDomain: "host_key",
-  UriHost: "uri_host_key",
-} as const satisfies Record<Cursor["host"], string>;
-
 /**
- * The next page of actors whose `host` key is in the range `[?2, ?3)` after
- * the cursor `(?4, ?5)`, `?6` of them, in the order the key's index holds
- * them (key, then row id), so a page reads its own rows and no earlier ones.
+ * The next page of actors whose account domain's key is in the range
+ * `[?2, ?3)` after the cursor `(?4, ?5)`, `?6` of them, in the order the key's
+ * index holds them (key, then row id), so a page reads its own rows and no
+ * earlier ones. The actor URI's host is not read: Mastodon's
+ * `Account.by_domain_and_subdomains` matches the account domain only.
  */
-export const recordPageSql = (host: Cursor["host"]): string => {
-  const key = KEY_COLUMNS[host];
-  return `SELECT rowid AS row_id, ${key} AS key, actor_uri, created_at FROM remote_actors
-    WHERE ${key} >= ?2 AND ${key} < ?3 AND (${key}, rowid) > (?4, ?5)
-    ORDER BY ${key}, rowid LIMIT ?6`;
-};
+export const RECORD_PAGE_SQL = `SELECT rowid AS row_id, host_key AS key, actor_uri, created_at FROM remote_actors
+    WHERE host_key >= ?2 AND host_key < ?3 AND (host_key, rowid) > (?4, ?5)
+    ORDER BY host_key, rowid LIMIT ?6`;
 
 const PageRow = z.object({ row_id: z.number(), key: z.string(), actor_uri: z.string() });
 
@@ -54,9 +51,7 @@ const forgetBlockState = (db: D1Database, blockId: string): D1PreparedStatement[
 ];
 
 const isStart = (cursor: Cursor): boolean =>
-  cursor.host === START.host &&
-  cursor.afterKey === START.afterKey &&
-  cursor.afterRowId === START.afterRowId;
+  cursor.afterKey === START.afterKey && cursor.afterRowId === START.afterRowId;
 
 /**
  * Record the actors of the page after `cursor` under block `blockId`, unless
@@ -69,8 +64,10 @@ const isStart = (cursor: Cursor): boolean =>
  * an `Apply` run forgets the admin's lifts of the block and a pending
  * backfill in the same batch, so a failure is retried with the page. A
  * `Backfill` run records only the actors first seen by its `seenBy`, and
- * each of its pages stamps the backfill's claim. Resolves to the cursor
- * after the page, `undefined` once both hosts are read.
+ * each of its pages stamps the backfill's claim; an actor first seen
+ * later was recorded when cached (migration 0177). A legacy `UriHost`
+ * cursor reads nothing. Resolves to the cursor after the page, `undefined`
+ * once every actor is read.
  */
 const recordPage = (
   db: D1Database,
@@ -80,8 +77,19 @@ const recordPage = (
   run: RecordJob["run"],
 ): Promise<Result<Cursor | undefined, RepositoryError>> =>
   runD1(async () => {
+    const finish = async (): Promise<undefined> => {
+      if (run.kind === "Backfill") {
+        await db
+          .prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
+          .bind(blockId)
+          .run();
+      }
+      return undefined;
+    };
+    if (cursor.host === "UriHost") {
+      return finish();
+    }
     const { from, to } = hostKeyRange(domain);
-    const page = recordPageSql(cursor.host);
     const binds = [blockId, from, to, cursor.afterKey, cursor.afterRowId, PAGE];
     const before =
       run.kind === "Apply"
@@ -100,7 +108,7 @@ const recordPage = (
       db
         .prepare(
           `INSERT OR IGNORE INTO remote_actor_domain_limits (domain_block_id, actor_uri)
-           SELECT ?1, p.actor_uri FROM (${page}) p
+           SELECT ?1, p.actor_uri FROM (${RECORD_PAGE_SQL}) p
            WHERE EXISTS (
              SELECT 1 FROM domain_blocks WHERE id = ?1 AND severity IN ('silence', 'suspend')
            ) AND (?7 IS NULL OR julianday(p.created_at) <= julianday(?7))`,
@@ -109,7 +117,7 @@ const recordPage = (
       db
         .prepare(
           `INSERT OR REPLACE INTO remote_actor_content_purges (actor_uri, before)
-           SELECT p.actor_uri, ?7 FROM (${page}) p
+           SELECT p.actor_uri, ?7 FROM (${RECORD_PAGE_SQL}) p
            WHERE EXISTS (SELECT 1 FROM domain_blocks WHERE id = ?1 AND severity = 'suspend')
              AND EXISTS (
                SELECT 1 FROM remote_actor_domain_limits l
@@ -125,23 +133,14 @@ const recordPage = (
              )`,
         )
         .bind(...binds, nowIso()),
-      db.prepare(page).bind(...binds),
+      db.prepare(RECORD_PAGE_SQL).bind(...binds),
     ]);
     const rows = parseRows(PageRow, results.at(-1)?.results);
     const last = rows.at(-1);
     if (last !== undefined && rows.length === PAGE) {
-      return { host: cursor.host, afterKey: last.key, afterRowId: last.row_id };
+      return { afterKey: last.key, afterRowId: last.row_id };
     }
-    if (cursor.host === "AccountDomain") {
-      return { ...START, host: "UriHost" };
-    }
-    if (run.kind === "Backfill") {
-      await db
-        .prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
-        .bind(blockId)
-        .run();
-    }
-    return undefined;
+    return finish();
   });
 
 /** Delete the next page of rows a lifted block left, with its lifts and backfill. */
@@ -200,7 +199,7 @@ export const processRecordDomainBlockLimitsJob = (env: Env, job: RecordJob) =>
     } else {
       await startSuspendedActorContentPurge(env);
     }
-    return { outcome: "ok", size: -1, chained: next.value !== undefined, step: job.cursor.host };
+    return { outcome: "ok", size: -1, chained: next.value !== undefined, step: "Record" };
   });
 
 const applyJob = (domainBlockId: string): RecordJob => ({
