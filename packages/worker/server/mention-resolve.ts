@@ -8,7 +8,7 @@ import { listStatusMentions } from "./mention-store";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { mentionUsernames, remoteMentionHandles, type PostMention } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
-import { findRemoteActorsByUris } from "./remote-actor-store";
+import { findRemoteActorsByHandles, findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
 
@@ -122,6 +122,41 @@ export const mentionLinks = (
     url: RemoteActor.profileUrl(actor),
   })),
 ];
+
+/**
+ * What `formatFieldValue` links the mentions of profile field values to: the
+ * local accounts they name, and the remote actors cached under the handle
+ * as written, as Mastodon's `EntityCache#mention` finds an account for a
+ * field. Nothing is fetched, and a failed read links none.
+ */
+export const knownFieldMentions = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  values: ReadonlyArray<string>,
+): Promise<ReadonlyArray<PostMention>> => {
+  const [locals, remotes] = await Promise.all([
+    findAccountsByUsernames(
+      db,
+      values.flatMap((value) => mentionUsernames(value, identity.domain)),
+    ),
+    findRemoteActorsByHandles(
+      db,
+      values.flatMap((value) => remoteMentionHandles(value, identity.domain)),
+    ),
+  ]);
+  return [
+    ...(locals.isOk() ? locals.value : []).map((account) => ({
+      username: account.username,
+      domain: null,
+      url: InstanceIdentity.profileUrl(identity, account.username),
+    })),
+    ...(remotes.isOk() ? remotes.value : []).map((actor) => ({
+      username: actor.username,
+      domain: actor.domain,
+      url: RemoteActor.profileUrl(actor),
+    })),
+  ];
+};
 
 /** The `Mention` tags of a local note, from its stored local and remote mentions. */
 export const loadNoteMentions = async (

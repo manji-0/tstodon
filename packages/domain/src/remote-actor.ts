@@ -18,6 +18,12 @@ const RemoteActorProfileSchema = z.object({
   profileUrl: z.url().nullable(),
   locked: z.boolean(),
   bot: z.boolean(),
+  /**
+   * The actor's `discoverable` and `indexable` flags. False on a profile
+   * stored before they were kept, as Mastodon reads an absent flag.
+   */
+  discoverable: z.boolean().default(false),
+  indexable: z.boolean().default(false),
   publishedAt: IsoInstant.schema.nullable(),
   /**
    * The custom emoji the display name, the note and the fields write, from
@@ -41,6 +47,8 @@ const EMPTY_PROFILE: RemoteActorProfile = {
   profileUrl: null,
   locked: false,
   bot: false,
+  discoverable: false,
+  indexable: false,
   publishedAt: null,
   emojis: [],
   fields: [],

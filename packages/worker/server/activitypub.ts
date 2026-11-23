@@ -31,7 +31,7 @@ import {
   type UploadedCustomEmoji,
   type UploadedEmojiSource,
 } from "./emoji";
-import { formatFieldValue, textToHtml } from "./html";
+import { formatFieldValue, type PostMention, textToHtml } from "./html";
 import { mediaPublicUrl } from "./media-keys";
 import { emptyNoteReplies } from "./note-replies";
 import type { PollRecord } from "./poll-store";
@@ -47,6 +47,8 @@ export type ActorProfile =
       kind: "Shown";
       profile: AccountProfile;
       emojis: ReadonlyArray<CustomEmoji>;
+      /** The accounts the fields mention that this server has, which they link. */
+      fieldMentions: ReadonlyArray<PostMention>;
     }>
   | Readonly<{ kind: "Suspended" }>;
 
@@ -54,6 +56,7 @@ const SHOWN_EMPTY_PROFILE: ActorProfile = {
   kind: "Shown",
   profile: EMPTY_ACCOUNT_PROFILE,
   emojis: [],
+  fieldMentions: [],
 };
 
 /** Mastodon's actor JSON-LD terms (`context_extensions` of its `ActorSerializer`). */
@@ -193,11 +196,14 @@ export const actorDocument = (
       publicKeyPem: account.publicKeyPem,
     },
     tag: shown.kind === "Shown" ? shown.emojis.map(emojiTag(identity)) : [],
-    attachment: (profile?.fields ?? []).map((field) => ({
-      type: "PropertyValue",
-      name: field.name,
-      value: formatFieldValue(field.value, identity),
-    })),
+    attachment:
+      shown.kind === "Shown"
+        ? shown.profile.fields.map((field) => ({
+            type: "PropertyValue",
+            name: field.name,
+            value: formatFieldValue(field.value, identity, shown.fieldMentions),
+          }))
+        : [],
     ...(icon ? { icon } : {}),
     ...(image ? { image } : {}),
   };

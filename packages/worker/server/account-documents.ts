@@ -3,6 +3,7 @@ import {
   AccountPresentation,
   InstanceIdentity,
   type LocalAccount,
+  type ProfileField,
   RemoteActor,
   Visibility,
 } from "@tstodon/domain";
@@ -22,7 +23,8 @@ import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
 import { remoteEmojisJson } from "./remote-emoji-document";
-import { sanitizeRemoteHtml } from "./sanitize-html";
+import { leadingLinkRawHref, sanitizeRemoteHtml } from "./sanitize-html";
+import { decodeEntities } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { type CustomEmoji, customEmojiJson, emojisInTexts, profileEmojiTexts } from "./emoji";
 import {
@@ -32,7 +34,8 @@ import {
   listAccountProfiles,
 } from "./account-profile-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
-import { formatFieldValue, textToHtml } from "./html";
+import { formatFieldValue, type PostMention, shortenedLink, textToHtml } from "./html";
+import { knownFieldMentions } from "./mention-resolve";
 import { mediaUrl } from "./media-document";
 import { quotePolicyName } from "./quote-policy-name";
 
@@ -287,6 +290,8 @@ export const mastodonAccount = (
   /** The instance's custom emojis; the account's are those its profile writes. */
   instanceEmojis: ReadonlyArray<CustomEmoji> = [],
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
+  /** The accounts the fields mention that this server has ({@link knownFieldMentions}). */
+  fieldMentions: ReadonlyArray<PostMention> = [],
 ): ApiAccountJSON => {
   const emojis = emojisInTexts(profileEmojiTexts(account.displayName, profile), instanceEmojis);
   return {
@@ -335,7 +340,7 @@ export const mastodonAccount = (
     // value would be stored XSS. `source.fields` keeps the plain text.
     fields: profile.fields.map((field) => ({
       name: field.name,
-      value: formatFieldValue(field.value, identity),
+      value: formatFieldValue(field.value, identity, fieldMentions),
       verified_at: field.verifiedAt ?? null,
     })),
   };
@@ -398,12 +403,16 @@ export const mastodonAccountDocument = async (
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
     emojis,
     profile,
+    await knownFieldMentions(env.DB, identity, fieldValues([profile])),
   );
   return (
     (await withLocalMoves(env, identity, new Map([[account.id, document]]))).get(account.id) ??
     document
   );
 };
+
+const fieldValues = (profiles: ReadonlyArray<AccountProfile>): ReadonlyArray<string> =>
+  profiles.flatMap((profile) => profile.fields.map((field) => field.value));
 
 /**
  * {@link mastodonAccountDocument} for many accounts with one counts batch and
@@ -427,6 +436,11 @@ export const mastodonAccountDocuments = async (
     listAccountProfiles(env.DB, accountIds),
     customEmojis ?? loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
+  const fieldMentions = await knownFieldMentions(
+    env.DB,
+    identity,
+    fieldValues(profiles.isOk() ? [...profiles.value.values()] : []),
+  );
   const documents = new Map(
     accounts.map((account) => {
       const profile =
@@ -443,6 +457,7 @@ export const mastodonAccountDocuments = async (
           },
           emojis,
           profile,
+          fieldMentions,
         ),
       ];
     }),
@@ -463,8 +478,8 @@ export const mastodonRemoteAccount = (
     display_name: actor.displayName,
     locked: profile.locked,
     bot: profile.bot,
-    discoverable: true,
-    indexable: false,
+    discoverable: profile.discoverable,
+    indexable: profile.indexable,
     hide_collections: false,
     noindex: false,
     group: false,
@@ -492,10 +507,21 @@ export const mastodonRemoteAccount = (
     // `verified_at` is set by the link check (`profile-link-verification.ts`).
     fields: profile.fields.map((field) => ({
       name: field.name,
-      value: sanitizeRemoteHtml(field.value),
+      value: remoteFieldValue(field),
       verified_at: field.verifiedAt ?? null,
     })),
   };
+};
+
+/**
+ * A remote field's value as Mastodon's `account_field_value_format`: a
+ * verified one is its link rebuilt (`TextFormatter.shortened_link`), the
+ * check having found the value to be that one `<a>`; another is its HTML
+ * sanitised. The link is read as `remoteFieldLink` read the one it checked.
+ */
+const remoteFieldValue = (field: ProfileField): string => {
+  const href = field.verifiedAt === undefined ? undefined : leadingLinkRawHref(field.value);
+  return href === undefined ? sanitizeRemoteHtml(field.value) : shortenedLink(decodeEntities(href));
 };
 
 /** One account's document as lookup and `GET /accounts/:id` answer it; `undefined` when hidden. */

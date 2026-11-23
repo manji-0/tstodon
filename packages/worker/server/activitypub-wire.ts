@@ -134,6 +134,9 @@ export const ActorDocumentSchema = z
     icon: z.unknown().optional(),
     image: z.unknown().optional(),
     manuallyApprovesFollowers: z.boolean().nullable().optional(),
+    /** Read as Rails casts a boolean column (`actorFlag`), so any value is taken. */
+    discoverable: z.unknown().optional(),
+    indexable: z.unknown().optional(),
     published: z.string().nullable().optional(),
     /** Its profile fields, among other attachments; read leniently (`remote-actor-fields.ts`). */
     attachment: z.unknown().optional(),

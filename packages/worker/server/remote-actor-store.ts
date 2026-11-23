@@ -37,6 +37,7 @@ import {
   findRemoteActorByUri as findRemoteActorByUriSql,
   listStaleRemoteActorUris as listStaleRemoteActorUrisSql,
   findRemoteActorsByUris as findRemoteActorsByUrisSql,
+  findRemoteActorsByHandlesJson as findRemoteActorsByHandlesJsonSql,
   findRemoteFollow as findRemoteFollowSql,
   listAcceptedRemoteFollowerInboxes as listAcceptedRemoteFollowerInboxesSql,
   listAccountReachInboxes as listAccountReachInboxesSql,
@@ -276,6 +277,30 @@ export const findRemoteActorsByUris = async (
       ]),
     ),
   );
+};
+
+/**
+ * Cached remote actors by their `user@domain` handles, compared without
+ * case; each handle answers as {@link findRemoteActorByHandle} answers it.
+ * Unknown handles and unreadable rows are left out.
+ */
+export const findRemoteActorsByHandles = async (
+  db: D1Database,
+  handles: ReadonlyArray<Readonly<{ username: string; domain: string }>>,
+): Promise<Result<ReadonlyArray<RemoteActor>, RepositoryError>> => {
+  if (handles.length === 0) {
+    return ok([]);
+  }
+  const queried = await runD1(async () =>
+    queryTyped(
+      db,
+      findRemoteActorsByHandlesJsonSql(
+        JSON.stringify(handles.map(({ username, domain }) => [username, domain])),
+      ),
+      RemoteActorRowSchema,
+    ),
+  );
+  return queried.map((rows) => okValues(rows.map((row) => remoteActorFromRow(row))));
 };
 
 /**
