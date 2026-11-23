@@ -1,10 +1,10 @@
 import { schemaResult } from "@tstodon/core";
-import type { RemoteStatus } from "@tstodon/domain";
+import { InstanceIdentity, type LocalAccount, type RemoteStatus } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { type RepositoryError, runD1 } from "./d1";
-import { fetchActivityJson } from "./federated-fetch";
+import { type FetchSigner, fetchActivityJson } from "./federated-fetch";
 import {
   claimRemotePollRefresh as claimRemotePollRefreshSql,
   findRemotePollFetchedAt as findRemotePollFetchedAtSql,
@@ -69,14 +69,26 @@ const releaseClaim = async (db: D1Database, statusId: string, claim: Claim): Pro
   );
 };
 
+/** Signs a GET as `reader`, with the key its actor document publishes. */
+const readerFetchSigner =
+  (identity: InstanceIdentity, reader: LocalAccount): FetchSigner =>
+  async () => ({
+    keyId: `${InstanceIdentity.actorUrl(identity, reader.username)}#main-key`,
+    privateKeyJwk: reader.privateKeyJwk,
+  });
+
 /**
  * Fetch the note of `status` from its server and apply it as an `Update`, as
  * Mastodon's `FetchRemotePollService` (`fetch_resource` checks the document
- * is the note it asked for). True when the document was applied.
+ * is the note it asked for). The note is fetched on behalf of the reader, so
+ * a server that checks the signer shows a followers-only poll to a follower;
+ * the fetches made while applying it are the instance actor's, as Mastodon's.
+ * True when the document was applied.
  */
 const fetchAndApply = async (
   env: Env,
   status: RemoteStatus,
+  reader: LocalAccount,
 ): Promise<Result<boolean, RepositoryError>> => {
   const author = await findRemoteActorByUri(env.DB, status.actorUri);
   if (author.isErr()) {
@@ -91,7 +103,10 @@ const fetchAndApply = async (
     blockedHosts: await suspendedDomains(env.DB),
     fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
-  const fetched = await fetchActivityJson(identity.value, status.objectUri, options);
+  const fetched = await fetchActivityJson(identity.value, status.objectUri, {
+    ...options,
+    fetchSigner: readerFetchSigner(identity.value, reader),
+  });
   const document = fetched.isOk() ? parseNamedObject(fetched.value) : undefined;
   if (document === undefined || document.isErr() || document.value.id !== status.objectUri) {
     return ok(false);
@@ -113,13 +128,13 @@ const fetchAndApply = async (
  * The remote status a signed-in reader of its poll is shown: fetched again
  * from its server first when the poll may be stale, as Mastodon's
  * `PollsController#refresh_poll` runs `FetchRemotePollService`, which applies
- * the document as an `Update` of the note. The fetch is signed by the
- * instance actor, not the reader. A fetch that fails leaves the stored poll,
- * still stale.
+ * the document as an `Update` of the note, fetched on behalf of the reader
+ * (`current_account`). A fetch that fails leaves the stored poll, still stale.
  */
 export const refreshRemotePoll = async (
   env: Env,
   status: RemoteStatus,
+  reader: LocalAccount,
 ): Promise<Result<RemoteStatus, RepositoryError>> => {
   const claimed = await claimRemotePollRefresh(env.DB, status.id, Date.now());
   if (claimed.isErr()) {
@@ -128,7 +143,7 @@ export const refreshRemotePoll = async (
   if (claimed.value === undefined) {
     return ok(status);
   }
-  const applied = await fetchAndApply(env, status);
+  const applied = await fetchAndApply(env, status, reader);
   if (applied.isErr() || !applied.value) {
     await releaseClaim(env.DB, status.id, claimed.value);
     return applied.map(() => status);

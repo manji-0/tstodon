@@ -42,6 +42,7 @@ export type PollsMinAggregateOutputType = {
   expiry_notified_at: string | null;
   update_queued_at: string | null;
   update_distributed_at: string | null;
+  end_queued_at: string | null;
 };
 
 export type PollsMaxAggregateOutputType = {
@@ -53,6 +54,7 @@ export type PollsMaxAggregateOutputType = {
   expiry_notified_at: string | null;
   update_queued_at: string | null;
   update_distributed_at: string | null;
+  end_queued_at: string | null;
 };
 
 export type PollsCountAggregateOutputType = {
@@ -64,6 +66,7 @@ export type PollsCountAggregateOutputType = {
   expiry_notified_at: number;
   update_queued_at: number;
   update_distributed_at: number;
+  end_queued_at: number;
   _all: number;
 };
 
@@ -84,6 +87,7 @@ export type PollsMinAggregateInputType = {
   expiry_notified_at?: true;
   update_queued_at?: true;
   update_distributed_at?: true;
+  end_queued_at?: true;
 };
 
 export type PollsMaxAggregateInputType = {
@@ -95,6 +99,7 @@ export type PollsMaxAggregateInputType = {
   expiry_notified_at?: true;
   update_queued_at?: true;
   update_distributed_at?: true;
+  end_queued_at?: true;
 };
 
 export type PollsCountAggregateInputType = {
@@ -106,6 +111,7 @@ export type PollsCountAggregateInputType = {
   expiry_notified_at?: true;
   update_queued_at?: true;
   update_distributed_at?: true;
+  end_queued_at?: true;
   _all?: true;
 };
 
@@ -205,6 +211,7 @@ export type PollsGroupByOutputType = {
   expiry_notified_at: string | null;
   update_queued_at: string | null;
   update_distributed_at: string | null;
+  end_queued_at: string | null;
   _count: PollsCountAggregateOutputType | null;
   _avg: PollsAvgAggregateOutputType | null;
   _sum: PollsSumAggregateOutputType | null;
@@ -236,6 +243,7 @@ export type pollsWhereInput = {
   expiry_notified_at?: Prisma.StringNullableFilter<"polls"> | string | null;
   update_queued_at?: Prisma.StringNullableFilter<"polls"> | string | null;
   update_distributed_at?: Prisma.StringNullableFilter<"polls"> | string | null;
+  end_queued_at?: Prisma.StringNullableFilter<"polls"> | string | null;
   poll_votes?: Prisma.Poll_votesListRelationFilter;
   remote_poll_votes?: Prisma.Remote_poll_votesListRelationFilter;
   statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
@@ -250,6 +258,7 @@ export type pollsOrderByWithRelationInput = {
   expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   update_queued_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   update_distributed_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  end_queued_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   poll_votes?: Prisma.poll_votesOrderByRelationAggregateInput;
   remote_poll_votes?: Prisma.remote_poll_votesOrderByRelationAggregateInput;
   statuses?: Prisma.statusesOrderByWithRelationInput;
@@ -268,6 +277,7 @@ export type pollsWhereUniqueInput = Prisma.AtLeast<
     expiry_notified_at?: Prisma.StringNullableFilter<"polls"> | string | null;
     update_queued_at?: Prisma.StringNullableFilter<"polls"> | string | null;
     update_distributed_at?: Prisma.StringNullableFilter<"polls"> | string | null;
+    end_queued_at?: Prisma.StringNullableFilter<"polls"> | string | null;
     poll_votes?: Prisma.Poll_votesListRelationFilter;
     remote_poll_votes?: Prisma.Remote_poll_votesListRelationFilter;
     statuses?: Prisma.XOR<Prisma.StatusesScalarRelationFilter, Prisma.statusesWhereInput>;
@@ -284,6 +294,7 @@ export type pollsOrderByWithAggregationInput = {
   expiry_notified_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   update_queued_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   update_distributed_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  end_queued_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.pollsCountOrderByAggregateInput;
   _avg?: Prisma.pollsAvgOrderByAggregateInput;
   _max?: Prisma.pollsMaxOrderByAggregateInput;
@@ -303,6 +314,7 @@ export type pollsScalarWhereWithAggregatesInput = {
   expiry_notified_at?: Prisma.StringNullableWithAggregatesFilter<"polls"> | string | null;
   update_queued_at?: Prisma.StringNullableWithAggregatesFilter<"polls"> | string | null;
   update_distributed_at?: Prisma.StringNullableWithAggregatesFilter<"polls"> | string | null;
+  end_queued_at?: Prisma.StringNullableWithAggregatesFilter<"polls"> | string | null;
 };
 
 export type pollsCreateInput = {
@@ -313,6 +325,7 @@ export type pollsCreateInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   poll_votes?: Prisma.poll_votesCreateNestedManyWithoutPollsInput;
   remote_poll_votes?: Prisma.remote_poll_votesCreateNestedManyWithoutPollsInput;
   statuses: Prisma.statusesCreateNestedOneWithoutPollsInput;
@@ -327,6 +340,7 @@ export type pollsUncheckedCreateInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutPollsInput;
   remote_poll_votes?: Prisma.remote_poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
@@ -339,6 +353,7 @@ export type pollsUpdateInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUpdateManyWithoutPollsNestedInput;
   remote_poll_votes?: Prisma.remote_poll_votesUpdateManyWithoutPollsNestedInput;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutPollsNestedInput;
@@ -353,6 +368,7 @@ export type pollsUncheckedUpdateInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
   remote_poll_votes?: Prisma.remote_poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
@@ -366,6 +382,7 @@ export type pollsCreateManyInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
 };
 
 export type pollsUpdateManyMutationInput = {
@@ -376,6 +393,7 @@ export type pollsUpdateManyMutationInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type pollsUncheckedUpdateManyInput = {
@@ -387,6 +405,7 @@ export type pollsUncheckedUpdateManyInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type PollsScalarRelationFilter = {
@@ -403,6 +422,7 @@ export type pollsCountOrderByAggregateInput = {
   expiry_notified_at?: Prisma.SortOrder;
   update_queued_at?: Prisma.SortOrder;
   update_distributed_at?: Prisma.SortOrder;
+  end_queued_at?: Prisma.SortOrder;
 };
 
 export type pollsAvgOrderByAggregateInput = {
@@ -418,6 +438,7 @@ export type pollsMaxOrderByAggregateInput = {
   expiry_notified_at?: Prisma.SortOrder;
   update_queued_at?: Prisma.SortOrder;
   update_distributed_at?: Prisma.SortOrder;
+  end_queued_at?: Prisma.SortOrder;
 };
 
 export type pollsMinOrderByAggregateInput = {
@@ -429,6 +450,7 @@ export type pollsMinOrderByAggregateInput = {
   expiry_notified_at?: Prisma.SortOrder;
   update_queued_at?: Prisma.SortOrder;
   update_distributed_at?: Prisma.SortOrder;
+  end_queued_at?: Prisma.SortOrder;
 };
 
 export type pollsSumOrderByAggregateInput = {
@@ -556,6 +578,7 @@ export type pollsCreateWithoutPoll_votesInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   remote_poll_votes?: Prisma.remote_poll_votesCreateNestedManyWithoutPollsInput;
   statuses: Prisma.statusesCreateNestedOneWithoutPollsInput;
 };
@@ -569,6 +592,7 @@ export type pollsUncheckedCreateWithoutPoll_votesInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   remote_poll_votes?: Prisma.remote_poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
 
@@ -608,6 +632,7 @@ export type pollsUpdateWithoutPoll_votesInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   remote_poll_votes?: Prisma.remote_poll_votesUpdateManyWithoutPollsNestedInput;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutPollsNestedInput;
 };
@@ -621,6 +646,7 @@ export type pollsUncheckedUpdateWithoutPoll_votesInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   remote_poll_votes?: Prisma.remote_poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
 
@@ -632,6 +658,7 @@ export type pollsCreateWithoutRemote_poll_votesInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   poll_votes?: Prisma.poll_votesCreateNestedManyWithoutPollsInput;
   statuses: Prisma.statusesCreateNestedOneWithoutPollsInput;
 };
@@ -645,6 +672,7 @@ export type pollsUncheckedCreateWithoutRemote_poll_votesInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
 
@@ -684,6 +712,7 @@ export type pollsUpdateWithoutRemote_poll_votesInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUpdateManyWithoutPollsNestedInput;
   statuses?: Prisma.statusesUpdateOneRequiredWithoutPollsNestedInput;
 };
@@ -697,6 +726,7 @@ export type pollsUncheckedUpdateWithoutRemote_poll_votesInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
 
@@ -708,6 +738,7 @@ export type pollsCreateWithoutStatusesInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   poll_votes?: Prisma.poll_votesCreateNestedManyWithoutPollsInput;
   remote_poll_votes?: Prisma.remote_poll_votesCreateNestedManyWithoutPollsInput;
 };
@@ -720,6 +751,7 @@ export type pollsUncheckedCreateWithoutStatusesInput = {
   expiry_notified_at?: string | null;
   update_queued_at?: string | null;
   update_distributed_at?: string | null;
+  end_queued_at?: string | null;
   poll_votes?: Prisma.poll_votesUncheckedCreateNestedManyWithoutPollsInput;
   remote_poll_votes?: Prisma.remote_poll_votesUncheckedCreateNestedManyWithoutPollsInput;
 };
@@ -760,6 +792,7 @@ export type pollsUpdateWithoutStatusesInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUpdateManyWithoutPollsNestedInput;
   remote_poll_votes?: Prisma.remote_poll_votesUpdateManyWithoutPollsNestedInput;
 };
@@ -772,6 +805,7 @@ export type pollsUncheckedUpdateWithoutStatusesInput = {
   expiry_notified_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   update_distributed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  end_queued_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   poll_votes?: Prisma.poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
   remote_poll_votes?: Prisma.remote_poll_votesUncheckedUpdateManyWithoutPollsNestedInput;
 };
@@ -834,6 +868,7 @@ export type pollsSelect<
     expiry_notified_at?: boolean;
     update_queued_at?: boolean;
     update_distributed_at?: boolean;
+    end_queued_at?: boolean;
     poll_votes?: boolean | Prisma.polls$poll_votesArgs<ExtArgs>;
     remote_poll_votes?: boolean | Prisma.polls$remote_poll_votesArgs<ExtArgs>;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
@@ -854,6 +889,7 @@ export type pollsSelectCreateManyAndReturn<
     expiry_notified_at?: boolean;
     update_queued_at?: boolean;
     update_distributed_at?: boolean;
+    end_queued_at?: boolean;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["polls"]
@@ -871,6 +907,7 @@ export type pollsSelectUpdateManyAndReturn<
     expiry_notified_at?: boolean;
     update_queued_at?: boolean;
     update_distributed_at?: boolean;
+    end_queued_at?: boolean;
     statuses?: boolean | Prisma.statusesDefaultArgs<ExtArgs>;
   },
   ExtArgs["result"]["polls"]
@@ -885,6 +922,7 @@ export type pollsSelectScalar = {
   expiry_notified_at?: boolean;
   update_queued_at?: boolean;
   update_distributed_at?: boolean;
+  end_queued_at?: boolean;
 };
 
 export type pollsOmit<
@@ -897,7 +935,8 @@ export type pollsOmit<
   | "options_json"
   | "expiry_notified_at"
   | "update_queued_at"
-  | "update_distributed_at",
+  | "update_distributed_at"
+  | "end_queued_at",
   ExtArgs["result"]["polls"]
 >;
 export type pollsInclude<
@@ -938,6 +977,7 @@ export type $pollsPayload<
       expiry_notified_at: string | null;
       update_queued_at: string | null;
       update_distributed_at: string | null;
+      end_queued_at: string | null;
     },
     ExtArgs["result"]["polls"]
   >;
@@ -1523,6 +1563,7 @@ export interface pollsFieldRefs {
   readonly expiry_notified_at: Prisma.FieldRef<"polls", "String">;
   readonly update_queued_at: Prisma.FieldRef<"polls", "String">;
   readonly update_distributed_at: Prisma.FieldRef<"polls", "String">;
+  readonly end_queued_at: Prisma.FieldRef<"polls", "String">;
 }
 
 // Custom InputTypes
