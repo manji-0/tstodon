@@ -27,7 +27,7 @@ const sameText = (a: string, b: string): boolean => a.toLowerCase() === b.toLowe
  * Mastodon's `TextFormatter.shortened_link`: the scheme and what is past 30
  * characters are hidden. `relMe` adds `me` to `rel`, as on a profile field.
  */
-const shortenedLink = (url: string, relMe = false): string => {
+export const shortenedLink = (url: string, relMe = false): string => {
   const prefix = /^(?:https?:\/\/(?:www\.)?|xmpp:)/.exec(url)?.[0] ?? "";
   const rest = Array.from(url.slice(prefix.length));
   // A one-character suffix is shown: the ellipsis would take as much room.
@@ -40,22 +40,56 @@ const shortenedLink = (url: string, relMe = false): string => {
 const hashtagLink = (identity: InstanceIdentity, name: string): string =>
   `<a href="${escapeHtml(tagUrl(identity, normalizeHashtag(name)))}" class="mention hashtag" rel="tag">#<span>${escapeHtml(name)}</span></a>`;
 
+/** Mastodon's `TextFormatter.link_to_mention` of an account at `url`, shown as `shown`. */
+const hCardLink = (url: string, shown: string): string =>
+  `<span class="h-card" translate="no"><a href="${escapeHtml(url)}" class="u-url mention">@<span>${escapeHtml(shown)}</span></a></span>`;
+
+/** A mention as written, when it links to no account. */
+const writtenMention = (entity: Extract<PostEntity, { kind: "Mention" }>): string =>
+  escapeHtml(`@${entity.username}${entity.domain === undefined ? "" : `@${entity.domain}`}`);
+
 /**
  * A local profile field's value as Mastodon renders it in the REST account
  * and the actor document (`account_field_value_format`): one line, its URLs
- * links with `rel="me"`, so a server that checks the link finds it, and its
- * hashtags links. A mention stays text.
+ * links with `rel="me"`, so a server that checks the link finds it, its
+ * hashtags links, and a mention of an account in `known` a link that shows
+ * the account's domain when it is remote (`with_domains`). `known` holds the
+ * accounts this server has, as Mastodon's `EntityCache#mention` looks one up
+ * by its username and domain; any other mention stays text.
  */
-export const formatFieldValue = (text: string, identity: InstanceIdentity): string => {
+export const formatFieldValue = (
+  text: string,
+  identity: InstanceIdentity,
+  known: ReadonlyArray<PostMention>,
+): string => {
   let html = "";
   let index = 0;
   for (const entity of extractEntities(text)) {
-    if (entity.kind === "Mention") {
-      continue;
-    }
     html += escapeHtml(text.slice(index, entity.start));
-    html +=
-      entity.kind === "Url" ? shortenedLink(entity.url, true) : hashtagLink(identity, entity.name);
+    if (entity.kind === "Url") {
+      html += shortenedLink(entity.url, true);
+    } else if (entity.kind === "Hashtag") {
+      html += hashtagLink(identity, entity.name);
+    } else {
+      const domain =
+        entity.domain === undefined || sameText(entity.domain, identity.domain)
+          ? null
+          : entity.domain;
+      const account = known.find(
+        (mention) =>
+          sameText(mention.username, entity.username) &&
+          (mention.domain === null || domain === null
+            ? mention.domain === domain
+            : sameText(mention.domain, domain)),
+      );
+      html +=
+        account === undefined
+          ? writtenMention(entity)
+          : hCardLink(
+              account.url,
+              account.domain === null ? account.username : `${account.username}@${account.domain}`,
+            );
+    }
     index = entity.end;
   }
   return html + escapeHtml(text.slice(index));
@@ -80,15 +114,13 @@ const mentionLink = (
       : sameText(mention.domain, domain),
   );
   if (account === undefined) {
-    return escapeHtml(
-      `@${entity.username}${entity.domain === undefined ? "" : `@${entity.domain}`}`,
-    );
+    return writtenMention(entity);
   }
   const shown =
     new Set(named.map((mention) => mention.url)).size > 1 && account.domain !== null
       ? `${account.username}@${account.domain}`
       : account.username;
-  return `<span class="h-card" translate="no"><a href="${escapeHtml(account.url)}" class="u-url mention">@<span>${escapeHtml(shown)}</span></a></span>`;
+  return hCardLink(account.url, shown);
 };
 
 /**

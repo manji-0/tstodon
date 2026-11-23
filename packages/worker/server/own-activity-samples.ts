@@ -222,6 +222,7 @@ const fullActor = actorDocument(
       headerContentType: null,
     },
     emojis: [blob],
+    fieldMentions: [],
   },
 );
 
