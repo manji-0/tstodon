@@ -29,6 +29,15 @@ const History = z.array(
   }),
 );
 
+/** `DELETE /api/v1/statuses/:id`'s answer: the status with its source as `text`, for a redraft. */
+const DeletedSource = z.looseObject({
+  text: z.string(),
+  spoiler_text: z.string(),
+  sensitive: z.boolean(),
+  language: z.string().nullable(),
+  media_attachments: z.array(z.looseObject({ id: z.string(), description: z.string().nullable() })),
+});
+
 const edit = (author: E2eUser, statusId: string, body: Record<string, unknown>): Promise<Status> =>
   call(author, `/api/v1/statuses/${statusId}`, Status, { method: "PUT", body });
 
@@ -276,6 +285,80 @@ export const editScenarios = async ({ stamp, mona, erin }: Cast): Promise<void> 
         const own = await call(to, `/api/v1/accounts/${to.id}/statuses?limit=40`, Statuses);
         return own.some((status) => status.reblog?.uri === sent.uri) ? undefined : true;
       });
+    },
+  );
+
+  await bothWays(
+    "delete and redraft posts the source again with the same image",
+    alice,
+    mona,
+    async (from, to) => {
+      const media = await upload(from, `redrafted ${stamp}`);
+      const sent = await post(from, {
+        status: `redraft me ${stamp}`,
+        spoiler_text: `redraft warning ${stamp}`,
+        sensitive: true,
+        language: "de",
+        media_ids: [media],
+      });
+      const copy = await onHome(to, sent.uri, (status) => status.media_attachments.length === 1);
+      // Without `delete_media` the image stays, unattached, for the redraft.
+      const deleted = await call(from, `/api/v1/statuses/${sent.id}`, DeletedSource, {
+        method: "DELETE",
+      });
+      const source = JSON.stringify({
+        text: deleted.text,
+        spoiler_text: deleted.spoiler_text,
+        sensitive: deleted.sensitive,
+        language: deleted.language,
+        media: deleted.media_attachments.map((attachment) => attachment.id),
+        content: "content" in deleted,
+      });
+      const expected = JSON.stringify({
+        text: `redraft me ${stamp}`,
+        spoiler_text: `redraft warning ${stamp}`,
+        sensitive: true,
+        language: "de",
+        media: [media],
+        content: false,
+      });
+      if (source !== expected) {
+        throw new StepFailure(`the delete answers ${source}`);
+      }
+      await gone(to, copy.id, "the deleted post's copy is gone");
+      // Mastodon detaches the image in `RemovalWorker`, after the delete answers.
+      let refused: StepFailure | undefined;
+      const redraft = await eventually("the redraft reattaches the image", async () => {
+        try {
+          return await post(from, {
+            status: deleted.text,
+            spoiler_text: deleted.spoiler_text,
+            sensitive: deleted.sensitive,
+            language: deleted.language,
+            media_ids: deleted.media_attachments.map((attachment) => attachment.id),
+          });
+        } catch (error) {
+          if (error instanceof StepFailure && error.message.includes(" → 422 ")) {
+            refused = error;
+            return undefined;
+          }
+          throw error;
+        }
+      }).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new StepFailure(
+          refused === undefined ? message : `${message}; last refusal: ${refused.message}`,
+        );
+      });
+      await onHome(
+        to,
+        redraft.uri,
+        (status) =>
+          status.content.includes(`redraft me ${stamp}`) &&
+          status.spoiler_text === `redraft warning ${stamp}` &&
+          status.media_attachments.map((attachment) => attachment.description).join() ===
+            `redrafted ${stamp}`,
+      );
     },
   );
 

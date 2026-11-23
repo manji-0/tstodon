@@ -149,10 +149,10 @@ export const quoteViewerRelations = async (
 };
 
 /**
- * The statuses accepted `quotes` quote, as stored, with what the viewer is
- * shown of each, as Mastodon's `StatusFilter#filter_state_for_quote`.
+ * The statuses `quotes` quote, as stored, with what the viewer is shown of
+ * each, as Mastodon's `StatusFilter#filter_state_for_quote`.
  */
-const quotedStatuses = async (
+export const quotedStatuses = async (
   db: D1Database,
   quotes: ReadonlyArray<QuoteValue>,
   viewerId: string | undefined,
@@ -166,9 +166,8 @@ const quotedStatuses = async (
     RepositoryError
   >
 > => {
-  const accepted = quotes.filter((quote) => quote.state.kind === "Accepted");
   const idsOf = (kind: "LocalStatus" | "RemoteStatus") =>
-    accepted.flatMap(({ quoted }) => (quoted.kind === kind ? [quoted.statusId] : []));
+    quotes.flatMap(({ quoted }) => (quoted.kind === kind ? [quoted.statusId] : []));
   const [locals, remotes] = await Promise.all([
     findStatusesByIds(db, idsOf("LocalStatus")),
     findRemoteStatusesByIds(db, idsOf("RemoteStatus")),
@@ -206,7 +205,7 @@ const quotedStatuses = async (
  * may see, a quoted remote one showing its own quote shallow, which ends the
  * recursion.
  */
-const quotedDocuments = async (
+export const quotedDocuments = async (
   env: Env,
   identity: InstanceIdentity,
   quotes: ReadonlyArray<QuoteValue>,
@@ -241,6 +240,9 @@ const quotedDocuments = async (
   });
 };
 
+/** Only an accepted quote shows its status, unless its source is requested. */
+const isAccepted = (quote: QuoteValue): boolean => quote.state.kind === "Accepted";
+
 /**
  * How each of `quotes` renders as its quoting status's `quote`: in full, as
  * Mastodon's `QuoteSerializer`.
@@ -251,7 +253,7 @@ const fullQuoteRenderer = async (
   quotes: ReadonlyArray<QuoteValue>,
   viewerId: string | undefined,
 ): Promise<Result<(quote: QuoteValue) => ApiQuoteJSON, RepositoryError>> =>
-  (await quotedDocuments(env, identity, quotes, viewerId)).map(
+  (await quotedDocuments(env, identity, quotes.filter(isAccepted), viewerId)).map(
     (documentOf) => (quote) => mastodonQuote(quote.state, () => documentOf(quote)),
   );
 
@@ -266,7 +268,7 @@ const shallowQuoteRenderer = async (
   quotes: ReadonlyArray<QuoteValue>,
   viewerId: string | undefined,
 ): Promise<Result<(quote: QuoteValue) => ApiShallowQuoteJSON, RepositoryError>> =>
-  (await quotedStatuses(env.DB, quotes, viewerId)).map(
+  (await quotedStatuses(env.DB, quotes.filter(isAccepted), viewerId)).map(
     ({ access }) =>
       (quote) =>
         mastodonShallowQuote(
