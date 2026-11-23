@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { RemoteActorModeration } from "@tstodon/domain";
-import type { Result } from "neverthrow";
+import { err, type Result } from "neverthrow";
 import { nowIso } from "./clock";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
+import { listDomainBlockLimits } from "./domain-block-limits";
 import {
   deleteRemoteActorModeration as deleteRemoteActorModerationSql,
   findRemoteActorModeration as findRemoteActorModerationSql,
@@ -43,6 +44,30 @@ export const getRemoteActorModeration = async (
     );
     return rows[0] ? moderationOf(rows[0]) : RemoteActorModeration.inGoodStanding;
   });
+
+/**
+ * Mastodon's `silenced?` of a remote account: an admin silenced the actor,
+ * or a domain block silences its domain.
+ */
+export const isRemoteActorSilenced = async (
+  db: D1Database,
+  actorUri: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const [own, domain] = await Promise.all([
+    getRemoteActorModeration(db, actorUri),
+    listDomainBlockLimits(db, [actorUri]),
+  ]);
+  if (own.isErr()) {
+    return err(own.error);
+  }
+  return domain.map(
+    (limits) =>
+      RemoteActorModeration.adminFlags(
+        own.value,
+        limits.get(actorUri) ?? { silenced: false, suspended: false },
+      ).silenced,
+  );
+};
 
 /** Actors in the default state are absent from the map. */
 export const listRemoteActorModerations = async (
