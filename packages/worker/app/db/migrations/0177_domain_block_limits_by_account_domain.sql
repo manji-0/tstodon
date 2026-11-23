@@ -39,7 +39,9 @@ END;
 -- The actors cached before this trigger, after their rule's last change, so
 -- that neither a recording (`Apply`) nor a backfill (`seen_by`) found them:
 -- recorded under the rule that governs their account domain now, the closest
--- guess at the one that governed it when they were first seen.
+-- guess at the one that governed it when they were first seen. It may
+-- over-record: an actor first seen under a narrower rule removed since is
+-- recorded, where Mastodon left it unlimited.
 INSERT OR IGNORE INTO remote_actor_domain_limits (domain_block_id, actor_uri)
 SELECT d.id, r.actor_uri
 FROM domain_blocks d
@@ -58,7 +60,14 @@ WHERE d.severity IN ('silence', 'suspend')
 -- The rows a recording wrote for an actor by its URI's host alone, its
 -- account domain outside the block, which Mastodon never limits; first the
 -- content purges they queued, unless the actor's account domain is recorded
--- under a block too.
+-- under a suspension too. A row whose actor's URI host is outside the block
+-- as well was recorded by account domain before the domain changed
+-- (`releaseRemoteActorHandle`, `settleHandleHolder`), and stays, as Mastodon
+-- keeps `suspended_at` across a rename. A purge names no block, so two cases
+-- are left as they are: the purge of an actor recorded by URI host alone
+-- under a suspension removed since (its rows are gone) still runs, and the
+-- purge of an actor recorded by both hosts under a suspension downgraded
+-- since, and by URI host under another, is dropped.
 DELETE FROM remote_actor_content_purges
 WHERE actor_uri IN (
   SELECT l.actor_uri FROM remote_actor_domain_limits l
@@ -68,6 +77,8 @@ WHERE actor_uri IN (
     r.host_key >= d.domain_key
     AND r.host_key < substr(d.domain_key, 1, length(d.domain_key) - 1) || '/'
   )
+    AND r.uri_host_key >= d.domain_key
+    AND r.uri_host_key < substr(d.domain_key, 1, length(d.domain_key) - 1) || '/'
 )
 AND actor_uri NOT IN (
   SELECT l.actor_uri FROM remote_actor_domain_limits l
@@ -87,4 +98,6 @@ WHERE rowid IN (
     r.host_key >= d.domain_key
     AND r.host_key < substr(d.domain_key, 1, length(d.domain_key) - 1) || '/'
   )
+    AND r.uri_host_key >= d.domain_key
+    AND r.uri_host_key < substr(d.domain_key, 1, length(d.domain_key) - 1) || '/'
 );

@@ -65,8 +65,9 @@ const isStart = (cursor: Cursor): boolean =>
  * backfill in the same batch, so a failure is retried with the page. A
  * `Backfill` run records only the actors first seen by its `seenBy`, and
  * each of its pages stamps the backfill's claim; an actor first seen
- * later was recorded when cached (migration 0177). Resolves to the cursor
- * after the page, `undefined` once every actor is read.
+ * later was recorded when cached (migration 0177). A legacy `UriHost`
+ * cursor reads nothing. Resolves to the cursor after the page, `undefined`
+ * once every actor is read.
  */
 const recordPage = (
   db: D1Database,
@@ -76,6 +77,18 @@ const recordPage = (
   run: RecordJob["run"],
 ): Promise<Result<Cursor | undefined, RepositoryError>> =>
   runD1(async () => {
+    const finish = async (): Promise<undefined> => {
+      if (run.kind === "Backfill") {
+        await db
+          .prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
+          .bind(blockId)
+          .run();
+      }
+      return undefined;
+    };
+    if (cursor.host === "UriHost") {
+      return finish();
+    }
     const { from, to } = hostKeyRange(domain);
     const binds = [blockId, from, to, cursor.afterKey, cursor.afterRowId, PAGE];
     const before =
@@ -127,13 +140,7 @@ const recordPage = (
     if (last !== undefined && rows.length === PAGE) {
       return { afterKey: last.key, afterRowId: last.row_id };
     }
-    if (run.kind === "Backfill") {
-      await db
-        .prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
-        .bind(blockId)
-        .run();
-    }
-    return undefined;
+    return finish();
   });
 
 /** Delete the next page of rows a lifted block left, with its lifts and backfill. */

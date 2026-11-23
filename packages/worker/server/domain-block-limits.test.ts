@@ -2,6 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAdminAccount, type ApiAdminAccountJSON } from "@tstodon/api";
+import { OutboxJob } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
 import { postForm, signUp } from "../test/passkey-browser";
 import { patchD1 } from "../test/meter";
@@ -1177,5 +1178,26 @@ describe("an actor whose URI's host a suspension covers and whose account domain
 
     expect(await accountById(actor.actorUri)).toBe("Shown");
     expect(await publicRemoteUris()).toContain(note);
+  });
+});
+
+describe("a recording job queued while the URI hosts were read too", () => {
+  it("ends its chain at a UriHost cursor, keeping the admin's lifts", async () => {
+    const { actor } = await knownOnDomain("legacy-cursor.example");
+    const id = await block("legacy-cursor.example", "suspend");
+    expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
+    const queued = OutboxJob.parse({
+      kind: "RecordDomainBlockLimits",
+      domainBlockId: id,
+      cursor: { host: "UriHost", afterKey: "", afterRowId: 0 },
+      run: { kind: "Apply" },
+    })._unsafeUnwrap();
+
+    await settled(async () => {
+      expect(await processOutboxJob(env, queued)).toBe("ok");
+    });
+
+    expect(await liftRows(actor.actorUri)).toBe(1);
+    expect(await accountById(actor.actorUri)).toBe("Shown");
   });
 });

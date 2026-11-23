@@ -82,11 +82,13 @@ const ApplyDomainBlockEffectsSchema = z.object({
 });
 /**
  * Where recording a block's limits resumes: the last actor recorded, by its
- * account domain's key and its row id. A job queued while the actors' URI
- * hosts were read too carries a `host`, dropped here: its account domains
- * were all read before its cursor moved to the URI hosts.
+ * account domain's key and its row id. `host` is only on a job queued while
+ * the recording also read the actors' URI hosts: `AccountDomain` resumes as
+ * any cursor, and `UriHost` means the account domains were all read, so the
+ * job ends its chain.
  */
 const DomainBlockLimitsCursorSchema = z.object({
+  host: z.union([z.literal("AccountDomain"), z.literal("UriHost")]).optional(),
   afterKey: z.string(),
   afterRowId: z.number().int(),
 });
