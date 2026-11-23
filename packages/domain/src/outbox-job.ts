@@ -121,6 +121,12 @@ const RecordDomainBlockLimitsSchema = z.object({
  */
 const ResumeLiftedDomainBlockLimitsSchema = unitKind("ResumeLiftedDomainBlockLimits");
 /**
+ * Delete the next page of the content a domain suspension's actors had when
+ * it was recorded (`remote_actor_content_purges`): what is left is the next
+ * page, so the job carries no cursor.
+ */
+const PurgeSuspendedActorContentSchema = unitKind("PurgeSuspendedActorContent");
+/**
  * Where a `RefreshRemoteEmoji` chain is: the posts of the domain's actors
  * (with their earlier versions) after a status, in the order of the actors'
  * `(username, rowid)` and then the status id, then the actors' profiles.
@@ -617,6 +623,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ApplyDomainBlockEffectsSchema,
   RecordDomainBlockLimitsSchema,
   ResumeLiftedDomainBlockLimitsSchema,
+  PurgeSuspendedActorContentSchema,
   RefreshRemoteEmojiSchema,
   ResumeRemoteEmojiRefreshesSchema,
   RekeyLegacyMediaSchema,

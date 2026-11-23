@@ -68,6 +68,7 @@ import {
   processSeverSuspendedActorFollowsJob,
 } from "./suspended-actor-severance";
 import { processSendSeveranceNoticesJob } from "./severance-notices";
+import { processPurgeSuspendedActorContentJob } from "./suspended-actor-content";
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
 import { processFederatePendingStatusesJob } from "./pending-status-federation";
 import { processVerifyProfileLinksJob } from "./profile-link-verification";
@@ -264,6 +265,8 @@ export const processOutboxJob = async (
       return processRecordDomainBlockLimitsJob(env, job);
     case "ResumeLiftedDomainBlockLimits":
       return processResumeLiftedDomainBlockLimitsJob(env);
+    case "PurgeSuspendedActorContent":
+      return processPurgeSuspendedActorContentJob(env, job);
     case "RefreshRemoteEmoji":
       return processRefreshRemoteEmojiJob(env, job);
     case "ResumeRemoteEmojiRefreshes":
