@@ -22,6 +22,7 @@ import {
   type FederatedFetchError,
   fetchWebfinger,
   type FederatedFetchOptions,
+  isDomainNotAllowed,
   isFederatedHostRefused,
 } from "./federated-fetch";
 import { ActorDocumentSchema, refId } from "./activitypub-wire";
@@ -909,7 +910,8 @@ export type HandleResolveOptions = FederatedFetchOptions & Readonly<{ mayLookUp?
 
 /**
  * The actor a `user@domain` handle names, as Mastodon's
- * `ResolveAccountService`. A cached holder of the handle is used as it is
+ * `ResolveAccountService`: none on a domain `domain_not_allowed?` refuses,
+ * cached or not. A cached holder of the handle is used as it is
  * until it is due a refresh (a day after its last confirmation and its last
  * attempt, `claimRemoteActorRefresh`); otherwise the handle's own WebFinger
  * is asked, the holders it no longer names give the handle up, and the actor
@@ -927,6 +929,10 @@ export const resolveRemoteActorByHandle = async (
   const asked = domainHandle(handle);
   if (asked === undefined) {
     return err({ kind: "InvalidSignature" });
+  }
+  // Before the cache too: an actor an admin unsuspended there stays refused.
+  if (isDomainNotAllowed(asked.domain, options)) {
+    return err({ kind: "DomainRefused", host: Hostname.ofAuthority(asked.domain) });
   }
   const cached = await findRemoteActorByHandle(db, asked.username, asked.domain);
   if (cached.isErr()) {

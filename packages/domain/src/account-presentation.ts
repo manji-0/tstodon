@@ -13,11 +13,10 @@ const HiddenSchema = z.object({ kind: z.literal("Hidden") });
  * where another record names it (a follower, a conversation participant, a
  * report target), and is left out of search and of lists of accounts.
  * `Emptied` renders as `Suspended`, and none of its statuses is served: a
- * remote actor an instance domain suspension suspended when it was made, on a
- * host a narrower rule exempts now, as Mastodon's `BlockDomainService` sets
- * `suspended_at` and deletes the account's content (`DeleteAccountService`
- * with `reserve_username`). `Hidden` is an account on a domain this instance
- * suspends or keeps off its allow list: no read path names it.
+ * remote actor an instance domain suspension suspends, as Mastodon's
+ * `BlockDomainService` sets `suspended_at` and deletes the account's content
+ * (`DeleteAccountService` with `reserve_username`). `Hidden` is an account on
+ * a domain this instance keeps off its allow list: no read path names it.
  */
 const schema = z.discriminatedUnion("kind", [
   ShownSchema,
@@ -42,18 +41,18 @@ export const AccountPresentation = {
   /** A local account: only its own standing counts. */
   ofLocal: ofStanding,
   /**
-   * A remote actor: its domain's federation first, then a suspension that
-   * suspended it when made, then its own standing.
+   * A remote actor: its domain's federation first, then a domain suspension
+   * that holds on it (one covering its host now, or one that suspended it
+   * when made), then its own standing.
    */
   ofRemote: (
     input: Readonly<{
       federates: boolean;
-      domainSuspended: boolean;
       suspendedByDomainBlock: boolean;
       standing: AccountStanding;
     }>,
   ): AccountPresentation => {
-    if (!input.federates || input.domainSuspended) {
+    if (!input.federates) {
       return hidden;
     }
     return input.suspendedByDomainBlock ? emptied : ofStanding(input.standing);

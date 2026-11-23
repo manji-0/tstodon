@@ -18,6 +18,7 @@ import {
   call,
   type Cast,
   eventually,
+  fetchWaitingOutRateLimit,
   follow,
   mastodonUsers,
   Notifications,
@@ -196,14 +197,50 @@ const silencedFollowWaits = async (
   }
 };
 
+const SuspendedFlag = z.looseObject({ suspended: z.boolean().optional() });
+
+/** `GET /api/v1/accounts/lookup` as `viewer`: whether it finds the account. */
+const lookupFinds = async (viewer: E2eUser, acct: string): Promise<boolean> => {
+  const path = `/api/v1/accounts/lookup?acct=${encodeURIComponent(acct.replace(/^@/, ""))}`;
+  const response = await fetchWaitingOutRateLimit(viewer, path);
+  await response.arrayBuffer();
+  if (response.status !== 200 && response.status !== 404) {
+    throw new StepFailure(`GET ${viewer.origin}${path} → ${response.status}`);
+  }
+  return response.status === 200;
+};
+
+/**
+ * What `viewer` on the suspending server reads of the peer under the domain
+ * suspension: `GET /api/v1/accounts/:id` renders it, `suspended` as
+ * `suspended` says (`set_account` finds any account by id), and the lookup
+ * refuses it (`ResolveAccountService` stops at `domain_not_allowed?`).
+ */
+const peerReads = async (
+  viewer: E2eUser,
+  peer: E2eUser,
+  peerId: string,
+  suspended: boolean,
+): Promise<void> => {
+  const account = await call(viewer, `/api/v1/accounts/${peerId}`, SuspendedFlag);
+  if ((account.suspended === true) !== suspended) {
+    throw new StepFailure(`GET /api/v1/accounts/${peerId} reads ${JSON.stringify(account)}`);
+  }
+  if (await lookupFinds(viewer, peer.acct)) {
+    throw new StepFailure(`the lookup of ${peer.acct} found it on a suspended domain`);
+  }
+};
+
 /**
  * `admin` suspends the domain of `peer`, which follows `local` on the
  * admin's server both ways. Mastodon's `DeleteAccountService` on each of the
  * domain's accounts sends a `Reject(Follow)` for its follows and an
  * `Undo(Follow)` for the follows of it, so the peer's server ends both, and
  * `BlockDomainService` tells `local` what it lost (`severed_relationships`).
- * Lifting the block lifts the suspension (`UnblockDomainService`) and
- * restores no follow.
+ * The peer renders `suspended` by id and the lookup refuses it; the admin's
+ * per-account unsuspension (`unsuspend!`) renders it again, and the lookup
+ * still refuses it. Lifting the block lifts the suspension
+ * (`UnblockDomainService`) and restores no follow.
  */
 const domainSuspension = async (admin: E2eUser, local: E2eUser, peer: E2eUser): Promise<void> => {
   await follow(local, peer);
@@ -225,6 +262,17 @@ const domainSuspension = async (admin: E2eUser, local: E2eUser, peer: E2eUser): 
         ? true
         : undefined,
     );
+    await peerReads(local, peer, peerOnAdmin, true);
+    const lifted = await call(
+      admin,
+      `/api/v1/admin/accounts/${peerOnAdmin}/unsuspend`,
+      AdminAccount,
+      { method: "POST", body: {} },
+    );
+    if (lifted.suspended) {
+      throw new StepFailure(`${admin.origin}'s unsuspension left the peer suspended`);
+    }
+    await peerReads(local, peer, peerOnAdmin, false);
   } finally {
     await call(admin, `/api/v1/admin/domain_blocks/${created.id}`, Anything, { method: "DELETE" });
   }

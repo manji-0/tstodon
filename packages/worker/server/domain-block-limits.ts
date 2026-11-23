@@ -13,8 +13,9 @@ import type { TypedSqlLike } from "./typed-sql";
  * The limitation an instance domain block keeps on the actors it found when
  * it was made (`remote_actor_domain_limits`, migration 0169), as Mastodon's
  * `BlockDomainService` stores `silenced_at` / `suspended_at` on each account
- * at or under the domain. SQL reads it through `remote_actor_domain_rules`;
- * the Worker's own per-actor checks read {@link listDomainSuspendedActors}.
+ * at or under the domain. SQL reads it through `remote_actor_domain_rules`,
+ * as does account presentation ({@link listDomainBlockLimits}); the inbox and
+ * signed fetches read {@link listDomainSuspendedActors}.
  */
 
 type RecordJob = Extract<OutboxJob, { kind: "RecordDomainBlockLimits" }>;
@@ -320,6 +321,58 @@ export const listDomainSuspendedActors = async (
 /** The severity of a domain block one actor's lift undoes. */
 export type LiftedSeverity = "silence" | "suspend";
 
+/**
+ * The CTEs ending in `held(actor_uri, block_id, severity)`: the silences and
+ * suspensions instance domain blocks hold on each actor the JSON array `?1`
+ * lists, as `remote_actor_domain_rules` yields them. The view joins every
+ * block to an actor's key range, so it scans `domain_blocks` once per actor;
+ * here each of the actor's host keys is spelled as its parent domains' keys,
+ * each seeks `idx_domain_blocks_domain_key`, and the longest key that matches
+ * is the host's rule. The rows a block recorded and the admin's lifts are
+ * read by actor. `CROSS JOIN` keeps the actors' rows outermost: without
+ * `ANALYZE` statistics SQLite may otherwise scan `domain_blocks` first.
+ */
+const HELD_CTES = `WITH RECURSIVE
+  listed(actor_uri) AS (SELECT DISTINCT value FROM json_each(?1)),
+  keys(actor_uri, key) AS (
+    SELECT r.actor_uri, r.host_key FROM remote_actors r
+    WHERE r.actor_uri IN (SELECT actor_uri FROM listed) AND r.host_key IS NOT NULL
+    UNION
+    SELECT r.actor_uri, r.uri_host_key FROM remote_actors r
+    WHERE r.actor_uri IN (SELECT actor_uri FROM listed) AND r.uri_host_key IS NOT NULL
+  ),
+  prefixes(actor_uri, key, prefix, rest) AS (
+    SELECT actor_uri, key, '', key FROM keys
+    UNION ALL
+    SELECT actor_uri, key, prefix || substr(rest, 1, instr(rest, '.')),
+      substr(rest, instr(rest, '.') + 1)
+    FROM prefixes WHERE instr(rest, '.') > 0
+  ),
+  matched(actor_uri, key, block_id, severity, key_length) AS (
+    SELECT p.actor_uri, p.key, d.id, d.severity, length(d.domain_key)
+    FROM prefixes p CROSS JOIN domain_blocks d ON d.domain_key = p.prefix
+    WHERE p.prefix <> ''
+  ),
+  ruled(actor_uri, block_id, severity) AS (
+    SELECT m.actor_uri, m.block_id, m.severity FROM matched m
+    WHERE NOT EXISTS (
+      SELECT 1 FROM matched n
+      WHERE n.actor_uri = m.actor_uri AND n.key = m.key AND n.key_length > m.key_length
+    )
+    UNION ALL
+    SELECT l.actor_uri, d.id, d.severity FROM remote_actor_domain_limits l
+    CROSS JOIN domain_blocks d ON d.id = l.domain_block_id
+    WHERE l.actor_uri IN (SELECT actor_uri FROM listed)
+  ),
+  held(actor_uri, block_id, severity) AS (
+    SELECT h.actor_uri, h.block_id, h.severity FROM ruled h
+    WHERE h.severity IN ('silence', 'suspend') AND NOT EXISTS (
+      SELECT 1 FROM remote_actor_domain_lifts x
+      WHERE x.actor_uri = h.actor_uri AND x.domain_block_id = h.block_id
+        AND x.severity = h.severity
+    )
+  )`;
+
 /** The blocks that hold `severity` on the actor now. */
 export const listLimitingDomainBlockIds = (
   db: D1Database,
@@ -328,11 +381,8 @@ export const listLimitingDomainBlockIds = (
 ): Promise<Result<string[], RepositoryError>> =>
   runD1(async () => {
     const { results } = await db
-      .prepare(
-        `SELECT DISTINCT domain_block_id AS id FROM remote_actor_domain_rules
-         WHERE actor_uri = ? AND severity = ?`,
-      )
-      .bind(actorUri, severity)
+      .prepare(`${HELD_CTES} SELECT DISTINCT block_id AS id FROM held WHERE severity = ?2`)
+      .bind(jsonStringArray([actorUri]), severity)
       .all();
     return parseRows(BlockIdRow, results).map((row) => row.id);
   });
@@ -372,10 +422,9 @@ export const listDomainBlockLimits = async (
   return runD1(async () => {
     const { results } = await db
       .prepare(
-        `SELECT actor_uri, max(severity = 'silence') AS silenced, max(severity = 'suspend') AS suspended
-         FROM remote_actor_domain_rules
-         WHERE actor_uri IN (SELECT value FROM json_each(?)) AND severity IN ('silence', 'suspend')
-         GROUP BY actor_uri`,
+        `${HELD_CTES}
+         SELECT actor_uri, max(severity = 'silence') AS silenced, max(severity = 'suspend') AS suspended
+         FROM held GROUP BY actor_uri`,
       )
       .bind(jsonStringArray([...new Set(actorUris)]))
       .all();
