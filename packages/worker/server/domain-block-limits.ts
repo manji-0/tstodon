@@ -7,6 +7,7 @@ import { hostKeyRange } from "./host-key";
 import { startJob } from "./inline-job";
 import { measureJobPage } from "./metrics";
 import { nowIso } from "./clock";
+import { processPurgeSuspendedActorContentJob } from "./suspended-actor-content";
 import type { TypedSqlLike } from "./typed-sql";
 
 /**
@@ -60,7 +61,9 @@ const isStart = (cursor: Cursor): boolean =>
 /**
  * Record the actors of the page after `cursor` under block `blockId`, unless
  * the block no longer silences or suspends by the time the statement runs,
- * so a block changed or removed meanwhile leaves no rows. The first page of
+ * so a block changed or removed meanwhile leaves no rows. Under a
+ * suspension, each actor recorded and not lifted gets its content's purge
+ * ({@link processPurgeSuspendedActorContentJob}). The first page of
  * an `Apply` run forgets the admin's lifts of the block and a pending
  * backfill in the same batch, so a failure is retried with the page. A
  * `Backfill` run records only the actors first seen by its `seenBy`, and
@@ -101,6 +104,21 @@ const recordPage = (
            ) AND (?7 IS NULL OR julianday(p.created_at) <= julianday(?7))`,
         )
         .bind(...binds, run.kind === "Backfill" ? run.seenBy : null),
+      db
+        .prepare(
+          `INSERT OR REPLACE INTO remote_actor_content_purges (actor_uri, before)
+           SELECT p.actor_uri, ?7 FROM (${page}) p
+           WHERE EXISTS (SELECT 1 FROM domain_blocks WHERE id = ?1 AND severity = 'suspend')
+             AND EXISTS (
+               SELECT 1 FROM remote_actor_domain_limits l
+               WHERE l.domain_block_id = ?1 AND l.actor_uri = p.actor_uri
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM remote_actor_domain_lifts x
+               WHERE x.domain_block_id = ?1 AND x.actor_uri = p.actor_uri AND x.severity = 'suspend'
+             )`,
+        )
+        .bind(...binds, nowIso()),
       db.prepare(page).bind(...binds),
     ]);
     const rows = parseRows(PageRow, results.at(-1)?.results);
@@ -139,8 +157,9 @@ const forgetPage = (db: D1Database, blockId: string): Promise<Result<number, Rep
 /**
  * Run one page of {@link startDomainBlockLimits}: record while the block
  * silences or suspends, delete once it is a `noop` or gone. A page queues the
- * next one. A retry runs the same page again, and its rows are recorded
- * once, so a retry or a second job for the same block converges.
+ * next one; the last queues the purge of what a suspension's actors had. A
+ * retry runs the same page again, and its rows are recorded once, so a retry
+ * or a second job for the same block converges.
  */
 export const processRecordDomainBlockLimitsJob = (env: Env, job: RecordJob) =>
   measureJobPage(env, job.kind, async () => {
@@ -172,6 +191,13 @@ export const processRecordDomainBlockLimitsJob = (env: Env, job: RecordJob) =>
     }
     if (next.value !== undefined) {
       await env.OUTBOX_PROCESS_QUEUE.send({ ...job, cursor: next.value });
+    } else {
+      await startJob(
+        env,
+        { kind: "PurgeSuspendedActorContent" },
+        processPurgeSuspendedActorContentJob,
+        "Queued",
+      );
     }
     return { outcome: "ok", size: -1, chained: next.value !== undefined, step: job.cursor.host };
   });
