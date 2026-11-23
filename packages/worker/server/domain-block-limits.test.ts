@@ -16,7 +16,7 @@ import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import {
   listDomainBlockLimits,
   listLimitingDomainBlockIds,
-  recordPageSql,
+  RECORD_PAGE_SQL,
 } from "./domain-block-limits";
 import { listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
 import { processOutboxJob } from "./outbox-job";
@@ -310,20 +310,40 @@ const limitRows = async (where: string, bind: string): Promise<number> => {
 
 describe("a page of a block's actors", () => {
   // Page k reads its own rows by the key's index, not the k - 1 pages before it.
-  it.each(["AccountDomain", "UriHost"] as const)(
-    "seeks the %s key's index in its own order",
-    async (host) => {
-      const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${recordPageSql(host)}`)
-        .bind("block", "com.example.", "com.example/", "com.example.a.", 7, 500)
-        .all();
-      const details = z
-        .array(z.object({ detail: z.string() }))
-        .parse(results)
-        .map((row) => row.detail);
-      expect(details.join("\n")).toMatch(/^SEARCH remote_actors USING (COVERING )?INDEX /);
-      expect(details.filter((detail) => /^SCAN |TEMP B-TREE/.test(detail))).toEqual([]);
-    },
-  );
+  it("seeks the account domain key's index in its own order", async () => {
+    const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${RECORD_PAGE_SQL}`)
+      .bind("block", "com.example.", "com.example/", "com.example.a.", 7, 500)
+      .all();
+    const details = z
+      .array(z.object({ detail: z.string() }))
+      .parse(results)
+      .map((row) => row.detail);
+    expect(details.join("\n")).toMatch(/^SEARCH remote_actors USING (COVERING )?INDEX /);
+    expect(details.filter((detail) => /^SCAN |TEMP B-TREE/.test(detail))).toEqual([]);
+  });
+});
+
+describe("the rule an actor is recorded under when first cached", () => {
+  // The trigger runs on every new actor: it seeks the actor, then each parent
+  // domain of its account domain, never the actors or the blocks in full.
+  it("is read by index seeks only", async () => {
+    const { results } = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN SELECT domain_block_id FROM remote_actor_account_domain_rule
+       WHERE actor_uri = ?`,
+    )
+      .bind("https://a.example.com/users/a")
+      .all();
+    const details = z
+      .array(z.object({ detail: z.string() }))
+      .parse(results)
+      .map((row) => row.detail);
+    expect(
+      details.filter((detail) => /SCAN (r|d|remote_actors|domain_blocks)\b/.test(detail)),
+    ).toEqual([]);
+    expect(details.join("\n")).toMatch(
+      /SEARCH d USING (COVERING )?INDEX idx_domain_blocks_domain_key/,
+    );
+  });
 });
 
 describe("a block removed while its rows were left", () => {
@@ -1062,5 +1082,100 @@ describe("the content a domain suspension emptied", () => {
     await hourlySweep();
 
     expect(await statusRows(actor.actorUri)).toBe(1);
+  });
+});
+
+const purgeRows = async (actorUri: string): Promise<number> => {
+  const row = await env.DB.prepare(
+    "SELECT count(*) AS n FROM remote_actor_content_purges WHERE actor_uri = ?",
+  )
+    .bind(actorUri)
+    .first();
+  return z.object({ n: z.number() }).parse(row).n;
+};
+
+// `ActivityPub::ProcessAccountService#create_account` sets `suspended_at` /
+// `silenced_at` from `DomainBlock.rule_for(@domain)`, and a narrower rule
+// made later leaves them. Under a silence or suspension, the admin API makes
+// a narrower `noop` only as a stricter block changed to one (`#create`
+// compares rules, `#update` does not).
+const narrowerNoop = async (domain: string): Promise<void> => {
+  await changeBlock(await block(domain, "suspend"), "noop");
+};
+
+describe("an actor first cached under a silence or suspension of its domain", () => {
+  it("stays suspended when a narrower noop is made later", async () => {
+    await block("late-cached.example", "suspend");
+    const later = await remoteActor("later", "open.late-cached.example");
+    expect(await limitRows("actor_uri", later.actorUri)).toBe(1);
+    expect(await purgeRows(later.actorUri)).toBe(0);
+
+    await narrowerNoop("open.late-cached.example");
+
+    expect(await lookup("later@open.late-cached.example")).toBe("Suspended");
+    expect(await accountById(later.actorUri)).toBe("Suspended");
+    expect(await createNote(later, "https://open.late-cached.example/notes/1")).toBe(403);
+  });
+
+  it("stays silenced when a narrower noop is made later", async () => {
+    await block("late-sil.example", "silence");
+    const later = await remoteActor("later", "open.late-sil.example");
+
+    await narrowerNoop("open.late-sil.example");
+
+    expect(await silencedAuthors([later.actorUri])).toEqual([later.actorUri]);
+    expect(await adminAccount(later.actorUri)).toMatchObject({ silenced: true });
+  });
+
+  it("is recorded once however often it is fetched again", async () => {
+    await block("late-again.example", "silence");
+    const actor = await remoteActor("again", "late-again.example");
+    await remoteActor("again", "late-again.example");
+
+    expect(await limitRows("actor_uri", actor.actorUri)).toBe(1);
+  });
+
+  it("is recorded under the most specific rule only", async () => {
+    await block("late-noop.example", "suspend");
+    await narrowerNoop("open.late-noop.example");
+    const later = await remoteActor("later", "open.late-noop.example");
+
+    expect(await limitRows("actor_uri", later.actorUri)).toBe(0);
+    expect(await lookup("later@open.late-noop.example")).toBe("Shown");
+  });
+
+  it("is not recorded when only its URI's host is blocked", async () => {
+    await block("late-uri.example", "silence");
+    const actor = await remoteActor("later", "late-uri.example", {
+      accountDomain: "open-late-uri.example",
+    });
+
+    expect(await limitRows("actor_uri", actor.actorUri)).toBe(0);
+  });
+});
+
+// `Account.by_domain_and_subdomains` matches the account domain only, so
+// `BlockDomainService` neither suspends nor empties an account whose account
+// domain the block does not cover, wherever its actor URI is.
+describe("an actor whose URI's host a suspension covers and whose account domain is open", () => {
+  it("is not recorded, and keeps its content once the block is removed", async () => {
+    const actor = await remoteActor("split", "media.uri-susp.example", {
+      accountDomain: "open-uri-susp.example",
+    });
+    const note = "https://media.uri-susp.example/notes/before";
+    expect(await createNote(actor, note)).toBe(202);
+
+    const id = await block("uri-susp.example", "suspend");
+
+    expect(await limitRows("actor_uri", actor.actorUri)).toBe(0);
+    expect(await purgeRows(actor.actorUri)).toBe(0);
+    expect(await statusRows(actor.actorUri)).toBe(1);
+    // Known divergence: presentation also suspends an actor by its URI's host.
+    expect(await accountById(actor.actorUri)).toBe("Suspended");
+
+    await unblock(id);
+
+    expect(await accountById(actor.actorUri)).toBe("Shown");
+    expect(await publicRemoteUris()).toContain(note);
   });
 });
