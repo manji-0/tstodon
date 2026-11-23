@@ -1,12 +1,17 @@
 import { InstanceIdentity, type LocalAccount, RemoteActor } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { type DeliveryReach, enqueueTargetedActivity } from "./delivery";
+import {
+  type DeliveryReach,
+  type EnqueueLocalActivityError,
+  enqueueTargetedActivity,
+} from "./delivery";
 import { deleteRemoteFollow, findRemoteFollow } from "./remote-actor-store";
 
 /**
- * Send `actor` the `Reject` of its `Follow` of `account`. Delivery is best
- * effort: the caller has already dropped the follow.
+ * Send `actor` the `Reject` of its `Follow` of `account`, answering whether
+ * it was queued. Delivery is best effort: the caller has already dropped the
+ * follow.
  */
 export const sendFollowReject = async (
   env: Env,
@@ -15,9 +20,9 @@ export const sendFollowReject = async (
   actor: RemoteActor,
   followActivityId: string,
   reach: DeliveryReach = "Federating",
-): Promise<void> => {
+): Promise<Result<void, EnqueueLocalActivityError>> => {
   const actorUrl = InstanceIdentity.actorUrl(identity, account.username);
-  await enqueueTargetedActivity(
+  return enqueueTargetedActivity(
     env,
     account,
     "Reject",
