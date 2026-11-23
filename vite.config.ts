@@ -42,6 +42,12 @@ export default defineConfig({
             wrangler: { configPath: "./packages/worker/dist/ssr/wrangler.json" },
             miniflare: {
               compatibilityDate: "2026-08-22",
+              // Tests do not reach the network. A fetch no test stubs (a
+              // delivery to a test's remote inbox, an unfurl, an actor fetch)
+              // is answered 502 here at once, with no DNS lookup, which the
+              // Worker handles as any remote server error.
+              outboundService: (request: Request) =>
+                new Response(`tests do not reach the network: ${request.url}`, { status: 502 }),
               // The Worker's queues send to queues no consumer reads. Their
               // consumers would run each job a test sets off in the
               // background, unawaited, past the test and its file's end (a

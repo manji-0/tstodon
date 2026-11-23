@@ -7,6 +7,8 @@ if (!Array.isArray(migrations)) {
 }
 await applyD1Migrations(env.DB, migrations);
 
-// Tests must not reach the network: every name resolves to a public address.
-// A test that exercises the DNS check passes its own `resolveHost` instead.
+// Tests do not reach the network: the pool answers every unstubbed fetch 502
+// (`outboundService` in the root `vite.config.ts`), and the app's own DNS
+// check resolves every name to a public address here. A test that exercises
+// the DNS check passes its own `resolveHost` instead.
 setDefaultHostResolver(async () => ({ kind: "Resolved", addresses: ["93.184.216.34"] }));
