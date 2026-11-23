@@ -122,10 +122,14 @@ export const accountFactoryImmutable = (
   options: FactoryOptions<ApiAccountJSON> = {},
 ) => createAccountFromServerJSON(accountFactoryAPI(options));
 
-export const statusFactoryAPI: FactoryFunction<ApiStatusJSON> = ({
+/** A status fixture's fields, and the source text its `content` is built from. */
+type StatusFactoryOptions = FactoryOptions<ApiStatusJSON> & { text?: string };
+
+export const statusFactoryAPI = ({
   id,
+  text,
   ...data
-} = {}) => ({
+}: StatusFactoryOptions = {}): ApiStatusJSON => ({
   id: id ?? '1',
   created_at: '2023-01-01T00:00:00.000Z',
   in_reply_to_id: null,
@@ -151,7 +155,7 @@ export const statusFactoryAPI: FactoryFunction<ApiStatusJSON> = ({
   poll: null,
   quote_approval: { automatic: [], manual: [], current_user: 'unknown' },
   content:
-    data.text
+    text
       ?.split('\n')
       .map((line) => `<p>${line}</p>`)
       .join('\n') ?? '<p>This is a test status.</p>',

@@ -128,8 +128,6 @@ const statusFields = {
   pinned: z.boolean().optional(),
   filtered: z.array(ApiFilterResult).optional(),
   content: z.string(),
-  /** The source text: only where Mastodon renders it (delete and redraft). */
-  text: z.string().nullable().optional(),
   application: ApiStatusApplication.nullable().optional(),
   account: ApiAccount,
   media_attachments: z.array(ApiMediaAttachment),
@@ -182,6 +180,74 @@ export const ApiStatus = z.object({
   quote: ApiQuote.nullable().optional(),
 });
 export type ApiStatusJSON = z.infer<typeof ApiStatus>;
+
+/** The states of a quote the quoted author has not accepted (or no longer does). */
+export const QUOTE_UNACCEPTED_STATES = ["pending", "rejected", "revoked"] as const;
+/** The states in which a quote shows no status, even with its source requested. */
+const QUOTE_GONE_STATES = ["deleted", "unauthorized"] as const;
+
+/**
+ * A status's fields with its source requested (`source_requested`): `text`,
+ * the source as written, in place of `content`. A remote status's `text` is
+ * the HTML it was received with.
+ */
+const sourceStatusFields = z
+  .object(statusFields)
+  .omit({ content: true })
+  .extend({ text: z.string() }).shape;
+
+/**
+ * {@link ApiShallowQuote} with the source requested: `BaseQuoteSerializer`
+ * also names the status of a quote that is not accepted.
+ */
+export const ApiSourceShallowQuote = z.discriminatedUnion("state", [
+  z.object({ state: z.literal(QUOTE_SHOWN_STATES), quoted_status_id: z.string() }),
+  z.object({ state: z.literal(QUOTE_UNACCEPTED_STATES), quoted_status_id: z.string().nullable() }),
+  z.object({ state: z.literal(QUOTE_GONE_STATES), quoted_status_id: z.null() }),
+]);
+export type ApiSourceShallowQuoteJSON = z.infer<typeof ApiSourceShallowQuote>;
+
+/** {@link ApiQuotedStatus} with the source requested. */
+export const ApiSourceQuotedStatus = z.object({
+  ...sourceStatusFields,
+  reblog: z.null().optional(),
+  quote: ApiSourceShallowQuote.nullable().optional(),
+});
+export type ApiSourceQuotedStatusJSON = z.infer<typeof ApiSourceQuotedStatus>;
+
+/**
+ * {@link ApiQuote} with the source requested: `BaseQuoteSerializer` also shows
+ * the status of a quote that is not accepted, so a redraft keeps it.
+ */
+export const ApiSourceQuote = z.discriminatedUnion("state", [
+  z.object({ state: z.literal(QUOTE_SHOWN_STATES), quoted_status: ApiSourceQuotedStatus }),
+  z.object({
+    state: z.literal(QUOTE_UNACCEPTED_STATES),
+    quoted_status: ApiSourceQuotedStatus.nullable(),
+  }),
+  z.object({ state: z.literal(QUOTE_GONE_STATES), quoted_status: z.null() }),
+]);
+export type ApiSourceQuoteJSON = z.infer<typeof ApiSourceQuote>;
+
+/** {@link ApiOriginalStatus} with the source requested. */
+export const ApiSourceOriginalStatus = z.object({
+  ...sourceStatusFields,
+  reblog: z.null().optional(),
+  quote: ApiSourceQuote.nullable().optional(),
+});
+export type ApiSourceOriginalStatusJSON = z.infer<typeof ApiSourceOriginalStatus>;
+
+/**
+ * `REST::StatusSerializer` with `source_requested: true`, as
+ * `DELETE /api/v1/statuses/:id` answers for a redraft: each status, the
+ * boosted and quoted ones too, has `text` and no `content`.
+ */
+export const ApiSourceStatus = z.object({
+  ...sourceStatusFields,
+  reblog: ApiSourceOriginalStatus.nullable().optional(),
+  quote: ApiSourceQuote.nullable().optional(),
+});
+export type ApiSourceStatusJSON = z.infer<typeof ApiSourceStatus>;
 
 /** `REST::ContextSerializer`. */
 export const ApiContext = z.object({
