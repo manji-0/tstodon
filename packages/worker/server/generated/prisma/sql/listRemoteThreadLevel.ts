@@ -9,21 +9,32 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param depth
  * @param afterId
  * @param limit
+ * @param walkStartedAt
  */
 export const listRemoteThreadLevel = $runtime.makeTypedQueryFactory(
-  "WITH RECURSIVE tree(id, object_uri, depth, path) AS (\nSELECT id, object_uri, 0, ',' || id || ',' FROM remote_statuses WHERE id = $1\nUNION ALL\nSELECT r.id, r.object_uri, tree.depth + 1, tree.path || r.id || ',' FROM tree\nJOIN remote_statuses r ON r.in_reply_to_uri = tree.object_uri\nWHERE tree.depth < $2 AND r.visibility IN ('public', 'unlisted')\nAND instr(tree.path, ',' || r.id || ',') = 0\n)\nSELECT tree.id, tree.object_uri, s.replies_fetched_at\nFROM tree JOIN remote_statuses s ON s.id = tree.id\nWHERE tree.depth = $2 AND tree.id > $3 ORDER BY tree.id LIMIT $4",
+  "WITH RECURSIVE tree(id, object_uri, depth, path) AS (\nSELECT id, object_uri, 0, ',' || id || ',' FROM remote_statuses WHERE id = $1\nUNION ALL\nSELECT r.id, r.object_uri, tree.depth + 1, tree.path || r.id || ',' FROM tree\nJOIN remote_statuses r ON r.in_reply_to_uri = tree.object_uri\nWHERE tree.depth < $2 AND r.visibility IN ('public', 'unlisted')\nAND instr(tree.path, ',' || r.id || ',') = 0\n)\nSELECT tree.id, tree.object_uri, s.actor_uri, s.published_at, s.replies_fetched_at,\nCASE WHEN julianday(s.created_at) < julianday($5) THEN 1 ELSE 0 END AS cached_before_walk\nFROM tree JOIN remote_statuses s ON s.id = tree.id\nWHERE tree.depth = $2 AND tree.id > $3 ORDER BY tree.id LIMIT $4",
 ) as (
   rootId: string,
   depth: number,
   afterId: string,
   limit: number,
+  walkStartedAt: string,
 ) => $runtime.TypedSql<listRemoteThreadLevel.Parameters, listRemoteThreadLevel.Result>;
 
 export namespace listRemoteThreadLevel {
-  export type Parameters = [rootId: string, depth: number, afterId: string, limit: number];
+  export type Parameters = [
+    rootId: string,
+    depth: number,
+    afterId: string,
+    limit: number,
+    walkStartedAt: string,
+  ];
   export type Result = {
     id: string | null;
     object_uri: string;
+    actor_uri: string;
+    published_at: string;
     replies_fetched_at: string | null;
+    cached_before_walk: null | null;
   };
 }

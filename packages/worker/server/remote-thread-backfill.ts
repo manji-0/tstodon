@@ -26,7 +26,9 @@ import {
   listRemoteThreadLevel,
   stampRemoteStatusRepliesFetched,
 } from "./generated/prisma/sql";
+import { nowInstant } from "./clock";
 import { findRemoteStatusReplyTargetByObjectUri } from "./remote-reply-store";
+import { refreshFetchedNote } from "./remote-update";
 import { storeFetchedNote, storeNoteDocument } from "./remote-status-persist";
 import { queueRemoteThreadResolve, threadResolveExhausted } from "./remote-thread-resolve";
 import {
@@ -53,6 +55,15 @@ export const THREAD_REPLIES_COOLDOWN_MS = 15 * 60 * 1000;
 export const THREAD_BACKFILL_TTL_MS = THREAD_REPLIES_COOLDOWN_MS;
 
 /**
+ * How long after it was published a status's `replies` are left unread,
+ * Mastodon's `FETCH_REPLIES_INITIAL_WAIT_MINUTES` (its `created_at` of a
+ * remote status is the note's `published`): opening a younger status queues
+ * no walk, and the walk leaves out a younger reply it had before it started
+ * (`created_recently`).
+ */
+export const THREAD_REPLIES_INITIAL_WAIT_MS = 5 * 60 * 1000;
+
+/**
  * Notes fetched above the opened status. Each can cost a fetch, and an
  * author's actor when it is new, so this bounds the job's subrequests;
  * `CONTEXT_ANCESTOR_LIMIT` is how far a reader walks up anyway.
@@ -73,10 +84,11 @@ export const THREAD_COLLECTION_PAGE_ITEMS = 5;
 export const THREAD_COLLECTION_REPLY_LIMIT = 500;
 
 /**
- * Pages of one collection read in one job. Mastodon reads on while the tree
- * has pages left; a collection whose first ten pages hold fewer than
- * {@link THREAD_COLLECTION_PAGE_ITEMS} replies is read no further here, so
- * that a job's subrequests stay bounded.
+ * Pages of one collection read in one job. Mastodon reads a collection until
+ * its pages hold {@link THREAD_COLLECTION_PAGE_ITEMS} replies or the tree
+ * read {@link THREAD_TREE_PAGE_LIMIT} pages; a collection with more pages
+ * than this to read goes on in the next job, at the page this one reached,
+ * so that a job's subrequests stay bounded.
  */
 export const THREAD_COLLECTION_PAGE_LIMIT = 10;
 
@@ -93,7 +105,9 @@ export const THREAD_COLLECTION_PAGE_LIMIT = 10;
  * up to 12 GETs: its document, its `replies` collection when that is a link,
  * and up to {@link THREAD_COLLECTION_PAGE_LIMIT} pages, its `first` among
  * them, all read again when a job resumes inside its list; 5 of them are at
- * most 240 requests. About 670 requests and their DNS lookups stay inside the 10,000
+ * most 240 requests. Refreshing a status the walk had before it started can
+ * fetch the note it quotes and that note's author, at most 17 more each, 85
+ * in all. About 760 requests and their DNS lookups stay inside the 10,000
  * subrequests of a Workers Paid invocation this server is sized for, not the
  * Free plan's 50.
  */
@@ -167,14 +181,15 @@ export const findThreadRefresh = async (
 
 /**
  * Queue fetching the thread of a remote status the reader opened, unless one
- * was queued within the TTL. Only public and unlisted statuses, whose origin
- * serves them to anyone. Mastodon's `should_fetch_replies?`, without its
- * five-minute initial wait, which would hold back the replies of a fresh
- * root and leave missing the parents of a note no thread job resolves
- * (`ResolveRemoteThread`): one an outbox backfill stored, a quoted note or
- * a listed reply (INT-4). Best effort
- * and off the request path: the thread renders what is cached, and the
- * refresh this resolves to tells a client when to read it again.
+ * was queued within the TTL, as Mastodon's `should_fetch_replies?`: only
+ * public and unlisted statuses, whose origin serves them to anyone, and only
+ * once the status is {@link THREAD_REPLIES_INITIAL_WAIT_MS} old. A younger
+ * status queues the thread job of its parent instead
+ * ({@link queueRemoteThreadResolve}), which Mastodon queued when it stored
+ * the status (`Create#resolve_thread`) and tstodon did not for a note it
+ * stored under another, such as a quoted note. Best effort and off the
+ * request path: the thread renders what is cached, and the refresh this
+ * resolves to tells a client when to read it again.
  */
 export const requestRemoteThreadBackfill = async (
   env: Env,
@@ -182,6 +197,13 @@ export const requestRemoteThreadBackfill = async (
 ): Promise<ThreadRefresh | undefined> => {
   if (status.visibility.kind !== "Public" && status.visibility.kind !== "Unlisted") {
     return undefined;
+  }
+  if (publishedRecently(status.publishedAt, Date.now())) {
+    const identity = parseInstanceIdentity(env);
+    if (identity.isOk()) {
+      await queueRemoteThreadResolve(env, identity.value, status.id, 1);
+    }
+    return (await findThreadRefresh(env.DB, status.id)).unwrapOr(undefined);
   }
   const claimed = await claimRemoteThreadBackfill(env.DB, status.id, THREAD_BACKFILL_TTL_MS);
   if (claimed.isErr()) {
@@ -273,65 +295,115 @@ const backfillAncestors = async (
   return stored;
 };
 
-/** The items a note's `replies` collection lists, and the pages read for them. */
-type ListedReplies = Readonly<{ items: ReadonlyArray<unknown>; pages: number }>;
+type LevelFrom = Extract<BackfillRemoteThread["from"], { kind: "Level" }>;
+
+/** Where reading a note's `replies` starts: its document, or a page an earlier job reached. */
+type ListReading = NonNullable<LevelFrom["resume"]>["reading"];
 
 /**
- * The replies the note at `objectUri` lists: the items of the pages of its
- * `replies`, read until they hold {@link THREAD_COLLECTION_PAGE_ITEMS} or
- * `maxPages` were read, up to {@link THREAD_COLLECTION_REPLY_LIMIT}. The
- * collection, its `first` page and each `next` page are read only from the
- * note's own origin, as Mastodon's `fetch_collection_page` checks each link
- * against `reference_uri`. `Unavailable` when the note's document or a page after the first did
- * not answer: the list would be cut short, and a later try may read it whole.
+ * What one read of a note's `replies` found: the items listed, the pages as
+ * Mastodon's `collection_items` counts them, the note's document when the
+ * read started there, and the page the next job reads on from when this one
+ * stopped after {@link THREAD_COLLECTION_PAGE_LIMIT} pages.
+ */
+type ListedReplies = Readonly<{
+  items: ReadonlyArray<unknown>;
+  pages: number;
+  document: unknown;
+  rest: string | undefined;
+}>;
+
+/**
+ * The replies the note at `objectUri` lists, read from where `reading`
+ * starts, as Mastodon's `collection_items` with `max_pages`: the items of
+ * the pages of its `replies`, read until they hold
+ * {@link THREAD_COLLECTION_PAGE_ITEMS}, `treePages` were read or the list
+ * ends, up to {@link THREAD_COLLECTION_REPLY_LIMIT}. A list that ends counts
+ * one page more than was read, as `collection_items` counts the page it
+ * found missing. After {@link THREAD_COLLECTION_PAGE_LIMIT} pages the read
+ * stops short of the next page (`rest`). The collection, its `first` page
+ * and each `next` page are read only from the note's own origin, as
+ * Mastodon's `fetch_collection_page` checks each link against
+ * `reference_uri`. `Unavailable` when the note's document or a page after
+ * the first did not answer: the list would be cut short, and a later try may
+ * read it whole.
  */
 const listedReplies = async (
   identity: InstanceIdentity,
   objectUri: string,
-  maxPages: number,
+  reading: ListReading,
+  treePages: number,
   options: FederatedFetchOptions,
 ): Promise<ListedReplies | "Unavailable"> => {
-  const raw = await fetchActivityJson(identity, objectUri, options);
-  if (raw.isErr() && raw.error.kind === "VerificationUnavailable") {
-    return "Unavailable";
-  }
   const origin = URL.parse(objectUri)?.origin;
-  const reading = { itemLimit: THREAD_COLLECTION_REPLY_LIMIT, origin: origin ?? "" };
-  const holder = raw.isOk() ? parseRepliesHolder(raw.value) : undefined;
-  const replies = holder?.isOk() ? holder.value.replies : undefined;
+  const pageReading = { itemLimit: THREAD_COLLECTION_REPLY_LIMIT, origin: origin ?? "" };
+  let document: unknown;
   let page;
-  if (typeof replies === "string") {
+  if (reading.kind === "Page") {
     page =
-      URL.parse(replies)?.origin === origin
-        ? await firstCollectionPage(identity, replies, options, reading)
+      URL.parse(reading.uri)?.origin === origin
+        ? await readCollectionPage(identity, reading.uri, options, pageReading)
         : undefined;
+    if (page === "Unavailable") {
+      return "Unavailable";
+    }
   } else {
-    const collection = replies === undefined ? undefined : parseCollection(replies);
-    page = collection?.isOk()
-      ? await firstPageOf(identity, collection.value, objectUri, options, reading)
-      : undefined;
+    const raw = await fetchActivityJson(identity, objectUri, options);
+    if (raw.isErr() && raw.error.kind === "VerificationUnavailable") {
+      return "Unavailable";
+    }
+    document = raw.isOk() ? raw.value : undefined;
+    const holder = raw.isOk() ? parseRepliesHolder(raw.value) : undefined;
+    const replies = holder?.isOk() ? holder.value.replies : undefined;
+    if (typeof replies === "string") {
+      page =
+        URL.parse(replies)?.origin === origin
+          ? await firstCollectionPage(identity, replies, options, pageReading)
+          : undefined;
+    } else {
+      const collection = replies === undefined ? undefined : parseCollection(replies);
+      page = collection?.isOk()
+        ? await firstPageOf(identity, collection.value, objectUri, options, pageReading)
+        : undefined;
+    }
+    if (page === undefined) {
+      // No list: `collection_items` answers nothing, and no page counts.
+      return { items: [], pages: 0, document, rest: undefined };
+    }
   }
+  const itemsBefore = reading.kind === "Page" ? reading.itemsBefore : 0;
   const items: unknown[] = [];
   let pages = 0;
+  let rest: string | undefined;
+  let ended = true;
   for (; page !== undefined;) {
     pages += 1;
     items.push(...page.items);
-    const next = page.next;
-    if (
-      next === undefined ||
-      pages >= maxPages ||
-      items.length >= THREAD_COLLECTION_PAGE_ITEMS ||
-      URL.parse(next)?.origin !== origin
-    ) {
+    if (itemsBefore + items.length >= THREAD_COLLECTION_PAGE_ITEMS || pages >= treePages) {
+      ended = false;
       break;
     }
-    const following = await readCollectionPage(identity, next, options, reading);
+    const next = page.next;
+    if (next === undefined || URL.parse(next)?.origin !== origin) {
+      break;
+    }
+    if (pages >= THREAD_COLLECTION_PAGE_LIMIT) {
+      rest = next;
+      ended = false;
+      break;
+    }
+    const following = await readCollectionPage(identity, next, options, pageReading);
     if (following === "Unavailable") {
       return "Unavailable";
     }
     page = following;
   }
-  return { items: items.slice(0, THREAD_COLLECTION_REPLY_LIMIT), pages };
+  return {
+    items: items.slice(0, THREAD_COLLECTION_REPLY_LIMIT),
+    pages: ended ? pages + 1 : pages,
+    document,
+    rest,
+  };
 };
 
 /** A reply a collection listed: its URI, and its object when the list embeds it. */
@@ -424,18 +496,28 @@ const storeListedReplies = async (
 const ThreadNodeRow = z.object({
   id: StatusId.schema,
   object_uri: z.string(),
+  actor_uri: z.string(),
+  published_at: z.string(),
   replies_fetched_at: z.string().nullable(),
+  cached_before_walk: z.union([z.literal(0), z.literal(1)]),
 });
+
+type ThreadNode = z.infer<typeof ThreadNodeRow>;
 
 /** One slice of a level of the reply tree below `rootId` ({@link listRemoteThreadLevel}). */
 const listThreadLevel = (
   db: D1Database,
   rootId: string,
-  depth: number,
-  after: string,
+  from: LevelFrom,
   limit: number,
-): Promise<Result<ReadonlyArray<z.infer<typeof ThreadNodeRow>>, RepositoryError>> =>
-  runD1(() => queryTyped(db, listRemoteThreadLevel(rootId, depth, after, limit), ThreadNodeRow));
+): Promise<Result<ReadonlyArray<ThreadNode>, RepositoryError>> =>
+  runD1(() =>
+    queryTyped(
+      db,
+      listRemoteThreadLevel(rootId, from.depth, from.after, limit, from.startedAt),
+      ThreadNodeRow,
+    ),
+  );
 
 export const processBackfillRemoteThreadJob = (
   env: Env,
@@ -446,7 +528,7 @@ export const processBackfillRemoteThreadJob = (
 type ThreadStep =
   | Readonly<{ kind: "Retry" }>
   | Readonly<{ kind: "Finished"; stored: number }>
-  | Readonly<{ kind: "Continue"; from: Extract<BackfillRemoteThread["from"], { kind: "Level" }> }>;
+  | Readonly<{ kind: "Continue"; from: LevelFrom }>;
 
 /**
  * The walk of a remote status's reply tree, as Mastodon's
@@ -507,6 +589,7 @@ const backfillRemoteThreadPass = async (
     fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
   };
   if (job.from.kind === "Root") {
+    const startedAt = nowInstant();
     const ancestors = await backfillAncestors(env, identity.value, status.value, options);
     return expandLevel(
       env,
@@ -514,6 +597,7 @@ const backfillRemoteThreadPass = async (
       job.statusId,
       {
         kind: "Level",
+        startedAt,
         depth: 0,
         after: "",
         visited: 0,
@@ -528,10 +612,7 @@ const backfillRemoteThreadPass = async (
 };
 
 /** `from` without the list a job stopped in, for a job that starts elsewhere. */
-const withoutResume = ({
-  resume: _resume,
-  ...from
-}: Extract<BackfillRemoteThread["from"], { kind: "Level" }>) => from;
+const withoutResume = ({ resume: _resume, ...from }: LevelFrom) => from;
 
 /** Whether the walk reached one of the per-tree caps. */
 const treeDone = (visited: number, listed: number, pages: number): boolean =>
@@ -543,33 +624,76 @@ const treeDone = (visited: number, listed: number, pages: number): boolean =>
 const repliesFetchedRecently = (fetchedAt: string | null, now: number): boolean =>
   fetchedAt !== null && Date.parse(fetchedAt) > now - THREAD_REPLIES_COOLDOWN_MS;
 
+/** Whether a status was published within the initial wait, as Mastodon's `created_recently`. */
+const publishedRecently = (publishedAt: string, now: number): boolean =>
+  Date.parse(publishedAt) > now - THREAD_REPLIES_INITIAL_WAIT_MS;
+
+/**
+ * Whether the walk had the status before it started: the opened status, or
+ * a reply cached before. Mastodon's `FetchAllRepliesService` keeps such a
+ * listed status only when it `should_fetch_replies`, touches its
+ * `fetched_replies_at` and fetches it again (`FetchReplyWorker`); a reply the
+ * walk stored is new to it, and expanded as it is.
+ */
+const hadBeforeWalk = (node: ThreadNode, depth: number): boolean =>
+  depth === 0 || node.cached_before_walk === 1;
+
+/**
+ * Whether the walk leaves out a status it reached, as Mastodon's
+ * `should_not_fetch_replies`: one it had before, whose `replies` were read
+ * within the cooldown or, below the opened status, that was published within
+ * the initial wait (the opened status's age is checked when it is opened).
+ */
+const leftOut = (node: ThreadNode, depth: number, now: number): boolean =>
+  hadBeforeWalk(node, depth) &&
+  (repliesFetchedRecently(node.replies_fetched_at, now) ||
+    (depth > 0 && publishedRecently(node.published_at, now)));
+
+/**
+ * Apply the document the walk fetched for a status it had before to the
+ * cached note, as Mastodon's `FetchReplyWorker` fetches each such status
+ * again (`refreshFetchedNote`). Best effort, as that worker is a job of its
+ * own: a refresh that fails leaves the note as cached.
+ */
+const refreshNode = async (
+  env: Env,
+  identity: InstanceIdentity,
+  node: ThreadNode,
+  document: unknown,
+  options: FederatedFetchOptions,
+): Promise<void> => {
+  const author = await findRemoteActorByUri(env.DB, node.actor_uri);
+  if (author.isOk() && author.value !== undefined) {
+    await refreshFetchedNote(env, identity, author.value, node.object_uri, document, {
+      ...options,
+      fanOut: "Queued",
+    });
+  }
+};
+
 /**
  * Expand the next statuses of one level of the tree (depth 0 is the opened
  * status), up to {@link THREAD_TREE_NODES_PER_JOB} of them or until this job
- * fetched {@link THREAD_BACKFILL_REPLY_LIMIT} replies, and record on each
- * that its `replies` were read. One read within the cooldown is skipped, as
- * Mastodon's `FetchAllRepliesService` leaves out a status that
- * `should_not_fetch_replies`. The walk goes on inside the list it stopped
- * in, at the next status of the level, or at the next level once this one
- * is done. The opened status's list not answering retries the job; a reply
- * deeper down whose list does not answer is skipped, as Mastodon's
- * `FetchAllRepliesWorker` skips a failed fetch, so one host down does not
- * hold up the rest of the tree.
+ * fetched {@link THREAD_BACKFILL_REPLY_LIMIT} replies. A status the walk had
+ * before it started ({@link hadBeforeWalk}) is left out as {@link leftOut}
+ * says; any other is refreshed from the document its expansion reads and
+ * recorded as read (`replies_fetched_at`). The walk goes on inside the list it
+ * stopped in, at the page it reached in it, at the next status of the level,
+ * or at the next level once this one is done. The opened status's list not
+ * answering retries the job; a reply deeper down whose list does not answer
+ * is skipped, as Mastodon's `FetchAllRepliesWorker` skips a failed fetch, so
+ * one host down does not hold up the rest of the tree. A list's replies and
+ * pages count toward the tree's caps once each of its replies was gone
+ * through.
  */
 const expandLevel = async (
   env: Env,
   identity: InstanceIdentity,
   rootId: string,
-  from: Extract<BackfillRemoteThread["from"], { kind: "Level" }>,
+  from: LevelFrom,
   options: FederatedFetchOptions,
 ): Promise<ThreadStep> => {
-  const nodes = await listThreadLevel(
-    env.DB,
-    rootId,
-    from.depth,
-    from.after,
-    THREAD_TREE_NODES_PER_JOB,
-  );
+  const nodes = await listThreadLevel(env.DB, rootId, from, THREAD_TREE_NODES_PER_JOB);
   if (nodes.isErr()) {
     return { kind: "Retry" };
   }
@@ -586,25 +710,27 @@ const expandLevel = async (
   let { after, visited, listed, pages, stored } = from;
   let fetched = 0;
   for (const node of nodes.value) {
-    const offset = from.resume?.id === node.id ? from.resume.offset : 0;
     if (treeDone(visited, listed, pages) || fetched >= THREAD_BACKFILL_REPLY_LIMIT) {
       break;
     }
-    if (offset === 0) {
+    const resumed = from.resume?.id === node.id ? from.resume : undefined;
+    if (resumed === undefined) {
       visited += 1;
-    }
-    if (offset === 0 && repliesFetchedRecently(node.replies_fetched_at, now)) {
-      // An opened status read so is not walked, as `should_fetch_replies?`.
-      if (from.depth === 0) {
-        return { kind: "Finished", stored };
+      if (leftOut(node, from.depth, now)) {
+        // An opened status read so is not walked, as `should_fetch_replies?`.
+        if (from.depth === 0) {
+          return { kind: "Finished", stored };
+        }
+        after = node.id;
+        continue;
       }
-      after = node.id;
-      continue;
     }
+    const reading = resumed?.reading ?? { kind: "Note" };
     const list = await listedReplies(
       identity,
       node.object_uri,
-      Math.min(THREAD_COLLECTION_PAGE_LIMIT, THREAD_TREE_PAGE_LIMIT - pages),
+      reading,
+      THREAD_TREE_PAGE_LIMIT - pages,
       options,
     );
     if (list === "Unavailable") {
@@ -614,16 +740,15 @@ const expandLevel = async (
         return { kind: "Retry" };
       }
     } else {
-      if (offset === 0) {
-        listed += list.items.length;
-        pages += list.pages;
+      if (resumed === undefined && hadBeforeWalk(node, from.depth)) {
+        await refreshNode(env, identity, node, list.document, options);
       }
       const slice = await storeListedReplies(
         env,
         identity,
         node.object_uri,
         list.items,
-        offset,
+        resumed?.offset ?? 0,
         THREAD_BACKFILL_REPLY_LIMIT - fetched,
         options,
       );
@@ -638,7 +763,32 @@ const expandLevel = async (
           from: {
             ...from,
             after,
-            resume: { id: node.id, offset: slice.value.next },
+            resume: { id: node.id, reading, offset: slice.value.next },
+            visited,
+            listed,
+            pages,
+            stored,
+          },
+        };
+      }
+      listed += list.items.length;
+      pages += list.pages;
+      if (list.rest !== undefined && !treeDone(visited, listed, pages)) {
+        const itemsBefore = reading.kind === "Page" ? reading.itemsBefore : 0;
+        return {
+          kind: "Continue",
+          from: {
+            ...from,
+            after,
+            resume: {
+              id: node.id,
+              reading: {
+                kind: "Page",
+                uri: list.rest,
+                itemsBefore: itemsBefore + list.items.length,
+              },
+              offset: 0,
+            },
             visited,
             listed,
             pages,
@@ -647,7 +797,9 @@ const expandLevel = async (
         };
       }
     }
-    await stampRepliesFetched(env.DB, node.id, now);
+    if (hadBeforeWalk(node, from.depth)) {
+      await stampRepliesFetched(env.DB, node.id, now);
+    }
     after = node.id;
   }
   if (
@@ -657,19 +809,10 @@ const expandLevel = async (
     return { kind: "Finished", stored };
   }
   const levelDone = levelDoneAt(after);
+  const next = { ...withoutResume(from), visited, listed, pages, stored };
   return {
     kind: "Continue",
-    from: levelDone
-      ? {
-          kind: "Level",
-          depth: from.depth + 1,
-          after: "",
-          visited,
-          listed,
-          pages,
-          stored,
-        }
-      : { kind: "Level", depth: from.depth, after, visited, listed, pages, stored },
+    from: levelDone ? { ...next, depth: from.depth + 1, after: "" } : { ...next, after },
   };
 };
 

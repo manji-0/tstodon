@@ -17,6 +17,7 @@ import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
 import type { ReceivedActivity } from "./activity-forward";
+import type { JobStart } from "./inline-job";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
 import { recordNoteEmojis } from "./remote-emoji-record";
@@ -42,8 +43,13 @@ import {
   upsertRemoteStatus,
 } from "./remote-status-store";
 
-/** Fetch options, and the activity as received, which a note it stores or edits forwards. */
-type ForwardingFetchOptions = FederatedFetchOptions & Readonly<{ forward?: ReceivedActivity }>;
+/**
+ * Fetch options, the activity as received, which a note it stores or edits
+ * forwards, and how the stream fan-outs of the note start (`Inline` by
+ * default).
+ */
+type ForwardingFetchOptions = FederatedFetchOptions &
+  Readonly<{ forward?: ReceivedActivity; fanOut?: JobStart }>;
 
 const UpdateObjectSchema = z
   .object({ id: z.string().min(1), type: z.union([z.string().min(1), z.array(z.string())]) })
@@ -381,4 +387,25 @@ export const applyRemoteUpdate = async (
     case "Unsupported":
       return ok(undefined);
   }
+};
+
+/**
+ * Apply the document `raw`, fetched from `objectUri`, to the note cached
+ * there, as Mastodon's `FetchRemoteStatusService` handles a fetched status it
+ * already has as an `Update` from its author. Only a note that names
+ * `objectUri` as its id; `author` is the cached note's, and
+ * {@link applyNoteUpdate} ignores a document attributed to anyone else.
+ */
+export const refreshFetchedNote = (
+  env: Env,
+  identity: InstanceIdentity,
+  author: RemoteActor,
+  objectUri: string,
+  raw: unknown,
+  options: ForwardingFetchOptions,
+): Promise<Result<void, RepositoryError>> => {
+  const target = classifyUpdateObject(raw);
+  return target.kind === "NoteUpdate" && target.objectUri === objectUri
+    ? applyNoteUpdate(env, identity, author, target, options)
+    : Promise.resolve(ok(undefined));
 };
