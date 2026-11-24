@@ -14,12 +14,12 @@ import { clientIp } from "./ip-access";
 import { queryTyped, runTypedBatch } from "./typed-sql";
 
 /**
- * Minimal activity tracking (migration 0124): the UTC days a local account
+ * Minimal activity tracking: the UTC days a local account
  * made an authenticated request, for the `active_users` measure and the
  * retention cohorts, and the addresses it used, for `Admin::Account#ips`
  * and the admin `ip` filter. Mastodon keeps the first in Redis and the
- * second in `user_ips`. Also the account's sign-in time (migration 0172),
- * Mastodon's `current_sign_in_at`.
+ * second in `user_ips`. Also the account's sign-in time
+ * (`accounts.current_sign_in_at`), Mastodon's `current_sign_in_at`.
  *
  * Each (account, day, address) is written at most once per isolate, and the
  * sign-in time only when it is due, so an active account costs one small
@@ -207,8 +207,7 @@ const CountRow = z.object({ count: z.union([z.number(), z.bigint()]) });
 
 /**
  * Local accounts that made an authenticated request on any of the last `days`
- * UTC days, today included. Days before migration 0124 was deployed count no
- * one.
+ * UTC days, today included. Days before tstodon was deployed count no one.
  */
 export const countActiveAccounts = async (
   db: D1Database,

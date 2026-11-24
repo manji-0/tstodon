@@ -304,11 +304,10 @@ export const findRemoteActorsByHandles = async (
 };
 
 /**
- * What `remote_actors.public_key_pem` holds since migration 0152, which moved
- * keys to `remote_actor_keys`: an RSA key whose private half was thrown away.
- * A build from before 0152 (during a deploy, or after a rollback) still parses
- * it, fails to verify any signature with it, and fetches the actor again.
- * The migration writes the same key.
+ * What `remote_actors.public_key_pem` holds: an RSA key whose private half was
+ * thrown away. An actor's keys live in `remote_actor_keys`; a reader of the
+ * old column parses this key, fails to verify any signature with it, and
+ * fetches the actor again.
  */
 export const LEGACY_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlDmOZr4ifqj8GjQ//kop
@@ -431,7 +430,7 @@ const StoredProfileRow = z.object({
 /**
  * `actor` with the name, profile, featured collection and fetch time its row
  * holds after a write (`RETURNING` in `results`): a suspended actor's write
- * keeps the cached ones (`suspended_remote_actors`, migration 0179).
+ * keeps the cached ones (`suspended_remote_actors`).
  */
 const asStored = (
   actor: RemoteActor,

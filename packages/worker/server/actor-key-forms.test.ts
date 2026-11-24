@@ -885,25 +885,17 @@ describe("a publicKeyMultibase that is not base58 (FED-8)", () => {
   });
 });
 
-describe("the remote_actors key columns after migration 0152", () => {
-  it("holds a key a build from before 0152 still parses, and fails to verify with", async () => {
+describe("the remote_actors key columns", () => {
+  it("hold a key that parses and fails to verify with", async () => {
     const legacy = await remoteActor("keys-legacy", "keys-legacy.example");
-    const migrations = z
-      .array(z.object({ name: z.string(), queries: z.array(z.string()) }))
-      .parse(Reflect.get(env, "TEST_MIGRATIONS"));
-    const placeholderWrite = (
-      migrations.find((entry) => entry.name.endsWith("_remote_actor_keys.sql"))?.queries ?? []
-    ).filter((query) => /UPDATE remote_actors SET public_key_id = actor_uri/.test(query));
-    expect(placeholderWrite).toHaveLength(1);
-    await env.DB.prepare(placeholderWrite[0] ?? "").run();
     const rows = await env.DB.prepare(
       "SELECT public_key_id, public_key_pem FROM remote_actors WHERE actor_uri = ?",
     )
       .bind(legacy.actorUri)
       .all();
-    // The row schema of a build from before 0152.
-    const old = z.object({ public_key_id: z.string().min(1), public_key_pem: z.string().min(1) });
-    const row = old.parse(rows.results[0]);
+    const row = z
+      .object({ public_key_id: z.string().min(1), public_key_pem: z.string().min(1) })
+      .parse(rows.results[0]);
     expect(row.public_key_pem).toBe(LEGACY_PUBLIC_KEY_PEM);
     expect(await importRsaPublicKey(row.public_key_pem)).toBeDefined();
     const request = await legacy.delivery(create(legacy, "legacy"));
@@ -914,7 +906,7 @@ describe("the remote_actors key columns after migration 0152", () => {
         await request.clone().text(),
       ),
     ).toBe(false);
-    // The worker writes the same placeholder.
+    // An actor stored without keys gets the same placeholder.
     const fetchedAt = IsoInstant.parse(new Date().toISOString())._unsafeUnwrap();
     const actor = RemoteActor.fromFetched({
       actorUri: "https://keys-legacy.example/users/new",

@@ -12,7 +12,7 @@ import { rejectedTrendTargets } from "./trend-review-store";
 import { queryTyped, runTyped } from "./typed-sql";
 
 /**
- * What an admin decided about a stored hashtag (migration 0123), as
+ * What an admin decided about a stored hashtag, as
  * Mastodon's `Tag#usable`, `#listable` and `#display_name`:
  *
  * - an unusable tag's timeline lists nothing, accounts cannot feature it,

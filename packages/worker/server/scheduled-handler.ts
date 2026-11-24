@@ -72,9 +72,8 @@ export type CronJob =
 export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Refresh the previews whose cache entry has aged out.
   { kind: "Inline", job: { kind: "RefreshLinkCards" } },
-  // Index the tags of remote statuses left to the backfill (written before
-  // the tag index, or sent back by migration 0136); one empty read once none
-  // is left.
+  // Index the tags of remote statuses left to the backfill
+  // (`tags_indexed = 0`); one empty read once none is left.
   { kind: "Inline", job: { kind: "BackfillRemoteTags" } },
   // Index the tags of local notes written before `local_status_tags`; a
   // single read once the cursor is complete.

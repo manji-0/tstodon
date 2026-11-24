@@ -37,7 +37,7 @@ describe("a suspended actor content purge page's plan", () => {
 });
 
 // Each write of a fetched actor asks whether the actor is suspended
-// (`suspended_remote_actors`, migration 0179): it must seek the actor's rows,
+// (`suspended_remote_actors`): it must seek the actor's rows,
 // not read every suspension.
 describe("a fetched actor's write", () => {
   it.each([

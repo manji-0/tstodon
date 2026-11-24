@@ -58,7 +58,7 @@ describe("whom a reply answers, set when it is stored", () => {
   });
 
   it("finds the replies a late parent links by their reply URI", async () => {
-    // The body of migration 0162's `remote_statuses_link_replies` trigger.
+    // The body of the `remote_statuses_link_replies` trigger.
     const details = await plan({
       sql: `UPDATE remote_statuses SET in_reply_to_actor_uri = $1
             WHERE in_reply_to_uri = $2

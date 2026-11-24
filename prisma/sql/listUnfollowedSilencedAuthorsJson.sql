@@ -6,11 +6,10 @@
 -- follow (accepted), nor is. A remote actor is silenced on its own or by a silence of its
 -- account domain or its URI's host, as `RemoteActor.onAnyHost`. Each host follows its most
 -- specific rule, as Mastodon's `DomainBlock.rule_for`: the host and each domain above it
--- (`domain_variants`) are sought by key, a block's domain being stored lower case (`Hostname`,
--- migration 0160), and the longest one found decides. A silence made while the actor was known
--- keeps it silenced under a narrower rule, as Mastodon's `silenced_at` (migration 0169). An
+-- (`domain_variants`) are sought by key, a block's domain being stored lower case (`Hostname`), and the longest one found decides. A silence made while the actor was known
+-- keeps it silenced under a narrower rule, as Mastodon's `silenced_at` (`remote_actor_domain_limits`). An
 -- admin's unsilence of the actor lifts a block's silence until the block is applied again
--- (`remote_actor_domain_lifts`, migration 0171).
+-- (`remote_actor_domain_lifts`).
 -- Suspension is not checked here: a suspended author's status is not rendered at all.
 SELECT m.account_id AS author FROM account_moderation AS m
 WHERE m.account_id IN (SELECT value FROM json_each($2))

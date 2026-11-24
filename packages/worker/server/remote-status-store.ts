@@ -861,9 +861,8 @@ export type RemoteTagBackfillPage = Readonly<{
 /**
  * One pass of the remote tag backfill: index a page of the remote statuses
  * marked `tags_indexed = 0` under the hashtags their stored HTML reads as
- * (the note's `tag` is not kept), newest first, and mark them indexed. Those
- * are the statuses stored before the index, and the ones migration 0136 sent
- * back. The page is one batch of four statements, each of which
+ * (the note's `tag` is not kept), newest first, and mark them indexed. The
+ * page is one batch of four statements, each of which
  * skips a status a delivery has indexed since the page was read. Another
  * pass follows a full page that indexed something: a full page that indexed
  * nothing would be read again as it is.

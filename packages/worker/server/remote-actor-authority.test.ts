@@ -5,7 +5,6 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
-import migration from "../app/db/migrations/0097_remote_actor_authority.sql?raw";
 import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -155,51 +154,5 @@ describe("a remote actor on a non-default port", () => {
     // its delivery Workflows before the file ends, as a teardown during that
     // never completes.
     await new Promise((resolve) => setTimeout(resolve, 1000));
-  });
-});
-
-describe("the authority migration", () => {
-  it("restores the port to rows cached without it and strips it from blocks", async () => {
-    const actor = await remoteActor("legacy-bob", "legacy-peer.test:8796");
-    await env.DB.prepare("UPDATE remote_actors SET domain = 'legacy-peer.test' WHERE actor_uri = ?")
-      .bind(actor.actorUri)
-      .run();
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO domain_blocks (id, domain, severity) VALUES ('legacy-ported', 'legacy-peer.test:8796', 'silence')",
-      ),
-      env.DB.prepare(
-        "INSERT INTO domain_blocks (id, domain, severity) VALUES ('legacy-bare', 'legacy-both.test', 'suspend')",
-      ),
-      env.DB.prepare(
-        "INSERT INTO domain_blocks (id, domain, severity) VALUES ('legacy-dup', 'legacy-both.test:8000', 'silence')",
-      ),
-    ]);
-
-    const statements = migration
-      .split(/;\s*$/m)
-      .map((statement) =>
-        statement
-          .split("\n")
-          .filter((line) => !line.startsWith("--"))
-          .join("\n")
-          .trim(),
-      )
-      .filter((statement) => statement.length > 0);
-    for (const statement of statements) {
-      await env.DB.prepare(statement).run();
-    }
-
-    const row = await env.DB.prepare("SELECT domain, host FROM remote_actors WHERE actor_uri = ?")
-      .bind(actor.actorUri)
-      .first();
-    expect(row).toEqual({ domain: "legacy-peer.test:8796", host: "legacy-peer.test" });
-    const blocks = await env.DB.prepare(
-      "SELECT domain, severity FROM domain_blocks WHERE domain LIKE 'legacy-%' ORDER BY domain",
-    ).all();
-    expect(blocks.results).toEqual([
-      { domain: "legacy-both.test", severity: "suspend" },
-      { domain: "legacy-peer.test", severity: "silence" },
-    ]);
   });
 });

@@ -152,7 +152,7 @@ describe("asciiDomainNames", () => {
         "2019-01-01T00:00:00.000Z",
       ],
     ]);
-    // The renamed block's `domain_key` follows its new name (migration 0163's trigger).
+    // The renamed block's `domain_key` follows its new name (`domain_blocks_update_domain_key`).
     expect(
       await rows(
         `SELECT b.domain_key = k.key FROM domain_blocks b
@@ -293,7 +293,7 @@ describe("asciiDomainNames switching a stored block on", () => {
   it("keeps a renamed block's id, even where a new id would repeat it", async () => {
     const account = await accountId("idn-id-keeper@example.com");
     // The rename writes its row at the next rowid, 65536 above the old one:
-    // the id migration 0166's trigger derives from the same `created_at`
+    // the id the `account_domain_blocks_id` trigger derives from the same `created_at`
     // would be the old row's.
     await env.DB.batch([
       env.DB.prepare(

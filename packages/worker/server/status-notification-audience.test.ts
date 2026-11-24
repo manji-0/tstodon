@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { withQueueDrained } from "../test/queue-hold";
-import migration from "../app/db/migrations/0159_direct_status_notifications.sql?raw";
 import { parseRows } from "./d1";
 
 // Mastodon sends the `status` notification ("notify me when this account
@@ -210,39 +209,5 @@ describe("the status notification of a followed account's post", () => {
 
     expect(await statusNotifications("sna-inactive-follower@example.com", id)).toBe(0);
     expect(await statusNotifications("sna-inactive-recent@example.com", id)).toBe(1);
-  });
-});
-
-describe("migration 0159", () => {
-  it("drops the stored status notifications of a direct note that does not mention their account", async () => {
-    const author = await signedInAccount("sna-migrate-author@example.com");
-    const mentioned = await notifyingFollower("sna-migrate-mentioned@example.com", author.id);
-    const other = await signedInAccount("sna-migrate-other@example.com");
-    await notifyingFollower("sna-migrate-other@example.com", author.id);
-    const direct = await post("sna-migrate-author@example.com", {
-      status: `@${mentioned} before the fix`,
-      visibility: "direct",
-    });
-    const open = await post("sna-migrate-author@example.com", { status: "public" });
-    // The notification the publish used to store for an unmentioned follower.
-    await env.DB.prepare(
-      "INSERT INTO notifications (id, account_id, from_account_id, kind, status_id) VALUES (?, ?, ?, 'status', ?)",
-    )
-      .bind(`9${direct}`, other.id, author.id, direct)
-      .run();
-    expect(await statusNotifications("sna-migrate-other@example.com", direct)).toBe(1);
-
-    await env.DB.prepare(
-      migration
-        .split("\n")
-        .filter((line) => !line.startsWith("--"))
-        .join("\n")
-        .trim()
-        .replace(/;$/, ""),
-    ).run();
-
-    expect(await statusNotifications("sna-migrate-other@example.com", direct)).toBe(0);
-    expect(await statusNotifications("sna-migrate-mentioned@example.com", direct)).toBe(1);
-    expect(await statusNotifications("sna-migrate-other@example.com", open)).toBe(1);
   });
 });

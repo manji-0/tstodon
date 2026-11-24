@@ -139,7 +139,7 @@ flowchart LR
 4. `Promise.all` of **reads**: `findAccountsByIds`, `accountCountsByIds`, `statusInteractionCountsByIds`, `findPollsByStatusIds`, `findMediaByIds`.
 5. Build documents in memory; `mastodonStatus` delegates to `mastodonStatuses([status])`.
 
-`accountCountsByIds` and `statusInteractionCountsByIds` read the trigger-kept `account_stats` and `status_stats` rows (migration 0138) by `json_each`; the latter batches them with the viewer's flags (Doc A read-side batch pattern).
+`accountCountsByIds` and `statusInteractionCountsByIds` read the trigger-kept `account_stats` and `status_stats` rows by `json_each`; the latter batches them with the viewer's flags (Doc A read-side batch pattern).
 
 **Risks:**
 
@@ -254,7 +254,7 @@ sequenceDiagram
 **Shape:**
 
 - `searchStatuses`: `content_text LIKE ?` with `%query%`, `ORDER BY id DESC LIMIT ?`.
-- `listTagStatuses`: `EXISTS` on `local_status_tags` (migration 0132), written from `extractHashtags` when a note is published or edited.
+- `listTagStatuses`: `EXISTS` on `local_status_tags`, written from `extractHashtags` when a note is published or edited.
 - Account search via TypedSQL `searchAccounts` (separate path).
 - Search route default limit **5** via `queryLimit(..., 5)`; other list endpoints use `queryLimit` default **20** / max **40** (A2).
 

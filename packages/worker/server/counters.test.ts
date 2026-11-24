@@ -8,8 +8,8 @@ import { purgeAccount } from "./admin-actions";
 import { RemoteAccountId } from "./remote-account-id";
 
 /**
- * The counters migrations 0138 and 0148 keep in `account_stats` and `status_stats`
- * must equal counting the rows they summarize. A seeded random run sends
+ * The counters the triggers keep in `account_stats` and `status_stats` must
+ * equal counting the rows they summarize. A seeded random run sends
  * local API requests and signed remote activities (posts, replies, deletes,
  * favourites, boosts, quotes, follows, requests, answers, undos), deletes an
  * account and a remote actor, then compares every counter with its count.
@@ -509,27 +509,6 @@ describe("trigger-kept counters", () => {
     expect(
       await rz.send({ id: `${rz.actorUri}#delete-self`, type: "Delete", object: rz.actorUri }),
     ).toBe(202);
-    await expectConsistent();
-
-    // The migrations' backfills compute the same counters from scratch: 0138's,
-    // then 0148's recount of statuses without the direct ones.
-    await env.DB.batch([
-      env.DB.prepare("DELETE FROM account_stats"),
-      env.DB.prepare("DELETE FROM status_stats"),
-    ]);
-    const migrations = z
-      .array(z.object({ name: z.string(), queries: z.array(z.string()) }))
-      .parse(Reflect.get(env, "TEST_MIGRATIONS"));
-    const migration = migrations.find((entry) => entry.name.startsWith("0138_"));
-    const backfill = (migration?.queries ?? []).filter((query) =>
-      /^(?:\s*--[^\n]*\n)*\s*INSERT INTO (account|status)_stats/.test(query),
-    );
-    const recount = (
-      migrations.find((entry) => entry.name.startsWith("0148_"))?.queries ?? []
-    ).filter((query) => /^(?:\s*--[^\n]*\n)*\s*UPDATE account_stats/.test(query));
-    expect(backfill.length).toBeGreaterThan(0);
-    expect(recount).toHaveLength(1);
-    await env.DB.batch([...backfill, ...recount].map((query) => env.DB.prepare(query)));
     await expectConsistent();
   });
 

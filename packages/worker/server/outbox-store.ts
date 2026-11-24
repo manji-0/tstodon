@@ -522,7 +522,7 @@ export type SettledOutboxTarget = Readonly<{
 /**
  * {@link persistOutboxTarget} for several targets of one activity, in one D1
  * batch. A deleted account's key goes when the last of its activity's targets
- * leaves `Queued` (the trigger of migration 0145).
+ * leaves `Queued` (the `outbound_departed_signers_leave_when_settled` trigger).
  */
 export const persistOutboxTargets = async (
   db: D1Database,
