@@ -2,7 +2,7 @@ import {
   type ApiMediaAttachmentJSON,
   type ApiScheduledStatusJSON,
   isQuotePolicyName,
-  isStatusVisibility,
+  isStatusVisibilityParam,
 } from "@tstodon/api";
 import { parseJsonColumn } from "./json-column";
 import type { Result } from "neverthrow";
@@ -203,7 +203,7 @@ export const scheduledStatusDocument = (
     media_ids: row.params.media_ids.length > 0 ? [...row.params.media_ids] : null,
     sensitive: row.params.sensitive,
     spoiler_text: row.params.spoiler_text.length > 0 ? row.params.spoiler_text : null,
-    visibility: isStatusVisibility(row.params.visibility) ? row.params.visibility : null,
+    visibility: isStatusVisibilityParam(row.params.visibility) ? row.params.visibility : null,
     language: row.params.language,
     scheduled_at: null,
     poll: row.params.poll

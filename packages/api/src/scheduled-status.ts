@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApiMediaAttachment } from "./media-attachment";
-import { QUOTE_POLICIES, STATUS_VISIBILITIES } from "./values";
+import { QUOTE_POLICIES, STATUS_VISIBILITY_PARAMS } from "./values";
 
 /** `REST::ScheduledStatusSerializer`: the post's parameters as they were sent. */
 export const ApiScheduledStatus = z.object({
@@ -11,7 +11,7 @@ export const ApiScheduledStatus = z.object({
     media_ids: z.array(z.string()).nullable(),
     sensitive: z.boolean().nullable(),
     spoiler_text: z.string().nullable(),
-    visibility: z.literal(STATUS_VISIBILITIES).nullable(),
+    visibility: z.literal(STATUS_VISIBILITY_PARAMS).nullable(),
     language: z.string().nullable(),
     scheduled_at: z.string().nullable(),
     poll: z

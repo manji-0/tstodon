@@ -1,4 +1,4 @@
-import type { InstanceIdentity } from "@tstodon/domain";
+import { type InstanceIdentity, Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findAccountById } from "./account-store";
@@ -112,7 +112,7 @@ const sensitizeLocal = async (
   ]);
   if (account.isOk() && account.value && status.isOk() && status.value?.kind === "LocalNote") {
     const note = status.value;
-    // The audience hears of the change like an edit; a direct note only reaches its addressees
+    // The audience hears of the change like an edit; a direct or limited note only reaches its addressees
     // through the mentions an edit resolves, so it is not federated here.
     const announced = await announceNoteUpdate(
       env,
@@ -120,7 +120,7 @@ const sensitizeLocal = async (
       account.value,
       note,
       nowIso(),
-      note.visibility.kind !== "Direct",
+      !Visibility.requiresMention(note.visibility),
     );
     if (announced.isErr()) {
       console.error(JSON.stringify({ kind: "StatusUpdateNotFederated", statusId }));

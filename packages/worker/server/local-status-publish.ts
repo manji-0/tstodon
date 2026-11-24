@@ -9,7 +9,14 @@ import type {
   ThreadStatus,
   ValidatedStatusDraft,
 } from "@tstodon/domain";
-import { InstanceIdentity, LocalStatus, NoteThread, StatusId, StatusTarget } from "@tstodon/domain";
+import {
+  InstanceIdentity,
+  LocalStatus,
+  NoteThread,
+  StatusId,
+  StatusTarget,
+  Visibility,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { nowInstant } from "./clock";
 import type { RepositoryError } from "./d1";
@@ -342,10 +349,10 @@ export const publishLocalNote = async (
       }),
     );
   }
-  // A direct note goes only to the remote accounts it mentions or quotes; with
+  // A direct or limited note goes only to the remote accounts it mentions or quotes; with
   // none, nothing leaves the instance.
   const federates = !(
-    note.visibility.kind === "Direct" &&
+    Visibility.requiresMention(note.visibility) &&
     remoteMentions.length === 0 &&
     quotedAuthor?.kind !== "Remote"
   );

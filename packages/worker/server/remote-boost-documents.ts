@@ -79,7 +79,7 @@ export const remoteBoostDocuments = async (
           id: boost.id,
           uri: boost.activityId,
           created_at: boost.publishedAt,
-          visibility: Visibility.toMastodon(boost.visibility),
+          visibility: Visibility.toRest(boost.visibility),
           account: booster.document,
           reblog,
         },

@@ -377,7 +377,7 @@ export const listListTimelineStatuses = async (
            JOIN statuses page ON page.id IN (
              SELECT id FROM statuses
              WHERE account_id = member.member_account_id
-               AND visibility != 'direct'
+               AND visibility NOT IN ('direct', 'limited')
                -- Mastodon feeds a list only from members the owner follows (accepted) and the owner.
                AND (account_id = ? OR account_id IN (
                  SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'

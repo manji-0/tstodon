@@ -363,7 +363,7 @@ export const accountSource = (
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
   defaults: ComposeDefaults = { language: null, sensitive: false },
 ): ApiAccountSourceJSON => ({
-  privacy: Visibility.toMastodon(account.defaultPostVisibility),
+  privacy: Visibility.toRest(account.defaultPostVisibility),
   sensitive: defaults.sensitive,
   language: defaults.language,
   note: profile.note,

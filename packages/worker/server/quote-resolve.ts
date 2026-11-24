@@ -3,7 +3,6 @@ import {
   type LocalStatus,
   QuoteInteractionPolicy,
   type RemoteStatusValue,
-  type RemoteVisibility,
   StatusId,
   StatusTarget,
   type StatusTargetValue,
@@ -25,7 +24,7 @@ import { defaultQuotePolicy, findStatusQuotePolicy, type QuotePolicy } from "./q
 import { ApiRefusal } from "./routes/api-refusal";
 
 /** Public and unlisted statuses can be quoted by anyone their policy allows. */
-export const visibilityIsPublic = (visibility: RemoteVisibility): boolean =>
+export const visibilityIsPublic = (visibility: Visibility): boolean =>
   visibility.kind === "Public" || visibility.kind === "Unlisted";
 
 /** Mastodon's `statuses.errors.quoted_status_not_found`. */
@@ -127,8 +126,10 @@ export const resolveQuote = async (
 
 /**
  * A local quoted status. Its policy is its stored policy (else its author's
- * default), and a followers-only original clamps the quote to followers-only
- * too, so the visibility the post ends up with comes back with the target.
+ * default); a limited one is its author's alone to quote, as
+ * `downgrade_quote_policy` leaves it. A followers-only original clamps the
+ * quote to followers-only too (`PostStatusService`, `private_visibility?`
+ * only), so the visibility the post ends up with comes back with the target.
  */
 const resolveLocalQuote = async (
   env: Env,
@@ -139,17 +140,18 @@ const resolveLocalQuote = async (
   visibility: Visibility,
 ): Promise<Result<ResolvedQuote, ApiRefusal>> => {
   const db = env.DB;
-  const targetVisibility = Visibility.toMastodon(target.visibility);
-  if (targetVisibility === "direct") {
+  if (target.visibility.kind === "Direct") {
     return err(directNotQuotable);
   }
   const targetAuthor = await findAccountById(db, target.accountId);
   const storedPolicy = await findStatusQuotePolicy(db, target.id);
   const policy: QuotePolicy =
-    (storedPolicy.isOk() ? storedPolicy.value : undefined) ??
-    (targetAuthor.isOk() && targetAuthor.value
-      ? quotePolicyName(targetAuthor.value.defaultQuotePolicy)
-      : defaultQuotePolicy(targetVisibility));
+    target.visibility.kind === "Limited"
+      ? "nobody"
+      : ((storedPolicy.isOk() ? storedPolicy.value : undefined) ??
+        (targetAuthor.isOk() && targetAuthor.value
+          ? quotePolicyName(targetAuthor.value.defaultQuotePolicy)
+          : defaultQuotePolicy(Visibility.toRest(target.visibility))));
   if (policy === "nobody" && target.accountId !== authorId) {
     return err(quoteNotFound);
   }
@@ -163,7 +165,7 @@ const resolveLocalQuote = async (
     }
   }
   const clamped =
-    targetVisibility === "private" && visibilityIsPublic(visibility)
+    target.visibility.kind === "FollowersOnly" && visibilityIsPublic(visibility)
       ? Visibility.FollowersOnly
       : visibility;
   if (clamped.kind === "Direct" && targetAuthor.isOk() && targetAuthor.value) {

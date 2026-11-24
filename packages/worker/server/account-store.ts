@@ -62,7 +62,7 @@ export const accountFromRow = (row: AccountRow): Result<LocalAccount, Repository
   const id = AccountId.parse(row.id);
   const username = Username.parse(row.username);
   const createdAt = IsoInstant.parse(row.created_at);
-  const visibility = Visibility.fromMastodon(row.default_post_visibility);
+  const visibility = Visibility.selectableFromParam(row.default_post_visibility);
   if (id.isErr() || username.isErr() || createdAt.isErr() || visibility.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid account row" });
   }
