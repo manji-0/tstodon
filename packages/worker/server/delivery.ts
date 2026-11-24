@@ -14,7 +14,7 @@ import {
 import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { deliveredActivity } from "./own-activity-signature";
+import { deliveredActivity, resignedAfterRotation } from "./own-activity-signature";
 import { fetchDoubleKnocking, signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
@@ -26,6 +26,7 @@ import {
   markOutboundExpanded,
   type OutboundActivityWithSignerRow,
   type OutboundSigner,
+  replaceOutboundPayload,
 } from "./outbox-store";
 import { elapsedMs, writeMetric } from "./metrics";
 import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
@@ -455,6 +456,33 @@ const signingKey = async (
 };
 
 /**
+ * The body to post: as stored, or signed again when its Linked Data
+ * signature predates its signer's key rotation ({@link resignedAfterRotation}),
+ * which is then stored so that the activity's other inboxes reuse it. A
+ * body that cannot be stored again is still posted.
+ */
+const currentPayload = async (
+  env: Env,
+  activity: OutboundActivityWithSignerRow,
+  key: Extract<SigningKey, { kind: "Found" }>,
+): Promise<string> => {
+  const resigned = await resignedAfterRotation(
+    activity.payload_json,
+    key,
+    activity.signer_key_rotated_at,
+    new Date(),
+  );
+  if (resigned === undefined) {
+    return activity.payload_json;
+  }
+  const stored = await replaceOutboundPayload(env.DB, activity.id, activity.payload_json, resigned);
+  if (stored.isErr()) {
+    console.error(JSON.stringify({ kind: "ResignedPayloadNotStored", activityId: activity.id }));
+  }
+  return resigned;
+};
+
+/**
  * One delivery attempt. `remote` is false when this server settled it without
  * an answer from the inbox (the activity or its signer is gone, the URL does
  * not parse, a local dependency failed): such an outcome says nothing about
@@ -507,7 +535,7 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
   if (key.kind === "Unavailable") {
     return settled(DeliveryAttemptOutcome.Local);
   }
-  const body = activity.value.payload_json;
+  const body = await currentPayload(env, activity.value, key);
   const allowHosts = await federationAllowHosts(env);
   const instanceDomain = identity.value.domain;
   const { account_id: signerId, signer_username: signerUsername } = activity.value;
