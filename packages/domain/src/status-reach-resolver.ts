@@ -39,8 +39,3 @@ export type ListLocalSharerAccountIds = (
   status: ThreadStatus,
   limit: number,
 ) => Promise<Result<ReadonlyArray<string>, RepositoryError>>;
-
-/** The local accounts that boosted a status, in boost order. */
-export type ListLocalBoosterAccountIds = (
-  status: ThreadStatus,
-) => Promise<Result<ReadonlyArray<string>, RepositoryError>>;

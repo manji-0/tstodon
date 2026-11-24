@@ -4,12 +4,18 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import type { ApActivityDocumentJSON } from "@tstodon/api/activitypub";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { deliverTarget } from "../test/delivery-fixture";
 import { envWith } from "../test/env-fixture";
-import { enqueueLocalActivity } from "./delivery";
+import { meter, meterWork, patchD1, resetMeter } from "../test/meter";
+import { remoteActor } from "../test/remote-actor-fixture";
+import { findAccountById } from "./account-store";
+import { rotateAccountKey } from "./actor-key-rotation";
+import { enqueueLocalActivity, enqueueTargetedActivity } from "./delivery";
 import { ldSignedBytes, readLdSignature, verifyLdSignature } from "./ld-signature";
-import { listOutboundActivities } from "./outbox-store";
+import { insertForwardedActivity, listOutboundActivities } from "./outbox-store";
 import { deliveredActivity, ldSigningOf } from "./own-activity-signature";
 import { ownActivitySamples } from "./own-activity-samples";
+import { parseInstanceIdentity } from "./runtime-config";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -228,5 +234,180 @@ describe("own activities as delivered", () => {
       expect.stringContaining('"kind":"ActivityNotLdSigned"'),
     );
     errors.mockRestore();
+  });
+});
+
+describe("an activity stored before its author's key rotation (OPS-8)", () => {
+  const INBOX = "https://rotated-ld.example/inbox";
+
+  /** A public boost by the local account `username`. */
+  const ownBoost = (username: string): ApActivityDocumentJSON => {
+    const announce = sample("announcePublic");
+    if (announce.type !== "Announce") {
+      throw new Error("sample");
+    }
+    return { ...announce, actor: `https://example.com/users/${username}` };
+  };
+
+  const rotatedKey = async (accountId: string): Promise<string> => {
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    (await rotateAccountKey(env, identity, accountId))._unsafeUnwrap();
+    const account = (await findAccountById(env.DB, accountId))._unsafeUnwrap();
+    if (account === undefined) {
+      throw new Error("the account is gone");
+    }
+    return account.publicKeyPem;
+  };
+
+  const storedPayload = async (activityId: string): Promise<string> =>
+    z
+      .object({ payload_json: z.string() })
+      .parse(
+        await env.DB.prepare("SELECT payload_json FROM outbound_activities WHERE id = ?")
+          .bind(activityId)
+          .first(),
+      ).payload_json;
+
+  it("goes out signed with the new key, and every inbox gets the same body", async () => {
+    const account = await signedInAccount("ld-sign-rotated@example.com");
+    (
+      await enqueueTargetedActivity(env, account, "Announce", ownBoost(account.username), INBOX)
+    )._unsafeUnwrap();
+    const [queued] = await stored(account.id);
+    const activityId = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
+    if (activityId === undefined) {
+      throw new Error("nothing was queued");
+    }
+    expect(await verifiesAsForward(queued?.body, account.publicKeyPem)).toBe(true);
+
+    const publicKeyPem = await rotatedKey(account.id);
+
+    const sent = await (await deliverTarget(activityId, INBOX)).text();
+    expect(await verifiesAsForward(JSON.parse(sent), publicKeyPem)).toBe(true);
+    expect(await verifiesAsForward(JSON.parse(sent), account.publicKeyPem)).toBe(false);
+    // Stored as sent: the next inbox gets the same body, not another signature.
+    expect(await storedPayload(activityId)).toBe(sent);
+    // Dated no earlier than the rotation, so no later delivery takes it for the old key's.
+    const rotatedAt = z
+      .object({ key_rotated_at: z.string() })
+      .parse(
+        await env.DB.prepare("SELECT key_rotated_at FROM accounts WHERE id = ?")
+          .bind(account.id)
+          .first(),
+      ).key_rotated_at;
+    const created = z
+      .object({ signature: z.object({ created: z.string() }) })
+      .parse(JSON.parse(sent)).signature.created;
+    expect(Date.parse(created)).toBeGreaterThanOrEqual(Date.parse(rotatedAt));
+    expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(sent);
+  });
+
+  it("costs one more D1 statement, once per activity", async () => {
+    const queue = async (email: string) => {
+      const account = await signedInAccount(email);
+      (
+        await enqueueTargetedActivity(env, account, "Announce", ownBoost(account.username), INBOX)
+      )._unsafeUnwrap();
+      const id = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
+      if (id === undefined) {
+        throw new Error("nothing was queued");
+      }
+      return { account, id };
+    };
+    const statements = async (activityId: string): Promise<number> => {
+      resetMeter();
+      await meterWork(() => deliverTarget(activityId, INBOX));
+      return meter.tally.statements;
+    };
+    patchD1();
+    const unrotated = await queue("ld-sign-budget-unrotated@example.com");
+    const rotated = await queue("ld-sign-budget-rotated@example.com");
+    await rotatedKey(rotated.account.id);
+
+    const baseline = await statements(unrotated.id);
+    expect(await statements(rotated.id)).toBe(baseline + 1);
+    expect(await statements(rotated.id)).toBe(baseline);
+  });
+
+  it("keeps a forwarded activity's signature, which is its actor's", async () => {
+    const account = await signedInAccount("ld-sign-rotated-forward@example.com");
+    const alice = await remoteActor("ld-sign-rotated-alice", "rotated-ld-a.example");
+    const signed = await alice.ldSigned({
+      id: `${alice.actorUri}/statuses/1#delete`,
+      type: "Delete",
+      actor: alice.actorUri,
+      to: [PUBLIC],
+      object: { id: `${alice.actorUri}/statuses/1`, type: "Tombstone" },
+    });
+    const payloadJson = JSON.stringify(signed);
+    const activityId = (
+      await insertForwardedActivity(env.DB, {
+        accountId: account.id,
+        kind: "Delete",
+        payloadJson,
+        forwardOf: String(signed["id"]),
+      })
+    )._unsafeUnwrap();
+    if (activityId === undefined) {
+      throw new Error("the forward was not stored");
+    }
+
+    await rotatedKey(account.id);
+
+    expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(payloadJson);
+    expect(await storedPayload(activityId)).toBe(payloadJson);
+  });
+
+  it("never signs a forward whose signature names the local key, a forger's choice", async () => {
+    const account = await signedInAccount("ld-sign-rotated-forged@example.com");
+    const actor = `https://example.com/users/${account.username}`;
+    // Anyone can write a `creator`: this one claims the local account's key.
+    const forged = {
+      "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
+      id: "https://forger.example/activities/1",
+      type: "Delete",
+      actor,
+      to: [PUBLIC],
+      object: actor,
+      signature: {
+        type: "RsaSignature2017",
+        creator: `${actor}#main-key`,
+        created: "2020-01-01T00:00:00Z",
+        signatureValue: "Zm9yZ2Vk",
+      },
+    };
+    const payloadJson = JSON.stringify(forged);
+    const activityId = (
+      await insertForwardedActivity(env.DB, {
+        accountId: account.id,
+        kind: "Delete",
+        payloadJson,
+        forwardOf: forged.id,
+      })
+    )._unsafeUnwrap();
+    if (activityId === undefined) {
+      throw new Error("the forward was not stored");
+    }
+
+    await rotatedKey(account.id);
+
+    expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(payloadJson);
+    expect(await storedPayload(activityId)).toBe(payloadJson);
+  });
+
+  it("does not sign again an activity whose actor is not its signer", async () => {
+    const account = await signedInAccount("ld-sign-rotated-other-actor@example.com");
+    const announce = sample("announcePublic");
+    (await enqueueTargetedActivity(env, account, "Announce", announce, INBOX))._unsafeUnwrap();
+    const activityId = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
+    if (activityId === undefined) {
+      throw new Error("nothing was queued");
+    }
+    // The sample's actor is `tstodon.example`'s alice, not this account.
+    const payloadJson = await storedPayload(activityId);
+
+    await rotatedKey(account.id);
+
+    expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(payloadJson);
   });
 });

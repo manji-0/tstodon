@@ -1,19 +1,17 @@
 import type {
   FindRemoteActorInbox,
   FindThreadParent,
-  ListLocalBoosterAccountIds,
   ListLocalBoosterFollowerInboxes,
   ListLocalSharerAccountIds,
   ListRemoteFollowerInboxes,
   ListStatusInteractorInboxes,
-  RemoteActor,
   ThreadStatus,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 
 /** Mastodon's `Status#distributable?`: public or unlisted. */
-const distributable = (status: ThreadStatus): boolean =>
+export const distributable = (status: ThreadStatus): boolean =>
   status.status.visibility.kind === "Public" || status.status.visibility.kind === "Unlisted";
 
 const followerInboxes = async (
@@ -84,7 +82,6 @@ export const statusReachInboxes = async (
 
 export type StatusDeleteReachOperations = StatusReachOperations &
   Readonly<{
-    listLocalBoosterAccountIds: ListLocalBoosterAccountIds;
     listLocalBoosterFollowerInboxes: ListLocalBoosterFollowerInboxes;
   }>;
 
@@ -141,59 +138,6 @@ export const quoteStampReach = async (
   return ok([...new Set(inboxes)]);
 };
 
-export type StampDeleteForwardOperations = Readonly<{
-  listLocalBoosterAccountIds: ListLocalBoosterAccountIds;
-  listRemoteFollowerInboxes: ListRemoteFollowerInboxes;
-  findThreadParent: FindThreadParent;
-}>;
-
-/** A forward of an inbound activity: the local account whose key signs it, and the inboxes. */
-export type InboundForward = Readonly<{
-  signerAccountId: string;
-  inboxes: ReadonlyArray<string>;
-}>;
-
-/**
- * Where an inbound stamp `Delete` is forwarded, as Mastodon's
- * `ActivityPub::Forwarder` for the quoting status: only a public or unlisted
- * one; to the remote followers of the local accounts that boosted it and,
- * when it replies to a local status, of that status's author, without the
- * sender's own inboxes. The replied-to local author signs, else the first
- * local booster; with neither there is nothing to forward.
- */
-export const stampDeleteForward = async (
-  operations: StampDeleteForwardOperations,
-  quoting: ThreadStatus,
-  sender: Pick<RemoteActor, "inboxUri" | "sharedInboxUri">,
-): Promise<Result<InboundForward | undefined, RepositoryError>> => {
-  if (!distributable(quoting)) {
-    return ok(undefined);
-  }
-  const boosters = await operations.listLocalBoosterAccountIds(quoting);
-  if (boosters.isErr()) {
-    return err(boosters.error);
-  }
-  const parent = await operations.findThreadParent(quoting);
-  if (parent.isErr()) {
-    return err(parent.error);
-  }
-  const repliedTo = parent.value?.kind === "Local" ? parent.value.status.accountId : undefined;
-  const signerAccountId = repliedTo ?? boosters.value[0];
-  if (signerAccountId === undefined) {
-    return ok(undefined);
-  }
-  const followers = await followerInboxes(operations.listRemoteFollowerInboxes, [
-    ...boosters.value,
-    ...(repliedTo === undefined ? [] : [repliedTo]),
-  ]);
-  if (followers.isErr()) {
-    return err(followers.error);
-  }
-  const own = new Set([sender.inboxUri, sender.sharedInboxUri]);
-  const inboxes = [...new Set(followers.value)].filter((inbox) => !own.has(inbox));
-  return ok(inboxes.length === 0 ? undefined : { signerAccountId, inboxes });
-};
-
 export type RemoteActivityForwardOperations = Readonly<{
   listLocalSharerAccountIds: ListLocalSharerAccountIds;
   findThreadParent: FindThreadParent;
@@ -210,23 +154,20 @@ export type PlannedForward = Readonly<{
 }>;
 
 /**
- * Who hears an activity about the remote status `status` that its author
- * signed, as Mastodon's `ActivityPub::Forwarder` (and `forward_for_reply`,
- * the same rule for a new reply, which nobody shared yet): only a public or
- * unlisted status; the followers of the local accounts that boosted or
- * quoted it and, when it replies to a local status, of that status's
- * author. The replied-to local author signs, else the first sharer; with
- * neither there is nothing to forward. At most `limit` accounts, the
- * replied-to author first.
+ * Who hears an activity about `status` that another server signed, as
+ * Mastodon's `ActivityPub::Forwarder` (and `forward_for_reply`, the same
+ * rule for a new reply, which nobody shared yet): the followers of the local
+ * accounts that boosted or quoted it and, when it replies to a local status,
+ * of that status's author. The replied-to local author signs, else the first
+ * sharer; with neither there is nothing to forward. At most `limit`
+ * accounts, the replied-to author first. Whether the activity may be
+ * forwarded at all (`Forwarder#forwardable?`) is the caller's to ask.
  */
 export const remoteActivityForward = async (
   operations: RemoteActivityForwardOperations,
   status: ThreadStatus,
   limit: number,
 ): Promise<Result<PlannedForward | undefined, RepositoryError>> => {
-  if (!distributable(status)) {
-    return ok(undefined);
-  }
   const sharers = await operations.listLocalSharerAccountIds(status, limit);
   if (sharers.isErr()) {
     return err(sharers.error);

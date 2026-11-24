@@ -67,6 +67,10 @@ const OutboundActivityWithSignerRowSchema = OutboundActivityRowSchema.extend({
   signer_private_key_jwk: Sensitive.schema(z.string().min(1)).nullable(),
   /** 1 when each POST carries a `Collection-Synchronization` header. */
   synchronize_followers: z.number(),
+  /** The inbound activity this row forwards, as received; `null` for tstodon's own. */
+  forward_of: z.string().nullable(),
+  /** When the signing account's key pair was last replaced, if ever. */
+  signer_key_rotated_at: z.string().nullable(),
 });
 
 export type OutboundActivityWithSignerRow = z.infer<typeof OutboundActivityWithSignerRowSchema>;
@@ -359,6 +363,23 @@ export const findOutboundActivityWithSigner = async (
   );
   return queried.map((rows) => rows[0]);
 };
+
+/**
+ * Store `payloadJson` as the activity's body, unless the body is no longer
+ * `previousJson`: a delivery that signed it again concurrently stored its own.
+ */
+export const replaceOutboundPayload = async (
+  db: D1Database,
+  id: string,
+  previousJson: string,
+  payloadJson: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare("UPDATE outbound_activities SET payload_json = ? WHERE id = ? AND payload_json = ?")
+      .bind(payloadJson, id, previousJson)
+      .run();
+  });
 
 export const listOutboundActivities = async (
   db: D1Database,

@@ -23,7 +23,7 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 - [ ] `wrangler r2 bucket info tstodon-media` answers; `wrangler r2 bucket cors list tstodon-media` shows your `INSTANCE_PUBLIC_ORIGIN`.
 - [ ] `wrangler queues info tstodon-outbox-process`, `wrangler queues info tstodon-outbox-dlq` and `wrangler queues info tstodon-pull` each list the Worker `tstodon` as producer and as consumer, and the outbox and pull consumers' dead-letter queue is `tstodon-outbox-dlq` (dashboard: Queues → `tstodon-outbox-process` → Settings). No consumer: re-apply Terraform with `attach_queue_consumer = true` (deploy checklist step 13) or redeploy.
 - [ ] No `0000…` placeholder ids are left anywhere in `wrangler.jsonc`.
-- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `PULL_QUEUE`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `ASSETS` (no KV namespace and no `EMAIL`: both were removed, OPS-7).
+- [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `PULL_QUEUE`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `ASSETS` (no KV namespace and no `EMAIL`).
 - [ ] `wrangler workflows list` includes `tstodon-outbox-delivery`.
 - [ ] The Worker placement region in `wrangler.jsonc` (`placement.region`) is near the D1 primary location.
 

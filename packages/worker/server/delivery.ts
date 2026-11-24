@@ -14,7 +14,7 @@ import {
 import type { SensitiveValue } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
-import { deliveredActivity } from "./own-activity-signature";
+import { deliveredActivity, resignedAfterRotation } from "./own-activity-signature";
 import { fetchDoubleKnocking, signInboxRequest } from "./http-signature";
 import { instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { unavailableDeliveryDomains } from "./delivery-domain-health-store";
@@ -26,6 +26,7 @@ import {
   markOutboundExpanded,
   type OutboundActivityWithSignerRow,
   type OutboundSigner,
+  replaceOutboundPayload,
 } from "./outbox-store";
 import { elapsedMs, writeMetric } from "./metrics";
 import type { OutboxWorkflowParams } from "./outbox-delivery-workflow";
@@ -131,25 +132,6 @@ export const enqueueActivityToInboxes = (
   inboxUrls: ReadonlyArray<string>,
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, kind, { kind: "Own", account, activity: payload }, inboxUrls);
-
-/**
- * Forward an activity another server signed, as received, to `inboxUrls`
- * (Mastodon's `ActivityPub::Forwarder`): its body is not tstodon's, so it is
- * not typed as one of tstodon's activities.
- */
-export const forwardActivityToInboxes = (
-  env: Env,
-  accountId: string,
-  kind: string,
-  body: Readonly<Record<string, unknown>>,
-  inboxUrls: ReadonlyArray<string>,
-): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(
-    env,
-    kind,
-    { kind: "AsIs", signer: { kind: "Account", accountId }, body },
-    inboxUrls,
-  );
 
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
@@ -435,7 +417,13 @@ export const startOutboxDeliveryWorkflow = async (
 };
 
 type SigningKey =
-  | Readonly<{ kind: "Found"; keyId: string; privateKeyJwk: SensitiveValue<string> }>
+  | Readonly<{
+      kind: "Found";
+      /** The actor the key is published on. */
+      actorUri: string;
+      keyId: string;
+      privateKeyJwk: SensitiveValue<string>;
+    }>
   /** The signing account is gone: the activity can never be delivered. */
   | Readonly<{ kind: "Missing" }>
   | Readonly<{ kind: "Unavailable" }>;
@@ -457,6 +445,7 @@ const signingKey = async (
     return keys.isOk()
       ? {
           kind: "Found",
+          actorUri: InstanceIdentity.instanceActorUrl(identity),
           keyId: instanceActorKeyId(identity),
           privateKeyJwk: keys.value.privateKeyJwk,
         }
@@ -466,11 +455,43 @@ const signingKey = async (
   if (username.isErr()) {
     return { kind: "Unavailable" };
   }
+  const actorUri = InstanceIdentity.actorUrl(identity, username.value);
   return {
     kind: "Found",
-    keyId: `${InstanceIdentity.actorUrl(identity, username.value)}#main-key`,
+    actorUri,
+    keyId: `${actorUri}#main-key`,
     privateKeyJwk: activity.signer_private_key_jwk,
   };
+};
+
+/**
+ * The body to post: as stored, or signed again when its Linked Data
+ * signature predates its signer's key rotation ({@link resignedAfterRotation}),
+ * which is then stored so that the activity's other inboxes reuse it. A
+ * body that cannot be stored again is still posted.
+ */
+const currentPayload = async (
+  env: Env,
+  activity: OutboundActivityWithSignerRow,
+  key: Extract<SigningKey, { kind: "Found" }>,
+): Promise<string> => {
+  const resigned = await resignedAfterRotation(
+    {
+      payloadJson: activity.payload_json,
+      forwardOf: activity.forward_of ?? undefined,
+      rotatedAt: activity.signer_key_rotated_at ?? undefined,
+    },
+    key,
+    new Date(),
+  );
+  if (resigned === undefined) {
+    return activity.payload_json;
+  }
+  const stored = await replaceOutboundPayload(env.DB, activity.id, activity.payload_json, resigned);
+  if (stored.isErr()) {
+    console.error(JSON.stringify({ kind: "ResignedPayloadNotStored", activityId: activity.id }));
+  }
+  return resigned;
 };
 
 /**
@@ -526,7 +547,7 @@ export const prepareInboxDelivery = async (env: Env, activityId: string): Promis
   if (key.kind === "Unavailable") {
     return settled(DeliveryAttemptOutcome.Local);
   }
-  const body = activity.value.payload_json;
+  const body = await currentPayload(env, activity.value, key);
   const allowHosts = await federationAllowHosts(env);
   const instanceDomain = identity.value.domain;
   const { account_id: signerId, signer_username: signerUsername } = activity.value;

@@ -420,22 +420,6 @@ export const listLocalSharerAccountIds = async (
     return [...new Set(parseRows(AccountIdRow, ids).map((row) => row.account_id))].slice(0, limit);
   });
 
-/** Every local account that currently boosts the target, for notifying them when it changes. */
-export const listLocalBoosterAccountIds = async (
-  db: D1Database,
-  target: StatusTargetValue,
-): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
-  runD1(async () => {
-    const rows = await db
-      .prepare(
-        `SELECT DISTINCT account_id FROM statuses
-         WHERE kind = 'LocalReblog' AND (reblog_of_id = ? OR reblog_of_remote_id = ?)`,
-      )
-      .bind(...statusTargetColumns(target))
-      .all();
-    return parseRows(AccountIdRow, rows.results).map((row) => row.account_id);
-  });
-
 /**
  * The next `limit` local accounts, by id after `afterAccountId` (empty for
  * the first page), that currently boost the target, each once.

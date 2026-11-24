@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Writes packages/worker/server/jsonld-contexts.ts, the JSON-LD contexts the
-// Worker canonicalizes with (it never fetches one), and
+// Worker ships, as Mastodon preloads them (its own and those of the
+// `json-ld-preloaded` gem; any other is fetched, `jsonld-remote-contexts.ts`), and
 // packages/worker/server/ld-signature.fixture.ts, what Mastodon makes of a
 // set of documents: their canonical N-Quads and their Linked Data signature.
 // `ld-signature.test.ts` holds `server/ld-signature.ts` to both. It also
@@ -15,6 +16,7 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { jsonldContextsModule } from "./jsonld-contexts-module.mjs";
 
 const path = (relative) => fileURLToPath(new URL(relative, import.meta.url));
 const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.5";
@@ -231,16 +233,7 @@ const header = (purpose) =>
 
 writeFileSync(
   path("../packages/worker/server/jsonld-contexts.ts"),
-  `${header("The JSON-LD contexts Mastodon preloads, as its processor holds them.")}
-/** Each context by URL. Mastodon also preloads each under \`http://\`. */
-export const JSONLD_CONTEXTS: ReadonlyMap<string, Readonly<Record<string, unknown>>> = new Map<
-  string,
-  Readonly<Record<string, unknown>>
->(${JSON.stringify(Object.entries(reference.contexts))});
-
-/** \`ContextHelper#full_context\`: what Mastodon compacts a signed activity to before it reads it. */
-export const MASTODON_FULL_CONTEXT: ReadonlyArray<unknown> = ${JSON.stringify(reference.fullContext)};
-`,
+  jsonldContextsModule(image, reference.contexts, reference.fullContext),
 );
 
 writeFileSync(

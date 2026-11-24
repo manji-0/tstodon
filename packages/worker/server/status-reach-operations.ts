@@ -10,7 +10,6 @@ import { localNoteRef } from "./activitypub";
 import { findRemoteActorByUri, listAcceptedRemoteFollowerInboxes } from "./remote-actor-store";
 import { listStatusInteractorInboxes } from "./remote-interaction-store";
 import {
-  listLocalBoosterAccountIds,
   listLocalBoosterFollowerInboxes,
   listLocalSharerAccountIds,
 } from "./status-interaction-store";
@@ -49,7 +48,6 @@ export const statusReachOperations = (
       actor ? RemoteActor.deliveryInbox(actor) : undefined,
     ),
   findThreadParent: (status) => findThreadParent(env.DB, identity, status),
-  listLocalBoosterAccountIds: (status) => listLocalBoosterAccountIds(env.DB, targetOf(status)),
   listLocalBoosterFollowerInboxes: (status) =>
     listLocalBoosterFollowerInboxes(env.DB, targetOf(status)),
   listLocalSharerAccountIds: (status, limit) =>

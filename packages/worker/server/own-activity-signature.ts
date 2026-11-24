@@ -4,7 +4,9 @@ import {
   PUBLIC_COLLECTION,
   SECURITY_V1,
 } from "@tstodon/api/activitypub";
+import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { InstanceIdentity, type LocalAccount } from "@tstodon/domain";
+import { z } from "zod";
 import { authorizedFetchEnabled } from "./authorized-fetch";
 import { ldSignature } from "./ld-signature";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
@@ -89,7 +91,9 @@ export const ldSigningOf = (activity: ApActivityDocumentJSON): LdSigning => {
  * allow list); `allowHosts` is that list when the caller has read it.
  *
  * Sign once per activity, when it is stored: every inbox gets the same body,
- * as Mastodon serializes a payload once for all its deliveries. A signature
+ * as Mastodon serializes a payload once for all its deliveries. A key
+ * rotation before the last inbox is reached has it signed once more
+ * ({@link resignedAfterRotation}). A signature
  * that cannot be made (a document the JSON-LD processor refuses, a key that
  * does not import) is logged, and the activity goes unsigned: a receiver
  * takes it as it takes any unsigned one.
@@ -137,6 +141,81 @@ export const deliveredActivity = async (
     "@context": withSecurity(activity["@context"]),
     signature: signature.value,
   };
+};
+
+const StoredSignatureSchema = z.looseObject({
+  actor: z.string(),
+  signature: z.looseObject({ creator: z.string(), created: z.string() }),
+});
+const parseStoredSignature = schemaResult(StoredSignatureSchema);
+
+/** An activity as stored for delivery, with what tells whether tstodon made it. */
+export type StoredActivity = Readonly<{
+  payloadJson: string;
+  /** The inbound activity a forward carries as received; undefined for tstodon's own. */
+  forwardOf: string | undefined;
+  /** When the signer's key pair was last replaced; undefined if never. */
+  rotatedAt: string | undefined;
+}>;
+
+/**
+ * `activity`, one of tstodon's own, signed again with `signer`'s key when
+ * its Linked Data signature predates that key's rotation (OPS-8): the key id
+ * outlives a rotation, so the signature is the old key's, and a forward of
+ * it would fail at servers that hold the new one. Undefined when it needs no
+ * new signature, or one cannot be made.
+ *
+ * Only a body tstodon built is signed: not a forward (`forwardOf`), whose
+ * `signature` and `creator` anyone could have written, naming our key or
+ * not, and only one whose `actor` is the signer, as every activity tstodon
+ * builds for an account is. Signing anything else would vouch, with the
+ * account's key, for JSON another server chose.
+ *
+ * `created` has whole seconds and `rotatedAt` milliseconds, so a signature
+ * made in the second of the rotation, with either key, counts as older and
+ * is made again. The new one is dated no earlier than the second after the
+ * rotation, so it is made once.
+ */
+export const resignedAfterRotation = async (
+  activity: StoredActivity,
+  signer: Readonly<{ actorUri: string; keyId: string; privateKeyJwk: SensitiveValue<string> }>,
+  now: Date,
+): Promise<string | undefined> => {
+  const { payloadJson, forwardOf, rotatedAt } = activity;
+  if (rotatedAt === undefined || forwardOf !== undefined || !payloadJson.includes('"signature"')) {
+    return undefined;
+  }
+  const key = { keyId: signer.keyId, privateKeyJwk: signer.privateKeyJwk };
+  let body: unknown;
+  try {
+    body = JSON.parse(payloadJson);
+  } catch {
+    return undefined;
+  }
+  const stored = parseStoredSignature(body);
+  if (
+    stored.isErr() ||
+    stored.value.actor !== signer.actorUri ||
+    stored.value.signature.creator !== key.keyId ||
+    !(Date.parse(stored.value.signature.created) < Date.parse(rotatedAt))
+  ) {
+    return undefined;
+  }
+  const signedAt = new Date(
+    Math.max(now.getTime(), Math.ceil(Date.parse(rotatedAt) / 1000) * 1000),
+  );
+  const signature = await ldSignature(stored.value, key, signedAt);
+  if (signature.isErr()) {
+    console.error(
+      JSON.stringify({
+        kind: "ActivityNotLdSigned",
+        activityId: stored.value["id"],
+        reason: signature.error.kind,
+      }),
+    );
+    return undefined;
+  }
+  return JSON.stringify({ ...stored.value, signature: signature.value });
 };
 
 /** `context` with the security vocabulary, which `sign!` adds after signing. */

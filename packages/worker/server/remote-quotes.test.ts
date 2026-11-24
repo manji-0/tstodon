@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import { openStream } from "../test/stream-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -279,7 +280,7 @@ describe("quoting a remote status", () => {
     socket.close();
   });
 
-  it("revokes the local quote a shared stamp approved, past a remote quote naming it too", async () => {
+  it("revokes only the first quote a shared stamp approved, as Mastodon's find_by", async () => {
     const email = "rq-shared-stamp-alice@example.com";
     const alice = await signedInAccount(email);
     const bob = await remoteActor("rq-shared-stamp-bob");
@@ -316,8 +317,16 @@ describe("quoting a remote status", () => {
       }),
     ).toBe(202);
 
-    expect((await quoteOf(email, quotingId)).state).toBe("revoked");
-    expect((await quoteOf(email, daveNote.id)).state).toBe("revoked");
+    // As Mastodon's `Delete#revoke_quote`, which revokes the one quote
+    // `Quote.find_by` gives: the first by id here.
+    const { results } = await env.DB.prepare(
+      "SELECT state FROM status_quotes WHERE status_id = ? OR remote_status_id = ? ORDER BY id",
+    )
+      .bind(quotingId, daveNote.id)
+      .all();
+    expect(read(z.array(z.object({ state: z.string() })), results).map((row) => row.state)).toEqual(
+      ["revoked", "accepted"],
+    );
   });
 
   it("revokes the quote when the quoted author deletes the stamp, keeping the note", async () => {
@@ -391,6 +400,11 @@ describe("quoting a remote status", () => {
   it("forwards a signed stamp Delete to the followers of the quoting note's local boosters", async () => {
     const quote = await boostedQuote("rq-stamp-forward");
     const deletion = {
+      // As Mastodon's `DeleteQuoteAuthorizationSerializer` sends it.
+      "@context": [
+        "https://www.w3.org/ns/activitystreams",
+        { QuoteAuthorization: "https://w3id.org/fep/044f#QuoteAuthorization" },
+      ],
       id: `${quote.stamp}#delete`,
       type: "Delete",
       object: { id: quote.stamp, type: "QuoteAuthorization" },
@@ -402,17 +416,14 @@ describe("quoting a remote status", () => {
       },
     };
 
-    expect(await quote.bob.send(deletion)).toBe(202);
+    // The inboxes are listed by the `ExpandForward` job the inbox queues.
+    expect(await withQueueDrained(["ExpandForward"], () => quote.bob.send(deletion))).toBe(202);
 
     expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("revoked");
     const forwarded = await queued(quote.carol.id, "Delete");
     // Forwarded as received, so Dan's server can check Bob's signature.
     expect(forwarded.map((row) => row.payload)).toEqual([
-      {
-        "@context": "https://www.w3.org/ns/activitystreams",
-        actor: quote.bob.actorUri,
-        ...deletion,
-      },
+      { actor: quote.bob.actorUri, ...deletion },
     ]);
     // Bob follows Carol too, but is not sent his own Delete back.
     expect(await deliveryInboxes(forwarded[0]?.id ?? "")).toEqual([`${quote.dan.actorUri}/inbox`]);

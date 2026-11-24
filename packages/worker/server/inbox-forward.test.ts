@@ -1,6 +1,7 @@
 import { createExecutionContext, env } from "cloudflare:test";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { withHostAddresses } from "../test/host-resolver-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { webfingerAnswer } from "../test/webfinger-fixture";
 import { forgetInboxRefusalWindows } from "./inbox-refusal";
@@ -456,5 +457,143 @@ describe("tombstones", () => {
       }),
     ).toBe(202);
     expect(await storedContent(objectUri)).toBeUndefined();
+  });
+});
+
+describe("forwards that name a context tstodon does not ship", () => {
+  const AS = "https://www.w3.org/ns/activitystreams";
+  /** A context that only names an Activity Streams term, as Mastodon's own context does. */
+  const SENSITIVE = { "@context": { sensitive: `${AS}#sensitive` } };
+
+  /** `alice`'s Create naming `contexts` after Activity Streams, signed and forwarded by a relay. */
+  const forwardNaming = async (
+    slug: string,
+    contexts: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  ) => {
+    const alice = await remoteActor(`${slug}-alice`, `${slug}.example`);
+    const relay = await remoteActor(`${slug}-relay`, "fwd-forwarder.example");
+    const activity = { ...create(alice, slug), "@context": [AS, ...Object.keys(contexts)] };
+    const signed = await alice.ldSigned(activity, new Date(), contexts);
+    return {
+      objectUri: `${alice.actorUri}/statuses/${slug}`,
+      send: async () => {
+        forgetInboxRefusalWindows();
+        return refusalsDuring(() => post(relay.forward(signed)));
+      },
+    };
+  };
+
+  /** The URLs fetched while `served` answers: a context as `application/ld+json`, else 404. */
+  const serveContexts = (
+    served: Readonly<Record<string, Readonly<{ body: unknown; type?: string }>>>,
+  ): string[] => {
+    const fetched: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new Request(input, init).url;
+      fetched.push(url);
+      const answer = served[url];
+      return answer === undefined
+        ? new Response(null, { status: 404 })
+        : new Response(JSON.stringify(answer.body), {
+            headers: { "content-type": answer.type ?? "application/ld+json" },
+          });
+    });
+    return fetched;
+  };
+
+  it("fetches it, as Mastodon's `load_jsonld_context`, and keeps it for 30 days", async () => {
+    const url = "https://fwd-ctx-remote.example/ns";
+    const forward = await forwardNaming("fwd-ctx-remote", { [url]: SENSITIVE });
+    const fetched = serveContexts({ [url]: { body: SENSITIVE } });
+
+    expect((await forward.send()).status).toBe(202);
+    expect(await storedContent(forward.objectUri)).toContain("fwd-ctx-remote");
+    expect(fetched).toEqual([url]);
+
+    // Cached: a later forward naming it does not fetch it again, until it is 30 days old.
+    const later = await forwardNaming("fwd-ctx-cached", { [url]: SENSITIVE });
+    expect((await later.send()).status).toBe(202);
+    expect(await storedContent(later.objectUri)).toBeDefined();
+    expect(fetched).toEqual([url]);
+    await env.DB.prepare("UPDATE jsonld_contexts SET fetched_at = ? WHERE url = ?")
+      .bind(new Date(Date.now() - 31 * DAY_MS).toISOString(), url)
+      .run();
+    const stale = await forwardNaming("fwd-ctx-stale", { [url]: SENSITIVE });
+    expect((await stale.send()).status).toBe(202);
+    expect(await storedContent(stale.objectUri)).toBeDefined();
+    expect(fetched).toEqual([url, url]);
+  });
+
+  it("drops the forward when the context is not served as JSON-LD, and does not keep the failure", async () => {
+    const url = "https://fwd-ctx-failed.example/ns";
+    const forward = await forwardNaming("fwd-ctx-failed", { [url]: SENSITIVE });
+    // Mastodon takes only a 200 answered as `application/ld+json`.
+    const fetched = serveContexts({ [url]: { body: SENSITIVE, type: "application/json" } });
+
+    const { status, refusals } = await forward.send();
+    expect(status).toBe(202);
+    expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "UnsupportedJsonLd" }]);
+    expect(await storedContent(forward.objectUri)).toBeUndefined();
+
+    vi.restoreAllMocks();
+    serveContexts({ [url]: { body: SENSITIVE } });
+    expect((await forward.send()).status).toBe(202);
+    expect(await storedContent(forward.objectUri)).toBeDefined();
+    expect(fetched).toEqual([url]);
+  });
+
+  it("does not fetch a context on a private address", async () => {
+    const url = "https://fwd-ctx-private.example/ns";
+    const forward = await forwardNaming("fwd-ctx-private", { [url]: SENSITIVE });
+    const fetched = serveContexts({ [url]: { body: SENSITIVE } });
+
+    await withHostAddresses({ "fwd-ctx-private.example": ["10.0.0.1"] }, async () => {
+      const { refusals } = await forward.send();
+      expect(refusals).toMatchObject([
+        { reason: "UnverifiedForward", detail: "UnsupportedJsonLd" },
+      ]);
+    });
+    expect(fetched).toEqual([]);
+    expect(await storedContent(forward.objectUri)).toBeUndefined();
+  });
+
+  it.each([
+    "https://w3id.org/security/data-integrity/v1",
+    "https://w3id.org/security/data-integrity/v2",
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/suites/ed25519-2020/v1",
+    "https://www.w3.org/ns/credentials/v2",
+    "https://schema.org",
+    "http://schema.org/",
+    "https://schema.org/",
+  ])("reads %s as Mastodon preloads it, without fetching it", async (url) => {
+    const slug = `fwd-ctx-gem-${url.replace(/[^a-z0-9]+/g, "-")}`;
+    const alice = await remoteActor(`${slug}-alice`, `${slug}.example`);
+    const relay = await remoteActor(`${slug}-relay`, "fwd-forwarder.example");
+    // Activity Streams last, so that its terms win: after it, schema.org's
+    // would redefine `content` and the rest (`AmbiguousJsonLd`).
+    const activity = { ...create(alice, slug), "@context": [url, AS] };
+    const signed = await alice.ldSigned(activity);
+    const fetched = serveContexts({});
+
+    expect((await post(relay.forward(signed))).status).toBe(202);
+
+    expect(fetched).toEqual([]);
+    expect(await storedContent(`${alice.actorUri}/statuses/${slug}`)).toBeDefined();
+  });
+
+  it("fetches at most five contexts for one document", async () => {
+    const contexts = Object.fromEntries(
+      Array.from({ length: 6 }, (_, n) => [`https://fwd-ctx-many.example/ns/${n}`, SENSITIVE]),
+    );
+    const forward = await forwardNaming("fwd-ctx-many", contexts);
+    const fetched = serveContexts(
+      Object.fromEntries(Object.keys(contexts).map((url) => [url, { body: SENSITIVE }])),
+    );
+
+    const { refusals } = await forward.send();
+    expect(refusals).toMatchObject([{ reason: "UnverifiedForward", detail: "UnsupportedJsonLd" }]);
+    expect(await storedContent(forward.objectUri)).toBeUndefined();
+    expect(new Set(fetched).size).toBeLessThanOrEqual(5);
   });
 });

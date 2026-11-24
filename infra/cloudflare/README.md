@@ -59,8 +59,6 @@ tofu apply
 4. `pnpm run deploy` (`void deploy --backend cloudflare`)
 5. Re-apply with `attach_queue_consumer = true` so the three Queue consumers point at the Worker (the outbox and pull consumers with `dead_letter_queue` set to the dead-letter queue).
 
-A state created before the KV namespaces were dropped (OPS-7) still holds `cloudflare_workers_kv_namespace.remote_dns_cache` and `.app_cache`: the next `tofu plan` destroys both. Nothing read `REMOTE_DNS_CACHE`, and `APP_CACHE` only held mail captured in test setups, so deploy the Worker without the `kv_namespaces` bindings first, then apply. To keep the namespaces instead, `tofu state rm` them.
-
 ## Outputs to wire
 
 | Output                                        | Destination                               |
