@@ -288,6 +288,54 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
         }),
       ),
   );
+  // `Create#postprocess_audience_and_deliver`: the same activity, at the
+  // shared inbox first and then at a personal one, reaches that inbox's owner.
+  await step(
+    "a note held already, then sent to the personal inbox of a tstodon user it does not tag, is limited: Mastodon → tstodon",
+    async () => {
+      const slug = `limited-held-${stamp}`;
+      const audience = { to: [mentioned.uri], tag: mentioned };
+      deliverUntagged(sender, slug, { ...audience, inbox: `${A}/inbox` });
+      await checkLimited(
+        deliverUntagged(sender, slug, {
+          ...audience,
+          inbox: `${A}/users/${addressed.username}/inbox`,
+        }),
+      );
+    },
+  );
+};
+
+/**
+ * A tstodon post with `visibility=limited`, as Mastodon takes it on
+ * `POST /api/v1/statuses`: its author sees it as `private`, and it is
+ * addressed and delivered to the account it mentions alone, which Mastodon
+ * stores as the direct message its audience makes it. A follower it does
+ * not mention cannot find it.
+ */
+const limitedPost = async (
+  stamp: string,
+  author: E2eUser,
+  mentioned: E2eUser,
+  follower: E2eUser,
+): Promise<void> => {
+  const sent = await post(author, {
+    status: `${mentioned.acct} limited ${stamp}`,
+    visibility: "limited",
+  });
+  if (sent.visibility !== "private") {
+    throw new StepFailure(`its author sees it as ${sent.visibility}`);
+  }
+  await notified(mentioned, "mention", author, sent.uri);
+  const seen = await resolveStatus(mentioned, sent.uri);
+  if (seen.visibility !== "direct") {
+    throw new StepFailure(`${mentioned.acct} sees it as ${seen.visibility}`);
+  }
+  const query = new URLSearchParams({ q: sent.uri, resolve: "true", type: "statuses" });
+  const found = await call(follower, `/api/v2/search?${query.toString()}`, Search);
+  if (found.statuses.length > 0) {
+    throw new StepFailure(`${follower.acct}, who follows its author, finds it`);
+  }
 };
 
 export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promise<void> => {
@@ -331,4 +379,7 @@ export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
   );
 
   await limitedNote(stamp, carol);
+  await step("a limited post reaches only the account it mentions: tstodon → Mastodon", () =>
+    limitedPost(stamp, alice, mona, carol),
+  );
 };
