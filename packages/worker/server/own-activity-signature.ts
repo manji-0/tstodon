@@ -144,17 +144,32 @@ export const deliveredActivity = async (
 };
 
 const StoredSignatureSchema = z.looseObject({
+  actor: z.string(),
   signature: z.looseObject({ creator: z.string(), created: z.string() }),
 });
 const parseStoredSignature = schemaResult(StoredSignatureSchema);
 
+/** An activity as stored for delivery, with what tells whether tstodon made it. */
+export type StoredActivity = Readonly<{
+  payloadJson: string;
+  /** The inbound activity a forward carries as received; undefined for tstodon's own. */
+  forwardOf: string | undefined;
+  /** When the signer's key pair was last replaced; undefined if never. */
+  rotatedAt: string | undefined;
+}>;
+
 /**
- * `payloadJson`, a stored activity, signed again with `key` when it carries
- * a Linked Data signature by `key.keyId` made before that key was rotated at
- * `rotatedAt` (OPS-8): the key id outlives a rotation, so the signature is
- * the old key's, and a forward of it would fail at servers that hold the new
- * one. Undefined when it needs no new signature, or one cannot be made. A
- * forwarded body carries another actor's signature and is left alone.
+ * `activity`, one of tstodon's own, signed again with `signer`'s key when
+ * its Linked Data signature predates that key's rotation (OPS-8): the key id
+ * outlives a rotation, so the signature is the old key's, and a forward of
+ * it would fail at servers that hold the new one. Undefined when it needs no
+ * new signature, or one cannot be made.
+ *
+ * Only a body tstodon built is signed: not a forward (`forwardOf`), whose
+ * `signature` and `creator` anyone could have written, naming our key or
+ * not, and only one whose `actor` is the signer, as every activity tstodon
+ * builds for an account is. Signing anything else would vouch, with the
+ * account's key, for JSON another server chose.
  *
  * `created` has whole seconds and `rotatedAt` milliseconds, so a signature
  * made in the second of the rotation, with either key, counts as older and
@@ -162,14 +177,15 @@ const parseStoredSignature = schemaResult(StoredSignatureSchema);
  * rotation, so it is made once.
  */
 export const resignedAfterRotation = async (
-  payloadJson: string,
-  key: Readonly<{ keyId: string; privateKeyJwk: SensitiveValue<string> }>,
-  rotatedAt: string | null,
+  activity: StoredActivity,
+  signer: Readonly<{ actorUri: string; keyId: string; privateKeyJwk: SensitiveValue<string> }>,
   now: Date,
 ): Promise<string | undefined> => {
-  if (rotatedAt === null) {
+  const { payloadJson, forwardOf, rotatedAt } = activity;
+  if (rotatedAt === undefined || forwardOf !== undefined || !payloadJson.includes('"signature"')) {
     return undefined;
   }
+  const key = { keyId: signer.keyId, privateKeyJwk: signer.privateKeyJwk };
   let body: unknown;
   try {
     body = JSON.parse(payloadJson);
@@ -179,6 +195,7 @@ export const resignedAfterRotation = async (
   const stored = parseStoredSignature(body);
   if (
     stored.isErr() ||
+    stored.value.actor !== signer.actorUri ||
     stored.value.signature.creator !== key.keyId ||
     !(Date.parse(stored.value.signature.created) < Date.parse(rotatedAt))
   ) {

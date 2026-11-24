@@ -67,6 +67,8 @@ const OutboundActivityWithSignerRowSchema = OutboundActivityRowSchema.extend({
   signer_private_key_jwk: Sensitive.schema(z.string().min(1)).nullable(),
   /** 1 when each POST carries a `Collection-Synchronization` header. */
   synchronize_followers: z.number(),
+  /** The inbound activity this row forwards, as received; `null` for tstodon's own. */
+  forward_of: z.string().nullable(),
   /** When the signing account's key pair was last replaced, if ever. */
   signer_key_rotated_at: z.string().nullable(),
 });

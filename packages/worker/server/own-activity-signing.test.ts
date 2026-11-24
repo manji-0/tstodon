@@ -240,6 +240,15 @@ describe("own activities as delivered", () => {
 describe("an activity stored before its author's key rotation (OPS-8)", () => {
   const INBOX = "https://rotated-ld.example/inbox";
 
+  /** A public boost by the local account `username`. */
+  const ownBoost = (username: string): ApActivityDocumentJSON => {
+    const announce = sample("announcePublic");
+    if (announce.type !== "Announce") {
+      throw new Error("sample");
+    }
+    return { ...announce, actor: `https://example.com/users/${username}` };
+  };
+
   const rotatedKey = async (accountId: string): Promise<string> => {
     const identity = parseInstanceIdentity(env)._unsafeUnwrap();
     (await rotateAccountKey(env, identity, accountId))._unsafeUnwrap();
@@ -262,7 +271,7 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
   it("goes out signed with the new key, and every inbox gets the same body", async () => {
     const account = await signedInAccount("ld-sign-rotated@example.com");
     (
-      await enqueueTargetedActivity(env, account, "Announce", sample("announcePublic"), INBOX)
+      await enqueueTargetedActivity(env, account, "Announce", ownBoost(account.username), INBOX)
     )._unsafeUnwrap();
     const [queued] = await stored(account.id);
     const activityId = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
@@ -297,7 +306,7 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
     const queue = async (email: string) => {
       const account = await signedInAccount(email);
       (
-        await enqueueTargetedActivity(env, account, "Announce", sample("announcePublic"), INBOX)
+        await enqueueTargetedActivity(env, account, "Announce", ownBoost(account.username), INBOX)
       )._unsafeUnwrap();
       const id = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
       if (id === undefined) {
@@ -347,5 +356,58 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
 
     expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(payloadJson);
     expect(await storedPayload(activityId)).toBe(payloadJson);
+  });
+
+  it("never signs a forward whose signature names the local key, a forger's choice", async () => {
+    const account = await signedInAccount("ld-sign-rotated-forged@example.com");
+    const actor = `https://example.com/users/${account.username}`;
+    // Anyone can write a `creator`: this one claims the local account's key.
+    const forged = {
+      "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"],
+      id: "https://forger.example/activities/1",
+      type: "Delete",
+      actor,
+      to: [PUBLIC],
+      object: actor,
+      signature: {
+        type: "RsaSignature2017",
+        creator: `${actor}#main-key`,
+        created: "2020-01-01T00:00:00Z",
+        signatureValue: "Zm9yZ2Vk",
+      },
+    };
+    const payloadJson = JSON.stringify(forged);
+    const activityId = (
+      await insertForwardedActivity(env.DB, {
+        accountId: account.id,
+        kind: "Delete",
+        payloadJson,
+        forwardOf: forged.id,
+      })
+    )._unsafeUnwrap();
+    if (activityId === undefined) {
+      throw new Error("the forward was not stored");
+    }
+
+    await rotatedKey(account.id);
+
+    expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(payloadJson);
+    expect(await storedPayload(activityId)).toBe(payloadJson);
+  });
+
+  it("does not sign again an activity whose actor is not its signer", async () => {
+    const account = await signedInAccount("ld-sign-rotated-other-actor@example.com");
+    const announce = sample("announcePublic");
+    (await enqueueTargetedActivity(env, account, "Announce", announce, INBOX))._unsafeUnwrap();
+    const activityId = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
+    if (activityId === undefined) {
+      throw new Error("nothing was queued");
+    }
+    // The sample's actor is `tstodon.example`'s alice, not this account.
+    const payloadJson = await storedPayload(activityId);
+
+    await rotatedKey(account.id);
+
+    expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(payloadJson);
   });
 });

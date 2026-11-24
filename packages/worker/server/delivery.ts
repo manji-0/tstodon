@@ -417,7 +417,13 @@ export const startOutboxDeliveryWorkflow = async (
 };
 
 type SigningKey =
-  | Readonly<{ kind: "Found"; keyId: string; privateKeyJwk: SensitiveValue<string> }>
+  | Readonly<{
+      kind: "Found";
+      /** The actor the key is published on. */
+      actorUri: string;
+      keyId: string;
+      privateKeyJwk: SensitiveValue<string>;
+    }>
   /** The signing account is gone: the activity can never be delivered. */
   | Readonly<{ kind: "Missing" }>
   | Readonly<{ kind: "Unavailable" }>;
@@ -439,6 +445,7 @@ const signingKey = async (
     return keys.isOk()
       ? {
           kind: "Found",
+          actorUri: InstanceIdentity.instanceActorUrl(identity),
           keyId: instanceActorKeyId(identity),
           privateKeyJwk: keys.value.privateKeyJwk,
         }
@@ -448,9 +455,11 @@ const signingKey = async (
   if (username.isErr()) {
     return { kind: "Unavailable" };
   }
+  const actorUri = InstanceIdentity.actorUrl(identity, username.value);
   return {
     kind: "Found",
-    keyId: `${InstanceIdentity.actorUrl(identity, username.value)}#main-key`,
+    actorUri,
+    keyId: `${actorUri}#main-key`,
     privateKeyJwk: activity.signer_private_key_jwk,
   };
 };
@@ -467,9 +476,12 @@ const currentPayload = async (
   key: Extract<SigningKey, { kind: "Found" }>,
 ): Promise<string> => {
   const resigned = await resignedAfterRotation(
-    activity.payload_json,
+    {
+      payloadJson: activity.payload_json,
+      forwardOf: activity.forward_of ?? undefined,
+      rotatedAt: activity.signer_key_rotated_at ?? undefined,
+    },
     key,
-    activity.signer_key_rotated_at,
     new Date(),
   );
   if (resigned === undefined) {
