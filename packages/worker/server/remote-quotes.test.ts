@@ -536,6 +536,33 @@ describe("a quote that waits for the quoted author's manual approval", () => {
     expect((await notificationsOf(quote.email)).map((n) => n.type)).toEqual(["quote"]);
   });
 
+  it("tells those who boosted the quoting post of the Accept", async () => {
+    const quote = await quoteBob("rq-manual-boost", manualPublic);
+    const daveEmail = "rq-manual-boost-dave@example.com";
+    const dave = await signedInAccount(daveEmail);
+    const boosted = await json(`/api/v1/statuses/${quote.quotingId}/reblog`, {
+      method: "POST",
+      headers: await authHeaders(daveEmail),
+    });
+    expect(boosted.status).toBe(200);
+
+    expect(
+      await withQueueDrained(["NotifyLocalNoteBoosters"], () =>
+        quote.bob.send({
+          id: `${quote.bob.actorUri}#accepts/quote_requests/1`,
+          type: "Accept",
+          object: quote.request.body.id,
+          result: `${quote.bob.actorUri}/quote_authorizations/1`,
+        }),
+      ),
+    ).toBe(202);
+
+    expect((await notificationsOf(daveEmail)).filter((n) => n.type === "update")).toEqual([
+      expect.objectContaining({ account: { id: quote.alice.id }, status: { id: quote.quotingId } }),
+    ]);
+    expect(dave.id).not.toBe(quote.alice.id);
+  });
+
   it("is told nothing on a Reject, which leaves the quote rejected", async () => {
     const quote = await quoteBob("rq-manual-reject", manualPublic);
     const carolEmail = "rq-manual-reject-carol@example.com";

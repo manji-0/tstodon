@@ -6,6 +6,7 @@ import {
   type LocalNote,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import type { RepositoryError } from "./d1";
 import { noteUpdateActivity } from "./activitypub";
 import { type EnqueueLocalActivityError, enqueueLocalActivity } from "./delivery";
 import { synchronizesFollowers } from "./followers-synchronization";
@@ -13,6 +14,8 @@ import { startHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
 import { notifyAccount } from "./notify";
+import { deleteNotificationsBefore } from "./notification-store";
+import { notifyNoteBoosters } from "./note-booster-updates";
 import { readNoteObject } from "./local-note-object";
 import { deferStatusActivity, deferToOwedActivity } from "./pending-status-federation";
 import { listAcceptedQuoteEdges } from "./quote-store";
@@ -107,24 +110,43 @@ export const announceNoteUpdate = async (
 };
 
 /**
- * Tell the local authors whose accepted quotes quote the note that it
- * changed (`quoted_update`), as Mastodon's
- * `FanOutOnWriteService#notify_about_update!`. Mastodon runs it for an edit,
- * and for the quoted author's `Accept` of the note's own quote, which
- * distributes the note as an update without `skip_notifications`. The note's
+ * Tell the local accounts that boosted the note, or quote it in an accepted
+ * quote, that it changed at `since`, as Mastodon's
+ * `FanOutOnWriteService#notify_about_update!`: `update` to the boosters
+ * (queued, {@link notifyNoteBoosters}) and `quoted_update` to the quoters.
+ * Mastodon runs it for an edit, and for the quoted author's `Accept` of the
+ * note's own quote, which distributes the note as an update without
+ * `skip_notifications`. Each account keeps the latest such notification
+ * only, as `LocalNotificationWorker` deletes the older ones. The note's
  * author is not told of its own note.
  */
-export const notifyQuotersOfUpdate = async (env: Env, note: LocalNote): Promise<void> => {
+export const notifyAboutUpdate = async (
+  env: Env,
+  note: LocalNote,
+  since: string,
+): Promise<Result<void, RepositoryError>> => {
+  const boosters = await notifyNoteBoosters(env, {
+    kind: "LocalStatus",
+    statusId: note.id,
+    since,
+  });
+  if (boosters.isErr()) {
+    return boosters;
+  }
   const edges = await listAcceptedQuoteEdges(env.DB, note.id);
   const quoters = (edges.isOk() ? edges.value : []).filter(
     (edge) => edge.accountId !== note.accountId,
   );
   for (const edge of quoters) {
-    await notifyAccount(env, {
+    const notification = {
       accountId: edge.accountId,
-      fromAccountId: note.accountId,
       kind: "quoted_update",
       statusId: edge.statusId,
-    });
+    } as const;
+    const cleared = await deleteNotificationsBefore(env.DB, { ...notification, before: since });
+    if (cleared.isOk()) {
+      await notifyAccount(env, { ...notification, fromAccountId: note.accountId });
+    }
   }
+  return ok(undefined);
 };

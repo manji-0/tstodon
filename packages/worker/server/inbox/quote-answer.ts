@@ -14,7 +14,7 @@ import { forwardInboundActivity } from "../activity-forward";
 import { nowIso } from "../clock";
 import { readableRow, type RepositoryError } from "../d1";
 import { announceRemoteQuoteChange } from "../remote-quote-announce";
-import { announceNoteUpdate, notifyQuotersOfUpdate } from "../local-status-update";
+import { announceNoteUpdate, notifyAboutUpdate } from "../local-status-update";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findDeliveredRemoteStatusById } from "../remote-status-store";
@@ -73,8 +73,8 @@ const signerQuote = async (
 /**
  * Store the quote's new state and tell the quoting author's streams and
  * timelines, as Mastodon's `DistributionWorker`. An `Accept` also sends the
- * note's `Update`, which then carries the stamp, and tells the local authors
- * who quoted the note, as `accept_quote!` distributes the note as an update
+ * note's `Update`, which then carries the stamp, and tells the local accounts
+ * that boosted or quoted the note, as `accept_quote!` distributes the note as an update
  * with notifications. The `Update` is no edit, as Mastodon's `accept_quote!`
  * sends it with `edited_at` unchanged.
  */
@@ -89,22 +89,20 @@ const settle = async (
   if (saved.isErr()) {
     return err(saved.error);
   }
+  const now = nowIso();
   const announced = await announceNoteUpdate(
     env,
     identity,
     quoting.author,
     quoting.note,
-    nowIso(),
+    now,
     answer === "Accept",
     "Unedited",
   );
   if (announced.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteAnswerNotAnnounced", quoteId: quote.id }));
   }
-  if (answer === "Accept") {
-    await notifyQuotersOfUpdate(env, quoting.note);
-  }
-  return ok(undefined);
+  return answer === "Accept" ? notifyAboutUpdate(env, quoting.note, now) : ok(undefined);
 };
 
 const httpsHost = (uri: string): string | undefined => {

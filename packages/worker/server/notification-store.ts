@@ -59,6 +59,24 @@ export const deleteRemoteNotifications = async (
   );
 
 /**
+ * Delete the account's notifications of one kind about one status created
+ * before `before`, from any sender, as Mastodon's `LocalNotificationWorker`
+ * does before it records a newer `update`.
+ */
+export const deleteNotificationsBefore = async (
+  db: D1Database,
+  input: Readonly<{ accountId: string; statusId: string; kind: string; before: string }>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        "DELETE FROM notifications WHERE account_id = ? AND status_id = ? AND kind = ? AND created_at < ?",
+      )
+      .bind(input.accountId, input.statusId, input.kind, input.before)
+      .run();
+  });
+
+/**
  * Record a notification about a status, unless the account already holds
  * one of the same kind from that sender (a local account, or a remote actor
  * and its `r_…` id) about that status, created at `since` or later (at any

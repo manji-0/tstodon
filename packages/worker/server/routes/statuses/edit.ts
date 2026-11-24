@@ -24,7 +24,7 @@ import { authenticate } from "../../auth";
 import { nowIso } from "../../clock";
 import { deleteLocalStatus } from "../../local-status-delete";
 import { mastodonSourceStatus } from "../../status-source-document";
-import { announceNoteUpdate, notifyQuotersOfUpdate } from "../../local-status-update";
+import { announceNoteUpdate, notifyAboutUpdate } from "../../local-status-update";
 import { formatPostText } from "../../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../../mention-store";
 import { mentionLinks, resolveMentions, type ResolvedMentions } from "../../mention-resolve";
@@ -442,7 +442,10 @@ const editNote = async (
   if (!applied.value) {
     return err(ApiRefusal.notFound);
   }
-  await notifyQuotersOfUpdate(env, existing);
+  const notified = await notifyAboutUpdate(env, existing, updatedAt);
+  if (notified.isErr()) {
+    return err(ApiRefusal.repository(notified.error.message));
+  }
   startLinkCard(env, "Status", existing.id, revised.text);
   const pollApplied = await applyPollRevision(env.DB, existing.id, pollRevision.value);
   if (pollApplied.isErr()) {

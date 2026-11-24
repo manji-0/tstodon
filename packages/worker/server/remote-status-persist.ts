@@ -71,7 +71,7 @@ import {
   recordRemoteStatusMentions,
 } from "./mention-store";
 import { measureJobPage } from "./metrics";
-import { notifyRemoteNoteBoosters } from "./remote-note-booster-updates";
+import { notifyNoteBoosters } from "./note-booster-updates";
 import { isNotifyingRemoteFollower, notifyingRemoteFollowersPage } from "./outbound-follow-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
@@ -878,7 +878,8 @@ const writeLateSteps = async (
   // Preview cards are built off the request path like for local posts.
   startLinkCard(env, "RemoteStatus", status.id, status.contentHtml, noteCardUrl(raw));
   if (late.kind === "Updated" && late.edit) {
-    const boosters = await notifyRemoteNoteBoosters(env, {
+    const boosters = await notifyNoteBoosters(env, {
+      kind: "RemoteStatus",
       statusId: status.id,
       actorUri: actor.actorUri,
       since: late.edit.createdAt,

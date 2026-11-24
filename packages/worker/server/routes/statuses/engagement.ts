@@ -33,7 +33,7 @@ import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
 import { nowIso } from "../../clock";
 import { startHomeFanOut } from "../../home-fan-out";
-import { announceNoteUpdate } from "../../local-status-update";
+import { announceNoteUpdate, notifyAboutUpdate } from "../../local-status-update";
 import { startPublicFanOut } from "../../public-fan-out";
 
 const statusEngagementAccounts = async (
@@ -193,7 +193,8 @@ export const getV1StatusesByIdQuotes = async (
 
 /**
  * Tell local streams the quoting status changed, as Mastodon's
- * `DistributionWorker` with `update: true`. The stamp `Delete` is what
+ * `DistributionWorker` with `update: true`, and for a local one the local
+ * accounts that boosted or quoted it (`notify_about_update!`). The stamp `Delete` is what
  * reaches other servers.
  */
 const publishQuoteRevoke = async (
@@ -209,17 +210,19 @@ const publishQuoteRevoke = async (
     if (author.isErr() || !author.value) {
       return;
     }
+    const now = nowIso();
     const announced = await announceNoteUpdate(
       env,
       identity,
       author.value,
       quoting.status,
-      nowIso(),
+      now,
       false,
       // A revoked quote is no edit of the note quoting it.
       "Unedited",
     );
-    if (announced.isErr()) {
+    const notified = await notifyAboutUpdate(env, quoting.status, now);
+    if (announced.isErr() || notified.isErr()) {
       console.error(
         JSON.stringify({ kind: "QuoteRevokeNotAnnounced", statusId: quoting.status.id }),
       );

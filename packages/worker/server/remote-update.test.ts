@@ -572,7 +572,7 @@ describe("update notifications to local boosters", () => {
     return headers;
   };
 
-  it("notifies a booster once per content edit, not for poll refreshes or replays", async () => {
+  it("notifies a booster of each content edit, the latest only, not for poll refreshes or replays", async () => {
     const author = await remoteActor("notify-booster-author");
     const id = await create(author, "boosted", "<p>v1</p>");
     const booster = await boosted("update-notify-booster@example.com", id);
@@ -592,7 +592,9 @@ describe("update notifications to local boosters", () => {
       "boosted-4",
       note(author, "boosted", "<p>v3</p>", { updated: "2026-10-22T00:00:00.000Z" }),
     );
-    expect(await updates(booster, id)).toEqual(["update", "update"]);
+    // The later edit replaces the notification: Mastodon's
+    // `LocalNotificationWorker` keeps the latest `update` only.
+    expect(await updates(booster, id)).toEqual(["update"]);
   });
 
   it("notifies nobody when the note is edited without a booster", async () => {
