@@ -1,10 +1,11 @@
+import type { StatusVisibilityParam } from "@tstodon/api/values";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { type IdCursor, idCursorFragment } from "./id-cursor";
 
 /** A stored `statuses.visibility`. */
-export type StoredVisibility = "public" | "unlisted" | "private" | "direct";
+export type StoredVisibility = StatusVisibilityParam;
 
 /**
  * What an outbox page shows its fetcher, as Mastodon's

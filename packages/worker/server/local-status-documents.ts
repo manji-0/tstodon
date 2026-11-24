@@ -122,7 +122,7 @@ const buildLocalNoteDocument = (
     in_reply_to_account_id: answeredAccountId,
     sensitive: status.sensitive || (sensitized && attachments.length > 0),
     spoiler_text: status.spoilerText,
-    visibility: Visibility.toMastodon(status.visibility),
+    visibility: Visibility.toRest(status.visibility),
     language: status.language.kind === "Present" ? status.language.value : null,
     uri,
     url: InstanceIdentity.statusUrl(identity, account.username, status.id),
@@ -650,7 +650,7 @@ const renderLocalStatuses = async (
       account: author.document,
       created_at: status.createdAt,
       // The boost's own visibility, which may be narrower than the original's.
-      visibility: Visibility.toMastodon(status.visibility),
+      visibility: Visibility.toRest(status.visibility),
     };
   };
 

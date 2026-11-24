@@ -160,7 +160,7 @@ const renderPostingDefaults = async (
     postingDefaultsPage(
       instanceName(c.env),
       {
-        privacy: Visibility.toMastodon(account.value.defaultPostVisibility),
+        privacy: Visibility.toRest(account.value.defaultPostVisibility),
         quotePolicy: quotePolicyName(account.value.defaultQuotePolicy),
         sensitive: defaults.value.sensitive,
         language: defaults.value.language ?? "",
@@ -191,7 +191,7 @@ export const postPostingDefaults = async (
   }
   const accountId = signedIn.account.id;
   const form = await readOptionalBody(c, PostingDefaultsFormSchema);
-  const visibility = form.isOk() ? Visibility.fromMastodon(form.value.privacy) : undefined;
+  const visibility = form.isOk() ? Visibility.selectableFromParam(form.value.privacy) : undefined;
   if (!form.isOk() || visibility === undefined || visibility.isErr()) {
     return renderPostingDefaults(
       c,

@@ -249,7 +249,7 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
   const mentioned = await signUp(A, "lima");
   const addressed = await signUp(A, "limb");
   const bystander = await signUp(A, "limc");
-  const checkLimited = async (noteUri: string): Promise<void> => {
+  const checkReach = async (noteUri: string): Promise<void> => {
     for (const viewer of [mentioned, addressed]) {
       const seen = await resolveStatus(viewer, noteUri);
       if (seen.visibility !== "private") {
@@ -261,6 +261,9 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
     if (found.statuses.length > 0) {
       throw new StepFailure("an account it does not reach finds it");
     }
+  };
+  const checkLimited = async (noteUri: string): Promise<void> => {
+    await checkReach(noteUri);
     await notified(mentioned, "mention", sender, noteUri);
     const conversations = await call(mentioned, "/api/v1/conversations?limit=40", Conversations);
     if (conversations.some((entry) => entry.last_status?.uri === noteUri)) {
@@ -288,6 +291,70 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
         }),
       ),
   );
+  // `Create#postprocess_audience_and_deliver`: the same activity, at the
+  // shared inbox first and then at a personal one, reaches that inbox's owner.
+  // The first delivery stores a direct message from a stranger, so its mention
+  // waits in a notification request (`NotifyService#message?`), and turning
+  // the status limited afterwards does not take it out of that request.
+  await step(
+    "a note held already, then sent to the personal inbox of a tstodon user it does not tag, is limited: Mastodon → tstodon",
+    async () => {
+      const slug = `limited-held-${stamp}`;
+      const audience = { to: [mentioned.uri], tag: mentioned };
+      const noteUri = deliverUntagged(sender, slug, { ...audience, inbox: `${A}/inbox` });
+      deliverUntagged(sender, slug, {
+        ...audience,
+        inbox: `${A}/users/${addressed.username}/inbox`,
+      });
+      await checkReach(noteUri);
+      const request = await eventually(
+        "the mentioned account has a notification request",
+        async () => {
+          const requests = await call(
+            mentioned,
+            "/api/v1/notifications/requests",
+            NotificationRequests,
+          );
+          return requests.find((entry) => entry.account.uri === sender.uri);
+        },
+      );
+      if (request.last_status?.uri !== noteUri) {
+        throw new StepFailure(`the request's last status is ${String(request.last_status?.uri)}`);
+      }
+    },
+  );
+};
+
+/**
+ * A tstodon post with `visibility=limited`, as Mastodon takes it on
+ * `POST /api/v1/statuses`: its author sees it as `private`, and it is
+ * addressed and delivered to the account it mentions alone, which Mastodon
+ * stores as the direct message its audience makes it. A follower it does
+ * not mention cannot find it.
+ */
+const limitedPost = async (
+  stamp: string,
+  author: E2eUser,
+  mentioned: E2eUser,
+  follower: E2eUser,
+): Promise<void> => {
+  const sent = await post(author, {
+    status: `${mentioned.acct} limited ${stamp}`,
+    visibility: "limited",
+  });
+  if (sent.visibility !== "private") {
+    throw new StepFailure(`its author sees it as ${sent.visibility}`);
+  }
+  await notified(mentioned, "mention", author, sent.uri);
+  const seen = await resolveStatus(mentioned, sent.uri);
+  if (seen.visibility !== "direct") {
+    throw new StepFailure(`${mentioned.acct} sees it as ${seen.visibility}`);
+  }
+  const query = new URLSearchParams({ q: sent.uri, resolve: "true", type: "statuses" });
+  const found = await call(follower, `/api/v2/search?${query.toString()}`, Search);
+  if (found.statuses.length > 0) {
+    throw new StepFailure(`${follower.acct}, who follows its author, finds it`);
+  }
 };
 
 export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promise<void> => {
@@ -331,4 +398,7 @@ export const directScenarios = async ({ stamp, mona, carol, dana }: Cast): Promi
   );
 
   await limitedNote(stamp, carol);
+  await step("a limited post reaches only the account it mentions: tstodon → Mastodon", () =>
+    limitedPost(stamp, alice, mona, carol),
+  );
 };

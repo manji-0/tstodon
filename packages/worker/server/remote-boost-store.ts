@@ -51,7 +51,7 @@ const RemoteBoostRowSchema = z.object({
 const parseRemoteBoostRow = schemaResult(RemoteBoostRowSchema);
 
 const boostFromRow = (row: z.infer<typeof RemoteBoostRowSchema>): RemoteBoostValue | undefined => {
-  const visibility = Visibility.fromMastodon(row.visibility);
+  const visibility = Visibility.fromParam(row.visibility);
   const boost = RemoteBoost.parse({
     kind: "RemoteBoost",
     id: row.id,

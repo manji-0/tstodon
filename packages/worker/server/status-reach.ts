@@ -7,6 +7,7 @@ import type {
   ListStatusInteractorInboxes,
   ThreadStatus,
 } from "@tstodon/domain";
+import { Visibility } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 
@@ -40,7 +41,7 @@ export type StatusReachOperations = Readonly<{
  * The remote inboxes a status reached, as Mastodon's `StatusReachFinder`
  * with `unsafe: true`: the actors that interacted with it
  * (`listInteractorInboxes`), the replied-to remote author of a public or
- * unlisted status, and, for a local status that is not direct, its author's
+ * unlisted status, and, for a local status that is not direct or limited, its author's
  * remote followers, with those of a local replied-to author when the status
  * is public or unlisted. A remote author's own followers are not known here.
  */
@@ -64,7 +65,7 @@ export const statusReachInboxes = async (
     }
     inboxes.push(...(repliedTo.value === undefined ? [] : [repliedTo.value]));
   }
-  if (status.kind === "Local" && status.status.visibility.kind !== "Direct") {
+  if (status.kind === "Local" && !Visibility.requiresMention(status.status.visibility)) {
     const authors = [
       status.status.accountId,
       ...(parent.value?.kind === "Local" && distributable(status)

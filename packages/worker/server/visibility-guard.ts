@@ -1,7 +1,6 @@
 import { assertNever } from "@tstodon/core";
 import {
   OutboundFollow,
-  RemoteVisibility,
   Visibility,
   type LocalStatus,
   type RemoteBoostValue as RemoteBoost,
@@ -55,9 +54,10 @@ const isDirectNote = (status: LocalStatus): boolean =>
  * one is hidden only from viewers its author blocks. A followers-only one is
  * shown to the author, followers and the accounts it mentions. A direct note
  * is shown to its author and the accounts it mentions, and so is a direct
- * note replying through direct notes only to one they may see. A boost's own
- * visibility decides who sees it, and it is never direct. Viewers are local
- * accounts, so the policy's domain-block clause never applies.
+ * note replying through direct notes only to one they may see. A limited
+ * note is shown to its author and the accounts it mentions. A boost's own
+ * visibility decides who sees it, and it is never direct or limited. Viewers
+ * are local accounts, so the policy's domain-block clause never applies.
  */
 const canViewLocal = (
   status: LocalStatus,
@@ -73,7 +73,7 @@ const canViewLocal = (
   if (viewerId === undefined) {
     return false;
   }
-  if (isDirectNote(status)) {
+  if (Visibility.requiresMention(status.visibility)) {
     return access.granted("Status", status.id);
   }
   return access.granted("Follow", status.accountId) || access.granted("Status", status.id);
@@ -132,7 +132,7 @@ const listAuthorsBlockingViewer = async (
 ): Promise<Result<ReadonlySet<string>, RepositoryError>> => {
   // Only a public or unlisted status asks whether its author blocks the viewer.
   const open = <T extends LocalStatus | RemoteStatus>(statuses: ReadonlyArray<T>) =>
-    statuses.filter((status) => !RemoteVisibility.isRestricted(status.visibility));
+    statuses.filter((status) => !Visibility.isRestricted(status.visibility));
   const accountIds = new Set(open(locals).map((status) => status.accountId));
   const actorUris = new Set(open(remotes).map((status) => status.actorUri));
   if (accountIds.size === 0 && actorUris.size === 0) {
@@ -206,16 +206,19 @@ const listViewerGrants = async (
   const restrictedLocals = locals.filter(
     (status) => status.accountId !== viewerId && Visibility.isRestricted(status.visibility),
   );
-  const restrictedRemotes = remotes.filter((status) =>
-    RemoteVisibility.isRestricted(status.visibility),
-  );
+  const restrictedRemotes = remotes.filter((status) => Visibility.isRestricted(status.visibility));
   if (restrictedLocals.length === 0 && restrictedRemotes.length === 0) {
     return ok(new Set());
   }
-  const [direct, followersOnly] = [
+  // A direct note is granted through its reply chain; a followers-only or
+  // limited one by a mention, and a followers-only one by a follow as well.
+  const [direct, mentionGranted] = [
     restrictedLocals.filter(isDirectNote),
     restrictedLocals.filter((status) => !isDirectNote(status)),
   ];
+  const followersOnly = mentionGranted.filter(
+    (status) => status.visibility.kind === "FollowersOnly",
+  );
   const ids = (statuses: ReadonlyArray<{ id: string }>) =>
     jsonStringArray(statuses.map((status) => status.id));
   const rows = await runD1(() =>
@@ -231,7 +234,7 @@ const listViewerGrants = async (
             ),
           ),
         ]),
-        ids(followersOnly),
+        ids(mentionGranted),
         ids(direct),
         ids(restrictedRemotes),
       ),

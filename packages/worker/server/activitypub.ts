@@ -5,6 +5,7 @@ import {
   type LocalAccount,
   type LocalNote,
   type LocalReblog,
+  Visibility,
 } from "@tstodon/domain";
 import {
   ACTIVITY_STREAMS,
@@ -556,11 +557,11 @@ export const noteDocument = (
     ]),
   ];
   // Mastodon's addressing: mentioned accounts are `cc`, except that a direct
-  // note is addressed `to` them alone.
+  // or limited note is addressed `to` them alone (`TagManager#to`).
   const to =
     note.visibility.kind === "Public"
       ? [PUBLIC_COLLECTION]
-      : note.visibility.kind === "Direct"
+      : Visibility.requiresMention(note.visibility)
         ? mentioned
         : [followers];
   const cc =

@@ -17,7 +17,8 @@ import {
 import { parseRemoteStatusRow, remoteStatusFromRow } from "./remote-status-store";
 
 /**
- * Remote direct notes that address the account, newest first, leaving out
+ * Remote direct notes that address the account, and those stored direct
+ * that a later delivery made limited, newest first, leaving out
  * actors the account blocks or mutes or that block it, and domains it blocks
  * or the instance limits or suspends — the same ones remote timelines drop —
  * and notes whose mention a notification request holds.
@@ -51,7 +52,7 @@ export const listRemoteDirectStatusesForAccount = async (
         `SELECT ${REMOTE_STATUS_SELECT} FROM remote_status_mentions m
          CROSS JOIN remote_statuses s ON s.id = m.status_id
          WHERE m.account_id = ? AND m.silent = 0
-           AND s.visibility = 'direct'
+           AND (s.visibility = 'direct' OR s.limited_from_direct <> 0)
            AND s.actor_uri NOT IN ${SUPPRESSED_ACTOR_URIS_SQL}
            AND s.actor_uri NOT IN ${DOMAIN_RESTRICTED_ACTORS_SQL}
            AND NOT EXISTS (

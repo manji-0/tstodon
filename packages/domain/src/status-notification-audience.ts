@@ -1,6 +1,6 @@
 import { type ReplyAccount, ReplyLink } from "./reply-account";
 import type { StatusLanguage } from "./status-quote-target";
-import type { RemoteVisibility } from "./visibility";
+import type { Visibility } from "./visibility";
 
 /**
  * Where a note sits in its thread, as Mastodon's `FeedInsertWorker#notify?`
@@ -30,7 +30,7 @@ export const NoteThread = {
 
 /** What decides who gets a note's `status` notification. */
 export type NotifiedNote = Readonly<{
-  visibility: RemoteVisibility;
+  visibility: Visibility;
   thread: NoteThread;
   language: StatusLanguage;
   /** The local accounts the note names, mentioned or silently addressed. */

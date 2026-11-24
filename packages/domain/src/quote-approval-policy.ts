@@ -1,7 +1,7 @@
 import { QUOTE_APPROVAL_AUDIENCES, type UserQuotePolicy } from "@tstodon/api/values";
 import { schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
-import type { RemoteVisibility } from "./visibility";
+import type { Visibility } from "./visibility";
 
 const PublicSchema = unitKind("Public");
 const FollowersSchema = unitKind("Followers");
@@ -178,7 +178,7 @@ export const QuoteInteractionPolicy = {
    */
   forViewer: (
     policy: QuoteInteractionPolicy,
-    visibility: RemoteVisibility,
+    visibility: Visibility,
     relation: QuoteViewerRelation | undefined,
   ): QuoteApprovalForViewer => {
     if (relation === undefined || visibility.kind === "Direct") {

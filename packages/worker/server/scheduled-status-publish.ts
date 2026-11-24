@@ -51,7 +51,7 @@ const publishScheduled = async (env: Env, row: ScheduledStatusRow): Promise<bool
     // A blocked login cannot publish; Mastodon drops the job the same way.
     return drop();
   }
-  const visibility = Visibility.fromMastodon(row.params.visibility);
+  const visibility = Visibility.fromParam(row.params.visibility);
   if (visibility.isErr()) {
     return drop();
   }

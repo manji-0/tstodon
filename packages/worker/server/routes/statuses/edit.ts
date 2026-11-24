@@ -14,6 +14,7 @@ import {
   StatusComposition,
   StatusRevision,
   StatusTarget,
+  Visibility,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { z } from "zod";
@@ -483,7 +484,7 @@ const editNote = async (
   if (mentionsReplaced.isErr()) {
     return err(mentionsReplaced.error);
   }
-  // An edit reaches the same audience as the note: a direct one only the
+  // An edit reaches the same audience as the note: a direct or limited one only the
   // remote accounts it mentions.
   const announced = await announceNoteUpdate(
     env,
@@ -491,7 +492,7 @@ const editNote = async (
     author,
     revised,
     updatedAt,
-    !(revised.visibility.kind === "Direct" && mentioned.value.remotes.length === 0),
+    !(Visibility.requiresMention(revised.visibility) && mentioned.value.remotes.length === 0),
   );
   if (announced.isErr()) {
     return err(

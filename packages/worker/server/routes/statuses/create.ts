@@ -189,7 +189,7 @@ const scheduleStatus = async (
     scheduledAt: new Date(at).toISOString(),
     params: {
       text: draft.text,
-      visibility: Visibility.toMastodon(draft.visibility),
+      visibility: Visibility.toParam(draft.visibility),
       spoiler_text: draft.spoilerText,
       sensitive: draft.sensitive,
       language: draft.language.kind === "Present" ? draft.language.value : null,
@@ -236,10 +236,10 @@ const postStatus = async (
   body: CreateStatusBody,
   mediaAttributes: ReadonlyArray<MediaAttribute>,
 ): Promise<Result<Written, ApiRefusal>> => {
-  const visibility = Visibility.fromMastodon(
+  const visibility = Visibility.fromParam(
     body.visibility && body.visibility.length > 0
       ? body.visibility
-      : Visibility.toMastodon(author.defaultPostVisibility),
+      : Visibility.toParam(author.defaultPostVisibility),
   );
   if (visibility.isErr()) {
     return err(ApiRefusal.rejected(400, "Invalid visibility", "Unknown"));

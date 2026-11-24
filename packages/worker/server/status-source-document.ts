@@ -215,7 +215,7 @@ const unrenderedSource = async (
     in_reply_to_account_id: null,
     sensitive: note?.sensitive ?? false,
     spoiler_text: note?.spoilerText ?? "",
-    visibility: Visibility.toMastodon(status.visibility),
+    visibility: Visibility.toRest(status.visibility),
     language: note?.language.kind === "Present" ? note.language.value : null,
     uri: note ? uri : `${uri}/activity`,
     url: note ? InstanceIdentity.statusUrl(identity, author.username, status.id) : null,

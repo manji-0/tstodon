@@ -5,7 +5,7 @@ import { IsoInstant } from "./iso-instant";
 import { RemotePoll, RemotePollSchema } from "./remote-poll";
 import { QuoteInteractionPolicy, QuoteInteractionPolicySchema } from "./quote-approval-policy";
 import { StatusId } from "./status-id";
-import { RemoteVisibility, Visibility } from "./visibility";
+import { type SelectableVisibility, Visibility } from "./visibility";
 import type { StatusLanguage } from "./status-quote-target";
 
 /**
@@ -47,7 +47,7 @@ const RemoteNoteSchema = z.object({
   url: z.url().optional(),
   contentHtml: z.string(),
   spoilerText: z.string(),
-  visibility: RemoteVisibility.schema,
+  visibility: Visibility.schema,
   sensitive: z.boolean(),
   language: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("None") }),
@@ -107,7 +107,7 @@ export const RemoteStatus = {
   visibilityFromAudience: (
     to: ReadonlyArray<string>,
     cc: ReadonlyArray<string>,
-  ): z.infer<typeof Visibility.schema> => {
+  ): SelectableVisibility => {
     if (audienceHasPublic(to)) {
       return Visibility.Public;
     }
@@ -127,7 +127,7 @@ export const RemoteStatus = {
     url?: string | undefined;
     contentHtml: string;
     spoilerText: string;
-    visibility: RemoteVisibility;
+    visibility: Visibility;
     sensitive: boolean;
     language: StatusLanguage;
     publishedAt: z.infer<typeof IsoInstant.schema>;

@@ -1,5 +1,5 @@
 import { extractHashtags } from "@tstodon/core";
-import { RemoteVisibility } from "@tstodon/domain";
+import { Visibility } from "@tstodon/domain";
 import { jsonStringArray } from "./d1";
 import { decodeHtmlEntities } from "./html";
 import {
@@ -42,9 +42,9 @@ export const hashtagUses = (texts: ReadonlyArray<string>): Map<string, number> =
  * to anyone.
  */
 export const searchableTagNames = (
-  visibility: RemoteVisibility,
+  visibility: Visibility,
   names: ReadonlyArray<string>,
-): ReadonlyArray<string> => (RemoteVisibility.isRestricted(visibility) ? [] : names);
+): ReadonlyArray<string> => (Visibility.isRestricted(visibility) ? [] : names);
 
 /**
  * The statement that stores these tag names in `tags`, the names hashtag

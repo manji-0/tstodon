@@ -115,7 +115,7 @@ export const statusFromRow = (
     if (target.isErr()) {
       return err({ kind: "RepositoryError", message: "reblog missing target" });
     }
-    const reblogVisibility = Visibility.fromMastodon(row.visibility);
+    const reblogVisibility = Visibility.fromParam(row.visibility);
     if (reblogVisibility.isErr()) {
       return err({ kind: "RepositoryError", message: "invalid visibility" });
     }
@@ -128,7 +128,7 @@ export const statusFromRow = (
       createdAt: createdAt.value,
     });
   }
-  const visibility = Visibility.fromMastodon(row.visibility);
+  const visibility = Visibility.fromParam(row.visibility);
   if (visibility.isErr()) {
     return err({ kind: "RepositoryError", message: "invalid visibility" });
   }
@@ -379,7 +379,7 @@ export const insertLocalReblog = async (
         ...statusTargetColumns(reblog.target),
         reblog.createdAt,
         reblog.createdAt,
-        Visibility.toMastodon(reblog.visibility),
+        Visibility.toParam(reblog.visibility),
       ),
     );
   });

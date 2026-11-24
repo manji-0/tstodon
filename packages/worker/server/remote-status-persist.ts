@@ -4,7 +4,7 @@ import {
   RealtimeWindow,
   RemoteActor,
   type RemoteStatus as RemoteStatusValue,
-  RemoteVisibility,
+  Visibility,
   type MentionedPost,
   NoteThread,
   type OutboxJob,
@@ -211,7 +211,7 @@ const localAddressees = async (
  * knows other than through a `Mention` tag. That is a local account or a
  * cached remote actor in its `to`/`cc` that no tag names, or the owner of the
  * personal inbox it came to when the note does not mention it. A note its
- * audience makes direct is then limited ({@link RemoteVisibility.ofAudience}).
+ * audience makes direct is then limited ({@link Visibility.ofAudience}).
  */
 const reachesAudienceOnlyAccount = async (
   db: D1Database,
@@ -1401,7 +1401,7 @@ const storeRemoteNote = async (
     ...media,
     visibility:
       read.value?.visibility ??
-      RemoteVisibility.ofAudience(media.visibility, { audienceOnly: audienceOnly.value }),
+      Visibility.ofAudience(media.visibility, { audienceOnly: audienceOnly.value }),
   };
   const existing: KnownRemoteStatus = { objectUri: status.objectUri, row: read.value };
   // A note an inbox activity stores owes its late steps until they finish.

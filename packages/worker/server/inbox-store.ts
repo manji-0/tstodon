@@ -3,6 +3,7 @@ import { schemaResult } from "@tstodon/core";
 import type { Result } from "neverthrow";
 import { z } from "zod";
 import { runD1, type RepositoryError } from "./d1";
+import type { InboxTarget } from "./inbox/handler";
 import { CountedRow, queryTyped, runTyped } from "./typed-sql";
 import {
   claimInboxActivity as claimInboxActivitySql,
@@ -18,6 +19,8 @@ const parseEmbeddedUndo = schemaResult(
   z.looseObject({ type: z.literal("Undo"), object: z.looseObject({ id: z.string().min(1) }) }),
 );
 
+const parseCreate = schemaResult(z.looseObject({ type: z.literal("Create") }));
+
 /**
  * What a delivery is claimed under, so its redelivery is a duplicate: the
  * activity's id, and for an `Undo` that embeds what it undoes, that
@@ -27,10 +30,20 @@ const parseEmbeddedUndo = schemaResult(
  * it is accepted. Those are two tables, so an actor's undo of a pending
  * request and its later undo of a follow can carry one id, and Mastodon does
  * not match an `Undo` by its id either (`Undo#undo_follow`).
+ *
+ * A `Create` that comes to a personal inbox is claimed for that inbox: the
+ * same activity at another account's inbox, or at the shared one, is another
+ * delivery. Mastodon processes each, and one at a personal inbox gives a note
+ * it holds to the inbox's owner (`Create#postprocess_audience_and_deliver`).
  */
-export const inboxClaimKey = (activityId: string, payload: unknown): string => {
+export const inboxClaimKey = (activityId: string, payload: unknown, inbox: InboxTarget): string => {
   const undo = parseEmbeddedUndo(payload);
-  return undo.isOk() ? `${activityId} undoes ${undo.value.object.id}` : activityId;
+  if (undo.isOk()) {
+    return `${activityId} undoes ${undo.value.object.id}`;
+  }
+  return inbox.kind === "Personal" && parseCreate(payload).isOk()
+    ? `${activityId} to ${inbox.username.toLowerCase()}`
+    : activityId;
 };
 
 /** The stored state of an activity id, `undefined` when the inbox holds no row for it. */

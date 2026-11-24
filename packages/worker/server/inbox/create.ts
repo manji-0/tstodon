@@ -5,6 +5,7 @@ import { findAccountByUsername } from "../account-store";
 import type { RepositoryError } from "../d1";
 import type { ReceivedActivity } from "../activity-forward";
 import type { FederatedFetchOptions } from "../federated-fetch";
+import { deliverHeldRemoteNote } from "../held-remote-note-delivery";
 import { handleRemotePollVote } from "../remote-poll-vote";
 import { settleInvalidRemoteStatus } from "../remote-status-heal";
 import { persistRemoteObject } from "../remote-status-persist";
@@ -60,7 +61,21 @@ export const applyRemoteCreate = async (
     read,
   );
   // A storage failure: the route releases the claim and answers 5xx, so the sender redelivers.
-  return created.map(() => undefined);
+  if (created.isErr()) {
+    return err(created.error);
+  }
+  // `Create#create_status`: a status held already, by the actor that sends
+  // it, is postprocessed for the personal inbox it came to. The status is the
+  // one stored now, not the read before: another delivery may have stored it
+  // in between, which Mastodon's `create:<uri>` lock orders. For the
+  // delivery that stored it, its own inbox's owner is named already, and
+  // the postprocess changes nothing.
+  const held = created.value;
+  return held !== undefined &&
+    held.actorUri === signer.actorUri &&
+    options.deliveredTo !== undefined
+    ? deliverHeldRemoteNote(env, identity, held, options.deliveredTo)
+    : ok(undefined);
 };
 
 /**

@@ -11,13 +11,25 @@ const includes = <T extends string>(values: ReadonlyArray<T>, value: string): va
   values.some((candidate) => candidate === value);
 
 /**
- * `Status#visibility` as the API renders it. Mastodon's internal `limited`
- * never reaches the API (it renders as `private`).
+ * `Status#visibility` as the API renders it. Mastodon's `limited` never
+ * reaches a rendered status (`REST::StatusSerializer#visibility` makes it
+ * `private`).
  */
 export const STATUS_VISIBILITIES = ["public", "unlisted", "private", "direct"] as const;
 export type StatusVisibility = (typeof STATUS_VISIBILITIES)[number];
 export const isStatusVisibility = (value: string): value is StatusVisibility =>
   includes(STATUS_VISIBILITIES, value);
+
+/**
+ * Every value of Mastodon's `Status#visibility` enum: what
+ * `POST /api/v1/statuses` takes as `visibility`, and what a scheduled
+ * status's `params` keep as sent. `limited` is a status only the accounts it
+ * mentions may see, which no client offers.
+ */
+export const STATUS_VISIBILITY_PARAMS = [...STATUS_VISIBILITIES, "limited"] as const;
+export type StatusVisibilityParam = (typeof STATUS_VISIBILITY_PARAMS)[number];
+export const isStatusVisibilityParam = (value: string): value is StatusVisibilityParam =>
+  includes(STATUS_VISIBILITY_PARAMS, value);
 
 /**
  * The quote policy an author picks (`quote_approval_policy` on a status,

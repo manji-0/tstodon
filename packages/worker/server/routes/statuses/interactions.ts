@@ -7,7 +7,6 @@ import {
   type LocalReblog,
   LocalStatus,
   reblogVisibility,
-  type RemoteVisibility,
   StatusId,
   Visibility,
 } from "@tstodon/domain";
@@ -447,7 +446,7 @@ const boostedStatus = async (
  * Mastodon's `StatusPolicy#reblog?`: none for a direct or limited status
  * (`requires_mention?`), or for someone else's followers-only one.
  */
-const reblogOrigin = (visibility: RemoteVisibility, own: boolean): Visibility | undefined => {
+const reblogOrigin = (visibility: Visibility, own: boolean): Visibility | undefined => {
   switch (visibility.kind) {
     case "Public":
     case "Unlisted":
@@ -602,9 +601,9 @@ export const postV1StatusesByIdReblog = async (
   const requested = body.value.visibility;
   let requestedVisibility: Visibility | undefined;
   if (requested !== undefined && requested.length > 0) {
-    const parsed = Visibility.fromMastodon(requested);
-    // A boost may not be direct (Mastodon excludes it for reblogs).
-    if (parsed.isErr() || parsed.value.kind === "Direct") {
+    const parsed = Visibility.fromParam(requested);
+    // A boost may not be direct or limited (`Status::Visibility` excludes both for reblogs).
+    if (parsed.isErr() || Visibility.requiresMention(parsed.value)) {
       return c.json({ error: "Invalid visibility", kind: "Unknown" }, 400);
     }
     requestedVisibility = parsed.value;

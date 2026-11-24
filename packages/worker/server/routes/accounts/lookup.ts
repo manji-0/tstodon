@@ -136,7 +136,7 @@ export const getV1Preferences = async (c: Context<{ Bindings: Env }, "/api/v1/pr
     return jsonAuthError(c, user.error);
   }
   return c.json({
-    "posting:default:visibility": Visibility.toMastodon(user.value.defaultPostVisibility),
+    "posting:default:visibility": Visibility.toRest(user.value.defaultPostVisibility),
     "posting:default:sensitive": false,
     "posting:default:language": null,
     "reading:expand:media": "default",

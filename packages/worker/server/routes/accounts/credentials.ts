@@ -187,7 +187,7 @@ const parseSourceDefaults = (
     return err("Invalid source[language]");
   }
   const sourceVisibility =
-    privacyRaw === undefined ? undefined : Visibility.fromMastodon(privacyRaw);
+    privacyRaw === undefined ? undefined : Visibility.selectableFromParam(privacyRaw);
   if (sourceVisibility?.isErr()) {
     return err("Invalid source[privacy]");
   }

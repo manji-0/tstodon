@@ -6,7 +6,7 @@ import { AccountId } from "./account-id";
 import { IsoInstant } from "./iso-instant";
 import { QuoteApprovalPolicy } from "./quote-approval-policy";
 import { Username } from "./username";
-import { Visibility } from "./visibility";
+import { SelectableVisibilitySchema, Visibility } from "./visibility";
 
 const FieldIssueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("Blank") }),
@@ -151,7 +151,7 @@ export const LocalAccountSchema = z.object({
   accessEmail: SensitiveAccessEmail,
   displayName: z.string(),
   locked: z.boolean(),
-  defaultPostVisibility: Visibility.schema,
+  defaultPostVisibility: SelectableVisibilitySchema,
   defaultQuotePolicy: QuoteApprovalPolicy.schema,
   publicKeyPem: z.string().min(1),
   privateKeyJwk: SensitivePrivateKeyJwk,

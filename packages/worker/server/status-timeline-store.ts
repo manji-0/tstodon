@@ -121,7 +121,7 @@ export const listHomeStatuses = async (
     const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
     const replies = feedLocalRepliesSql({ kind: "Home" }, accountId);
     // The viewer's own statuses always (`deliver_to_self!`). A followed
-    // author's as `filter_from_home` keeps them: a direct note only when it
+    // author's as `filter_from_home` keeps them: a direct or limited note only when it
     // mentions the viewer (`deliver_to_mentioned_followers!`), a reply only to
     // whom it keeps one, none from a member of an exclusive list, and the
     // follow's languages. A followed hashtag's public notes as
@@ -129,7 +129,7 @@ export const listHomeStatuses = async (
     const sql = `SELECT ${statusSelect} FROM statuses
          WHERE (account_id = ? OR (account_id IN (
            SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         ) AND (visibility != 'direct' OR EXISTS (
+         ) AND (visibility NOT IN ('direct', 'limited') OR EXISTS (
            SELECT 1 FROM status_mentions m WHERE m.status_id = statuses.id AND m.account_id = ?
          )) ${replies.sql}
            AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
@@ -230,7 +230,7 @@ export const listAccountStatusesFiltered = async (
            AND (kind <> 'LocalReblog' OR ? = '' OR account_id = ? OR (${reblogs.sql}))
            AND (? = 0 OR ${WITHOUT_REPLIES_SQL})
            AND (? = 0 OR kind <> 'LocalReblog')
-           AND (? = 0 OR visibility <> 'direct')
+           AND (? = 0 OR visibility NOT IN ('direct', 'limited'))
            AND (? = 0 OR id IN (SELECT status_id FROM media_attachments WHERE status_id IS NOT NULL))
            AND (? = '' OR id IN (SELECT status_id FROM local_status_tags WHERE tag = ?))
            ${where} ${source.order} LIMIT ?`;
@@ -313,7 +313,7 @@ export const searchStatuses = async (
              OR (visibility = 'private' AND account_id IN (
                SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
              ))
-             OR (visibility = 'direct' AND id IN (
+             OR (visibility IN ('direct', 'limited') AND id IN (
                SELECT status_id FROM status_mentions WHERE account_id = ?
              ))
            )

@@ -350,8 +350,7 @@ export {
 } from "./stream-subscription";
 export { Username } from "./username";
 export {
-  RemoteVisibility,
-  type StoredRemoteVisibility,
+  type SelectableVisibility,
   Visibility,
   reblogVisibility,
   type Visibility as VisibilityValue,
