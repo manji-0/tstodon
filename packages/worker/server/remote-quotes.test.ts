@@ -415,11 +415,7 @@ describe("quoting a remote status", () => {
     const forwarded = await queued(quote.carol.id, "Delete");
     // Forwarded as received, so Dan's server can check Bob's signature.
     expect(forwarded.map((row) => row.payload)).toEqual([
-      {
-        "@context": "https://www.w3.org/ns/activitystreams",
-        actor: quote.bob.actorUri,
-        ...deletion,
-      },
+      { actor: quote.bob.actorUri, ...deletion },
     ]);
     // Bob follows Carol too, but is not sent his own Delete back.
     expect(await deliveryInboxes(forwarded[0]?.id ?? "")).toEqual([`${quote.dan.actorUri}/inbox`]);
