@@ -138,12 +138,52 @@ describe("severed relationships", () => {
     await follow(alice, kept, true);
     await followedBy(alice, goneFan);
     await followedBy(alice, keptFan);
+    const asking = await remoteActor("asking", "sev-bad.example");
+    await env.DB.prepare(
+      `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind, created_at)
+       VALUES (?, ?, ?, 'Queued', 'Pending', '2026-10-21T00:00:00.000Z')`,
+    )
+      .bind(`sev-${crypto.randomUUID()}`, asking.actorUri, alice.id)
+      .run();
+    const created = await api(alice, "/api/v1/lists", {
+      method: "POST",
+      body: JSON.stringify({ title: "Pending" }),
+    });
+    const pendingList = read(z.object({ id: z.string() }), await created.json());
+    await env.DB.prepare(
+      `INSERT INTO account_list_remote_members (list_id, outbound_follow_id, created_at)
+       SELECT ?, id, '2026-10-21T00:00:00.000Z' FROM outbound_follows WHERE actor_uri = ?`,
+    )
+      .bind(pendingList.id, pending.actorUri)
+      .run();
+    const listMembers = async () =>
+      (
+        await env.DB.prepare(
+          "SELECT count(*) AS n FROM account_list_remote_members WHERE list_id = ?",
+        )
+          .bind(pendingList.id)
+          .first<{ n: number }>()
+      )?.n;
+    expect(await listMembers()).toBe(1);
 
     await blockDomain("sev-bad.example", "suspend");
 
+    // Mastodon purges the account's `list_accounts`, a kept request's too.
+    expect(await listMembers()).toBe(0);
+
     expect(await count("outbound_follows", gone.actorUri)).toBe(0);
-    expect(await count("outbound_follows", pending.actorUri)).toBe(0);
     expect(await count("remote_follows", goneFan.actorUri)).toBe(0);
+    // `DeleteAccountService` deletes the account's own `follow_requests`,
+    // and keeps local accounts' requests to it.
+    expect(await count("remote_follows", asking.actorUri)).toBe(0);
+    expect(await count("outbound_follows", pending.actorUri)).toBe(1);
+    const relationship = await api(
+      alice,
+      `/api/v1/accounts/relationships?id[]=${RemoteAccountId.encode(pending.actorUri)}`,
+    );
+    expect(read(z.array(z.object({ requested: z.boolean() })), await relationship.json())).toEqual([
+      expect.objectContaining({ requested: true }),
+    ]);
     expect(await count("outbound_follows", kept.actorUri)).toBe(1);
     expect(await count("remote_follows", keptFan.actorUri)).toBe(1);
 

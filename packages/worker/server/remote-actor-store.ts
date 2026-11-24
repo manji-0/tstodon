@@ -421,24 +421,66 @@ const upsertRemoteActorStatement = (actor: RemoteActor) => {
   );
 };
 
-/** Cache `actor` under the handle it carries, with `keys` as the keys it publishes. */
+const StoredProfileRow = z.object({
+  display_name: z.string(),
+  profile_json: z.string(),
+  featured_uri: z.string().nullable(),
+  fetched_at: z.string(),
+});
+
+/**
+ * `actor` with the name, profile, featured collection and fetch time its row
+ * holds after a write (`RETURNING` in `results`): a suspended actor's write
+ * keeps the cached ones (`suspended_remote_actors`, migration 0179).
+ */
+const asStored = (
+  actor: RemoteActor,
+  results: ReadonlyArray<unknown> | undefined,
+): Result<RemoteActor, RepositoryError> => {
+  const row = parseRows(StoredProfileRow, results ?? [])[0];
+  const fetchedAt = row === undefined ? undefined : IsoInstant.parse(row.fetched_at);
+  if (row === undefined || fetchedAt === undefined || fetchedAt.isErr()) {
+    return err(toRepositoryError("invalid remote actor row"));
+  }
+  const { featuredUri: _fetched, ...rest } = actor;
+  return RemoteActor.fromFetched({
+    ...rest,
+    displayName: row.display_name,
+    profile: profileFromJson(row.profile_json),
+    fetchedAt: fetchedAt.value,
+    ...(row.featured_uri ? { featuredUri: row.featured_uri } : {}),
+  }).mapErr(() => toRepositoryError("invalid remote actor row"));
+};
+
+/**
+ * Whether the write of `sent` kept the profile its row held (`written`, as
+ * stored): a suspended actor's write keeps `fetched_at` with the profile.
+ */
+export const profileKept = (sent: RemoteActor, written: RemoteActor): boolean =>
+  written.fetchedAt !== sent.fetchedAt;
+
+/**
+ * Cache `actor` under the handle it carries, with `keys` as the keys it
+ * publishes. Returns the actor as its row holds it ({@link asStored}).
+ */
 export const upsertRemoteActor = async (
   db: D1Database,
   actor: RemoteActor,
   keys: ReadonlyArray<RemoteActorKey>,
-): Promise<Result<RemoteActor, RepositoryError>> =>
-  (
-    await runTypedBatch(db, [
-      upsertRemoteActorStatement(actor),
-      ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
-    ])
-  ).map(() => actor);
+): Promise<Result<RemoteActor, RepositoryError>> => {
+  const written = await runTypedBatch(db, [
+    upsertRemoteActorStatement(actor),
+    ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
+  ]);
+  return written.isErr() ? err(written.error) : asStored(actor, written.value[0]?.results);
+};
 
 /**
  * Cache an actor read from its own document without settling its handle: a
  * new row takes the actor's handle (its URI's authority), unconfirmed; a
  * cached row keeps the handle and confirmation time it holds as the write
- * runs. Returns the actor under the handle the row ends up with.
+ * runs. Returns the actor under the handle the row ends up with, as its row
+ * holds it ({@link asStored}).
  */
 export const upsertRemoteActorKeepingHandle = async (
   db: D1Database,
@@ -477,31 +519,33 @@ export const upsertRemoteActorKeepingHandle = async (
   if (row === undefined || webfingeredAt?.isErr()) {
     return err(toRepositoryError("invalid remote actor row"));
   }
-  return RemoteActor.fromFetched({
+  const handled = RemoteActor.fromFetched({
     ...actor,
     username: row.username,
     domain: row.domain,
     webfingeredAt: webfingeredAt?.unwrapOr(undefined),
   }).mapErr(() => toRepositoryError("invalid remote actor row"));
+  return handled.andThen((handledActor) => asStored(handledActor, written.value[0]?.results));
 };
 
 /**
  * Cache an actor under the handle WebFinger just confirmed for it, and move
  * every other row cached under that handle back to its own URI's authority,
  * in one batch, so the handle names one actor: the one confirmed last.
+ * Returns the actor as its row holds it ({@link asStored}).
  */
 export const upsertConfirmedRemoteActor = async (
   db: D1Database,
   actor: RemoteActor,
   keys: ReadonlyArray<RemoteActorKey>,
-): Promise<Result<RemoteActor, RepositoryError>> =>
-  (
-    await runTypedBatch(db, [
-      demoteRemoteActorHandleSql(actor.username, actor.domain, actor.actorUri),
-      upsertRemoteActorStatement(actor),
-      ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
-    ])
-  ).map(() => actor);
+): Promise<Result<RemoteActor, RepositoryError>> => {
+  const written = await runTypedBatch(db, [
+    demoteRemoteActorHandleSql(actor.username, actor.domain, actor.actorUri),
+    upsertRemoteActorStatement(actor),
+    ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
+  ]);
+  return written.isErr() ? err(written.error) : asStored(actor, written.value[1]?.results);
+};
 
 /**
  * Move every confirmed row cached under `handle` but `keptBy` back to its own

@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param keysJson
  */
 export const upsertRemoteActorKeys = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_actor_keys (key_id, actor_uri, type, public_key_pem)\nSELECT json_extract(value, '$.keyId'), $1, json_extract(value, '$.type'), json_extract(value, '$.publicKeyPem')\nFROM json_each($2) WHERE true\nON CONFLICT(key_id) DO UPDATE SET\nactor_uri = excluded.actor_uri,\ntype = excluded.type,\npublic_key_pem = excluded.public_key_pem",
+  "INSERT INTO remote_actor_keys (key_id, actor_uri, type, public_key_pem)\nSELECT json_extract(value, '$.keyId'), $1, json_extract(value, '$.type'), json_extract(value, '$.publicKeyPem')\nFROM json_each($2)\nWHERE NOT EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = $1)\nON CONFLICT(key_id) DO UPDATE SET\nactor_uri = excluded.actor_uri,\ntype = excluded.type,\npublic_key_pem = excluded.public_key_pem",
 ) as (
   actorUri: string,
   keysJson: string,

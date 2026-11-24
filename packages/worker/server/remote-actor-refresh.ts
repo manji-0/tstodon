@@ -1,8 +1,10 @@
+import type { InstanceIdentity, OutboxJob } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { refreshRemoteActor } from "./remote-actor-fetch";
 import { claimRemoteActorRefresh, listStaleRemoteActorUris } from "./remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
+import type { TypedSqlLike } from "./typed-sql";
 
 /**
  * How much one cron run may refresh: at most `actors` actors, none started
@@ -29,6 +31,66 @@ const CONCURRENCY = 4;
 /** Due actors listed per query. */
 const PAGE = 25;
 
+type RefreshJob = Extract<OutboxJob, { kind: "RefreshRemoteActor" }>;
+
+const fetchOptions = async (env: Env, identity: InstanceIdentity) => ({
+  allowHosts: await federationAllowHosts(env),
+  blockedHosts: await suspendedDomains(env.DB),
+  fetchSigner: instanceActorFetchSigner(env.DB, identity),
+});
+
+/**
+ * The statement that makes an actor due the hourly refresh again as soon as
+ * a day has passed since its last fetch, as Mastodon's
+ * `refresh_remote_account!` clears `last_webfingered_at`: it forgets the
+ * last refresh attempt and WebFinger confirmation. A refresh confirms the
+ * handle again.
+ */
+export const remoteActorRefreshDueSql = (actorUri: string): TypedSqlLike => ({
+  sql: `UPDATE remote_actors SET refresh_attempted_at = NULL, last_webfingered_at = NULL
+        WHERE actor_uri = $1`,
+  values: [actorUri],
+});
+
+/**
+ * Queue a re-fetch of an actor an admin unsuspended, as Mastodon's
+ * `UnsuspendAccountService#refresh_remote_account!` resolves the account
+ * straight away. A send the queue refuses is logged; the unsuspension made
+ * the actor due the hourly refresh ({@link remoteActorRefreshDueSql}), whose
+ * suspended fetches kept its `fetched_at` from before the suspension.
+ */
+export const queueRemoteActorRefresh = async (env: Env, actorUri: string): Promise<void> => {
+  const job: RefreshJob = { kind: "RefreshRemoteActor", actorUri };
+  try {
+    await env.OUTBOX_PROCESS_QUEUE.send(job);
+  } catch {
+    console.error(JSON.stringify({ kind: "JobNotQueued", jobKind: job.kind }));
+  }
+};
+
+/**
+ * Re-fetch one actor whatever its last refresh, as a refresh the cron makes
+ * ({@link refreshRemoteActor}). An actor on a host a suspension covers, or
+ * outside the allow list, is not fetched, as Mastodon's
+ * `ProcessAccountService` stops at `domain_not_allowed?`.
+ */
+export const processRefreshRemoteActorJob = async (
+  env: Env,
+  job: RefreshJob,
+): Promise<"ok" | "retry"> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return "retry";
+  }
+  const refreshed = await refreshRemoteActor(
+    env.DB,
+    identity.value,
+    job.actorUri,
+    await fetchOptions(env, identity.value),
+  );
+  return refreshed.isOk() ? "ok" : "retry";
+};
+
 /**
  * Hourly cron path: re-fetch the actors due a refresh (a day after both
  * their last WebFinger confirmation, or their last fetch when WebFinger
@@ -49,11 +111,7 @@ export const refreshStaleRemoteActors = async (
   if (identity.isErr()) {
     return;
   }
-  const options = {
-    allowHosts: await federationAllowHosts(env),
-    blockedHosts: await suspendedDomains(env.DB),
-    fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
-  };
+  const options = await fetchOptions(env, identity.value);
   const deadline = Date.now() + budget.ms;
   let started = 0;
   const withinBudget = () => started < budget.actors && Date.now() < deadline;

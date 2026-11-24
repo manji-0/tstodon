@@ -1,8 +1,8 @@
 import { SELF, env } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAdminAccount, type ApiAdminAccountJSON } from "@tstodon/api";
-import { OutboxJob } from "@tstodon/domain";
+import { CoveredHosts, IsoInstant, OutboxJob, RemoteActor } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
 import { postForm, signUp } from "../test/passkey-browser";
 import { patchD1 } from "../test/meter";
@@ -14,14 +14,20 @@ import {
   withQueueDrained,
 } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { webfingerAnswer } from "../test/webfinger-fixture";
 import {
   listDomainBlockLimits,
   listLimitingDomainBlockIds,
   RECORD_PAGE_SQL,
 } from "./domain-block-limits";
+import { unsignedFetch } from "./federated-fetch";
 import { listUnfollowedSilencedAuthorsJson } from "./generated/prisma/sql";
+import { generateAccountKeys } from "./keys";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
+import { refreshRemoteActor } from "./remote-actor-fetch";
+import { listStaleRemoteActorUris, profileKept, upsertRemoteActor } from "./remote-actor-store";
+import { parseInstanceIdentity } from "./runtime-config";
 import {
   SUSPENDED_CONTENT_BOOST_PAGE,
   SUSPENDED_CONTENT_FINISHED_PAGE,
@@ -1227,6 +1233,45 @@ const expectFullProfile = async (domain: string, actorUri: string): Promise<void
   });
 };
 
+/** Serve each of `actors`' documents with `profiledActor`'s profile, and its WebFinger. */
+const serveProfiledActors = (actors: ReadonlyArray<Remote>) => {
+  const documents = Object.fromEntries(
+    actors.map((actor) => {
+      const host = new URL(actor.actorUri).host;
+      return [
+        actor.actorUri,
+        {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: actor.actorUri,
+          type: "Person",
+          preferredUsername: "profiled",
+          name: "Remote profiled",
+          summary: "<p>hello from afar</p>",
+          inbox: `${actor.actorUri}/inbox`,
+          icon: { type: "Image", url: `https://${host}/avatar.png` },
+          image: { type: "Image", url: `https://${host}/header.png` },
+          attachment: [{ type: "PropertyValue", name: "Site", value: "elsewhere" }],
+          publicKey: {
+            id: `${actor.actorUri}#main-key`,
+            owner: actor.actorUri,
+            publicKeyPem: actor.publicKeyPem,
+          },
+        },
+      ];
+    }),
+  );
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(new Request(input, init).url);
+    if (url.pathname === "/.well-known/webfinger") {
+      return webfingerAnswer(documents, url);
+    }
+    const document = documents[url.href];
+    return document
+      ? Response.json(document, { headers: { "content-type": "application/activity+json" } })
+      : new Response(null, { status: 404 });
+  });
+};
+
 const expectPurgedProfile = async (domain: string, actorUri: string): Promise<void> => {
   const shown = await shownProfile(actorUri);
   expect(shown).toMatchObject({ display_name: "", note: "", fields: [] });
@@ -1283,6 +1328,206 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
     expect(await featuredTagNames(actor.actorUri)).toEqual([]);
     await profiledActor(domain);
     await expectFullProfile(domain, actor.actorUri);
+  });
+
+  // `ProcessAccountService#update_account` skips `set_immediate_attributes!`
+  // and `set_fetchable_attributes!` for a suspended account.
+  it("keeps its profile empty when it is fetched during the suspension", async () => {
+    const domain = "held-refetch.example";
+    const host = `open.${domain}`;
+    await block(host, "noop");
+    const actor = await profiledActor(host);
+    const id = await block(domain, "suspend");
+
+    await profiledActor(host);
+    await changeBlock(id, "noop");
+
+    expect(await accountById(actor.actorUri)).toBe("Shown");
+    await expectPurgedProfile(host, actor.actorUri);
+    await profiledActor(host);
+    await expectFullProfile(host, actor.actorUri);
+  });
+
+  // `set_immediate_protocol_attributes!` still writes `url`, `actor_type` and
+  // `created_at`; `set_immediate_attributes!` (the featured collection) and,
+  // for a local suspension, `set_fetchable_key!` are skipped; so is the
+  // profile's emoji.
+  it("writes only a suspended actor's protocol attributes when it is fetched", async () => {
+    const domain = "held-protocol.example";
+    const host = `open.${domain}`;
+    await block(host, "noop");
+    const actor = await remoteActor("proto", host, { featuredUri: `https://${host}/featured` });
+    await block(domain, "suspend");
+    const rotated = await generateAccountKeys();
+    const document = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: actor.actorUri,
+      type: "Service",
+      preferredUsername: "proto",
+      name: "Renamed :owl:",
+      url: `https://${host}/@proto`,
+      published: "2020-01-02T00:00:00Z",
+      inbox: `${actor.actorUri}/inbox`,
+      featured: `https://${host}/featured-moved`,
+      tag: [
+        {
+          type: "Emoji",
+          name: ":owl:",
+          icon: { type: "Image", mediaType: "image/png", url: `https://${host}/owl.png` },
+        },
+      ],
+      publicKey: {
+        id: `${actor.actorUri}#main-key`,
+        owner: actor.actorUri,
+        publicKeyPem: rotated.publicKeyPem,
+      },
+    };
+    const fetched = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.pathname === "/.well-known/webfinger") {
+        return webfingerAnswer({ [actor.actorUri]: document }, url);
+      }
+      return url.href === actor.actorUri
+        ? Response.json(document, { headers: { "content-type": "application/activity+json" } })
+        : new Response(null, { status: 404 });
+    });
+    const identity = parseInstanceIdentity(env)._unsafeUnwrap();
+    try {
+      const refreshed = await refreshRemoteActor(env.DB, identity, actor.actorUri, {
+        allowHosts: new Set<string>(),
+        blockedHosts: CoveredHosts.none,
+        fetchSigner: unsignedFetch,
+      });
+      expect(refreshed.isOk()).toBe(true);
+    } finally {
+      fetched.mockRestore();
+    }
+
+    const stored = await env.DB.prepare(
+      `SELECT r.display_name, r.featured_uri, k.public_key_pem,
+              (SELECT count(*) FROM remote_custom_emojis WHERE domain = ?2) AS emojis
+       FROM remote_actors r JOIN remote_actor_keys k ON k.actor_uri = r.actor_uri
+       WHERE r.actor_uri = ?1`,
+    )
+      .bind(actor.actorUri, host)
+      .first();
+    // The suspension's purge emptied the name; the fetch did not write it back.
+    expect(stored).toEqual({
+      display_name: "",
+      featured_uri: `https://${host}/featured`,
+      public_key_pem: actor.publicKeyPem,
+      emojis: 0,
+    });
+    const { results } = await env.DB.prepare(
+      "SELECT profile_json FROM remote_actors WHERE actor_uri = ?",
+    )
+      .bind(actor.actorUri)
+      .all();
+    const profile = z
+      .array(z.object({ profile_json: z.string() }))
+      .parse(results)
+      .map((row) => z.record(z.string(), z.unknown()).parse(JSON.parse(row.profile_json)))[0];
+    expect(profile).toMatchObject({
+      profileUrl: `https://${host}/@proto`,
+      bot: true,
+      publishedAt: "2020-01-02T00:00:00.000Z",
+      emojis: [],
+    });
+  });
+
+  it("is returned as stored by the write of a fetch during the suspension", async () => {
+    const domain = "held-returned.example";
+    const actor = await profiledActor(domain);
+    await moderate(actor.actorUri, "suspend");
+    const fetched = RemoteActor.fromFetched({
+      actorUri: actor.actorUri,
+      username: "profiled",
+      domain,
+      inboxUri: `${actor.actorUri}/inbox`,
+      displayName: "Renamed",
+      profile: RemoteActor.emptyProfile,
+      fetchedAt: IsoInstant.parse(new Date(Date.now() + 1000).toISOString())._unsafeUnwrap(),
+    })._unsafeUnwrap();
+
+    const written = (await upsertRemoteActor(env.DB, fetched, []))._unsafeUnwrap();
+
+    expect(written.displayName).toBe("Remote profiled");
+    expect(written.profile.note).toBe("hello from afar");
+    expect(profileKept(fetched, written)).toBe(true);
+  });
+
+  // `refresh_remote_account!` clears `last_webfingered_at`, so a refetch the
+  // queue lost is the hourly refresh's.
+  it("makes an unsuspended actor due the hourly refresh", async () => {
+    const actor = await remoteActor("due", "held-due.example", {
+      accountDomain: "due.example",
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await env.DB.prepare("UPDATE remote_actors SET refresh_attempted_at = ? WHERE actor_uri = ?")
+      .bind(new Date().toISOString(), actor.actorUri)
+      .run();
+    await moderate(actor.actorUri, "suspend");
+
+    await withQueueDrained([], () => moderate(actor.actorUri, "unsuspend"));
+
+    const due = (await listStaleRemoteActorUris(env.DB, 1000))._unsafeUnwrap();
+    expect(due).toContain(actor.actorUri);
+  });
+
+  // `UnsuspendAccountService` runs only for an account that was suspended.
+  it("queues no fetch when an admin unsuspends an actor nothing suspended", async () => {
+    const domain = "held-never.example";
+    const actor = await profiledActor(domain);
+    await block(domain, "silence");
+    const queued = holdQueue();
+    try {
+      await moderate(actor.actorUri, "unsuspend");
+    } finally {
+      queued.release();
+    }
+
+    expect(queued.bodies.map(kindOf)).not.toContain("RefreshRemoteActor");
+  });
+
+  it("keeps the profile an admin suspension found when it is fetched meanwhile", async () => {
+    const domain = "held-own-refetch.example";
+    const actor = await profiledActor(domain);
+    await moderate(actor.actorUri, "suspend");
+
+    await remoteActor("profiled", domain, { note: "changed while suspended" });
+    // The refetch the unsuspension queues is dropped.
+    await withQueueDrained([], () => moderate(actor.actorUri, "unsuspend"));
+
+    await expectFullProfile(domain, actor.actorUri);
+  });
+
+  // `UnsuspendAccountService#refresh_remote_account!` resolves the account
+  // straight away; `ProcessAccountService` refuses one `domain_not_allowed?`.
+  it("gets its profile back from the fetch an admin's unsuspension makes at once", async () => {
+    const domain = "held-unsuspend.example";
+    const host = `open.${domain}`;
+    await block(host, "noop");
+    const actor = await profiledActor(host);
+    const covered = await profiledActor(`covered.${domain}`);
+    await block(domain, "suspend");
+    await expectPurgedProfile(host, actor.actorUri);
+    const fetched = serveProfiledActors([actor, covered]);
+    let asked: URL[] = [];
+
+    try {
+      await withQueueDrained(["RefreshRemoteActor"], async () => {
+        await moderate(actor.actorUri, "unsuspend");
+        await moderate(covered.actorUri, "unsuspend");
+      });
+      asked = fetched.mock.calls.map(([input, init]) => new URL(new Request(input, init).url));
+    } finally {
+      fetched.mockRestore();
+    }
+
+    await expectFullProfile(host, actor.actorUri);
+    await expectPurgedProfile(`covered.${domain}`, covered.actorUri);
+    expect(asked.some((url) => url.href === actor.actorUri)).toBe(true);
+    expect(asked.filter((url) => url.host === `covered.${domain}`)).toEqual([]);
   });
 
   it("is emptied by the hourly sweep for a suspension recorded before", async () => {
@@ -1455,6 +1700,13 @@ describe("an actor first cached under a silence or suspension of its domain", ()
     expect(await purgeRows(later.actorUri)).toBe(0);
 
     await narrowerNoop("open.late-cached.example");
+    // A write of a suspended actor stores no key, as `set_fetchable_key!` is
+    // skipped; the key is cached here so the inbox reaches the suspension.
+    await env.DB.prepare(
+      "INSERT INTO remote_actor_keys (key_id, actor_uri, type, public_key_pem) VALUES (?, ?, 'rsa', ?)",
+    )
+      .bind(`${later.actorUri}#main-key`, later.actorUri, later.publicKeyPem)
+      .run();
 
     expect(await lookup("later@open.late-cached.example")).toBe("Suspended");
     expect(await accountById(later.actorUri)).toBe("Suspended");

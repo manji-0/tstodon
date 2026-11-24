@@ -90,8 +90,10 @@ const AccountIdRowSchema = z.object({ local_account_id: z.string() });
 /**
  * Record and remove the follows between local accounts and the actors in
  * `scope`: accepted follows by a local account (`outbound_follows`) and of it
- * (`remote_follows`) are written to the event first; requests that were still
- * pending are removed unrecorded, as Mastodon rejects them. One account event
+ * (`remote_follows`) are written to the event first; the actors' requests
+ * still pending are removed unrecorded, as Mastodon's `DeleteAccountService`
+ * deletes the account's `follow_requests`. Local accounts' pending requests to
+ * the actors stay, as Mastodon keeps them. One account event
  * is made for each local account that lost a follow. Nothing is written for a
  * decision that affects nobody.
  *
@@ -156,8 +158,19 @@ export const severRelationships = async (
          WHERE f.follow_kind = 'Accepted' AND ${match}`,
       )
       .bind(now, ...binds),
+    // Mastodon purges the account's `list_accounts`, those of the requests it keeps too.
     db
-      .prepare(`DELETE FROM outbound_follows WHERE actor_uri IN (${matchingActors})`)
+      .prepare(
+        `DELETE FROM account_list_remote_members WHERE outbound_follow_id IN (
+           SELECT o.id FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
+           WHERE o.state = 'Requested' AND ${match}
+         )`,
+      )
+      .bind(...binds),
+    db
+      .prepare(
+        `DELETE FROM outbound_follows WHERE state = 'Accepted' AND actor_uri IN (${matchingActors})`,
+      )
       .bind(...binds),
     db
       .prepare(`DELETE FROM remote_follows WHERE remote_actor_uri IN (${matchingActors})`)
