@@ -32,7 +32,7 @@ import {
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
 import { departedAccountActivityStatements } from "./outbox-store";
-import { queueRemoteActorRefresh } from "./remote-actor-refresh";
+import { queueRemoteActorRefresh, remoteActorRefreshDueSql } from "./remote-actor-refresh";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { emptyRemoteActorContentSql } from "./suspended-actor-content";
 import { announceRemovedBoosts } from "./home-fan-out";
@@ -210,14 +210,16 @@ export const findAdminRemoteActor = async (
  * suspension also runs the actor's purge at once if it is still queued, so
  * what Mastodon's `BlockDomainService` deleted when the block was made
  * (`DeleteAccountService` with `reserve_username`) does not come back
- * (`emptyRemoteActorContentSql`). An unsuspension queues a fetch of the
- * actor, as `UnsuspendAccountService#refresh_remote_account!`: a suspended
- * actor's fetches kept its cached profile, and a suspension's purge emptied
- * it.
+ * (`emptyRemoteActorContentSql`). Unsuspending an actor that was suspended
+ * (its own suspension, or a block's) queues a fetch of it and marks it due
+ * the hourly refresh ({@link remoteActorRefreshDueSql}), as
+ * `UnsuspendAccountService#refresh_remote_account!`: a suspended actor's
+ * fetches kept its cached profile, and a suspension's purge emptied it.
  */
 const liftRemoteActor = async (
   env: Env,
   actorUri: string,
+  current: RemoteActorModeration,
   next: RemoteActorModeration,
   severity: LiftedSeverity,
 ): Promise<Result<void, RepositoryError>> => {
@@ -225,12 +227,15 @@ const liftRemoteActor = async (
   if (blockIds.isErr()) {
     return err(blockIds.error);
   }
+  const unsuspended =
+    severity === "suspend" && (current.standing.kind === "Suspended" || blockIds.value.length > 0);
   const emptied =
     severity === "suspend" && blockIds.value.length > 0 ? emptyRemoteActorContentSql(actorUri) : [];
   const done = await runTypedBatch(env.DB, [
     ...emptied,
     remoteActorModerationSql(actorUri, next),
     ...liftDomainBlockLimitsSql(actorUri, severity, blockIds.value),
+    ...(unsuspended ? [remoteActorRefreshDueSql(actorUri)] : []),
   ]);
   if (done.isErr()) {
     return err(done.error);
@@ -238,7 +243,7 @@ const liftRemoteActor = async (
   if (emptied.length > 0) {
     await announceRemovedBoosts(env, removedBoostsFromRows(done.value[0]?.results));
   }
-  if (severity === "suspend") {
+  if (unsuspended) {
     await queueRemoteActorRefresh(env, actorUri);
   }
   return ok(undefined);
@@ -267,7 +272,13 @@ export const moderateRemoteActor = async (
   }
   const next = RemoteActorModeration.apply(current.value, action);
   if (action === "unsilence" || action === "unsuspend") {
-    return liftRemoteActor(env, actorUri, next, action === "unsilence" ? "silence" : "suspend");
+    return liftRemoteActor(
+      env,
+      actorUri,
+      current.value,
+      next,
+      action === "unsilence" ? "silence" : "suspend",
+    );
   }
   const stored = await setRemoteActorModeration(env.DB, actorUri, next);
   if (

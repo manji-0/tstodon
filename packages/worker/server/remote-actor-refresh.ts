@@ -4,6 +4,7 @@ import { refreshRemoteActor } from "./remote-actor-fetch";
 import { claimRemoteActorRefresh, listStaleRemoteActorUris } from "./remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
+import type { TypedSqlLike } from "./typed-sql";
 
 /**
  * How much one cron run may refresh: at most `actors` actors, none started
@@ -39,9 +40,24 @@ const fetchOptions = async (env: Env, identity: InstanceIdentity) => ({
 });
 
 /**
+ * The statement that makes an actor due the hourly refresh again as soon as
+ * a day has passed since its last fetch, as Mastodon's
+ * `refresh_remote_account!` clears `last_webfingered_at`: it forgets the
+ * last refresh attempt and WebFinger confirmation. A refresh confirms the
+ * handle again.
+ */
+export const remoteActorRefreshDueSql = (actorUri: string): TypedSqlLike => ({
+  sql: `UPDATE remote_actors SET refresh_attempted_at = NULL, last_webfingered_at = NULL
+        WHERE actor_uri = $1`,
+  values: [actorUri],
+});
+
+/**
  * Queue a re-fetch of an actor an admin unsuspended, as Mastodon's
  * `UnsuspendAccountService#refresh_remote_account!` resolves the account
- * straight away. A send the queue refuses leaves it to the hourly refresh.
+ * straight away. A send the queue refuses is logged; the unsuspension made
+ * the actor due the hourly refresh ({@link remoteActorRefreshDueSql}), whose
+ * suspended fetches kept its `fetched_at` from before the suspension.
  */
 export const queueRemoteActorRefresh = async (env: Env, actorUri: string): Promise<void> => {
   const job: RefreshJob = { kind: "RefreshRemoteActor", actorUri };

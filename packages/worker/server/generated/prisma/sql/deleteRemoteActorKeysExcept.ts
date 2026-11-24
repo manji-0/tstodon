@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param keysJson
  */
 export const deleteRemoteActorKeysExcept = $runtime.makeTypedQueryFactory(
-  "DELETE FROM remote_actor_keys\nWHERE actor_uri = $1\nAND key_id NOT IN (SELECT json_extract(value, '$.keyId') FROM json_each($2))",
+  "DELETE FROM remote_actor_keys\nWHERE actor_uri = $1\nAND key_id NOT IN (SELECT json_extract(value, '$.keyId') FROM json_each($2))\nAND NOT EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = $1)",
 ) as (
   actorUri: string,
   keysJson: string,

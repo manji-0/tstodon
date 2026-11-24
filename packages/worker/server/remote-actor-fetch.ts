@@ -36,6 +36,7 @@ import {
   findRemoteActorByHandle,
   findRemoteActorByUri,
   findRemoteActorKey,
+  profileKept,
   releaseRemoteActorHandle,
   type RemoteKeyOwner,
   upsertConfirmedRemoteActor,
@@ -534,7 +535,8 @@ const cacheActorWithKeys = async (
   check: HandleCheck = { kind: "RoundTrip" },
 ): Promise<Result<RemoteActor, CacheFetchedActorError>> => {
   const stored = await writeFetchedActor(db, identity, fetched, keys, options, check);
-  if (stored.isOk()) {
+  // A suspended actor's write keeps its profile, and the profile's emoji with it.
+  if (stored.isOk() && !profileKept(fetched.actor, stored.value)) {
     await recordProfileEmojis(
       { DB: db, OUTBOX_PROCESS_QUEUE: env.OUTBOX_PROCESS_QUEUE },
       stored.value,

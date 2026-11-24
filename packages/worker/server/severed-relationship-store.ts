@@ -158,6 +158,15 @@ export const severRelationships = async (
          WHERE f.follow_kind = 'Accepted' AND ${match}`,
       )
       .bind(now, ...binds),
+    // Mastodon purges the account's `list_accounts`, those of the requests it keeps too.
+    db
+      .prepare(
+        `DELETE FROM account_list_remote_members WHERE outbound_follow_id IN (
+           SELECT o.id FROM outbound_follows o JOIN remote_actors r ON r.actor_uri = o.actor_uri
+           WHERE o.state = 'Requested' AND ${match}
+         )`,
+      )
+      .bind(...binds),
     db
       .prepare(
         `DELETE FROM outbound_follows WHERE state = 'Accepted' AND actor_uri IN (${matchingActors})`,
