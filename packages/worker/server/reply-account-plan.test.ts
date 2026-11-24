@@ -49,7 +49,6 @@ describe("whom a reply answers, set when it is stored", () => {
         "https://r.example/notes/0",
         null,
         null,
-        "[]",
         null,
         null,
       ),

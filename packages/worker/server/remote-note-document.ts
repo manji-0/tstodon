@@ -2,7 +2,6 @@ import {
   IsoInstant,
   QuoteInteractionPolicy,
   RemoteActor,
-  type RemoteEmoji,
   RemoteStatus,
   type RemoteStatus as RemoteStatusValue,
   StatusId,
@@ -18,7 +17,6 @@ import { isTruthy, stringList } from "./form-values";
 import { linkify } from "./html";
 import { entityIdAt, type IdClock, newEntityId } from "./ids";
 import { remoteAttachmentMetadata } from "./remote-attachment";
-import { declaredEmojis, remoteEmojisInTexts } from "./remote-emoji-document";
 import { remotePollFromDocument } from "./remote-poll-parse";
 import { httpUrl } from "./sanitize-html";
 
@@ -153,19 +151,6 @@ const canQuoteOf = (interactionPolicy: unknown): unknown => {
   return parsed.isOk() ? parsed.value.canQuote : undefined;
 };
 
-/** Mastodon caps a status's emoji far below this; it only bounds a hostile document. */
-const MAX_EMOJIS = 50;
-
-/**
- * The custom emoji a note declares in `Emoji` tags and actually uses in its
- * content, spoiler or poll option titles, as Mastodon keeps them.
- */
-export const noteEmojis = (
-  raw: unknown,
-  texts: ReadonlyArray<string>,
-): ReadonlyArray<RemoteEmoji> =>
-  remoteEmojisInTexts(texts, declaredEmojis(raw)).slice(0, MAX_EMOJIS);
-
 const TaggedSchema = z.object({ tag: z.unknown().optional() });
 const HashtagTagSchema = z.object({
   type: z.union([z.string(), z.array(z.unknown())]),
@@ -259,11 +244,6 @@ export const noteFromUnknown = (
     publishedAt: publishedAt.value,
     editedAt,
     poll,
-    emojis: noteEmojis(raw, [
-      contentHtml,
-      spoilerText,
-      ...(poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title)),
-    ]),
     quotePolicy: QuoteInteractionPolicy.fromCanQuote(
       canQuoteOf(document.value.interactionPolicy),
       author,

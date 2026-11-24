@@ -29,7 +29,7 @@ export const RemoteAttachmentSchema = z.object({
 
 export type RemoteAttachment = z.infer<typeof RemoteAttachmentSchema>;
 
-/** A custom emoji a remote note declares in its `tag`. */
+/** A custom emoji a remote note or actor declares in its `tag`. */
 export const RemoteEmojiSchema = z.object({
   /** The name between the colons, without them. */
   shortcode: z.string().min(1),
@@ -65,8 +65,6 @@ const RemoteNoteSchema = z.object({
   ]),
   media: z.array(RemoteAttachmentSchema),
   poll: RemotePollSchema,
-  /** The emoji the content, spoiler or poll options use. */
-  emojis: z.array(RemoteEmojiSchema),
   /** Who the author lets quote the note, from its `interactionPolicy.canQuote`. */
   quotePolicy: QuoteInteractionPolicySchema,
 });
@@ -136,7 +134,6 @@ export const RemoteStatus = {
     publishedAt: z.infer<typeof IsoInstant.schema>;
     editedAt?: z.infer<typeof IsoInstant.schema> | undefined;
     poll?: RemotePoll | undefined;
-    emojis?: ReadonlyArray<RemoteEmoji> | undefined;
     quotePolicy?: QuoteInteractionPolicy | undefined;
   }): Result<RemoteStatus, RemoteStatusParseError> => {
     const parsed = parseRemoteStatus({
@@ -154,7 +151,6 @@ export const RemoteStatus = {
       // Mastodon carries at most four attachments on a status.
       media: (input.media ?? []).slice(0, 4),
       poll: input.poll ?? RemotePoll.none,
-      emojis: input.emojis ?? [],
       quotePolicy: input.quotePolicy ?? QuoteInteractionPolicy.none,
       ...(input.url ? { url: input.url } : {}),
     });

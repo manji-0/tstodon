@@ -2,7 +2,8 @@ import type { Context } from "hono";
 import { assertNever, warmSchemas } from "@tstodon/core";
 import { PollBallot } from "@tstodon/domain";
 import { jsonAuthError, jsonRepositoryError, jsonValidationError, requireUser } from "../http";
-import { pollJson, remotePollJson, statusIdOfRemotePoll } from "../poll-document";
+import { pollJson, remotePollJson, remotePollTexts, statusIdOfRemotePoll } from "../poll-document";
+import { loadAuthorEmojis } from "../remote-emoji-catalog";
 import { ok } from "neverthrow";
 import { findRemotePollVotes } from "../remote-poll-vote-store";
 import { refreshRemotePoll } from "../remote-poll-refresh";
@@ -70,10 +71,11 @@ export const getV1PollsById = async (c: Context<{ Bindings: Env }, "/api/v1/poll
     if (poll.kind === "NoPoll") {
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
-    const votes = await findRemotePollVotes(c.env.DB, viewerId, [shown.value]);
-    return c.json(
-      remotePollJson(shown.value.id, poll, votes.get(shown.value.id), shown.value.emojis),
-    );
+    const [votes, emojis] = await Promise.all([
+      findRemotePollVotes(c.env.DB, viewerId, [shown.value]),
+      loadAuthorEmojis(c.env.DB, shown.value.actorUri, [remotePollTexts(poll)]),
+    ]);
+    return c.json(remotePollJson(shown.value.id, poll, votes.get(shown.value.id), emojis));
   }
   const poll = await findPollById(c.env.DB, c.req.param("id"), viewerId);
   if (poll.isErr()) {

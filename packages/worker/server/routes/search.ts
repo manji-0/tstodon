@@ -19,6 +19,7 @@ import {
 import {
   documentsInOrder,
   mastodonAccountDocuments,
+  loadProfileEmojis,
   mastodonRemoteAccount,
 } from "../account-documents";
 import { mastodonStatuses } from "../local-status-documents";
@@ -162,19 +163,22 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       return jsonRepositoryError(c, page.error.message);
     }
     const local = [...exactLocal.value, ...page.value.local];
-    const rendered = await mastodonAccountDocuments(c.env, identity.value, local);
+    const [rendered, emojis] = await Promise.all([
+      mastodonAccountDocuments(c.env, identity.value, local),
+      loadProfileEmojis(c.env.DB, [...exact.value, ...page.value.remote]),
+    ]);
     const seen = new Set<string>();
     for (const document of [
       ...documentsInOrder(
         exactLocal.value.map((account) => account.id),
         rendered,
       ),
-      ...exact.value.map((actor) => mastodonRemoteAccount(identity.value, actor)),
+      ...exact.value.map((actor) => mastodonRemoteAccount(identity.value, actor, emojis)),
       ...documentsInOrder(
         page.value.local.map((account) => account.id),
         rendered,
       ),
-      ...page.value.remote.map((actor) => mastodonRemoteAccount(identity.value, actor)),
+      ...page.value.remote.map((actor) => mastodonRemoteAccount(identity.value, actor, emojis)),
     ]) {
       const id = String(document.id);
       if (!seen.has(id)) {

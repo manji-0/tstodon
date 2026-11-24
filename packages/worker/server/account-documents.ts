@@ -22,7 +22,7 @@ import { findAccountsByIds, findAccountsByUsernames } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import type { ComposeDefaults } from "./account-defaults-store";
 import { RemoteAccountId } from "./remote-account-id";
-import { remoteEmojisJson } from "./remote-emoji-document";
+import { emojisOf, loadRemoteEmojis, type RemoteEmojiCatalog } from "./remote-emoji-catalog";
 import { leadingLinkRawHref, sanitizeRemoteHtml } from "./sanitize-html";
 import { decodeEntities } from "./remote-actor-fetch";
 import { findRemoteActorsByUris } from "./remote-actor-store";
@@ -97,19 +97,21 @@ export const presentedAccounts = async (
   /** The instance's custom emojis, when the caller already loaded them. */
   customEmojis?: ReadonlyArray<CustomEmoji>,
 ): Promise<PresentedAccounts> => {
-  const [localDocuments, localPresentations, remotePresentations, moved] = await Promise.all([
-    mastodonAccountDocuments(env, identity, localAccounts, true, customEmojis),
-    localAccountPresentations(
-      env.DB,
-      localAccounts.map((account) => account.id),
-    ),
-    remoteAccountPresentations(env, remoteActors),
-    movedToDocuments(
-      env,
-      identity,
-      remoteActors.flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
-    ),
-  ]);
+  const [localDocuments, localPresentations, remotePresentations, moved, remoteEmojis] =
+    await Promise.all([
+      mastodonAccountDocuments(env, identity, localAccounts, true, customEmojis),
+      localAccountPresentations(
+        env.DB,
+        localAccounts.map((account) => account.id),
+      ),
+      remoteAccountPresentations(env, remoteActors),
+      movedToDocuments(
+        env,
+        identity,
+        remoteActors.flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
+      ),
+      loadProfileEmojis(env.DB, remoteActors),
+    ]);
   if (localPresentations.isErr()) {
     return err(localPresentations.error);
   }
@@ -143,7 +145,10 @@ export const presentedAccounts = async (
         return presented(
           RemoteAccountId.encode(actor.actorUri),
           remotePresentations.value.get(actor.actorUri),
-          { ...(target ? { moved: target } : {}), ...mastodonRemoteAccount(identity, actor) },
+          {
+            ...(target ? { moved: target } : {}),
+            ...mastodonRemoteAccount(identity, actor, remoteEmojis),
+          },
         );
       }),
     ]),
@@ -248,14 +253,17 @@ const movedToDocuments = async (
   ]);
   const localAccounts = locals.isOk() ? locals.value : [];
   const remoteActors = actors.isOk() ? [...actors.value.values()] : [];
-  const [localDocuments, localPresentations, remotePresentations] = await Promise.all([
-    mastodonAccountDocuments(env, identity, localAccounts, false),
-    localAccountPresentations(
-      env.DB,
-      localAccounts.map((account) => account.id),
-    ),
-    remoteAccountPresentations(env, remoteActors),
-  ]);
+  const [localDocuments, localPresentations, remotePresentations, remoteEmojis] = await Promise.all(
+    [
+      mastodonAccountDocuments(env, identity, localAccounts, false),
+      localAccountPresentations(
+        env.DB,
+        localAccounts.map((account) => account.id),
+      ),
+      remoteAccountPresentations(env, remoteActors),
+      loadProfileEmojis(env.DB, remoteActors),
+    ],
+  );
   const presented = (
     uri: string,
     presentation: AccountPresentation | undefined,
@@ -277,7 +285,7 @@ const movedToDocuments = async (
       presented(
         actor.actorUri,
         remotePresentations.isOk() ? remotePresentations.value.get(actor.actorUri) : undefined,
-        mastodonRemoteAccount(identity, actor),
+        mastodonRemoteAccount(identity, actor, remoteEmojis),
       ),
     ),
   ]);
@@ -465,10 +473,29 @@ export const mastodonAccountDocuments = async (
   return includeMoved ? withLocalMoves(env, identity, documents) : documents;
 };
 
-/** A remote actor as a Mastodon account (`moved` is added by {@link presentedAccountsByIds}). */
+/** The texts of a remote profile `Account#emojis` scans (`emojifiable_text`). */
+const remoteProfileEmojiTexts = (actor: RemoteActor): ReadonlyArray<string> =>
+  profileEmojiTexts(actor.displayName, actor.profile);
+
+/** The emoji of their domains the profiles of `actors` write, read in one statement. */
+export const loadProfileEmojis = (
+  db: D1Database,
+  actors: ReadonlyArray<RemoteActor>,
+): Promise<RemoteEmojiCatalog> =>
+  loadRemoteEmojis(
+    db,
+    actors.map((actor) => ({ domain: actor.domain, texts: remoteProfileEmojiTexts(actor) })),
+  );
+
+/**
+ * A remote actor as a Mastodon account (`moved` is added by
+ * {@link presentedAccountsByIds}), with the emoji of its domain its profile
+ * writes, from `emojis` ({@link loadProfileEmojis}), as `Account#emojis`.
+ */
 export const mastodonRemoteAccount = (
   identity: InstanceIdentity,
   actor: RemoteActor,
+  emojis: RemoteEmojiCatalog,
 ): ApiAccountJSON => {
   const { profile } = actor;
   return {
@@ -503,7 +530,7 @@ export const mastodonRemoteAccount = (
     following_count: 0,
     statuses_count: 0,
     last_status_at: null,
-    emojis: remoteEmojisJson(profile.emojis),
+    emojis: emojisOf(emojis, actor.domain)(remoteProfileEmojiTexts(actor)),
     // `verified_at` is set by the link check (`profile-link-verification.ts`).
     fields: profile.fields.map((field) => ({
       name: field.name,

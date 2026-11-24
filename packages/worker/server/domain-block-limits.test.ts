@@ -1431,7 +1431,6 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
       profileUrl: `https://${host}/@proto`,
       bot: true,
       publishedAt: "2020-01-02T00:00:00.000Z",
-      emojis: [],
     });
   });
 

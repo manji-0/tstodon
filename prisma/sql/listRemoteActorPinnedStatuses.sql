@@ -5,7 +5,7 @@
 -- @param {String} $5:tagged
 -- None when the viewer blocks the actor's account domain or the instance suspends it or the actor URI's host,
 -- or a domain above either (a viewer of '' blocks none; the viewer's block names its exact domain).
-SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.emojis_json, s.quote_policy_json
+SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.quote_policy_json
 FROM remote_actor_pins p
 -- CROSS JOIN keeps the actor's pins as the outer loop; without table statistics the planner
 -- would otherwise walk idx_remote_statuses_visibility_id over every public status.

@@ -14,7 +14,8 @@ import { isActorDomainBlocked } from "./domain-block-store";
 import { newEntityId } from "./ids";
 import { scheduleFinalPollCheck } from "./poll-expiry";
 import { pollVoteActivity } from "./poll-vote-activity";
-import { remotePollJson } from "./poll-document";
+import { remotePollJson, remotePollTexts } from "./poll-document";
+import { emojisOf, loadRemoteEmojis } from "./remote-emoji-catalog";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { findRemotePollVotes, recordRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusById } from "./remote-status-store";
@@ -125,6 +126,10 @@ export const voteOnRemotePoll = async (
   if (poll.ends.kind === "At" && recorded.value.length > 0) {
     await scheduleFinalPollCheck(env, { kind: "RemotePoll", statusId: status.id }, poll.ends.at);
   }
-  const after = await findRemotePollVotes(env.DB, voter.id, [status]);
-  return ok(remotePollJson(status.id, poll, after.get(status.id), status.emojis));
+  const { domain } = author.value;
+  const [after, emojis] = await Promise.all([
+    findRemotePollVotes(env.DB, voter.id, [status]),
+    loadRemoteEmojis(env.DB, [{ domain, texts: remotePollTexts(poll) }]),
+  ]);
+  return ok(remotePollJson(status.id, poll, after.get(status.id), emojisOf(emojis, domain)));
 };

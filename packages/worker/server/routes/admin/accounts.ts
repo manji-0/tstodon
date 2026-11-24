@@ -46,7 +46,12 @@ import {
   PageSize,
   type LinkFilters,
 } from "../../http";
-import { mastodonAccountDocument, mastodonRemoteAccount } from "../../account-documents";
+import {
+  loadProfileEmojis,
+  mastodonAccountDocument,
+  mastodonRemoteAccount,
+} from "../../account-documents";
+import type { RemoteEmojiCatalog } from "../../remote-emoji-catalog";
 import { findRemoteActorsByUris } from "../../remote-actor-store";
 import type { ReportParty } from "../../report-store";
 import { parseInstanceIdentity } from "../../runtime-config";
@@ -220,8 +225,18 @@ const remoteActorDocument = (
   identity: InstanceIdentity,
   actor: RemoteActorValue,
   flags: RemoteActorAdminFlags,
+  emojis: RemoteEmojiCatalog,
 ): ApiAdminAccountJSON =>
-  adminRemoteDocument(mastodonRemoteAccount(identity, actor), actor.domain, flags);
+  adminRemoteDocument(mastodonRemoteAccount(identity, actor, emojis), actor.domain, flags);
+
+/** {@link remoteActorDocument} for one actor, its profile's emoji read first. */
+const oneRemoteActorDocument = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  actor: RemoteActorValue,
+  flags: RemoteActorAdminFlags,
+): Promise<ApiAdminAccountJSON> =>
+  remoteActorDocument(identity, actor, flags, await loadProfileEmojis(db, [actor]));
 
 /**
  * What a report remembers of a remote actor that was purged from the cache:
@@ -283,7 +298,7 @@ export const adminAccountFor = async (
   if (actorUri.isOk()) {
     const state = await findAdminRemoteActor(env.DB, actorUri.value);
     return state.isOk() && state.value
-      ? remoteActorDocument(identity, state.value.actor, state.value.flags)
+      ? oneRemoteActorDocument(env.DB, identity, state.value.actor, state.value.flags)
       : null;
   }
   const state = await findAdminAccount(env.DB, accountId);
@@ -310,7 +325,7 @@ export const adminPartyFor = async (
   }
   const state = await findAdminRemoteActor(env.DB, party.actorUri);
   if (state.isOk() && state.value) {
-    return remoteActorDocument(identity, state.value.actor, state.value.flags);
+    return oneRemoteActorDocument(env.DB, identity, state.value.actor, state.value.flags);
   }
   return acct === null ? null : purgedRemoteDocument(identity, party.actorUri, acct);
 };
@@ -356,7 +371,10 @@ const remoteAdminAccounts = async (
   if (moderations.isErr()) {
     return err(moderations.error);
   }
-  const seen = await remoteActorAdminFlags(env.DB, moderations.value, uris.value);
+  const [seen, emojis] = await Promise.all([
+    remoteActorAdminFlags(env.DB, moderations.value, uris.value),
+    loadProfileEmojis(env.DB, [...actors.value.values()]),
+  ]);
   if (seen.isErr()) {
     return err(seen.error);
   }
@@ -364,7 +382,7 @@ const remoteAdminAccounts = async (
     uris.value.flatMap((uri) => {
       const actor = actors.value.get(uri);
       return actor
-        ? [remoteActorDocument(identity, actor, seen.value.get(uri) ?? NOT_MODERATED)]
+        ? [remoteActorDocument(identity, actor, seen.value.get(uri) ?? NOT_MODERATED, emojis)]
         : [];
     }),
   );

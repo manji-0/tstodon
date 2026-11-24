@@ -94,7 +94,7 @@ const [STATUSES, NOTIFICATIONS, ...PLAIN] = OWNED;
  */
 const PURGED_PROFILE = `display_name = '', profile_json = CASE WHEN json_valid(profile_json)
   THEN json_set(profile_json, '$.note', '', '$.avatarUrl', NULL, '$.headerUrl', NULL,
-    '$.fields', json('[]'), '$.emojis', json('[]'), '$.locked', json('false'),
+    '$.fields', json('[]'), '$.locked', json('false'),
     '$.discoverable', json('false'))
   ELSE '{}' END`;
 

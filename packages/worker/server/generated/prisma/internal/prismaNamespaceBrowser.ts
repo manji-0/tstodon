@@ -56,7 +56,6 @@ export const ModelName = {
   announcements: "announcements",
   account_moderation: "account_moderation",
   remote_custom_emojis: "remote_custom_emojis",
-  remote_emoji_refreshes: "remote_emoji_refreshes",
   remote_actor_domain_limits: "remote_actor_domain_limits",
   remote_actor_domain_lifts: "remote_actor_domain_lifts",
   domain_block_limit_backfills: "domain_block_limit_backfills",
@@ -238,21 +237,11 @@ export const Remote_custom_emojisScalarFieldEnum = {
   shortcode: "shortcode",
   image_url: "image_url",
   updated_at: "updated_at",
+  disabled: "disabled",
 } as const;
 
 export type Remote_custom_emojisScalarFieldEnum =
   (typeof Remote_custom_emojisScalarFieldEnum)[keyof typeof Remote_custom_emojisScalarFieldEnum];
-
-export const Remote_emoji_refreshesScalarFieldEnum = {
-  domain: "domain",
-  generation: "generation",
-  queued_generation: "queued_generation",
-  queued_at: "queued_at",
-  refreshed_generation: "refreshed_generation",
-} as const;
-
-export type Remote_emoji_refreshesScalarFieldEnum =
-  (typeof Remote_emoji_refreshesScalarFieldEnum)[keyof typeof Remote_emoji_refreshesScalarFieldEnum];
 
 export const Remote_actor_domain_limitsScalarFieldEnum = {
   domain_block_id: "domain_block_id",
@@ -953,7 +942,6 @@ export const Remote_statusesScalarFieldEnum = {
   in_reply_to_uri: "in_reply_to_uri",
   edited_at: "edited_at",
   poll_json: "poll_json",
-  emojis_json: "emojis_json",
   created_at: "created_at",
   updated_at: "updated_at",
   quote_policy_json: "quote_policy_json",

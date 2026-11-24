@@ -12,7 +12,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param tagged
  */
 export const listRemoteActorPinnedStatuses = $runtime.makeTypedQueryFactory(
-  "SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.emojis_json, s.quote_policy_json\nFROM remote_actor_pins p\nCROSS JOIN remote_statuses s ON s.id = p.status_id\nWHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')\nAND s.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actors\nWHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)\nOR uri_host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)\n)\nAND s.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'\n)\nAND ($3 = 0 OR s.in_reply_to_uri IS NULL OR s.in_reply_to_actor_uri = s.actor_uri)\nAND ($4 = 0 OR s.media_json NOT IN ('[]', ''))\nAND ($5 = '' OR EXISTS (\nSELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = $5\n))\nORDER BY p.position ASC",
+  "SELECT s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text, s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.quote_policy_json\nFROM remote_actor_pins p\nCROSS JOIN remote_statuses s ON s.id = p.status_id\nWHERE p.actor_uri = $1 AND s.visibility IN ('public', 'unlisted')\nAND s.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actors\nWHERE host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)\nOR uri_host IN (SELECT lower(domain) FROM account_domain_blocks WHERE account_id = $2)\n)\nAND s.actor_uri NOT IN (\nSELECT actor_uri FROM remote_actor_domain_rules WHERE severity = 'suspend'\n)\nAND ($3 = 0 OR s.in_reply_to_uri IS NULL OR s.in_reply_to_actor_uri = s.actor_uri)\nAND ($4 = 0 OR s.media_json NOT IN ('[]', ''))\nAND ($5 = '' OR EXISTS (\nSELECT 1 FROM remote_status_tags t WHERE t.status_id = s.id AND t.tag = $5\n))\nORDER BY p.position ASC",
 ) as (
   actorUri: string,
   viewerId: string,
@@ -47,7 +47,6 @@ export namespace listRemoteActorPinnedStatuses {
     media_json: string;
     card_json: string | null;
     poll_json: string | null;
-    emojis_json: string;
     quote_policy_json: string | null;
   };
 }
