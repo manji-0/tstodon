@@ -760,7 +760,7 @@ describe("the reply tree of an opened remote status", () => {
       recording.sent.push({
         kind: "BackfillRemoteThread",
         statusId: rootId,
-        from: { kind: "Level", depth: 1, after: "", stored: 1, ...counts },
+        from: { kind: "Level", depth: 1, after: "", visited: 0, stored: 1, ...counts },
       });
       await serving(documents, () => runQueued(recording));
       // The reply was expanded, and the walk ends there.
@@ -940,6 +940,7 @@ describe("the reply tree of an opened remote status", () => {
         depth: 1,
         after: "",
         resume: { id: await statusIdOf(second), offset: 1 },
+        visited: 0,
         listed: 2,
         pages: 1,
         stored: 2,

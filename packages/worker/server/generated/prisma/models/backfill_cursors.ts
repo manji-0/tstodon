@@ -27,38 +27,32 @@ export type AggregateBackfill_cursors = {
 export type Backfill_cursorsMinAggregateOutputType = {
   name: string | null;
   after_id: string | null;
-  completed_at: string | null;
 };
 
 export type Backfill_cursorsMaxAggregateOutputType = {
   name: string | null;
   after_id: string | null;
-  completed_at: string | null;
 };
 
 export type Backfill_cursorsCountAggregateOutputType = {
   name: number;
   after_id: number;
-  completed_at: number;
   _all: number;
 };
 
 export type Backfill_cursorsMinAggregateInputType = {
   name?: true;
   after_id?: true;
-  completed_at?: true;
 };
 
 export type Backfill_cursorsMaxAggregateInputType = {
   name?: true;
   after_id?: true;
-  completed_at?: true;
 };
 
 export type Backfill_cursorsCountAggregateInputType = {
   name?: true;
   after_id?: true;
-  completed_at?: true;
   _all?: true;
 };
 
@@ -142,7 +136,6 @@ export type backfill_cursorsGroupByArgs<
 export type Backfill_cursorsGroupByOutputType = {
   name: string;
   after_id: string;
-  completed_at: string | null;
   _count: Backfill_cursorsCountAggregateOutputType | null;
   _min: Backfill_cursorsMinAggregateOutputType | null;
   _max: Backfill_cursorsMaxAggregateOutputType | null;
@@ -167,13 +160,11 @@ export type backfill_cursorsWhereInput = {
   NOT?: Prisma.backfill_cursorsWhereInput | Prisma.backfill_cursorsWhereInput[];
   name?: Prisma.StringFilter<"backfill_cursors"> | string;
   after_id?: Prisma.StringFilter<"backfill_cursors"> | string;
-  completed_at?: Prisma.StringNullableFilter<"backfill_cursors"> | string | null;
 };
 
 export type backfill_cursorsOrderByWithRelationInput = {
   name?: Prisma.SortOrder;
   after_id?: Prisma.SortOrder;
-  completed_at?: Prisma.SortOrderInput | Prisma.SortOrder;
 };
 
 export type backfill_cursorsWhereUniqueInput = Prisma.AtLeast<
@@ -183,7 +174,6 @@ export type backfill_cursorsWhereUniqueInput = Prisma.AtLeast<
     OR?: Prisma.backfill_cursorsWhereInput[];
     NOT?: Prisma.backfill_cursorsWhereInput | Prisma.backfill_cursorsWhereInput[];
     after_id?: Prisma.StringFilter<"backfill_cursors"> | string;
-    completed_at?: Prisma.StringNullableFilter<"backfill_cursors"> | string | null;
   },
   "name"
 >;
@@ -191,7 +181,6 @@ export type backfill_cursorsWhereUniqueInput = Prisma.AtLeast<
 export type backfill_cursorsOrderByWithAggregationInput = {
   name?: Prisma.SortOrder;
   after_id?: Prisma.SortOrder;
-  completed_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.backfill_cursorsCountOrderByAggregateInput;
   _max?: Prisma.backfill_cursorsMaxOrderByAggregateInput;
   _min?: Prisma.backfill_cursorsMinOrderByAggregateInput;
@@ -207,67 +196,56 @@ export type backfill_cursorsScalarWhereWithAggregatesInput = {
     | Prisma.backfill_cursorsScalarWhereWithAggregatesInput[];
   name?: Prisma.StringWithAggregatesFilter<"backfill_cursors"> | string;
   after_id?: Prisma.StringWithAggregatesFilter<"backfill_cursors"> | string;
-  completed_at?: Prisma.StringNullableWithAggregatesFilter<"backfill_cursors"> | string | null;
 };
 
 export type backfill_cursorsCreateInput = {
   name: string;
   after_id?: string;
-  completed_at?: string | null;
 };
 
 export type backfill_cursorsUncheckedCreateInput = {
   name: string;
   after_id?: string;
-  completed_at?: string | null;
 };
 
 export type backfill_cursorsUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   after_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  completed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type backfill_cursorsUncheckedUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   after_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  completed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type backfill_cursorsCreateManyInput = {
   name: string;
   after_id?: string;
-  completed_at?: string | null;
 };
 
 export type backfill_cursorsUpdateManyMutationInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   after_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  completed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type backfill_cursorsUncheckedUpdateManyInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   after_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  completed_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type backfill_cursorsCountOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   after_id?: Prisma.SortOrder;
-  completed_at?: Prisma.SortOrder;
 };
 
 export type backfill_cursorsMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   after_id?: Prisma.SortOrder;
-  completed_at?: Prisma.SortOrder;
 };
 
 export type backfill_cursorsMinOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   after_id?: Prisma.SortOrder;
-  completed_at?: Prisma.SortOrder;
 };
 
 export type backfill_cursorsSelect<
@@ -276,7 +254,6 @@ export type backfill_cursorsSelect<
   {
     name?: boolean;
     after_id?: boolean;
-    completed_at?: boolean;
   },
   ExtArgs["result"]["backfill_cursors"]
 >;
@@ -287,7 +264,6 @@ export type backfill_cursorsSelectCreateManyAndReturn<
   {
     name?: boolean;
     after_id?: boolean;
-    completed_at?: boolean;
   },
   ExtArgs["result"]["backfill_cursors"]
 >;
@@ -298,7 +274,6 @@ export type backfill_cursorsSelectUpdateManyAndReturn<
   {
     name?: boolean;
     after_id?: boolean;
-    completed_at?: boolean;
   },
   ExtArgs["result"]["backfill_cursors"]
 >;
@@ -306,15 +281,11 @@ export type backfill_cursorsSelectUpdateManyAndReturn<
 export type backfill_cursorsSelectScalar = {
   name?: boolean;
   after_id?: boolean;
-  completed_at?: boolean;
 };
 
 export type backfill_cursorsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = runtime.Types.Extensions.GetOmit<
-  "name" | "after_id" | "completed_at",
-  ExtArgs["result"]["backfill_cursors"]
->;
+> = runtime.Types.Extensions.GetOmit<"name" | "after_id", ExtArgs["result"]["backfill_cursors"]>;
 
 export type $backfill_cursorsPayload<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
@@ -325,7 +296,6 @@ export type $backfill_cursorsPayload<
     {
       name: string;
       after_id: string;
-      completed_at: string | null;
     },
     ExtArgs["result"]["backfill_cursors"]
   >;
@@ -900,7 +870,6 @@ export interface Prisma__backfill_cursorsClient<
 export interface backfill_cursorsFieldRefs {
   readonly name: Prisma.FieldRef<"backfill_cursors", "String">;
   readonly after_id: Prisma.FieldRef<"backfill_cursors", "String">;
-  readonly completed_at: Prisma.FieldRef<"backfill_cursors", "String">;
 }
 
 // Custom InputTypes

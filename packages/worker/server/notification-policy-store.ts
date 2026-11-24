@@ -273,8 +273,8 @@ export const holdNotification = async (
 };
 
 /**
- * The senders whose requests `ids` name, by request id or by sender id; ids
- * that name none of the account's requests are left out.
+ * The senders whose requests `ids` name, by request id; ids that name none
+ * of the account's requests are left out.
  */
 export const findNotificationRequestSenders = async (
   db: D1Database,

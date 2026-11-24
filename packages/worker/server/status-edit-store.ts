@@ -16,9 +16,6 @@ import { parseJsonColumn } from "./json-column";
  * One replaced revision of a local status, as `status_edits.snapshot_json`
  * keeps it: the `StatusEdit` entity without its `account`, which history
  * renders as the author is now. `created_at` is when the revision was made.
- * Rows written before this shape hold the whole `Status` document of the
- * revision; they parse the same way (the other fields are dropped, a poll
- * keeps its option titles).
  */
 export const StatusEditSnapshot = ApiStatusEdit.omit({ account: true });
 export type StatusEditSnapshot = z.infer<typeof StatusEditSnapshot>;

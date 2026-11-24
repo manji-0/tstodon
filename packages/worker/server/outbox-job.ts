@@ -1,9 +1,5 @@
 import { assertNever } from "@tstodon/core";
-import {
-  StoredMediaMetadata,
-  StoredMediaSizes,
-  type OutboxJob as OutboxJobValue,
-} from "@tstodon/domain";
+import type { OutboxJob as OutboxJobValue } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { ensureOutboxTarget, findOutboundActivity } from "./outbox-store";
@@ -31,20 +27,10 @@ import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { processResolveRemoteThreadJob } from "./remote-thread-resolve-job";
 import { indexMissingRemoteTags } from "./remote-status-store";
-import { rekeyLegacyMediaBatch } from "./media-rekey";
 import { vacuumMediaAttachments } from "./media-vacuum";
 import { vacuumActivities } from "./activity-vacuum";
 import { requeueDeadOutboxJobs } from "./dead-letter-queue";
 import { ROTATE_ACTOR_KEYS_PAUSE_SECONDS, rotateActorKeysPage } from "./actor-key-rotation";
-import {
-  logStripStoredMediaMetadataDone,
-  stripStoredMediaMetadataPage,
-} from "./media-metadata-backfill";
-import { backfillStoredMediaSizesPage, logBackfillStoredMediaSizesDone } from "./media-sizes";
-import { backfillLocalNoteTags } from "./local-tag-backfill";
-import { foldTagNames } from "./tag-name-fold";
-import { asciiDomainNames } from "./domain-name-ascii";
-import { applyDomainBlockEffects } from "./admin-actions";
 import { publishDueScheduledStatuses } from "./scheduled-status-publish";
 import { cleanUpAccountStatuses, queueStatusesCleanup } from "./statuses-cleanup";
 import {
@@ -52,7 +38,7 @@ import {
   listAcceptedRemoteFollowerInboxes,
   listAccountReachInboxes,
 } from "./remote-actor-store";
-import { legacyMediaPolicy, parseInstanceIdentity } from "./runtime-config";
+import { parseInstanceIdentity } from "./runtime-config";
 import { deliverExpandedActivity, startOutboxDeliveryWorkflow } from "./delivery";
 import { processExpandForwardJob } from "./activity-forward";
 import { parseJsonText } from "./json-column";
@@ -220,61 +206,12 @@ export const processOutboxJob = async (
         }
         return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
       });
-    case "BackfillLocalNoteTags":
-      return measureJobPage(env, job.kind, async () => {
-        const page = await backfillLocalNoteTags(env.DB);
-        if (page.isErr()) {
-          return { outcome: "retry", size: 0, chained: false };
-        }
-        if (page.value.chained) {
-          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillLocalNoteTags" });
-        }
-        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
-      });
-    case "FoldTagNames":
-      return measureJobPage(env, job.kind, async () => {
-        const page = await foldTagNames(env.DB);
-        if (page.isErr()) {
-          return { outcome: "retry", size: 0, chained: false };
-        }
-        if (page.value.chained) {
-          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "FoldTagNames" });
-        }
-        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
-      });
-    case "AsciiDomainNames":
-      return measureJobPage(env, job.kind, async () => {
-        const page = await asciiDomainNames(env);
-        if (page.isErr()) {
-          return { outcome: "retry", size: 0, chained: false };
-        }
-        if (page.value.chained) {
-          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "AsciiDomainNames" });
-        }
-        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
-      });
-    case "ApplyDomainBlockEffects":
-      return measureJobPage(env, job.kind, async () => {
-        const applied = await applyDomainBlockEffects(env, job.domain);
-        return { outcome: applied.isErr() ? "retry" : "ok", size: 1, chained: false };
-      });
     case "RecordDomainBlockLimits":
       return processRecordDomainBlockLimitsJob(env, job);
     case "ResumeLiftedDomainBlockLimits":
       return processResumeLiftedDomainBlockLimitsJob(env);
     case "PurgeSuspendedActorContent":
       return processPurgeSuspendedActorContentJob(env, job);
-    case "RekeyLegacyMedia":
-      return measureJobPage(env, job.kind, async () => {
-        const batch = await rekeyLegacyMediaBatch(env, legacyMediaPolicy(env), job.afterId);
-        if (batch.nextAfterId !== undefined) {
-          await env.OUTBOX_PROCESS_QUEUE.send({
-            kind: "RekeyLegacyMedia",
-            afterId: batch.nextAfterId,
-          });
-        }
-        return { outcome: "ok", size: batch.scanned, chained: batch.nextAfterId !== undefined };
-      });
     case "VacuumMediaAttachments":
       return measureJobPage(env, job.kind, async () => {
         const pass = await vacuumMediaAttachments(env);
@@ -319,58 +256,6 @@ export const processOutboxJob = async (
           outcome: "ok",
           size: page.value.rotated,
           chained: page.value.next !== undefined,
-        };
-      });
-    case "StripStoredMediaMetadata":
-      return measureJobPage(env, job.kind, async () => {
-        const page = await stripStoredMediaMetadataPage(env, job);
-        if (page.isErr()) {
-          return { outcome: "retry", size: 0, chained: false, step: job.source };
-        }
-        const tally = StoredMediaMetadata.addTally(job.tally, page.value.tally);
-        const { next } = page.value;
-        if (next) {
-          await env.OUTBOX_PROCESS_QUEUE.send({
-            kind: "StripStoredMediaMetadata",
-            source: next.source,
-            afterId: next.afterId,
-            tally,
-          });
-        } else if (Object.values(tally).some((n) => n > 0)) {
-          // A run with nothing left to do (every later cron) logs nothing.
-          logStripStoredMediaMetadataDone(tally);
-        }
-        return {
-          outcome: "ok",
-          size: page.value.scanned,
-          chained: next !== undefined,
-          step: job.source,
-        };
-      });
-    case "BackfillStoredMediaSizes":
-      return measureJobPage(env, job.kind, async () => {
-        const page = await backfillStoredMediaSizesPage(env, job);
-        if (page.isErr()) {
-          return { outcome: "retry", size: 0, chained: false, step: job.source };
-        }
-        const tally = StoredMediaSizes.addTally(job.tally, page.value.tally);
-        const { next } = page.value;
-        if (next) {
-          await env.OUTBOX_PROCESS_QUEUE.send({
-            kind: "BackfillStoredMediaSizes",
-            source: next.source,
-            afterId: next.afterId,
-            tally,
-          });
-        } else if (Object.values(tally).some((n) => n > 0)) {
-          // A run with nothing left to do (every later cron) logs nothing.
-          logBackfillStoredMediaSizesDone(tally);
-        }
-        return {
-          outcome: "ok",
-          size: page.value.scanned,
-          chained: next !== undefined,
-          step: job.source,
         };
       });
     case "CleanUpStatuses":

@@ -56,9 +56,9 @@ const seedFollows = async (accountId: string, host: string, base: string, n: num
   const series = `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${n})`;
   await env.DB.batch([
     env.DB.prepare(
-      `${series} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+      `${series} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
        SELECT 'https://' || ?1 || '/users/u' || n, 'u' || n, ?1, 'https://' || ?1 || '/inbox',
-              'https://' || ?1 || '/users/u' || n || '#main-key', 'x', '2026-01-01T00:00:00.000Z'
+              '2026-01-01T00:00:00.000Z'
        FROM series`,
     ).bind(host),
     env.DB.prepare(

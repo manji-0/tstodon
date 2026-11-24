@@ -85,7 +85,7 @@ describe("POST /api/v1/notifications/requests/dismiss", () => {
     const [first, second, kept] = requests;
     expect(
       await call(recipient, "POST", "/api/v1/notifications/requests/dismiss", {
-        id: [first?.id, second?.account.id],
+        id: [first?.id, second?.id],
       }),
     ).toEqual({});
 

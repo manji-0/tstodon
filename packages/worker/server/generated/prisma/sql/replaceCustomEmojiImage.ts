@@ -18,7 +18,7 @@ export const replaceCustomEmojiImage = $runtime.makeTypedQueryFactory(
   objectKey: string,
   contentType: string,
   now: string,
-  imageFileSize: number | null,
+  imageFileSize: number,
 ) => $runtime.TypedSql<replaceCustomEmojiImage.Parameters, replaceCustomEmojiImage.Result>;
 
 export namespace replaceCustomEmojiImage {
@@ -27,7 +27,7 @@ export namespace replaceCustomEmojiImage {
     objectKey: string,
     contentType: string,
     now: string,
-    imageFileSize: number | null,
+    imageFileSize: number,
   ];
   export type Result = {
     id: string | null;

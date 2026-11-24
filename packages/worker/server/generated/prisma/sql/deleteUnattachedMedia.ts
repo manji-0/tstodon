@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param limit
  */
 export const deleteUnattachedMedia = $runtime.makeTypedQueryFactory(
-  "DELETE FROM media_attachments\nWHERE id IN (\nSELECT m.id FROM media_attachments m\nWHERE m.status_id IS NULL\nAND m.created_at < $1\nAND NOT EXISTS (\nSELECT 1 FROM scheduled_statuses s, json_each(s.params_json, '$.media_ids') j\nWHERE s.account_id = m.account_id AND j.value = m.id\n)\nAND NOT EXISTS (\nSELECT 1 FROM statuses st\nJOIN status_edits e ON e.status_id = st.id,\njson_each(e.snapshot_json, '$.media_attachments') j\nWHERE st.account_id = m.account_id AND json_extract(j.value, '$.id') = m.id\n)\nORDER BY m.created_at\nLIMIT $2\n)\nRETURNING object_key, legacy_object_key, preview_object_key",
+  "DELETE FROM media_attachments\nWHERE id IN (\nSELECT m.id FROM media_attachments m\nWHERE m.status_id IS NULL\nAND m.created_at < $1\nAND NOT EXISTS (\nSELECT 1 FROM scheduled_statuses s, json_each(s.params_json, '$.media_ids') j\nWHERE s.account_id = m.account_id AND j.value = m.id\n)\nAND NOT EXISTS (\nSELECT 1 FROM statuses st\nJOIN status_edits e ON e.status_id = st.id,\njson_each(e.snapshot_json, '$.media_attachments') j\nWHERE st.account_id = m.account_id AND json_extract(j.value, '$.id') = m.id\n)\nORDER BY m.created_at\nLIMIT $2\n)\nRETURNING object_key, preview_object_key",
 ) as (
   createdBefore: string,
   limit: number,
@@ -19,7 +19,6 @@ export namespace deleteUnattachedMedia {
   export type Parameters = [createdBefore: string, limit: number];
   export type Result = {
     object_key: string;
-    legacy_object_key: string | null;
     preview_object_key: string | null;
   };
 }

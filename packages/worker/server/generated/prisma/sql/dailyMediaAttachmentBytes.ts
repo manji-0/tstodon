@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param to
  */
 export const dailyMediaAttachmentBytes = $runtime.makeTypedQueryFactory(
-  "SELECT substr(created_at, 1, 10) AS day,\nSUM(\nCOALESCE(file_size, 0) + COALESCE(preview_file_size, 0)\n+ CASE WHEN legacy_object_key IS NULL THEN 0 ELSE COALESCE(file_size, 0) END\n) AS n\nFROM media_attachments\nWHERE created_at >= $1 AND created_at < $2\nGROUP BY day",
+  "SELECT substr(created_at, 1, 10) AS day,\nSUM(file_size + COALESCE(preview_file_size, 0)) AS n\nFROM media_attachments\nWHERE created_at >= $1 AND created_at < $2\nGROUP BY day",
 ) as (
   from: string,
   to: string,

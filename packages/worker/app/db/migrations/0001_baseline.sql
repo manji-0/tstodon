@@ -86,15 +86,11 @@ CREATE TABLE custom_emojis (
   category TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  image_file_size INTEGER
+  image_file_size INTEGER NOT NULL
 );
 
 CREATE INDEX idx_custom_emojis_shortcode
   ON custom_emojis (shortcode);
-
-CREATE INDEX idx_custom_emojis_size_pending
-  ON custom_emojis(id)
-  WHERE image_file_size IS NULL;
 
 CREATE TABLE link_cards (
   url TEXT PRIMARY KEY,
@@ -117,14 +113,12 @@ CREATE INDEX idx_trend_reviews_state ON trend_reviews (kind, state);
 
 -- The cursors of the jobs that walk a table a page at a time, where one
 -- unbounded statement could pass D1's query limits on a large instance and
--- hold the writer. `after_id` is the last key a page read. A one-off job
--- sets `completed_at` once a page comes back short and stops; a standing
--- sweep (`remote_status_retention`) goes back to '' instead. The rows are
--- seeded at the end of this file.
+-- hold the writer. `after_id` is the last key a page read; a sweep
+-- (`remote_status_retention`) goes back to '' once a page comes back short.
+-- The rows are seeded at the end of this file.
 CREATE TABLE backfill_cursors (
   name TEXT NOT NULL PRIMARY KEY,
-  after_id TEXT NOT NULL DEFAULT '',
-  completed_at TEXT
+  after_id TEXT NOT NULL DEFAULT ''
 ) WITHOUT ROWID;
 
 -- ==========================================================================
@@ -363,22 +357,10 @@ CREATE TABLE account_profiles (
   header_content_type TEXT,
   indexable INTEGER NOT NULL DEFAULT 1,
   hide_collections INTEGER NOT NULL DEFAULT 0,
-  avatar_metadata_stripped_at TEXT,
-  avatar_metadata_strip_error TEXT,
-  header_metadata_stripped_at TEXT,
-  header_metadata_strip_error TEXT,
   avatar_file_size INTEGER,
   header_file_size INTEGER,
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
-
-CREATE INDEX idx_account_profiles_avatar_size_pending
-  ON account_profiles(account_id)
-  WHERE avatar_object_key IS NOT NULL AND avatar_file_size IS NULL;
-
-CREATE INDEX idx_account_profiles_header_size_pending
-  ON account_profiles(account_id)
-  WHERE header_object_key IS NOT NULL AND header_file_size IS NULL;
 
 -- Mastodon's appearance preferences (`color_scheme` and `contrast` in its
 -- user settings): the colour scheme and contrast the web app's HTML shell and
@@ -784,10 +766,6 @@ CREATE TABLE media_attachments (
   description TEXT,
   focus_x REAL,
   focus_y REAL,
-  -- An attachment stored under the guessable key attachments/<account_id>/<id>
-  -- keeps that key here while the `RekeyLegacyMedia` job copies it to a random
-  -- key and the object under the old key is still there.
-  legacy_object_key TEXT,
   -- A status lists its attachments in the order its media_ids gave them, as
   -- Mastodon's ordered_media_attachment_ids does.
   position INTEGER,
@@ -801,25 +779,13 @@ CREATE TABLE media_attachments (
   preview_width INTEGER,
   preview_height INTEGER,
   blurhash TEXT,
-  -- Which stored originals are known to carry no metadata (EXIF / GPS / XMP,
-  -- video location atoms; see `UploadMetadata.forUpload`). Uploads are marked
-  -- when stored; the `StripStoredMediaMetadata` job rewrites unmarked objects
-  -- and marks them. An object the job
-  -- cannot rewrite (unreadable container, over its size cap) keeps its bytes
-  -- and gets the reason in `*_metadata_strip_error`, so the job passes it over
-  -- until an operator clears the reason.
-  metadata_stripped_at TEXT,
-  metadata_strip_error TEXT,
   -- The byte size of each object tstodon stores in the `MEDIA` bucket, as
   -- stored (uploads after metadata stripping), for the admin `space_usage`
   -- dimension, the `instance_media_attachments` measure and the export page's
-  -- media storage. NULL is not known yet: the upload path, the metadata
-  -- backfill's rewrite and the custom emoji forms write the size of what they
-  -- store; the `BackfillStoredMediaSizes` job HEADs the objects of the rows
-  -- without one and records their size (0 for a missing object). A row's sizes go with the row, or with its key when an image is
-  -- removed. A legacy copy the rekey job keeps holds the original's bytes, so
-  -- it is counted at `file_size`.
-  file_size INTEGER,
+  -- media storage. The upload path and the custom emoji forms write the size
+  -- of what they store; a row's sizes go with the row, or with its key when
+  -- an image is removed. `preview_file_size` is NULL without a preview.
+  file_size INTEGER NOT NULL,
   preview_file_size INTEGER,
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
   FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE SET NULL
@@ -832,23 +798,10 @@ CREATE INDEX idx_media_attachments_status
 CREATE INDEX idx_media_attachments_account
   ON media_attachments (account_id);
 
-CREATE INDEX idx_media_attachments_legacy_object_key
-  ON media_attachments (id) WHERE legacy_object_key IS NOT NULL;
-
 -- The media sweep (`deleteUnattachedMedia`) reads the oldest media no status
 -- holds; idx_media_attachments_status only covers attached rows.
 CREATE INDEX idx_media_attachments_unattached
   ON media_attachments (created_at) WHERE status_id IS NULL;
-
--- The job's page query: once every row is marked, a run reads nothing.
-CREATE INDEX idx_media_attachments_metadata_pending
-  ON media_attachments(id)
-  WHERE metadata_stripped_at IS NULL AND metadata_strip_error IS NULL;
-
--- The backfill's page query: once every size is known, a run reads nothing.
-CREATE INDEX idx_media_attachments_size_pending
-  ON media_attachments(id)
-  WHERE file_size IS NULL OR (preview_object_key IS NOT NULL AND preview_file_size IS NULL);
 
 CREATE TABLE polls (
   id TEXT PRIMARY KEY,
@@ -1514,8 +1467,6 @@ CREATE TABLE remote_actors (
   domain TEXT NOT NULL,
   inbox_uri TEXT NOT NULL,
   shared_inbox_uri TEXT,
-  public_key_id TEXT NOT NULL UNIQUE,
-  public_key_pem TEXT NOT NULL,
   display_name TEXT NOT NULL DEFAULT '',
   fetched_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2581,18 +2532,6 @@ CREATE TABLE remote_actor_domain_lifts (
 CREATE INDEX idx_remote_actor_domain_lifts_actor
   ON remote_actor_domain_lifts (actor_uri);
 
--- A silence or suspension whose actors are still to be recorded in
--- `remote_actor_domain_limits`. Each is recorded once, in queued pages, for the actors first seen by its
--- last change (`seen_by`), when Mastodon's `BlockDomainService` last ran over
--- `Account.by_domain_and_subdomains`; the hourly sweep starts it. Each page
--- of the chain stamps `claimed_at`, and the sweep starts no second chain
--- while the stamp is recent.
-CREATE TABLE domain_block_limit_backfills (
-  domain_block_id TEXT PRIMARY KEY NOT NULL,
-  seen_by TEXT NOT NULL,
-  claimed_at TEXT
-);
-
 -- The most specific instance domain block on each actor's account domain,
 -- whatever its severity: the host key's parent domains, longest first, each
 -- one seek of `idx_domain_blocks_domain_key`.
@@ -3155,14 +3094,6 @@ END;
 
 INSERT INTO domain_policy_revision (id, token) VALUES (1, lower(hex(randomblob(16))));
 
--- The cursors of the paged jobs (see `backfill_cursors`): `local_status_tags`
--- (server/local-tag-backfill.ts), `tag_name_fold` (server/tag-name-fold.ts),
--- `domain_name_ascii` (server/domain-name-ascii.ts) and
--- `remote_status_retention` (server/remote-status-retention.ts). No job reads
--- `local_note_tags` any more.
-INSERT INTO backfill_cursors (name) VALUES
-  ('domain_name_ascii'),
-  ('local_note_tags'),
-  ('local_status_tags'),
-  ('remote_status_retention'),
-  ('tag_name_fold');
+-- The cursor of the paged sweep (see `backfill_cursors`):
+-- `remote_status_retention` (server/remote-status-retention.ts).
+INSERT INTO backfill_cursors (name) VALUES ('remote_status_retention');

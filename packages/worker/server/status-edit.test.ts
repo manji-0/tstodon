@@ -102,30 +102,6 @@ describe("status editing", () => {
     expect(entries[1]?.content).toContain("edited text");
   });
 
-  it("reads a revision stored as a whole status document", async () => {
-    const email = "edit-legacy@example.com";
-    const created = await json("/api/v1/statuses", await jsonBody({ status: "first" }, email)());
-    const original = expectContract(ApiStatus, created.body);
-    const edited = await json(`/api/v1/statuses/${original.id}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", ...(await auth(email)) },
-      body: JSON.stringify({ status: "second" }),
-    });
-    expect(edited.status).toBe(200);
-    // Snapshots written before `StatusEditSnapshot` held the Status document.
-    await env.DB.prepare(`UPDATE status_edits SET snapshot_json = ? WHERE status_id = ?`)
-      .bind(JSON.stringify({ ...original, content: "<p>legacy</p>" }), original.id)
-      .run();
-
-    const history = await json(`/api/v1/statuses/${original.id}/history`);
-    const entries = expectContract(z.array(ApiStatusEdit), history.body);
-    expect(entries.map((entry) => entry.content)).toEqual([
-      "<p>legacy</p>",
-      expect.stringContaining("second"),
-    ]);
-    expect(entries[0]).not.toHaveProperty("id");
-  });
-
   it("serves the raw source", async () => {
     const email = "edit-source@example.com";
     const created = await json(

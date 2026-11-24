@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param accountId
  */
 export const sumAccountMediaBytes = $runtime.makeTypedQueryFactory(
-  "SELECT\n(SELECT COALESCE(SUM(\nCOALESCE(file_size, 0) + COALESCE(preview_file_size, 0)\n+ CASE WHEN legacy_object_key IS NULL THEN 0 ELSE COALESCE(file_size, 0) END\n), 0) FROM media_attachments WHERE account_id = $1) AS attachments,\n(SELECT COALESCE(SUM(COALESCE(avatar_file_size, 0) + COALESCE(header_file_size, 0)), 0)\nFROM account_profiles WHERE account_id = $1) AS profiles",
+  "SELECT\n(SELECT COALESCE(SUM(file_size + COALESCE(preview_file_size, 0)), 0)\nFROM media_attachments WHERE account_id = $1) AS attachments,\n(SELECT COALESCE(SUM(COALESCE(avatar_file_size, 0) + COALESCE(header_file_size, 0)), 0)\nFROM account_profiles WHERE account_id = $1) AS profiles",
 ) as (
   accountId: string,
 ) => $runtime.TypedSql<sumAccountMediaBytes.Parameters, sumAccountMediaBytes.Result>;

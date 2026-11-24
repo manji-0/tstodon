@@ -35,9 +35,9 @@ const withVars = (vars: Readonly<Record<string, string>>): Env =>
 const insertActor = (uri: string, createdAt: string = OLD) =>
   env.DB.prepare(
     `INSERT INTO remote_actors
-       (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at, created_at)
-     VALUES (?, 'u', 'remote.example', ?, ?, 'pem', ?, ?)`,
-  ).bind(uri, `${uri}/inbox`, `${uri}#key`, createdAt, createdAt);
+       (actor_uri, username, domain, inbox_uri, fetched_at, created_at)
+     VALUES (?, 'u', 'remote.example', ?, ?, ?)`,
+  ).bind(uri, `${uri}/inbox`, createdAt, createdAt);
 
 type SeedStatus = Readonly<{
   id: string;

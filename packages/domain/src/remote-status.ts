@@ -10,8 +10,7 @@ import type { StatusLanguage } from "./status-quote-target";
 
 /**
  * A remote note's attachment. The blurhash, the size and the focus point are
- * what the note declares; each is absent when the note has none that reads,
- * and on a row written before they were kept.
+ * what the note declares; each is absent when the note has none that reads.
  */
 export const RemoteAttachmentSchema = z.object({
   url: z.url(),

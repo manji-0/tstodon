@@ -8,24 +8,17 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param name
  * @param fromAfterId
  * @param toAfterId
- * @param completedAt
  */
 export const advanceBackfillCursor = $runtime.makeTypedQueryFactory(
-  "UPDATE backfill_cursors SET after_id = $3, completed_at = $4\nWHERE name = $1 AND after_id = $2 AND completed_at IS NULL\nRETURNING name",
+  "UPDATE backfill_cursors SET after_id = $3\nWHERE name = $1 AND after_id = $2\nRETURNING name",
 ) as (
   name: string,
   fromAfterId: string,
   toAfterId: string,
-  completedAt: string | null,
 ) => $runtime.TypedSql<advanceBackfillCursor.Parameters, advanceBackfillCursor.Result>;
 
 export namespace advanceBackfillCursor {
-  export type Parameters = [
-    name: string,
-    fromAfterId: string,
-    toAfterId: string,
-    completedAt: string | null,
-  ];
+  export type Parameters = [name: string, fromAfterId: string, toAfterId: string];
   export type Result = {
     name: string;
   };

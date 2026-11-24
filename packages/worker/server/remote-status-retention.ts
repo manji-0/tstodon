@@ -86,7 +86,7 @@ export const pruneStaleRemoteStatuses = async (
   const advance =
     nextId === afterId
       ? []
-      : [d1PrepareTyped(db, advanceBackfillCursorSql(CURSOR, afterId, nextId, null))];
+      : [d1PrepareTyped(db, advanceBackfillCursorSql(CURSOR, afterId, nextId))];
   const ran = await runD1Batch(
     db,
     last === undefined

@@ -267,8 +267,8 @@ describe("the media sweep", () => {
     await env.DB.batch(
       rows.map((row) =>
         env.DB.prepare(
-          `INSERT INTO media_attachments (id, account_id, object_key, content_type, created_at)
-           VALUES (?, ?, ?, 'image/png', ?)`,
+          `INSERT INTO media_attachments (id, account_id, object_key, content_type, created_at, file_size)
+           VALUES (?, ?, ?, 'image/png', ?, 0)`,
         ).bind(row.id, accountId, row.key, stamp),
       ),
     );

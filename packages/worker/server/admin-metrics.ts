@@ -30,9 +30,8 @@ import { err, ok, type Result } from "neverthrow";
  *   local accounts and remote actors;
  * - `instance_media_attachments` and the `media` entry of `space_usage`
  *   sum the byte sizes recorded for what tstodon stores in the `MEDIA`
- *   bucket (an object whose size is not recorded yet counts once
- *   `BackfillStoredMediaSizes` has read it). tstodon does not cache remote
- *   media, so the measure is 0 for any domain but this server's own;
+ *   bucket. tstodon does not cache remote media, so the measure is 0 for
+ *   any domain but this server's own;
  * - `sources` is every sign-up as `web`: accounts are created only by the
  *   web sign-in (Cloudflare Access), never by an app.
  */

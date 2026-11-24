@@ -4,10 +4,7 @@
 -- counted as `sumStoredMediaBytes` counts them, for the
 -- `instance_media_attachments` measure.
 SELECT substr(created_at, 1, 10) AS day,
-  SUM(
-    COALESCE(file_size, 0) + COALESCE(preview_file_size, 0)
-    + CASE WHEN legacy_object_key IS NULL THEN 0 ELSE COALESCE(file_size, 0) END
-  ) AS n
+  SUM(file_size + COALESCE(preview_file_size, 0)) AS n
 FROM media_attachments
 WHERE created_at >= $1 AND created_at < $2
 GROUP BY day

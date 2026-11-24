@@ -171,9 +171,9 @@ describe("D1 rows read do not grow with unrelated rows", () => {
            FROM series`,
         ).bind(noisy.id),
         env.DB.prepare(
-          `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+          `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
            VALUES ('https://flood.example/users/f', 'f', 'flood.example', 'https://flood.example/inbox',
-                   'https://flood.example/users/f#main-key', 'x', '2020-01-01T00:00:00.000Z')`,
+                   '2020-01-01T00:00:00.000Z')`,
         ),
         env.DB.prepare(
           `${series} INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json, tags_indexed)
@@ -319,9 +319,9 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       // Follows in both directions, newer than any noise, so the pages show them.
       const follows = (from: number) => [
         env.DB.prepare(
-          `${series(from)} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+          `${series(from)} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
            SELECT 'https://many.example/users/u' || n, 'u' || n, 'many.example', 'https://many.example/inbox',
-                  'https://many.example/users/u' || n || '#main-key', 'x', '2020-01-01T00:00:00.000Z'
+                  '2020-01-01T00:00:00.000Z'
            FROM series`,
         ),
         env.DB.prepare(
@@ -410,10 +410,9 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       const series = (n: number) =>
         `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${n})`;
       await env.DB.prepare(
-        `${series(actors)} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+        `${series(actors)} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
          SELECT printf('https://open%d.budget-blocks.example/users/a', n), 'a',
                 printf('open%d.budget-blocks.example', n), 'https://budget-blocks.example/inbox',
-                printf('https://open%d.budget-blocks.example/users/a#main-key', n), 'x',
                 '2026-11-01T00:00:00.000Z'
          FROM series`,
       ).run();
@@ -827,8 +826,8 @@ describe("D1 statements do not grow with how many things a request names", () =>
           Array.from({ length: emojis }, (_, n) => `${name}_${post}_${n}`);
         await env.DB.batch([
           env.DB.prepare(
-            `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
-             VALUES (?1, ?2, ?3, ?1 || '/inbox', ?1 || '#main-key', 'x', '2020-01-01T00:00:00.000Z')`,
+            `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
+             VALUES (?1, ?2, ?3, ?1 || '/inbox', '2020-01-01T00:00:00.000Z')`,
           ).bind(actorUri, name, domain),
           ...Array.from({ length: page }, (_, post) =>
             env.DB.prepare(

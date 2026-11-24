@@ -119,7 +119,7 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 
   Expected: an `id`, a `url` on `MEDIA_PUBLIC_BASE_URL`, a `preview_url` and a `blurhash` (the `IMAGES` binding works; a missing preview means `MediaImageNotProcessed` in the logs).
 
-- [ ] The stored file has no metadata: `curl -s "$(jq -r .url media.json)" -o stored.jpg && exiftool -gps:all -make stored.jpg` prints nothing. In D1, `SELECT metadata_stripped_at, file_size FROM media_attachments WHERE id = '<id>'` is set.
+- [ ] The stored file has no metadata: `curl -s "$(jq -r .url media.json)" -o stored.jpg && exiftool -gps:all -make stored.jpg` prints nothing. In D1, `SELECT file_size FROM media_attachments WHERE id = '<id>'` is the stored file's size.
 - [ ] Post it: `curl -s -H "Authorization: Bearer $TOKEN" -F status='launch check' -F "media_ids[]=$(jq -r .id media.json)" $O/api/v1/statuses | jq .url`, then open the post in the web UI; the image loads from the media hostname (no CORS error in the browser console).
 
 ### Web Push
@@ -153,7 +153,7 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 ### Crons and the queue consumer
 
 - [ ] After the next minute 17, the `cron` metric has a point for `17 * * * *` (query in the [runbook](./runbook.md#analytics-engine-metrics)), and `wrangler tail tstodon --format pretty` around that minute shows the scheduled event followed by queue batches.
-- [ ] `outbox.job.page` points appear for `ProcessExpiredPolls` (hourly) and, after the six-hourly run, `VacuumMediaAttachments`, `VacuumActivities` (also an `ActivityVacuumPass` log line), `StripStoredMediaMetadata`, `BackfillStoredMediaSizes`.
+- [ ] `outbox.job.page` points appear for `ProcessExpiredPolls` (hourly) and, after the six-hourly run, `VacuumMediaAttachments`, `VacuumActivities` (also an `ActivityVacuumPass` log line).
 - [ ] The queue backlog (dashboard: Queues → `tstodon-outbox-process`) drains to zero between runs.
 
 ### Backups and monitoring

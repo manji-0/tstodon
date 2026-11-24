@@ -17,19 +17,15 @@ const RemoteActorProfileSchema = z.object({
   profileUrl: z.url().nullable(),
   locked: z.boolean(),
   bot: z.boolean(),
-  /**
-   * The actor's `discoverable` and `indexable` flags. False on a profile
-   * stored before they were kept, as Mastodon reads an absent flag.
-   */
-  discoverable: z.boolean().default(false),
-  indexable: z.boolean().default(false),
+  /** The actor's `discoverable` and `indexable` flags. */
+  discoverable: z.boolean(),
+  indexable: z.boolean(),
   publishedAt: IsoInstant.schema.nullable(),
   /**
    * The profile fields, from the actor's `PropertyValue` attachments. `value`
-   * is the actor's HTML as sent: sanitise it before it is rendered. None on a
-   * profile stored before they were kept.
+   * is the actor's HTML as sent: sanitise it before it is rendered.
    */
-  fields: z.array(ProfileFieldSchema).default([]),
+  fields: z.array(ProfileFieldSchema),
 });
 
 export type RemoteActorProfile = z.infer<typeof RemoteActorProfileSchema>;

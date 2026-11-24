@@ -1,4 +1,4 @@
-import { type OutboxJob, StoredMediaMetadata, StoredMediaSizes } from "@tstodon/domain";
+import type { OutboxJob } from "@tstodon/domain";
 import { releaseStaleInboxClaims } from "./inbox-store";
 import { runOrQueue } from "./inline-job";
 import { writeMetric } from "./metrics";
@@ -75,17 +75,6 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Index the tags of remote statuses left to the backfill
   // (`tags_indexed = 0`); one empty read once none is left.
   { kind: "Inline", job: { kind: "BackfillRemoteTags" } },
-  // Index the tags of local notes written before `local_status_tags`; a
-  // single read once the cursor is complete.
-  { kind: "Inline", job: { kind: "BackfillLocalNoteTags" } },
-  // Rename the tag names stored before accents were folded; a single read
-  // once the cursor is complete.
-  { kind: "Inline", job: { kind: "FoldTagNames" } },
-  // Rename the domains stored in Unicode before they were read in ASCII; a
-  // single read once the cursor is complete.
-  { kind: "Inline", job: { kind: "AsciiDomainNames" } },
-  // Move attachments stored at an id-derived key to a random one.
-  { kind: "Inline", job: { kind: "RekeyLegacyMedia", afterId: "" } },
   // Queue one cleanup run per account with automated post deletion on.
   { kind: "Inline", job: { kind: "CleanUpStatuses" } },
   // Restart the severance of up to 5 suspended actors whose pages stalled;
@@ -123,31 +112,6 @@ export const SIX_HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // rows past their retention (Mastodon's `Vacuum::*` jobs run daily); one
   // indexed query per table when nothing is due.
   { kind: "Inline", job: { kind: "VacuumActivities" } },
-  // Record the byte size of objects stored before sizes were recorded (a HEAD
-  // each, no body read); once every size is known, one query that reads
-  // nothing.
-  {
-    kind: "Inline",
-    job: {
-      kind: "BackfillStoredMediaSizes",
-      source: "attachments",
-      afterId: "",
-      tally: StoredMediaSizes.emptyTally,
-    },
-  },
-  // Strip the metadata from media stored before stripping on upload; once
-  // every row is marked, one page that reads nothing. A page rewrites images,
-  // which can take a whole invocation's CPU time. Six-hourly, so a long first
-  // run is not joined by a second chain every hour.
-  {
-    kind: "Queued",
-    job: {
-      kind: "StripStoredMediaMetadata",
-      source: "attachments",
-      afterId: "",
-      tally: StoredMediaMetadata.emptyTally,
-    },
-  },
 ];
 
 const runJobs = async (env: Env, jobs: ReadonlyArray<CronJob>): Promise<void> => {

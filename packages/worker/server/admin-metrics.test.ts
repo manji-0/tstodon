@@ -130,17 +130,15 @@ describe("admin measures", () => {
 
   it("totals an instance's stored rows without a previous total", async () => {
     await env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
-       VALUES (?, 'alice', 'measured.example', ?, ?, 'pem', ?), (?, 'bob', 'sub.measured.example', ?, ?, 'pem', ?)`,
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
+       VALUES (?, 'alice', 'measured.example', ?, ?), (?, 'bob', 'sub.measured.example', ?, ?)`,
     )
       .bind(
         "https://measured.example/users/alice",
         "https://measured.example/inbox",
-        "https://measured.example/users/alice#key",
         new Date().toISOString(),
         "https://sub.measured.example/users/bob",
         "https://sub.measured.example/inbox",
-        "https://sub.measured.example/users/bob#key",
         new Date().toISOString(),
       )
       .run();

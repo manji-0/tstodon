@@ -101,10 +101,9 @@ export const listAccountProfiles = async (
 };
 
 /**
- * The byte sizes of avatar and header images uploaded with this write. A new
- * key takes its size from here (null: not known, for the size backfill); a
- * key the profile already holds keeps its recorded size; a removed image
- * drops its size.
+ * The byte sizes of avatar and header images uploaded with this write (null:
+ * none uploaded). A new key takes its size from here; a key the profile
+ * already holds keeps its recorded size; a removed image drops its size.
  */
 export type ProfileImageSizes = Readonly<{ avatar: number | null; header: number | null }>;
 
