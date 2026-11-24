@@ -32,7 +32,8 @@ import {
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
 import { departedAccountActivityStatements } from "./outbox-store";
-import { emptyRemoteActorContentSql, findRemoteActorByUri } from "./remote-actor-store";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import { emptyRemoteActorContentSql } from "./suspended-actor-content";
 import { announceRemovedBoosts } from "./home-fan-out";
 import { removedBoostsFromRows } from "./removed-boost";
 import { runTypedBatch } from "./typed-sql";

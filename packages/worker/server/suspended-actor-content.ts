@@ -3,18 +3,28 @@ import type { Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
 import { jsonStringArray, parseRows, type RepositoryError, runD1 } from "./d1";
+import {
+  listLocalBoostsOfRemoteActor,
+  purgeRemoteActorConversationHides,
+  purgeRemoteActorConversationReads,
+  purgeRemoteActorNotificationDismissals,
+  purgeRemoteActorNotifications,
+  purgeRemoteActorRequestGroups,
+  purgeRemoteActorStatusMutes,
+} from "./generated/prisma/sql";
 import { announceRemovedBoosts } from "./home-fan-out";
 import { measureJobPage } from "./metrics";
 import { RemoteAccountId } from "./remote-account-id";
 import { removedBoostsFromRows } from "./removed-boost";
+import type { TypedSqlLike } from "./typed-sql";
 
 /**
- * The content a domain suspension's actors had when it was recorded
+ * What a domain suspension's actors had when it was recorded
  * (`remote_actor_content_purges`, migration 0176), deleted in bounded queued
  * pages, as Mastodon's `BlockDomainService#suspend_accounts!` runs
  * `DeleteAccountService` with `reserve_username` on each account: what
- * `emptyRemoteActorContentSql` empties for one actor, a page at a time. One
- * chain runs at a time, holding the lease
+ * {@link emptyRemoteActorContentSql} empties for one actor, a page at a time.
+ * One chain runs at a time, holding the lease
  * (`remote_actor_content_purge_lease`) that each page stamps.
  */
 
@@ -33,13 +43,23 @@ export const SUSPENDED_CONTENT_BOOST_PAGE = 20;
 /** A lease no page stamped for this long belongs to a chain that stopped; another takes it. */
 const LEASE_STALE_MINUTES = 10;
 
-/** The content an actor owns, by the table and the column naming the actor. */
+/**
+ * The rows a suspension deletes of an actor, by the table and the column
+ * naming the actor: the content it owns; the blocks, mutes and endorsements
+ * local accounts hold of it (`blocked_by_relationships`,
+ * `muted_by_relationships`, and the endorsements `Follow#remove_endorsements`
+ * takes with its follows); and its blocks of them (`block_relationships`).
+ */
 const OWNED = [
   { table: "remote_statuses", actor: "actor_uri" },
   { table: "notifications", actor: "from_actor_uri" },
   { table: "remote_boosts", actor: "actor_uri" },
   { table: "remote_announces", actor: "remote_actor_uri" },
   { table: "remote_favourites", actor: "remote_actor_uri" },
+  { table: "blocks", actor: "target_actor_uri" },
+  { table: "mutes", actor: "target_actor_uri" },
+  { table: "endorsements", actor: "target_actor_uri" },
+  { table: "remote_blocks", actor: "actor_uri" },
 ] as const satisfies ReadonlyArray<{ table: string; actor: string }>;
 
 type Owned = (typeof OWNED)[number];
@@ -60,7 +80,45 @@ const pendingRowsSql = (owned: Owned, column: "rowid" | "id"): string =>
 const hasPendingSql = (owned: Owned): string =>
   `EXISTS (SELECT 1 FROM ${owned.table} t WHERE ${storedBy(owned)})`;
 
-const [STATUSES, NOTIFICATIONS, ...ENGAGEMENTS] = OWNED;
+/** The rows with nothing of their own to delete first: each goes by its rowid. */
+const [STATUSES, NOTIFICATIONS, ...PLAIN] = OWNED;
+
+/**
+ * Mastodon's `purge_profile!`: the cached profile goes until a later fetch
+ * of the actor writes it again.
+ */
+const PURGED_PROFILE = `display_name = '', profile_json = json_set(profile_json,
+  '$.note', '', '$.avatarUrl', NULL, '$.headerUrl', NULL, '$.fields', json('[]'),
+  '$.emojis', json('[]'), '$.locked', json('false'), '$.discoverable', json('false'))`;
+
+/**
+ * The statements that empty a remote actor and keep it, as Mastodon's
+ * `BlockDomainService` runs `DeleteAccountService` with `reserve_username`
+ * on each account a suspension suspends: the rows of {@link OWNED} (its
+ * statuses with their tags, mentions and local boosts by cascade), the
+ * thread mutes and conversation marks on its statuses, the requests its
+ * notifications made (`NotificationRequest.where(from_account:)`; the
+ * acceptances, Mastodon's `NotificationPermission`s, stay with the kept
+ * account), its featured hashtags and its profile. The first one lists the
+ * local boosts of its statuses, which go with them.
+ * `PurgeSuspendedActorContent` deletes the same, in pages.
+ */
+export const emptyRemoteActorContentSql = (actorUri: string): ReadonlyArray<TypedSqlLike> => [
+  listLocalBoostsOfRemoteActor(actorUri),
+  purgeRemoteActorStatusMutes(actorUri),
+  purgeRemoteActorConversationReads(actorUri),
+  purgeRemoteActorConversationHides(actorUri),
+  purgeRemoteActorNotificationDismissals(actorUri),
+  purgeRemoteActorNotifications(actorUri),
+  purgeRemoteActorRequestGroups(RemoteAccountId.encode(actorUri)),
+  ...PLAIN.map((owned) => ({
+    sql: `DELETE FROM ${owned.table} WHERE ${owned.actor} = $1`,
+    values: [actorUri],
+  })),
+  { sql: `DELETE FROM ${STATUSES.table} WHERE ${STATUSES.actor} = $1`, values: [actorUri] },
+  { sql: "DELETE FROM remote_featured_tags WHERE actor_uri = $1", values: [actorUri] },
+  { sql: `UPDATE remote_actors SET ${PURGED_PROFILE} WHERE actor_uri = $1`, values: [actorUri] },
+];
 
 /** The local boosts of up to `?1` pending statuses, up to `?2`. */
 const pendingBoostsSql = `SELECT id FROM statuses
@@ -88,11 +146,13 @@ type Page = Readonly<{ boosts: ReadonlyArray<RemovedBoost>; left: boolean }>;
  * Delete the next page: up to {@link SUSPENDED_CONTENT_BOOST_PAGE} local
  * boosts of up to {@link SUSPENDED_CONTENT_PAGE} statuses, the statuses
  * with none left (and the thread mutes and conversation marks on them), as
- * many notifications sent (with their dismissals), and of each kind of boost,
- * favourite and announce, then the purges that had nothing left, with the
- * notification requests their actors' notifications made. The rows are read
- * first, so each statement of the batch names the same rows. Stamps the
- * lease, and gives it back once no purge is left.
+ * many notifications sent (with their dismissals), and as many rows of each
+ * other kind of {@link OWNED}, then the purges that had nothing left, with
+ * the notification requests their actors' notifications made, and the
+ * featured hashtags and profile of each of those actors not fetched since
+ * its purge's `before`. The rows are read first, so each statement of the
+ * batch names the same rows. Stamps the lease, and gives it back once no
+ * purge is left.
  */
 const purgePage = (db: D1Database): Promise<Result<Page, RepositoryError>> =>
   runD1(async () => {
@@ -106,6 +166,16 @@ const purgePage = (db: D1Database): Promise<Result<Page, RepositoryError>> =>
       jsonStringArray(parseRows(IdRow, rows?.results).map((row) => row.id));
     const finished = parseRows(FinishedRow, finishedRows?.results);
     const statuses = ids(statusRows);
+    const finishedJson = JSON.stringify(
+      finished.map((row) => ({
+        actorUri: row.actor_uri,
+        accountId: RemoteAccountId.encode(row.actor_uri),
+        before: row.before,
+      })),
+    );
+    const unfetchedSince = `SELECT a.actor_uri FROM json_each(?) f
+      CROSS JOIN remote_actors a ON a.actor_uri = json_extract(f.value, '$.actorUri')
+        AND julianday(a.fetched_at) <= julianday(json_extract(f.value, '$.before'))`;
     const inJson = "IN (SELECT value FROM json_each(?))";
     const unboosted = `IN (SELECT value FROM json_each(?) j
       WHERE NOT EXISTS (SELECT 1 FROM statuses b WHERE b.reblog_of_remote_id = j.value))`;
@@ -130,7 +200,7 @@ const purgePage = (db: D1Database): Promise<Result<Page, RepositoryError>> =>
         .prepare(`DELETE FROM notification_dismissals WHERE notification_id ${inJson}`)
         .bind(ids(notificationRows)),
       db.prepare(`DELETE FROM notifications WHERE id ${inJson}`).bind(ids(notificationRows)),
-      ...ENGAGEMENTS.map((owned) =>
+      ...PLAIN.map((owned) =>
         db
           .prepare(`DELETE FROM ${owned.table} WHERE rowid IN (${pendingRowsSql(owned, "rowid")})`)
           .bind(SUSPENDED_CONTENT_PAGE),
@@ -144,14 +214,13 @@ const purgePage = (db: D1Database): Promise<Result<Page, RepositoryError>> =>
                AND julianday(g.created_at) <= julianday(json_extract(f.value, '$.before'))
            )`,
         )
-        .bind(
-          JSON.stringify(
-            finished.map((row) => ({
-              accountId: RemoteAccountId.encode(row.actor_uri),
-              before: row.before,
-            })),
-          ),
-        ),
+        .bind(finishedJson),
+      db
+        .prepare(`DELETE FROM remote_featured_tags WHERE actor_uri IN (${unfetchedSince})`)
+        .bind(finishedJson),
+      db
+        .prepare(`UPDATE remote_actors SET ${PURGED_PROFILE} WHERE actor_uri IN (${unfetchedSince})`)
+        .bind(finishedJson),
       db
         .prepare(
           `DELETE FROM remote_actor_content_purges WHERE rowid IN (

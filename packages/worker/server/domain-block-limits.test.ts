@@ -1095,6 +1095,264 @@ const purgeRows = async (actorUri: string): Promise<number> => {
   return z.object({ n: z.number() }).parse(row).n;
 };
 
+const Held = z.object({
+  blocking: z.boolean(),
+  muting: z.boolean(),
+  blocked_by: z.boolean(),
+});
+
+/** What the viewer and the actor hold of each other, as the viewer's relationship and lists show it. */
+const heldOf = async (actorUri: string) => {
+  const id = RemoteAccountId.encode(actorUri);
+  const response = await viewerFetch(`/api/v1/accounts/relationships?id[]=${id}`);
+  expect(response.status).toBe(200);
+  const [relationship] = z.array(Held).parse(await response.json());
+  const listed = async (path: string): Promise<boolean> => {
+    const page = await viewerFetch(path);
+    expect(page.status).toBe(200);
+    return z
+      .array(z.object({ id: z.string() }))
+      .parse(await page.json())
+      .some((account) => account.id === id);
+  };
+  return {
+    ...relationship,
+    listed: {
+      blocks: await listed("/api/v1/blocks"),
+      mutes: await listed("/api/v1/mutes"),
+      endorsements: await listed("/api/v1/endorsements"),
+    },
+  };
+};
+
+const NOTHING_HELD = {
+  blocking: false,
+  muting: false,
+  blocked_by: false,
+  listed: { blocks: false, mutes: false, endorsements: false },
+};
+
+/** The viewer blocks, mutes and endorses the actor, and the actor blocks the viewer. */
+const heldBothWays = async (actor: Remote): Promise<void> => {
+  const me = await viewerFetch("/api/v1/accounts/verify_credentials");
+  const { username } = z.object({ username: z.string() }).parse(await me.json());
+  expect(
+    await actor.send({
+      id: `${actor.actorUri}#blocks/viewer`,
+      type: "Block",
+      object: `https://example.com/users/${username}`,
+    }),
+  ).toBe(202);
+  const id = RemoteAccountId.encode(actor.actorUri);
+  for (const action of ["endorse", "mute", "block"]) {
+    expect((await viewerFetch(`/api/v1/accounts/${id}/${action}`, { method: "POST" })).status).toBe(
+      200,
+    );
+  }
+  expect(await heldOf(actor.actorUri)).toEqual({
+    blocking: true,
+    muting: true,
+    blocked_by: true,
+    listed: { blocks: true, mutes: true, endorsements: true },
+  });
+};
+
+const ShownProfile = z.object({
+  display_name: z.string(),
+  note: z.string(),
+  fields: z.array(z.object({ name: z.string() })),
+  avatar: z.string(),
+  header: z.string(),
+});
+
+/** `GET /api/v1/accounts/:id`'s profile of the actor. */
+const shownProfile = async (actorUri: string) => {
+  const response = await SELF.fetch(
+    `https://example.com/api/v1/accounts/${RemoteAccountId.encode(actorUri)}`,
+  );
+  expect(response.status).toBe(200);
+  return ShownProfile.parse(await response.json());
+};
+
+/** A cached actor with a full profile; called again, a fetch of it. */
+const profiledActor = (domain: string): Promise<Remote> =>
+  remoteActor("profiled", domain, {
+    note: "hello from afar",
+    avatarUrl: `https://${domain}/avatar.png`,
+    headerUrl: `https://${domain}/header.png`,
+    fields: [{ name: "Site", value: "elsewhere" }],
+  });
+
+const expectFullProfile = async (domain: string, actorUri: string): Promise<void> => {
+  expect(await shownProfile(actorUri)).toMatchObject({
+    display_name: "Remote profiled",
+    note: expect.stringContaining("hello from afar"),
+    fields: [{ name: "Site" }],
+    avatar: `https://${domain}/avatar.png`,
+    header: `https://${domain}/header.png`,
+  });
+};
+
+const expectPurgedProfile = async (domain: string, actorUri: string): Promise<void> => {
+  const shown = await shownProfile(actorUri);
+  expect(shown).toMatchObject({ display_name: "", note: "", fields: [] });
+  expect(shown.avatar).not.toBe(`https://${domain}/avatar.png`);
+  expect(shown.header).not.toBe(`https://${domain}/header.png`);
+};
+
+const heldRows = async (actorUri: string) => {
+  const row = await env.DB.prepare(
+    `SELECT (SELECT count(*) FROM blocks WHERE target_actor_uri = ?1) AS blocks,
+            (SELECT count(*) FROM mutes WHERE target_actor_uri = ?1) AS mutes,
+            (SELECT count(*) FROM endorsements WHERE target_actor_uri = ?1) AS endorsements`,
+  )
+    .bind(actorUri)
+    .first();
+  return z.object({ blocks: z.number(), mutes: z.number(), endorsements: z.number() }).parse(row);
+};
+
+/**
+ * Mastodon v4.7.5's `DeleteAccountService` with `reserve_username` also
+ * deletes what local accounts hold of the account (`blocked_by_relationships`,
+ * `muted_by_relationships`, and the endorsements its follows' removal takes,
+ * `Follow#remove_endorsements`) and its blocks of them
+ * (`block_relationships`), and clears its profile (`purge_profile!`) until a
+ * later fetch fills it again. None of it comes back when the block is
+ * lifted.
+ */
+describe("what local accounts held of an actor a domain suspension emptied", () => {
+  it.each([
+    ["changed to a noop", "held-noop.example", (id: string) => changeBlock(id, "noop")],
+    ["removed", "held-gone.example", unblock],
+  ])("stays gone when the block is %s", async (_, domain, lift) => {
+    const actor = await remoteActor("plain", domain);
+    await heldBothWays(actor);
+    const id = await block(domain, "suspend");
+
+    await lift(id);
+
+    expect(await heldOf(actor.actorUri)).toEqual(NOTHING_HELD);
+  });
+
+  it("leaves its profile empty after a lift until it is fetched again", async () => {
+    const domain = "held-profile.example";
+    const actor = await profiledActor(domain);
+    await expectFullProfile(domain, actor.actorUri);
+    const id = await block(domain, "suspend");
+
+    await changeBlock(id, "noop");
+
+    expect(await accountById(actor.actorUri)).toBe("Shown");
+    await expectPurgedProfile(domain, actor.actorUri);
+    await profiledActor(domain);
+    await expectFullProfile(domain, actor.actorUri);
+  });
+
+  it("is emptied by the hourly sweep for a suspension recorded before", async () => {
+    const domain = "held-old.example";
+    const actor = await profiledActor(domain);
+    await heldBothWays(actor);
+    const id = "held-old-block";
+    await recordedSuspension(id, domain, [actor.actorUri]);
+
+    await hourlySweep();
+    await changeBlock(id, "noop");
+
+    expect(await heldOf(actor.actorUri)).toEqual(NOTHING_HELD);
+    await expectPurgedProfile(domain, actor.actorUri);
+  });
+
+  it("is emptied by an admin's unsuspension of an actor whose purge has not run", async () => {
+    const domain = "held-lift.example";
+    const actor = await profiledActor(domain);
+    await heldBothWays(actor);
+    await recordedSuspension("held-lift-block", domain, [actor.actorUri]);
+
+    expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
+
+    expect(await heldOf(actor.actorUri)).toEqual(NOTHING_HELD);
+    await expectPurgedProfile(domain, actor.actorUri);
+  });
+
+  it(
+    "deletes many blocks, mutes and endorsements of it in bounded queue pages",
+    { timeout: 60_000 },
+    async () => {
+      const domain = "held-many.example";
+      const actor = await remoteActor("many", domain);
+      const count = SUSPENDED_CONTENT_PAGE * 2 + 7;
+      const series = `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?2)`;
+      const holders = `SELECT 'held-many-' || n, ?1 FROM series`;
+      await env.DB.batch([
+        env.DB.prepare(
+          `${series}
+           INSERT INTO accounts (id, username, access_email, display_name, public_key_pem, private_key_jwk)
+           SELECT 'held-many-' || n, 'heldmany' || n, 'held-many-' || n || '@example.com', '', '', ''
+           FROM series WHERE ?1 IS NOT NULL`,
+        ).bind(actor.actorUri, count),
+        ...[
+          "blocks (blocker_account_id, target_actor_uri)",
+          "mutes (account_id, target_actor_uri)",
+          "endorsements (account_id, target_actor_uri)",
+        ].map((into) =>
+          env.DB.prepare(`${series} INSERT INTO ${into} ${holders}`).bind(actor.actorUri, count),
+        ),
+      ]);
+      expect(await heldRows(actor.actorUri)).toEqual({
+        blocks: count,
+        mutes: count,
+        endorsements: count,
+      });
+      patchD1();
+      const queued = holdQueue();
+      let most = 0;
+      try {
+        const response = await adminFetch("/api/v1/admin/domain_blocks", "POST", {
+          domain,
+          severity: "suspend",
+        });
+        expect(response.status).toBe(200);
+        most = await drainHeld(queued, ["RecordDomainBlockLimits"]);
+        // One page deletes one page of each and queues the next.
+        expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
+        const left = count - SUSPENDED_CONTENT_PAGE;
+        expect(await heldRows(actor.actorUri)).toEqual({
+          blocks: left,
+          mutes: left,
+          endorsements: left,
+        });
+        most = Math.max(most, await drainHeld(queued, ["PurgeSuspendedActorContent"]));
+      } finally {
+        queued.release();
+      }
+
+      expect(await heldRows(actor.actorUri)).toEqual({ blocks: 0, mutes: 0, endorsements: 0 });
+      expect(await purgeRows(actor.actorUri)).toBe(0);
+      expect(most, `one queue invocation made ${most} statements`).toBeLessThan(
+        QUEUE_INVOCATION_BUDGET,
+      );
+    },
+  );
+
+  it("keeps a block made after the suspension its purge was recorded by", async () => {
+    const actor = await remoteActor("plain", "held-after.example");
+    await env.DB.prepare(
+      "INSERT INTO remote_actor_content_purges (actor_uri, before) VALUES (?, ?)",
+    )
+      .bind(actor.actorUri, "2026-01-01T00:00:00.000Z")
+      .run();
+    const id = RemoteAccountId.encode(actor.actorUri);
+    expect((await viewerFetch(`/api/v1/accounts/${id}/block`, { method: "POST" })).status).toBe(
+      200,
+    );
+
+    expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
+
+    expect(await purgeRows(actor.actorUri)).toBe(0);
+    expect(await heldOf(actor.actorUri)).toMatchObject({ blocking: true });
+  });
+});
+
 // `ActivityPub::ProcessAccountService#create_account` sets `suspended_at` /
 // `silenced_at` from `DomainBlock.rule_for(@domain)`, and a narrower rule
 // made later leaves them. Under a silence or suspension, the admin API makes

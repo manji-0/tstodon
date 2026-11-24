@@ -69,6 +69,10 @@ export const remoteActor = async (
     profileUrl?: string;
     /** Its profile fields, `value` as the actor's HTML. */
     fields?: ReadonlyArray<Readonly<{ name: string; value: string }>>;
+    /** Its note, avatar and header, none by default. */
+    note?: string;
+    avatarUrl?: string;
+    headerUrl?: string;
   }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}${options.path ?? `/users/${username}`}`;
@@ -91,6 +95,9 @@ export const remoteActor = async (
     displayName: `Remote ${username}`,
     profile: {
       ...RemoteActor.emptyProfile,
+      note: options.note ?? "",
+      avatarUrl: options.avatarUrl ?? null,
+      headerUrl: options.headerUrl ?? null,
       publishedAt: published?.unwrapOr(null) ?? null,
       profileUrl: options.profileUrl ?? null,
       fields: [...(options.fields ?? [])],
