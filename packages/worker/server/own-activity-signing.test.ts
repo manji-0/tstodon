@@ -303,10 +303,27 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
   });
 
   it("costs one more D1 statement, once per activity", async () => {
+    // No delivery Workflow starts: one started at the enqueue would sign the
+    // activity again after the rotation before the metered delivery does.
+    const unstarted: Env = {
+      ...env,
+      OUTBOX_DELIVERY_WORKFLOW: new Proxy(env.OUTBOX_DELIVERY_WORKFLOW, {
+        get: (target, key) =>
+          key === "create"
+            ? async (options: Readonly<{ id: string }>) => ({ id: options.id })
+            : Reflect.get(target, key),
+      }),
+    };
     const queue = async (email: string) => {
       const account = await signedInAccount(email);
       (
-        await enqueueTargetedActivity(env, account, "Announce", ownBoost(account.username), INBOX)
+        await enqueueTargetedActivity(
+          unstarted,
+          account,
+          "Announce",
+          ownBoost(account.username),
+          INBOX,
+        )
       )._unsafeUnwrap();
       const id = (await listOutboundActivities(env.DB, account.id, 1))._unsafeUnwrap()[0]?.id;
       if (id === undefined) {
