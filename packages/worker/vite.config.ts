@@ -5,7 +5,7 @@
 import path from "node:path";
 import { voidPlugin } from "void";
 import { defineConfig, mergeConfig } from "vite-plus";
-import { exportEntryClasses, queueConsumerOptions } from "./void-plugins";
+import { exportEntryClasses, queueDeadLetterQueues } from "./void-plugins";
 import {
   buildClientFirst,
   upstreamAssets,
@@ -15,9 +15,9 @@ import {
 } from "./web-build";
 
 // The two-instance e2e harness (`process-compose.yaml`) runs one `vp dev` per
-// instance, each with its own Worker config (`CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH`,
-// read by the Cloudflare plugin Void wraps), local state, and Vite cache.
-// `TSTODON_PERSIST_TO` is relative to the repository root.
+// instance, each with its own Worker config (`TSTODON_WRANGLER_CONFIG`, read by
+// `void.config.ts`), local state, and Vite cache. `TSTODON_PERSIST_TO` is
+// relative to the repository root.
 const persistTo = process.env["TSTODON_PERSIST_TO"];
 const statePath = persistTo
   ? path.resolve(import.meta.dirname, "../..", persistTo)
@@ -39,13 +39,13 @@ const voidConfig = defineConfig({
   plugins: [
     upstreamAssets(),
     webManifest(builtClient ? { source: "build" } : {}),
-    // Local state stays where `wrangler ... --local -c packages/worker/wrangler.jsonc`
-    // reads and writes it. `void:migrations` applies app/db/migrations on `vp dev`
-    // to a fixed `.void/` database with its own `_void_migrations` table, not to
-    // the `DB` binding's file; local D1 is migrated with `pnpm db:migrate:local`.
+    // Local state stays where `wrangler ... --local --persist-to` reads and writes
+    // it. `void:migrations` would apply app/db/migrations on `vp dev` with its own
+    // `_void_migrations` table beside Wrangler's `d1_migrations`, which local,
+    // test and remote D1 all use; local D1 is migrated with `pnpm db:migrate:local`.
     ...voidPlugin({ persistTo: statePath }).filter((plugin) => plugin.name !== "void:migrations"),
     exportEntryClasses(),
-    queueConsumerOptions(),
+    queueDeadLetterQueues(),
   ],
 });
 

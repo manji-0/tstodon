@@ -6,7 +6,7 @@
     "dev": "vp -C packages/worker dev",
     "build": "vp -C packages/worker build",
     "preview": "vp -C packages/worker preview",
-    "deploy": "pnpm -C packages/worker exec void deploy --backend cloudflare",
+    "deploy": "pnpm -C packages/worker exec void deploy --platform cloudflare",
     "test": "vp -C packages/worker build && vp test run",
     "test:web": "vp -C packages/worker test run",
     "check": "vp check && node scripts/check-d1-type-arguments.mjs && node scripts/check-migrations.mjs",
@@ -15,8 +15,9 @@
     "lint": "vp lint . && node scripts/check-d1-type-arguments.mjs && node scripts/check-migrations.mjs",
     "fmt": "vp fmt .",
     "fmt:check": "vp fmt --check .",
-    "types:worker": "pnpm -C packages/worker exec wrangler types --env-interface Env",
-    "db:migrate:local": "pnpm -C packages/worker exec wrangler d1 migrations apply tstodon --local",
+    "types:worker": "node scripts/wrangler.mjs types --env-interface Env",
+    "db:migrate:local": "node scripts/wrangler.mjs d1 migrations apply tstodon --local",
+    "wrangler:worker": "node scripts/wrangler.mjs",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate --sql",
     "e2e:federation": "tsx e2e/federation-smoke.ts",
@@ -34,7 +35,7 @@
     "e2e:mastodon:probe": "tsx e2e/mastodon/probe.ts",
     "e2e:web": "node e2e/web/database.mjs && vp -C packages/worker build && playwright test -c e2e/web/playwright.config.ts",
     "e2e:up": "process-compose up",
-    "ci": "vp check && node scripts/check-d1-type-arguments.mjs && node scripts/check-migrations.mjs && pnpm typecheck:web && vp -C packages/worker build && vp test run && pnpm test:web && pnpm -C packages/worker exec wrangler deploy --dry-run"
+    "ci": "vp check && node scripts/check-d1-type-arguments.mjs && node scripts/check-migrations.mjs && pnpm typecheck:web && vp -C packages/worker build && vp test run && pnpm test:web && pnpm -C packages/worker exec wrangler deploy --dry-run --config dist/ssr/wrangler.json"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.9.0",

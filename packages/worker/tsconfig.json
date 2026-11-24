@@ -3,5 +3,8 @@
   "compilerOptions": {
     "types": ["@cloudflare/vitest-plugin/types"]
   },
-  "include": ["server", "app", "test", "worker-configuration.d.ts"]
+  "include": ["server", "app", "test", "worker-configuration.d.ts"],
+  // Its `void/env` types reference @cloudflare/workers-types, which clash with
+  // the runtime types in worker-configuration.d.ts; the root tsconfig checks it.
+  "exclude": ["app/env.ts"]
 }

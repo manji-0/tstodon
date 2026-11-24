@@ -1,7 +1,7 @@
 // The tstodon instance that pairs with a real Mastodon: https://tstodon.localhost
 // (app port 8791, behind the proxy in compose.yaml). Derived from
 // e2e/portless-a.wrangler.jsonc; its own D1 and R2 ids, state in .wrangler/e2e-mastodon.
-// BETTER_AUTH_SECRET is in the untracked .dev.vars beside this file. See README.md.
+// `vp dev` reads it through TSTODON_WRANGLER_CONFIG (start-tstodon.sh). See README.md.
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "tstodon-e2e-mastodon",

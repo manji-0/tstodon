@@ -16,22 +16,12 @@ persist=.wrangler/e2e-mastodon
 pnpm exec wrangler d1 migrations apply tstodon-e2e-mastodon --local \
   --config e2e/mastodon/tstodon.wrangler.jsonc --persist-to "$persist"
 
-# Void's dev fallback secret applies only on localhost and 127.0.0.1. The
-# Worker reads bindings, not this process's environment, so the secret goes
-# in the untracked `.dev.vars` beside the Worker config. So does secure mode:
-# `TSTODON_AUTHORIZED_FETCH=true ./start-tstodon.sh` (off by default).
-# Every other line of the file is kept.
-vars=$here/.dev.vars
-touch "$vars"
-if ! grep -q '^BETTER_AUTH_SECRET=' "$vars"; then
-  echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >>"$vars"
-fi
-{
-  grep -v '^AUTHORIZED_FETCH=' "$vars" || true
-  echo "AUTHORIZED_FETCH=${TSTODON_AUTHORIZED_FETCH:-false}"
-} >"$vars.tmp"
-mv "$vars.tmp" "$vars"
-export CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=../../e2e/mastodon/tstodon.wrangler.jsonc
+# Void's dev server supplies Better Auth's secret on any host. The Worker reads
+# its vars, not this process's environment, so secure mode
+# (`TSTODON_AUTHORIZED_FETCH=true ./start-tstodon.sh`, off by default) goes in
+# as a var override that packages/worker/void.config.ts applies.
+export TSTODON_WRANGLER_CONFIG=e2e/mastodon/tstodon.wrangler.jsonc
+export TSTODON_WRANGLER_VARS="{\"AUTHORIZED_FETCH\":\"${TSTODON_AUTHORIZED_FETCH:-false}\"}"
 export VOID_INSPECTOR_PORT=false
 export TSTODON_PERSIST_TO=$persist
 

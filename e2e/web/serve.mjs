@@ -49,7 +49,7 @@ const server = spawn(
     stdio: "inherit",
     env: {
       ...process.env,
-      CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: `../../${config}`,
+      TSTODON_WRANGLER_CONFIG: config,
       TSTODON_PERSIST_TO: state,
       TSTODON_WEB_CLIENT: "build",
       VOID_INSPECTOR_PORT: "false",

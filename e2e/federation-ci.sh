@@ -68,7 +68,7 @@ detach() {
 
 start() {
   local instance=$1 port=$2
-  CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH="../../e2e/$instance.wrangler.jsonc" \
+  TSTODON_WRANGLER_CONFIG="e2e/$instance.wrangler.jsonc" \
     VOID_INSPECTOR_PORT=false TSTODON_PERSIST_TO=".wrangler/e2e-$instance" \
     detach pnpm exec vp -C packages/worker dev --port "$port" --strictPort --host 127.0.0.1 \
     >"$logs/tstodon-$instance.log" 2>&1 &

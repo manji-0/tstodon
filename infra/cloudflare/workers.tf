@@ -1,4 +1,4 @@
-# Worker data-plane resources referenced by wrangler.jsonc bindings.
+# Worker data-plane resources the bindings under `cloudflare` in void.config.ts reference.
 # Durable Objects / Workflows / Analytics Engine stay owned by wrangler deploy.
 
 resource "cloudflare_d1_database" "tstodon" {

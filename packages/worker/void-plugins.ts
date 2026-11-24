@@ -1,5 +1,5 @@
 // Vite plugins that fill gaps in Void's Cloudflare build (see `vite.config.ts`).
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite-plus";
 import { z } from "zod";
@@ -11,7 +11,8 @@ const queuesDir = path.join(root, "app/queues");
 /**
  * Void generates the Worker entry (`.void/entry.ts`) and only exports its own
  * Durable Object classes from it. The Workflow and Durable Object classes that
- * `wrangler.jsonc` binds have to be exported from the same module, so append
+ * the Worker config (`cloudflare` in `void.config.ts`) binds have to be
+ * exported from the same module, so append
  * them to the generated entry. A Worker build that never saw that entry fails,
  * so a Void upgrade that moves it cannot ship a Worker without the classes.
  */
@@ -39,89 +40,97 @@ export const exportEntryClasses = (): Plugin => {
   };
 };
 
-// Same shape Void reads `maxBatchSize` / `maxRetries` with from a queue file.
-const MAX_CONCURRENCY = /export\s+const\s+maxConcurrency\s*=\s*(\d+)/;
+// Same shape Void reads `maxBatchSize` / `maxConcurrency` with from a queue file.
 const DEAD_LETTER_QUEUE = /export\s+const\s+deadLetterQueue\s*=\s*"([A-Za-z0-9-]+)"/;
 
-/** What a queue file declares that Void does not write itself. */
-type DeclaredConsumerOptions = Readonly<{
-  maxConcurrency: number | undefined;
-  deadLetterQueue: string | undefined;
-}>;
-
-/**
- * Per queue name, from `export const maxConcurrency = N` and
- * `export const deadLetterQueue = "name"` in `app/queues/<name>.ts`.
- */
-const declaredConsumerOptions = (): ReadonlyMap<string, DeclaredConsumerOptions> =>
+/** Per queue name, the `export const deadLetterQueue = "name"` of `app/queues/<name>.ts`. */
+const declaredDeadLetterQueues = (): ReadonlyMap<string, string | undefined> =>
   new Map(
     readdirSync(queuesDir)
       .filter((file) => /\.(m?ts|m?js)$/.test(file) && !file.startsWith("_"))
       .map((file) => {
         const source = readFileSync(path.join(queuesDir, file), "utf8");
-        const concurrency = source.match(MAX_CONCURRENCY)?.[1];
-        return [
-          file.replace(/\.[^.]+$/, ""),
-          {
-            maxConcurrency: concurrency ? Number(concurrency) : undefined,
-            deadLetterQueue: source.match(DEAD_LETTER_QUEUE)?.[1],
-          },
-        ] as const;
+        return [file.replace(/\.[^.]+$/, ""), source.match(DEAD_LETTER_QUEUE)?.[1]] as const;
       }),
   );
 
-const WranglerOutput = z.looseObject({
-  queues: z
-    .looseObject({
-      consumers: z.array(z.looseObject({ queue: z.string() })).optional(),
-    })
-    .optional(),
+const BuiltWranglerConfig = z.looseObject({
+  queues: z.looseObject({
+    consumers: z.array(z.looseObject({ queue: z.string() })),
+  }),
 });
+
+const BuiltWorkerConfig = z.looseObject({
+  triggers: z.array(z.looseObject({ type: z.string(), name: z.string().optional() })),
+});
+
+const failure = (message: string) => new Error(`tstodon:queue-dead-letter-queues: ${message}`);
+
+const readJson = <T>(file: string, schema: z.ZodType<T>): T => {
+  if (!existsSync(file)) {
+    throw failure(`${path.relative(root, file)} was not written; Void's build output moved`);
+  }
+  const parsed = schema.safeParse(JSON.parse(readFileSync(file, "utf8")));
+  if (!parsed.success) {
+    throw failure(`unexpected ${path.relative(root, file)} shape: ${parsed.error.message}`);
+  }
+  return parsed.data;
+};
 
 /**
  * Void writes each queue consumer from `app/queues/<name>.ts` but has no
- * `max_concurrency` or `dead_letter_queue` option. Read
- * `export const maxConcurrency = N` and `export const deadLetterQueue = "name"`
- * from the same file and set them on the consumer in the emitted
- * `wrangler.json`, so `wrangler deploy` applies them. A declared value
- * without a consumer fails the build, and so does a dead-letter queue that
- * has no consumer file of its own (its messages would sit unread).
+ * `dead_letter_queue` option. Read `export const deadLetterQueue = "name"`
+ * from the same file and set it on the consumer in both build outputs: the
+ * Cloudflare Build Output `void deploy` uploads
+ * (`.cloudflare/output/v1/workers/default/worker.config.json`) and the
+ * `dist/ssr/wrangler.json` the Worker tests and `wrangler deploy --dry-run`
+ * read. A declaration without a consumer fails the build, and so does a
+ * dead-letter queue that has no consumer file of its own (its messages would
+ * sit unread).
  */
-export const queueConsumerOptions = (): Plugin => ({
-  name: "tstodon:queue-consumer-options",
+export const queueDeadLetterQueues = (): Plugin => ({
+  name: "tstodon:queue-dead-letter-queues",
+  // With `order: "post"`, after Void's `void:cloudflare-build-output` (also
+  // `enforce: "post"`, earlier in the plugin list), which writes both files.
   enforce: "post",
-  generateBundle(_options, bundle) {
-    const asset = bundle["wrangler.json"];
-    if (asset?.type !== "asset" || typeof asset.source !== "string") {
-      return;
-    }
-    const parsed = WranglerOutput.safeParse(JSON.parse(asset.source));
-    if (!parsed.success) {
-      this.error(`unexpected wrangler.json shape: ${parsed.error.message}`);
-    }
-    const config = parsed.data;
-    const consumers = config.queues?.consumers ?? [];
-    const declared = declaredConsumerOptions();
-    for (const [queue, options] of declared) {
-      if (options.maxConcurrency === undefined && options.deadLetterQueue === undefined) {
-        continue;
-      }
-      const consumer = consumers.find((entry) => entry.queue === queue);
-      if (!consumer) {
-        this.error(`queues/${queue} declares consumer options but wrangler.json has no consumer`);
-      }
-      if (options.maxConcurrency !== undefined) {
-        consumer.max_concurrency = options.maxConcurrency;
-      }
-      if (options.deadLetterQueue !== undefined) {
-        if (!declared.has(options.deadLetterQueue) || options.deadLetterQueue === queue) {
-          this.error(
-            `queues/${queue} dead-letters to ${options.deadLetterQueue}, which has no queues/${options.deadLetterQueue}.ts consumer`,
+  buildApp: {
+    order: "post",
+    async handler() {
+      const declared = declaredDeadLetterQueues();
+      const deadLetters = [...declared].flatMap(([queue, deadLetterQueue]) =>
+        deadLetterQueue === undefined ? [] : [{ queue, deadLetterQueue }],
+      );
+      for (const { queue, deadLetterQueue } of deadLetters) {
+        if (!declared.has(deadLetterQueue) || deadLetterQueue === queue) {
+          throw failure(
+            `queues/${queue} dead-letters to ${deadLetterQueue}, which has no queues/${deadLetterQueue}.ts consumer`,
           );
         }
-        consumer.dead_letter_queue = options.deadLetterQueue;
       }
-    }
-    asset.source = JSON.stringify(config);
+
+      const workerConfigFile = path.join(
+        root,
+        ".cloudflare/output/v1/workers/default/worker.config.json",
+      );
+      const worker = readJson(workerConfigFile, BuiltWorkerConfig);
+      const wranglerFile = path.join(root, "dist/ssr/wrangler.json");
+      const wrangler = readJson(wranglerFile, BuiltWranglerConfig);
+
+      for (const { queue, deadLetterQueue } of deadLetters) {
+        const trigger = worker.triggers.find(
+          (entry) => entry.type === "queue" && entry.name === queue,
+        );
+        const consumer = wrangler.queues.consumers.find((entry) => entry.queue === queue);
+        if (!trigger || !consumer) {
+          throw failure(
+            `queues/${queue} declares a dead-letter queue but the build has no consumer for it`,
+          );
+        }
+        trigger.deadLetterQueue = deadLetterQueue;
+        consumer.dead_letter_queue = deadLetterQueue;
+      }
+      writeFileSync(workerConfigFile, JSON.stringify(worker));
+      writeFileSync(wranglerFile, `${JSON.stringify(wrangler, null, 2)}\n`);
+    },
   },
 });

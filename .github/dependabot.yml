@@ -11,13 +11,6 @@ updates:
           - minor
           - patch
     ignore:
-      # Void 0.10 to 1.x is a planned migration, not a routine bump. Every
-      # release after 0.10.13 (0.20 onward) also needs it: they read env values
-      # from `env.ts` and one `.env`, and refuse to build next to a `.dev.vars`.
-      - dependency-name: void
-        update-types:
-          - version-update:semver-minor
-          - version-update:semver-major
       # The browser e2e suite runs on the Chromium revision @playwright/test
       # 1.63.0 expects, the one preinstalled where it usually runs (see
       # docs/getting-started/e2e-web.md).

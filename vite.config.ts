@@ -127,6 +127,8 @@ export default defineConfig({
       ".void/**",
       "packages/worker/.void/**",
       "packages/worker/.wrangler/**",
+      "packages/worker/.cloudflare/**",
+      "packages/worker/.void-wrangler.jsonc",
       "pnpm-lock.yaml",
       "**/worker-configuration.d.ts",
       // As their generators write them (scripts/generate-post-text-*.mjs,
@@ -155,6 +157,7 @@ export default defineConfig({
       ".void/**",
       "packages/worker/.void/**",
       "packages/worker/.wrangler/**",
+      "packages/worker/.cloudflare/**",
       "e2e/instances/.wrangler/**",
       "**/worker-configuration.d.ts",
       // Prisma's generated client and TypedSQL modules cast internally.

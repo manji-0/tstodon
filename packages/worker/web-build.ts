@@ -237,6 +237,18 @@ export const webTransformPlugins = (): Promise<Plugin[]> =>
     optimizeLodashImports(),
   ]);
 
+/**
+ * `@vitejs/plugin-legacy` defines `import.meta.env.LEGACY` for every
+ * environment as a marker that only its client `renderChunk` replaces, so the
+ * Worker's `import.meta.env` (which Void's `void/env` runtime reads) would
+ * name an undefined `__VITE_IS_LEGACY__`. Outside the client it is `false`.
+ */
+const legacyFlagOutsideClient = (): Plugin => ({
+  name: "tstodon:legacy-flag-outside-client",
+  configEnvironment: (name) =>
+    name === "client" ? null : { define: { "import.meta.env.LEGACY": "false" } },
+});
+
 /** Keeps a plugin to the client environment: the Worker build never sees it. */
 const clientOnly = (plugin: Plugin): Plugin => ({
   ...plugin,
@@ -356,7 +368,9 @@ export const webClientConfig = async (): Promise<UserConfig> => ({
         ...(modernTargets ? { modernTargets } : {}),
       }),
     ])
-  ).map(clientOnly),
+  )
+    .map(clientOnly)
+    .concat(legacyFlagOutsideClient()),
 });
 
 // ---------------------------------------------------------------------------

@@ -11,8 +11,8 @@ import { handleQueue } from "#server/queue-handler";
 export const maxBatchSize = 1;
 export const maxBatchTimeout = 0;
 export const maxRetries = 3;
-// Not Void options: `queueConsumerOptions` in `void-plugins.ts` writes them.
 export const maxConcurrency = 2;
+// Not a Void option: `queueDeadLetterQueues` in `void-plugins.ts` writes it.
 export const deadLetterQueue = "tstodon-outbox-dlq";
 
 // Void types its `env` argument loosely; the module `env` carries the generated `Env`.
