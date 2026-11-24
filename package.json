@@ -37,21 +37,21 @@
     "ci": "vp check && node scripts/check-d1-type-arguments.mjs && node scripts/check-migrations.mjs && pnpm typecheck:web && vp -C packages/worker build && vp test run && pnpm test:web && pnpm -C packages/worker exec wrangler deploy --dry-run"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.4.5",
+    "@cloudflare/vitest-plugin": "1.9.0",
     "@playwright/test": "1.63.0",
     "@tstodon/api": "workspace:*",
     "@tstodon/core": "workspace:*",
     "@tstodon/domain": "workspace:*",
     "@types/node": "^26.6.6",
-    "jose": "^6.2.12",
+    "jose": "^6.2.18",
     "jsonld": "9.0.0",
     "neverthrow": "^8.2.0",
-    "prisma": "7.10.0",
+    "prisma": "7.10.1",
     "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vite-plus": "catalog:",
     "vitest": "catalog:",
-    "wrangler": "^4.151.2",
+    "wrangler": "^4.166.0",
     "zod": "^4.6.7"
   },
   "engines": {
