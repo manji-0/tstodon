@@ -42,7 +42,7 @@ The check now accepts the post when `Origin` equals the request origin after `X-
 
 `*.localhost` resolves to loopback. Wrangler dev allows that connection, which is how the loopback suite already fetches `127.0.0.1`. The fetch then hits the proxy and is routed by `Host`. Start each `vp dev` under portless so the child receives `NODE_EXTRA_CA_CERTS` (the CA is `~/.portless/ca.pem`) before Miniflare passes it to workerd. The e2e process is not that child. Node’s fetch uses its own CA bundle, so the test command sets `NODE_EXTRA_CA_CERTS` too. `portless trust` updates the OS store and does not by itself make Node trust the CA.
 
-`BETTER_AUTH_SECRET` is required. Void’s dev fallback applies only on `localhost` and `127.0.0.1` ([Authentication](../reference/configuration.md#authentication)). The Worker reads the secret as a binding, and a variable exported to the `vp dev` process is not one: without the binding every request is a 500 (`auth: Missing Better Auth secret`). Put a local value in `e2e/.dev.vars`, the file Wrangler reads beside `e2e/portless-a.wrangler.jsonc` and `e2e/portless-b.wrangler.jsonc`. Do not commit it, and do not put it in the wrangler files.
+No `BETTER_AUTH_SECRET` is needed: Void's dev server supplies a development one on any host ([Authentication](../reference/configuration.md#authentication)).
 
 If `HTTPS_PROXY` is set, outbound Worker fetches follow it and never reach loopback. `NO_PROXY` has to include the portless names.
 
@@ -63,12 +63,6 @@ Start the proxy (HTTPS on 443; a failed bind exits):
 portless proxy start
 ```
 
-Write the secret once. Both instances read this file:
-
-```sh
-echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > e2e/.dev.vars
-```
-
 Each `portless … vp dev` process stays in the foreground, so A and B are two terminals. A new terminal does not inherit the variables. In each terminal that starts an instance, source the example:
 
 ```sh
@@ -81,14 +75,14 @@ Instance A. `--app-port` is the port `vp dev` binds.
 
 ```sh
 portless --app-port 8791 a.tstodon -- \
-  env CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=../../e2e/portless-a.wrangler.jsonc \
+  env TSTODON_WRANGLER_CONFIG=e2e/portless-a.wrangler.jsonc \
       VOID_INSPECTOR_PORT=false \
       TSTODON_PERSIST_TO=.wrangler/e2e-a \
       NO_PROXY="$NO_PROXY" \
   pnpm exec vp -C packages/worker dev --port 8791 --strictPort --host 127.0.0.1
 ```
 
-Instance B, in the other terminal, after the same `source`: `b.tstodon`, port `8792`, `e2e/portless-b.wrangler.jsonc`, and `.wrangler/e2e-b`.
+Instance B, in the other terminal, after the same `source` and once A answers (each `vp dev` writes its config to `packages/worker/.void-wrangler.jsonc` while it starts): `b.tstodon`, port `8792`, `e2e/portless-b.wrangler.jsonc`, and `.wrangler/e2e-b`.
 
 In a third terminal, source the example again (the test process needs `NODE_EXTRA_CA_CERTS` and the `E2E_*` variables). Wait until both instances answer, then run a script. The scripts read `E2E_*_ORIGIN` and `E2E_*_DOMAIN`. Deliveries are matched on `B_DOMAIN`, so the same variables cover every `pnpm e2e:federation:*` script. `openStream` turns `https://` into `wss://`, and portless proxies WebSockets.
 
