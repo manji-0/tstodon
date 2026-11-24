@@ -280,7 +280,7 @@ describe("quoting a remote status", () => {
     socket.close();
   });
 
-  it("revokes the local quote a shared stamp approved, past a remote quote naming it too", async () => {
+  it("revokes only the first quote a shared stamp approved, as Mastodon's find_by", async () => {
     const email = "rq-shared-stamp-alice@example.com";
     const alice = await signedInAccount(email);
     const bob = await remoteActor("rq-shared-stamp-bob");
@@ -317,8 +317,16 @@ describe("quoting a remote status", () => {
       }),
     ).toBe(202);
 
-    expect((await quoteOf(email, quotingId)).state).toBe("revoked");
-    expect((await quoteOf(email, daveNote.id)).state).toBe("revoked");
+    // As Mastodon's `Delete#revoke_quote`, which revokes the one quote
+    // `Quote.find_by` gives: the first by id here.
+    const { results } = await env.DB.prepare(
+      "SELECT state FROM status_quotes WHERE status_id = ? OR remote_status_id = ? ORDER BY id",
+    )
+      .bind(quotingId, daveNote.id)
+      .all();
+    expect(read(z.array(z.object({ state: z.string() })), results).map((row) => row.state)).toEqual(
+      ["revoked", "accepted"],
+    );
   });
 
   it("revokes the quote when the quoted author deletes the stamp, keeping the note", async () => {

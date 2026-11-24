@@ -173,12 +173,14 @@ export const receiveQuoteAnswer = async (
 
 /**
  * The quoted author deleted the stamp of a quote, as Mastodon's
- * `Delete#revoke_quote`: every pending or accepted quote that stamp approved
- * is revoked, whether the quoting status is local or remote. A local quoting
- * status is announced on its author's streams. `body`, the `Delete` as
- * received, is forwarded to each quoting status's audience here
- * (`forwardInboundActivity`, Mastodon's `ActivityPub::Forwarder`). `false` when
- * `uri` is no stamp the signer gave, so the `Delete` is for something else.
+ * `Delete#revoke_quote`: the first pending or accepted quote (by id) that
+ * stamp approved and the signer was quoted in is revoked, whether the quoting
+ * status is local or remote, and only that one, as `Quote.find_by` gives one
+ * when several name the URI. A local quoting status is announced on its
+ * author's streams. `body`, the `Delete` as received, is forwarded once, to
+ * that quoting status's audience (`forwardInboundActivity`, Mastodon's
+ * `ActivityPub::Forwarder`). `false` when `uri` is no stamp the signer gave,
+ * so the `Delete` is for something else.
  */
 export const revokeQuoteStamp = async (
   env: Env,
@@ -191,7 +193,6 @@ export const revokeQuoteStamp = async (
   if (quotes.isErr()) {
     return err(quotes.error);
   }
-  let revoked = false;
   for (const quote of quotes.value) {
     if (quote.state.kind !== "Pending" && quote.state.kind !== "Accepted") {
       continue;
@@ -212,8 +213,7 @@ export const revokeQuoteStamp = async (
         signer,
         { kind: "Delete", body },
       );
-      revoked = true;
-      continue;
+      return ok(true);
     }
     if (quote.quoting.kind !== "RemoteStatus" || quote.quoted.kind !== "RemoteStatus") {
       continue;
@@ -245,7 +245,7 @@ export const revokeQuoteStamp = async (
         { kind: "Delete", body },
       );
     }
-    revoked = true;
+    return ok(true);
   }
-  return ok(revoked);
+  return ok(false);
 };
