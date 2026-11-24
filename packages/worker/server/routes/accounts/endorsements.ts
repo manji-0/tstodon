@@ -58,7 +58,7 @@ const setEndorsed = async (c: Context<{ Bindings: Env }>, endorse: boolean): Pro
   }
   const changed = endorse
     ? await endorseAccount(c.env.DB, user.value.id, target)
-    : await unendorseAccount(c.env.DB, user.value.id, targetId);
+    : await unendorseAccount(c.env.DB, user.value.id, target.accountId ?? target.actorUri);
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }

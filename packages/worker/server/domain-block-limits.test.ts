@@ -1099,6 +1099,7 @@ const purgeRows = async (actorUri: string): Promise<number> => {
 const Held = z.object({
   blocking: z.boolean(),
   muting: z.boolean(),
+  endorsed: z.boolean(),
   blocked_by: z.boolean(),
 });
 
@@ -1129,6 +1130,7 @@ const heldOf = async (actorUri: string) => {
 const NOTHING_HELD = {
   blocking: false,
   muting: false,
+  endorsed: false,
   blocked_by: false,
   listed: { blocks: false, mutes: false, endorsements: false },
 };
@@ -1156,6 +1158,7 @@ const heldBothWays = async (actor: Remote): Promise<void> => {
 const ALL_HELD = {
   blocking: true,
   muting: true,
+  endorsed: true,
   blocked_by: true,
   listed: { blocks: true, mutes: true, endorsements: true },
 };

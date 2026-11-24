@@ -5,6 +5,8 @@ import { ApiAccount, ApiRelationship } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
+import { remoteActor } from "../test/remote-actor-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
 
@@ -78,6 +80,42 @@ describe("endorsements", () => {
     expect(read(RelationshipSchema, unendorsed.body).endorsed).toBe(false);
     const after = await json("/api/v1/endorsements", { headers: await auth(viewer) });
     expect(read(z.array(ApiAccount), after.body)).toEqual([]);
+  });
+
+  it("endorses, lists, and unendorses a remote account", async () => {
+    const viewer = "endorse-remote-viewer@example.com";
+    const remote = await remoteActor("endorsed", "endorse-remote.example");
+    const targetId = RemoteAccountId.encode(remote.actorUri);
+    await accountIdFor(viewer);
+    const endorsedFlag = async (): Promise<boolean | undefined> => {
+      const relationships = await json(`/api/v1/accounts/relationships?id[]=${targetId}`, {
+        headers: await auth(viewer),
+      });
+      return read(z.array(RelationshipSchema), relationships.body)[0]?.endorsed;
+    };
+    const listed = async (): Promise<string[]> => {
+      const mine = await json("/api/v1/endorsements", { headers: await auth(viewer) });
+      expect(mine.status).toBe(200);
+      return read(z.array(ApiAccount), mine.body).map((a) => a.id);
+    };
+
+    const endorsed = await json(`/api/v1/accounts/${targetId}/endorse`, {
+      method: "POST",
+      headers: await auth(viewer),
+    });
+    expect(endorsed.status).toBe(200);
+    expect(read(RelationshipSchema, endorsed.body).endorsed).toBe(true);
+    expect(await endorsedFlag()).toBe(true);
+    expect(await listed()).toEqual([targetId]);
+
+    const unendorsed = await json(`/api/v1/accounts/${targetId}/unendorse`, {
+      method: "POST",
+      headers: await auth(viewer),
+    });
+    expect(unendorsed.status).toBe(200);
+    expect(read(RelationshipSchema, unendorsed.body).endorsed).toBe(false);
+    expect(await endorsedFlag()).toBe(false);
+    expect(await listed()).toEqual([]);
   });
 
   it("routes the pre-4.4 pin / unpin names to endorse / unendorse", async () => {
