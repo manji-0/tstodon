@@ -1,6 +1,7 @@
 import { schemaResult } from "@tstodon/core";
 import { IsoInstant, type RemoteEmoji, RemoteEmojiSchema } from "@tstodon/domain";
 import { z } from "zod";
+import { MAX_SHORTCODE_LENGTH, scannedShortcodes } from "./emoji";
 
 const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
 
@@ -44,10 +45,15 @@ const MAX_DECLARED = 50;
  * The custom emoji a note or an actor declares in the `Emoji` objects of its
  * `tag` (a list or one object), the first of each shortcode, case and all, as
  * Mastodon keeps one `CustomEmoji` per shortcode as written. A tag whose
- * image URL is longer than `MAX_EMOJI_URL_LENGTH` is left out, and those
- * past `MAX_DECLARED`.
+ * shortcode is longer than `MAX_SHORTCODE_LENGTH` or whose image URL is
+ * longer than `MAX_EMOJI_URL_LENGTH` is left out. Past `MAX_DECLARED`, those
+ * `texts` (what the document writes) do not use are left out first, so a
+ * hostile list of tags does not keep the emoji the document shows.
  */
-export const declaredEmojis = (raw: unknown): ReadonlyArray<RemoteEmoji> => {
+export const declaredEmojis = (
+  raw: unknown,
+  texts: ReadonlyArray<string>,
+): ReadonlyArray<RemoteEmoji> => {
   const seen = new Set<string>();
   const emojis: RemoteEmoji[] = [];
   for (const tag of tagEntries(raw)) {
@@ -56,6 +62,7 @@ export const declaredEmojis = (raw: unknown): ReadonlyArray<RemoteEmoji> => {
     if (
       tag.type !== "Emoji" ||
       !shortcode ||
+      shortcode.length > MAX_SHORTCODE_LENGTH ||
       !url ||
       url.length > MAX_EMOJI_URL_LENGTH ||
       seen.has(shortcode)
@@ -70,9 +77,10 @@ export const declaredEmojis = (raw: unknown): ReadonlyArray<RemoteEmoji> => {
     if (parsed.isOk()) {
       emojis.push(parsed.value);
     }
-    if (emojis.length === MAX_DECLARED) {
-      break;
-    }
   }
-  return emojis;
+  const used = new Set(scannedShortcodes(texts));
+  return [
+    ...emojis.filter((emoji) => used.has(emoji.shortcode)),
+    ...emojis.filter((emoji) => !used.has(emoji.shortcode)),
+  ].slice(0, MAX_DECLARED);
 };

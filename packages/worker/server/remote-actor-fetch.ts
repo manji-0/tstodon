@@ -28,6 +28,7 @@ import {
 import { ActorDocumentSchema, refId } from "./activitypub-wire";
 import { type PublishedKey, publishedKeys, resolvePublishedKeys } from "./actor-keys";
 import { actorFields } from "./remote-actor-fields";
+import { profileEmojiTexts } from "./emoji";
 import { declaredEmojis } from "./remote-emoji-document";
 import { recordProfileEmojis } from "./remote-emoji-record";
 import {
@@ -327,7 +328,7 @@ export const remoteActorFromDocument = (
   return ok({
     actor: actor.value,
     publishedKeys: keys.value,
-    emojis: declaredEmojis(raw),
+    emojis: declaredEmojis(raw, profileEmojiTexts(actor.value.displayName, actor.value.profile)),
     declaredHandle: declaredHandleOf(raw),
   });
 };

@@ -34,6 +34,15 @@ export const customEmojiJson = (emoji: CustomEmoji): ApiCustomEmojiJSON => ({
 });
 
 /**
+ * The longest shortcode a remote emoji is stored or looked up under:
+ * Mastodon's `CustomEmoji::MAX_SHORTCODE_SIZE`, which it holds its own emoji
+ * to. Its remote limit (`MAX_FEDERATED_SHORTCODE_SIZE`, 2048) is not kept: a
+ * page's lookup binds every shortcode its posts write, and a hostile post's
+ * would make it too large to run.
+ */
+export const MAX_SHORTCODE_LENGTH = 128;
+
+/**
  * Mastodon's `CustomEmoji::SCAN_RE`: two or more of `[a-zA-Z0-9_]` between
  * colons, with no letter, mark, digit or colon on either side (Onigmo's
  * `[[:alnum:]]` is Letter, Mark and Decimal_Number).

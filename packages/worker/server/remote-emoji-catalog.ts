@@ -1,7 +1,7 @@
 import type { ApiCustomEmojiJSON } from "@tstodon/api";
 import { z } from "zod";
 import { parseRows, runD1 } from "./d1";
-import { scannedShortcodes } from "./emoji";
+import { MAX_SHORTCODE_LENGTH, scannedShortcodes } from "./emoji";
 import { findRemoteCustomEmojis } from "./generated/prisma/sql";
 import { httpUrl } from "./sanitize-html";
 import { queryTyped } from "./typed-sql";
@@ -34,8 +34,11 @@ export type RemoteEmojiWriting = Readonly<{ domain: string; texts: ReadonlyArray
  */
 const MAX_DOCUMENT_SHORTCODES = 50;
 
+/** The shortcodes `texts` write that can name a stored emoji, the first {@link MAX_DOCUMENT_SHORTCODES}. */
 const shortcodesOf = (texts: ReadonlyArray<string>): ReadonlyArray<string> =>
-  scannedShortcodes(texts).slice(0, MAX_DOCUMENT_SHORTCODES);
+  scannedShortcodes(texts)
+    .filter((shortcode) => shortcode.length <= MAX_SHORTCODE_LENGTH)
+    .slice(0, MAX_DOCUMENT_SHORTCODES);
 
 const Row = z.object({ domain: z.string(), shortcode: z.string(), image_url: z.string() });
 

@@ -1,5 +1,6 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
+import { ok } from "neverthrow";
 import { z } from "zod";
 import {
   changeCustomEmoji,
@@ -82,6 +83,8 @@ const remoteEmojiKey = (value: string): RemoteEmojiKey | undefined => {
     : { domain: value.slice(0, slash), shortcode: value.slice(slash + 1) };
 };
 
+const keyText = (key: RemoteEmojiKey): string => `${key.domain}/${key.shortcode}`;
+
 const emojiFilter = (raw: Readonly<Record<string, string | undefined>>): EmojiFilter => {
   const parsed = schemaResult(EmojiFilterSchema)(raw);
   const value = parsed.isOk() ? parsed.value : EmojiFilterSchema.parse({});
@@ -108,7 +111,9 @@ const renderEmojis = async (
 ) => {
   const [rows, remote] = await Promise.all([
     listCustomEmojiRows(c.env.DB),
-    pageRemoteCustomEmojis(c.env.DB, filter, filter.after),
+    filter.location === "Local"
+      ? ok(undefined)
+      : pageRemoteCustomEmojis(c.env.DB, filter, filter.after),
   ]);
   if (rows.isErr()) {
     return serverError(c, rows.error);
@@ -116,14 +121,12 @@ const renderEmojis = async (
   if (remote.isErr()) {
     return serverError(c, remote.error);
   }
-  const { next } = remote.value;
-  const listing =
-    filter.location === "Local"
-      ? undefined
-      : {
-          entries: remote.value.entries,
-          next: next && `${next.domain}/${next.shortcode}`,
-        };
+  const page = remote.value;
+  const listing = page && {
+    after: filter.after === undefined ? "" : keyText(filter.after),
+    entries: page.entries,
+    next: page.next && keyText(page.next),
+  };
   const shortcode = filter.shortcode.toLowerCase();
   return c.html(
     emojisPage(
@@ -244,10 +247,18 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
         remote: textParts(parts, "remote")[0],
         by_domain: textParts(parts, "by_domain")[0],
         shortcode: textParts(parts, "shortcode")[0],
+        after: textParts(parts, "after")[0],
       });
+      // Back to the page the form was on.
+      const page: ReadonlyArray<readonly [string, string]> =
+        filter.after === undefined ? [] : [["after", keyText(filter.after)]];
       const keys = textParts(parts, "emoji").flatMap((key) => remoteEmojiKey(key) ?? []);
       if (keys.length === 0) {
-        return pageRedirect(c, emojiListPath(filter, [["notice", "no_emoji_selected"]]), 303);
+        return pageRedirect(
+          c,
+          emojiListPath(filter, [...page, ["notice", "no_emoji_selected"]]),
+          303,
+        );
       }
       const changed = await setRemoteCustomEmojisDisabled(c.env.DB, keys, value.do === "disable");
       if (changed.isErr()) {
@@ -256,6 +267,7 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
       return pageRedirect(
         c,
         emojiListPath(filter, [
+          ...page,
           ["notice", value.do === "disable" ? "emojis_disabled" : "emojis_enabled"],
         ]),
         303,

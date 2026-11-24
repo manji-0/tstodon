@@ -2,6 +2,7 @@ import { RemoteActor, type RemoteEmoji, type RemoteStatusValue } from "@tstodon/
 import { mediaRejectedDomains } from "./admin-domain-block-store";
 import { runD1 } from "./d1";
 import { declaredEmojis } from "./remote-emoji-document";
+import { remoteStatusEmojiTexts } from "./remote-status-document";
 
 /**
  * The custom emoji of a remote server, as Mastodon v4.7.5 stores them: one
@@ -69,12 +70,15 @@ export const recordNoteEmojis = (
   db: D1Database,
   actor: RemoteActor,
   raw: unknown,
-  status: Pick<RemoteStatusValue, "publishedAt" | "editedAt">,
+  status: Pick<
+    RemoteStatusValue,
+    "publishedAt" | "editedAt" | "spoilerText" | "contentHtml" | "poll"
+  >,
 ): Promise<void> =>
   recordRemoteEmojiImages(
     db,
     actor,
-    declaredEmojis(raw),
+    declaredEmojis(raw, remoteStatusEmojiTexts(status)),
     status.editedAt.kind === "Edited" ? status.editedAt.at : status.publishedAt,
   );
 

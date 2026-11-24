@@ -215,14 +215,19 @@ export const emojiListPath = (
   return query === "" ? "/admin/custom_emojis" : `/admin/custom_emojis?${query}`;
 };
 
-/** A page of the remote emoji the filter lists, and the key the next page starts after. */
+/**
+ * A page of the remote emoji the filter lists: the key it starts after
+ * (empty for the first), and the key the next page starts after.
+ */
 export type RemoteEmojiListing = Readonly<{
+  after: string;
   entries: ReadonlyArray<RemoteEmojiEntry>;
   next: string | undefined;
 }>;
 
-const hiddenFields = (filter: EmojiFilterView): string =>
-  filterParams(filter)
+/** The filter and the page the batch form came from, which its redirect keeps. */
+const hiddenFields = (filter: EmojiFilterView, after: string): string =>
+  [...filterParams(filter), ...(after === "" ? [] : [["after", after] as const])]
     .map(
       ([name, value]) =>
         `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`,
@@ -266,7 +271,7 @@ const remoteEmojis = (filter: EmojiFilterView, listing: RemoteEmojiListing): str
       <p class="muted">No remote custom emojis.</p>`
     : `
       <h2>Remote</h2>
-      <form method="post" action="/admin/custom_emojis">${hiddenFields(filter)}${list(listing.entries.map(remoteEmojiItem))}
+      <form method="post" action="/admin/custom_emojis">${hiddenFields(filter, listing.after)}${list(listing.entries.map(remoteEmojiItem))}
         <button type="submit" name="do" value="enable">Enable</button>
         <button type="submit" name="do" value="disable">Disable</button>
       </form>${

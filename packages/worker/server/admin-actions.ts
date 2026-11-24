@@ -495,7 +495,10 @@ const blockEffects = async (
     await clearRemoteMediaForDomain(env.DB, host);
   }
   if (block.reject_media !== 0 || block.severity === "suspend") {
-    await deleteRemoteCustomEmojisOfDomain(env.DB, host);
+    const purged = await deleteRemoteCustomEmojisOfDomain(env.DB, host);
+    if (purged.isErr()) {
+      return err(purged.error);
+    }
   }
   await startDomainBlockLimits(env, block.id);
   if (block.severity === "suspend") {

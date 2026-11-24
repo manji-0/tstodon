@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { CoveredHosts } from "@tstodon/domain";
-import migration from "../app/db/migrations/0180_remote_custom_emoji_render.sql?raw";
 import { adminBrowser } from "../test/admin-browser";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { signUp } from "../test/passkey-browser";
 import { settle } from "../test/meter";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { webfingerAnswer } from "../test/webfinger-fixture";
@@ -163,6 +163,29 @@ const updateProfile = async (actor: Remote, name: string, tag: ReadonlyArray<unk
   ).toBe(202);
 };
 
+/** How many emoji `remote_custom_emojis` holds for `domain`. */
+const domainEmojis = async (domain: string): Promise<number> =>
+  read(
+    z.object({ n: z.number() }),
+    await env.DB.prepare("SELECT count(*) AS n FROM remote_custom_emojis WHERE domain = ?")
+      .bind(domain)
+      .first(),
+  ).n;
+
+/** An admin makes a domain block. */
+const blockDomain = async (body: Record<string, unknown>) => {
+  const response = await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
+    method: "POST",
+    headers: {
+      ...(await authHeaders("emoji-block-admin@example.com", { admin: true })),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  expect(response.status).toBe(200);
+  await response.arrayBuffer();
+};
+
 describe("a remote custom emoji whose image changes", () => {
   it("shows the new image on every post and profile of its server, as Mastodon's one emoji per server", async () => {
     const host = "emoji-change.example";
@@ -299,16 +322,7 @@ describe("a remote custom emoji whose image changes", () => {
   // rejects, so `from_text` finds none.
   it("shows no emoji of a server whose media is rejected", async () => {
     const host = "emoji-change-rejected.example";
-    const blocked = await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
-      method: "POST",
-      headers: {
-        ...(await authHeaders("emoji-reject-admin@example.com", { admin: true })),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ domain: host, severity: "noop", reject_media: true }),
-    });
-    expect(blocked.status).toBe(200);
-    await blocked.arrayBuffer();
+    await blockDomain({ domain: host, severity: "noop", reject_media: true });
     const author = await remoteActor("mio", host);
 
     const first = await post(author, "first", "<p>:no:</p>", [
@@ -318,28 +332,22 @@ describe("a remote custom emoji whose image changes", () => {
     expect(await statusEmojis(first)).toEqual({});
   });
 
-  // `ClearDomainMediaService#clear_emojos!`: a block that starts rejecting
-  // media deletes the emoji of the domain and its subdomains.
-  it("forgets a server's emoji when a block starts rejecting its media", async () => {
-    const host = "emoji-change-cleared.example";
+  // `ClearDomainMediaService#clear_emojos!` (a block that rejects media) and
+  // `PurgeCustomEmojiWorker` (a suspension) delete the emoji of the domain
+  // and its subdomains.
+  it.each([
+    ["rejects its media", "emoji-change-cleared.example", { severity: "noop", reject_media: true }],
+    ["suspends it", "emoji-change-suspended.example", { severity: "suspend" }],
+  ] as const)("forgets a server's emoji when a block %s", async (_, host, rule) => {
     const author = await remoteActor("noa", `sub.${host}`);
-    const id = await post(author, "first", "<p>:gone:</p>", [
+    await post(author, "first", "<p>:gone:</p>", [
       emojiTag("gone", `https://sub.${host}/system/gone.png`),
     ]);
-    expect(Object.keys(await statusEmojis(id))).toEqual(["gone"]);
+    expect(await domainEmojis(`sub.${host}`)).toBe(1);
 
-    const blocked = await SELF.fetch("https://example.com/api/v1/admin/domain_blocks", {
-      method: "POST",
-      headers: {
-        ...(await authHeaders("emoji-clear-admin@example.com", { admin: true })),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ domain: host, severity: "noop", reject_media: true }),
-    });
-    expect(blocked.status).toBe(200);
-    await blocked.arrayBuffer();
+    await blockDomain({ domain: host, ...rule });
 
-    expect(await statusEmojis(id)).toEqual({});
+    expect(await domainEmojis(`sub.${host}`)).toBe(0);
   });
 });
 
@@ -466,60 +474,56 @@ describe("a known remote custom emoji a document writes without declaring it", (
       spare: image,
     });
   });
-});
 
-/** The migration's statement that reads the copies stored with posts and profiles. */
-const backfillStatement = (): string => {
-  const statements = migration
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("--"))
-    .join("\n")
-    .split(/;\s*\n/)
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.startsWith("INSERT OR IGNORE INTO remote_custom_emojis"));
-  expect(statements).toHaveLength(1);
-  return statements[0] ?? "";
-};
-
-describe("migration 0180", () => {
-  // Before 0170 tstodon kept only a copy of each emoji with the post or
-  // profile; Mastodon holds the emoji itself, and shows its current image.
-  it("reads the emoji of copies stored before 0170, keeping a newer image", async () => {
-    const host = "emoji-pre-0170.example";
-    const image = (name: string) => `https://${host}/system/${name}.png`;
-    const author = await remoteActor("pia", host);
-    const old = await post(author, "old", "<p>:replaced: :kept:</p>", []);
-    await updateProfile(author, "Pia :profiled:", []);
+  // A page binds every shortcode its posts write; one longer than
+  // `MAX_SHORTCODE_SIZE` names no emoji, so a hostile post cannot make the
+  // lookup too large to run for the posts beside it.
+  it("ignores a hostile post's overlong shortcodes, showing the emoji beside it", async () => {
+    const host = "emoji-hostile-shortcodes.example";
+    const image = (name: string) => `https://${host}/system/${name.length}.png`;
+    const longest = "x".repeat(128);
+    const tooLong = "y".repeat(129);
+    const author = await remoteActor("vic", host);
+    // Declared, the one past the limit is not stored either.
+    const fine = await post(author, "fine", `<p>:${longest}: :${tooLong}:</p>`, [
+      emojiTag(longest, image(longest)),
+      emojiTag(tooLong, image(tooLong)),
+    ]);
     await env.DB.prepare(
-      "ALTER TABLE remote_statuses ADD COLUMN emojis_json TEXT NOT NULL DEFAULT '[]'",
-    ).run();
-    try {
-      await env.DB.batch([
-        env.DB.prepare("UPDATE remote_statuses SET emojis_json = ?2 WHERE id = ?1").bind(
-          old,
-          JSON.stringify([
-            { shortcode: "replaced", url: image("replaced-1") },
-            { shortcode: "kept", url: image("kept") },
-          ]),
-        ),
-        env.DB.prepare(
-          "UPDATE remote_actors SET profile_json = json_set(profile_json, '$.emojis', json(?2)) WHERE actor_uri = ?1",
-        ).bind(author.actorUri, JSON.stringify([{ shortcode: "profiled", url: image("prof") }])),
-      ]);
-      expect(await statusEmojis(old)).toEqual({});
-      // Read since 0170 from a later post: the server's image now.
-      await post(author, "new", "<p>:replaced:</p>", [emojiTag("replaced", image("replaced-2"))]);
+      `INSERT INTO remote_custom_emojis (domain, shortcode, image_url, updated_at)
+       VALUES (?1, ?2, ?3, '2020-01-01T00:00:00.000Z')`,
+    )
+      .bind(host, tooLong, image(tooLong))
+      .run();
+    const hostile = await post(author, "hostile", "<p>long</p>", []);
+    const long = Array.from({ length: 50 }, (_, n) => `:${String(n).padStart(20_000, "x")}:`);
+    await env.DB.prepare("UPDATE remote_statuses SET content_html = ?2 WHERE id = ?1")
+      .bind(hostile, `<p>${long.join(" ")} :${longest}:</p>`)
+      .run();
 
-      await env.DB.prepare(backfillStatement()).run();
-    } finally {
-      await env.DB.prepare("ALTER TABLE remote_statuses DROP COLUMN emojis_json").run();
-    }
-
-    expect(await statusEmojis(old)).toEqual({
-      replaced: image("replaced-2"),
-      kept: image("kept"),
+    const shown = read(
+      z.array(z.object({ id: z.string(), emojis: Emojis })),
+      await get(`/api/v1/statuses?id[]=${fine}&id[]=${hostile}`),
+    );
+    expect(
+      Object.fromEntries(shown.map((status) => [status.id, byShortcode(status.emojis)])),
+    ).toEqual({
+      [fine]: { [longest]: image(longest) },
+      [hostile]: { [longest]: image(longest) },
     });
-    expect(await accountEmojis(author.actorUri)).toEqual({ profiled: image("prof") });
+  });
+
+  // Of a list of tags longer than is stored, those the post writes are kept.
+  it("records the emoji a post writes though it declares many more", async () => {
+    const host = "emoji-many-tags.example";
+    const author = await remoteActor("wen", host);
+    const tags = Array.from({ length: 60 }, (_, n) =>
+      emojiTag(`spare${n}`, `https://${host}/system/spare${n}.png`),
+    );
+    const id = await post(author, "many", "<p>:spare59:</p>", tags);
+
+    expect(await statusEmojis(id)).toEqual({ spare59: `https://${host}/system/spare59.png` });
+    expect(await domainEmojis(host)).toBe(50);
   });
 });
 
@@ -643,10 +647,58 @@ describe("the admin's list of remote custom emoji", () => {
     const second = await listed(first.next ?? "");
     expect(second.shortcodes).toEqual(shortcodes.slice(25));
     expect(second.next).toBeUndefined();
+    // The batch form keeps the page it is on, and the redirect goes back to it.
+    const after = /<input type="hidden" name="after" value="([^"]+)" \/>/.exec(second.html)?.[1];
+    expect(after).toBe(`${host}/list24`);
+    const changed = await admin.fetcher("/admin/custom_emojis", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams([
+        ["do", "disable"],
+        ["emoji", `${host}/list25`],
+        ["remote", "1"],
+        ["by_domain", host],
+        ["after", after ?? ""],
+      ]).toString(),
+    });
+    expect(changed.status).toBe(303);
+    expect(changed.headers.get("location")).toBe(
+      `/admin/custom_emojis?${new URLSearchParams([
+        ["remote", "1"],
+        ["by_domain", host],
+        ["after", `${host}/list24`],
+        ["notice", "emojis_disabled"],
+      ]).toString()}`,
+    );
+    expect((await listed(changed.headers.get("location") ?? "")).html).toContain(
+      `${host} · Disabled`,
+    );
 
     const searched = await listed("/admin/custom_emojis?remote=1&shortcode=ist2");
     expect(searched.shortcodes).toEqual(shortcodes.slice(20));
     // The local emoji alone: none of these.
     expect((await listed("/admin/custom_emojis?local=1&shortcode=ist2")).shortcodes).toEqual([]);
+  });
+
+  it("refuses a batch action of an account that is not an admin", async () => {
+    const host = "emoji-admin-refused.example";
+    const image = `https://${host}/system/kept.png`;
+    const author = await remoteActor("sol", host);
+    const id = await post(author, "kept", "<p>:kept:</p>", [emojiTag("kept", image)]);
+    const { fetcher } = await signUp(`emoji_user_${crypto.randomUUID().slice(0, 8)}`);
+
+    for (const action of ["disable", "enable"]) {
+      const response = await fetcher("/admin/custom_emojis", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ["do", action],
+          ["emoji", `${host}/kept`],
+        ]).toString(),
+      });
+      expect(response.status).toBe(403);
+      await response.arrayBuffer();
+    }
+    expect(await statusEmojis(id)).toEqual({ kept: image });
   });
 });
