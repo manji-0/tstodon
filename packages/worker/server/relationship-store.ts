@@ -98,7 +98,7 @@ const byTarget = <T extends z.infer<typeof TargetRow>>(rows: ReadonlyArray<T>): 
 };
 
 /**
- * The keys a target's rows are stored under: blocks, mutes and notes of a
+ * The keys a target's rows are stored under: blocks, mutes, endorsements and notes of a
  * remote account by its actor URI (`uriOrId`), remote-only tables by the URI
  * alone (`""` for a local id).
  */
@@ -128,7 +128,7 @@ export const relationshipFlagsOf = async (
     d1PrepareTyped(db, findBlocksOfTargetsJsonSql(viewerId, urisOrIds)),
     d1PrepareTyped(db, findBlockersOfTargetJsonSql(ids, viewerId)),
     d1PrepareTyped(db, findActiveMutesOfTargetsJsonSql(viewerId, urisOrIds, nowIso())),
-    d1PrepareTyped(db, findEndorsementsOfTargetsJsonSql(viewerId, ids)),
+    d1PrepareTyped(db, findEndorsementsOfTargetsJsonSql(viewerId, urisOrIds)),
     d1PrepareTyped(db, findAccountNotesOfTargetsJsonSql(viewerId, urisOrIds)),
     d1PrepareTyped(db, findActorDomainBlocksJsonSql(viewerId, uris)),
     d1PrepareTyped(db, findOutboundFollowsJsonSql(viewerId, uris)),
@@ -192,7 +192,7 @@ export const relationshipFlagsOf = async (
       muting: mute !== undefined,
       mutingNotifications: mute ? mute.notifications !== 0 : false,
       mutingExpiresAt: mute?.expires_at ?? null,
-      endorsed: endorsements.has(targetId),
+      endorsed: endorsements.has(uriOrId),
       note: notes.get(uriOrId)?.note ?? "",
       domainBlocking: domainBlocked.has(uri),
     };

@@ -32,7 +32,8 @@ import {
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
 import { departedAccountActivityStatements } from "./outbox-store";
-import { emptyRemoteActorContentSql, findRemoteActorByUri } from "./remote-actor-store";
+import { findRemoteActorByUri } from "./remote-actor-store";
+import { emptyRemoteActorContentSql } from "./suspended-actor-content";
 import { announceRemovedBoosts } from "./home-fan-out";
 import { removedBoostsFromRows } from "./removed-boost";
 import { runTypedBatch } from "./typed-sql";
@@ -205,9 +206,10 @@ export const findAdminRemoteActor = async (
  * `suspended_at` whoever set them, a suspension of its domain too. Its
  * domain stays refused where Mastodon's `domain_not_allowed?` refuses
  * (lookup, resolve, the inbox, signed fetches). Lifting a block's
- * suspension also empties the actor's content from before, which Mastodon's
- * `BlockDomainService` deleted (`DeleteAccountService` with
- * `reserve_username`), so it does not come back.
+ * suspension also runs the actor's purge at once if it is still queued, so
+ * what Mastodon's `BlockDomainService` deleted when the block was made
+ * (`DeleteAccountService` with `reserve_username`) does not come back
+ * (`emptyRemoteActorContentSql`).
  */
 const liftRemoteActor = async (
   env: Env,
