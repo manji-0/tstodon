@@ -505,8 +505,11 @@ describe("data export and import", () => {
     await blockAccount(env.DB, target.id, owner.id, `${ORIGIN}/users/${owner.name}`);
     const original = globalThis.fetch;
     const fetched: string[] = [];
-    globalThis.fetch = async (input: RequestInfo | URL) => {
-      fetched.push(String(input instanceof Request ? input.url : input));
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      // Only lookups: the applied follow's delivery may POST to its inbox meanwhile.
+      if ((input instanceof Request ? input.method : (init?.method ?? "GET")) === "GET") {
+        fetched.push(String(input instanceof Request ? input.url : input));
+      }
       return new Response("nope", { status: 404 });
     };
     try {

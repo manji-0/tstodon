@@ -11,10 +11,64 @@ updates:
           - minor
           - patch
     ignore:
-      # Void 0.10 to 1.x is a planned migration, not a routine bump.
+      # Void 0.10 to 1.x is a planned migration, not a routine bump. Every
+      # release after 0.10.13 (0.20 onward) also needs it: they read env values
+      # from `env.ts` and one `.env`, and refuse to build next to a `.dev.vars`.
       - dependency-name: void
         update-types:
+          - version-update:semver-minor
           - version-update:semver-major
+      # The browser e2e suite runs on the Chromium revision @playwright/test
+      # 1.63.0 expects, the one preinstalled where it usually runs (see
+      # docs/getting-started/e2e-web.md).
+      - dependency-name: "@playwright/test"
+      # The web UI's dependencies below are held at Mastodon's versions (the
+      # upstream release in packages/worker/src/UPSTREAM.md). They move when
+      # the vendored UI moves to a newer upstream release, through
+      # docs/operations/mastodon-web-upstream.md. Each was tried and changes
+      # the UI's behaviour; UPSTREAM.md lists the ones tstodon took instead.
+      #
+      # react-router 6 and later replace v5's API (Switch, withRouter, the
+      # history object) across the UI; history 5 needs react-router 6.
+      - dependency-name: react-router
+        update-types: [version-update:semver-major]
+      - dependency-name: react-router-dom
+        update-types: [version-update:semver-major]
+      - dependency-name: history
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/history"
+        update-types: [version-update:semver-major]
+      # Immutable 5's types break the UI's typed store models.
+      - dependency-name: immutable
+        update-types: [version-update:semver-major]
+      # react-intl 12 changes formatMessage's types across the UI.
+      - dependency-name: react-intl
+        update-types: [version-update:semver-major]
+      # Emoji 17 data: emoji the fetched twemoji set has no image for, and
+      # renamed shortcodes.
+      - dependency-name: emojibase
+        update-types: [version-update:semver-major]
+      - dependency-name: emojibase-data
+        update-types: [version-update:semver-major]
+      - dependency-name: emojibase-regex
+        update-types: [version-update:semver-major]
+      # Newer CLDR data changes plural categories the polyfill picks.
+      - dependency-name: "@formatjs/intl-pluralrules"
+      # fuzzysort 4 ranks the language picker's results differently.
+      - dependency-name: fuzzysort
+        update-types: [version-update:semver-major]
+      # Types for emoji-mart 5; the UI uses emoji-mart-lazyload, a v3 fork.
+      - dependency-name: "@types/emoji-mart"
+        update-types: [version-update:semver-major]
+      # 2.2.0 is a deprecated stub; react-immutable-proptypes ships its types.
+      - dependency-name: "@types/react-immutable-proptypes"
+      # Newer releases pull newer browserslist data, which moves the build's
+      # browser targets (the legacy bundle and CSS prefixes); core-js is the
+      # legacy bundle's polyfills. The e2e suite cannot see either change.
+      - dependency-name: browserslist
+      - dependency-name: "@vitejs/plugin-legacy"
+      - dependency-name: postcss-preset-env
+      - dependency-name: core-js
   - package-ecosystem: github-actions
     directory: /
     schedule:
