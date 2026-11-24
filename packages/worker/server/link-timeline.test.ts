@@ -79,10 +79,10 @@ describe("link timeline", () => {
 
     const actorUri = "https://remote-link.example/users/sharer";
     await env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-       VALUES (?, 'sharer', 'remote-link.example', ?, ?, 'pem', 'Sharer', '2026-01-01T00:00:00.000Z')`,
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+       VALUES (?, 'sharer', 'remote-link.example', ?, 'Sharer', '2026-01-01T00:00:00.000Z')`,
     )
-      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .bind(actorUri, `${actorUri}/inbox`)
       .run();
     await env.DB.prepare(
       `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at)
@@ -163,10 +163,10 @@ describe("link timeline moderation", () => {
 
     const actorUri = "https://link-mod.example/users/blocked-remote";
     await env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-       VALUES (?, 'blocked-remote', 'link-mod.example', ?, ?, 'pem', 'Blocked', '2026-01-01T00:00:00.000Z')`,
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+       VALUES (?, 'blocked-remote', 'link-mod.example', ?, 'Blocked', '2026-01-01T00:00:00.000Z')`,
     )
-      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .bind(actorUri, `${actorUri}/inbox`)
       .run();
     await env.DB.prepare(
       `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at)

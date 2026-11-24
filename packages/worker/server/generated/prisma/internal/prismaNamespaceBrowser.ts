@@ -58,7 +58,6 @@ export const ModelName = {
   remote_custom_emojis: "remote_custom_emojis",
   remote_actor_domain_limits: "remote_actor_domain_limits",
   remote_actor_domain_lifts: "remote_actor_domain_lifts",
-  domain_block_limit_backfills: "domain_block_limit_backfills",
   remote_actor_moderation: "remote_actor_moderation",
   account_domain_blocks: "account_domain_blocks",
   push_subscriptions: "push_subscriptions",
@@ -260,15 +259,6 @@ export const Remote_actor_domain_liftsScalarFieldEnum = {
 export type Remote_actor_domain_liftsScalarFieldEnum =
   (typeof Remote_actor_domain_liftsScalarFieldEnum)[keyof typeof Remote_actor_domain_liftsScalarFieldEnum];
 
-export const Domain_block_limit_backfillsScalarFieldEnum = {
-  domain_block_id: "domain_block_id",
-  seen_by: "seen_by",
-  claimed_at: "claimed_at",
-} as const;
-
-export type Domain_block_limit_backfillsScalarFieldEnum =
-  (typeof Domain_block_limit_backfillsScalarFieldEnum)[keyof typeof Domain_block_limit_backfillsScalarFieldEnum];
-
 export const Remote_actor_moderationScalarFieldEnum = {
   actor_uri: "actor_uri",
   moderation: "moderation",
@@ -361,10 +351,6 @@ export const Account_profilesScalarFieldEnum = {
   header_object_key: "header_object_key",
   header_content_type: "header_content_type",
   updated_at: "updated_at",
-  avatar_metadata_stripped_at: "avatar_metadata_stripped_at",
-  avatar_metadata_strip_error: "avatar_metadata_strip_error",
-  header_metadata_stripped_at: "header_metadata_stripped_at",
-  header_metadata_strip_error: "header_metadata_strip_error",
   avatar_file_size: "avatar_file_size",
   header_file_size: "header_file_size",
 } as const;
@@ -670,7 +656,6 @@ export type Account_ipsScalarFieldEnum =
 export const Backfill_cursorsScalarFieldEnum = {
   name: "name",
   after_id: "after_id",
-  completed_at: "completed_at",
 } as const;
 
 export type Backfill_cursorsScalarFieldEnum =
@@ -734,7 +719,6 @@ export const Media_attachmentsScalarFieldEnum = {
   description: "description",
   focus_x: "focus_x",
   focus_y: "focus_y",
-  legacy_object_key: "legacy_object_key",
   position: "position",
   width: "width",
   height: "height",
@@ -742,8 +726,6 @@ export const Media_attachmentsScalarFieldEnum = {
   preview_width: "preview_width",
   preview_height: "preview_height",
   blurhash: "blurhash",
-  metadata_stripped_at: "metadata_stripped_at",
-  metadata_strip_error: "metadata_strip_error",
   file_size: "file_size",
   preview_file_size: "preview_file_size",
 } as const;
@@ -862,8 +844,6 @@ export const Remote_actorsScalarFieldEnum = {
   domain: "domain",
   inbox_uri: "inbox_uri",
   shared_inbox_uri: "shared_inbox_uri",
-  public_key_id: "public_key_id",
-  public_key_pem: "public_key_pem",
   display_name: "display_name",
   moved_to: "moved_to",
   fetched_at: "fetched_at",

@@ -303,23 +303,6 @@ export const findRemoteActorsByHandles = async (
   return queried.map((rows) => okValues(rows.map((row) => remoteActorFromRow(row))));
 };
 
-/**
- * What `remote_actors.public_key_pem` holds: an RSA key whose private half was
- * thrown away. An actor's keys live in `remote_actor_keys`; a reader of the
- * old column parses this key, fails to verify any signature with it, and
- * fetches the actor again.
- */
-export const LEGACY_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlDmOZr4ifqj8GjQ//kop
-6SpR+VT6yWUsAJ/rmi4ePhoOsjCQ1aCpeNm7wr2fq1ZeU6rLnfbACKrGL8WTGNmX
-7KuVNnIwJqgrvmfRm7MMAVkLt0QLMoqKwWQZGGNitKhRftoeGpRwPhVHOG0xca8E
-rh8ASUo1oZTCLa7wSdrwEH4RbRZzQo6FLpJIM+g0VuBsQtYlEZQAKBN5w5UP0WMB
-r9AUBKcxPM4rlch+u2nUB8Nxr3VXQeXvkCIB/lwcw6lh0pbueE1WT/6EHXhRIXSp
-ymhLcTzfEN/4GR3viA2r6SAt1PkhhnHH/K04XiZvmHwLt6aFzvZqyEUrc/riWwmd
-6QIDAQAB
------END PUBLIC KEY-----
-`;
-
 /** A key and the cached actor that publishes it. */
 export type RemoteKeyOwner = Readonly<{ actor: RemoteActor; key: RemoteActorKey }>;
 
@@ -416,7 +399,6 @@ const upsertRemoteActorStatement = (actor: RemoteActor) => {
     actor.followersUri ?? null,
     actor.followingUri ?? null,
     actor.featuredTagsUri ?? null,
-    LEGACY_PUBLIC_KEY_PEM,
   );
 };
 
@@ -504,7 +486,6 @@ export const upsertRemoteActorKeepingHandle = async (
       actor.followersUri ?? null,
       actor.followingUri ?? null,
       actor.featuredTagsUri ?? null,
-      LEGACY_PUBLIC_KEY_PEM,
     ),
     ...replaceRemoteActorKeysStatements(actor.actorUri, keys),
   ]);

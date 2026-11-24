@@ -1,4 +1,4 @@
-import { SELF, env } from "cloudflare:test";
+import { SELF } from "cloudflare:test";
 import { ApiAccount, type ApiAccountJSON } from "@tstodon/api";
 import { describe, expect, it } from "vite-plus/test";
 import { expectContract } from "../test/api-contract";
@@ -108,29 +108,6 @@ describe("the custom emoji of a remote account", () => {
     expect((await account(author.actorUri)).emojis).toEqual([
       { shortcode: "fits", url: url(2048), static_url: url(2048), visible_in_picker: false },
     ]);
-  });
-
-  it("reads a profile stored before emoji were kept", async () => {
-    const author = await remoteActor("emoji-profile-old-row");
-    await env.DB.prepare("UPDATE remote_actors SET profile_json = ? WHERE actor_uri = ?")
-      .bind(
-        JSON.stringify({
-          note: "an old bio",
-          avatarUrl: null,
-          headerUrl: null,
-          profileUrl: null,
-          locked: true,
-          bot: false,
-          publishedAt: null,
-        }),
-        author.actorUri,
-      )
-      .run();
-    const shown = await account(author.actorUri);
-    expect(shown.note).toContain("an old bio");
-    expect(shown.locked).toBe(true);
-    expect(shown.emojis).toEqual([]);
-    expect(shown.fields).toEqual([]);
   });
 });
 

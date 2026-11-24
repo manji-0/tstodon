@@ -9,7 +9,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param idsJson
  */
 export const listNotificationRequestSendersJson = $runtime.makeTypedQueryFactory(
-  "SELECT g.from_account_id FROM notification_request_groups g\nWHERE g.account_id = $1\nAND (g.id IN (SELECT value FROM json_each($2))\nOR g.from_account_id IN (SELECT value FROM json_each($2)))\nAND EXISTS (\nSELECT 1 FROM notification_requests n\nWHERE n.account_id = g.account_id AND n.from_account_id = g.from_account_id\n)",
+  "SELECT g.from_account_id FROM notification_request_groups g\nWHERE g.account_id = $1\nAND g.id IN (SELECT value FROM json_each($2))\nAND EXISTS (\nSELECT 1 FROM notification_requests n\nWHERE n.account_id = g.account_id AND n.from_account_id = g.from_account_id\n)",
 ) as (
   accountId: string,
   idsJson: string,

@@ -5,8 +5,6 @@ import { ActivityId } from "./activity-id";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
 import { StatusId } from "./status-id";
-import { StoredMediaMetadata } from "./stored-media-metadata";
-import { StoredMediaSizes } from "./stored-media-sizes";
 
 const ExpandFollowersSchema = z.object({
   kind: z.literal("ExpandFollowers"),
@@ -52,43 +50,13 @@ const AwaitPollEndSchema = z.object({
 });
 /** Refresh previews whose cache entry has aged out (cron driven). */
 const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
-/** Index the tags of remote statuses written before the tag index (cron). */
+/** Index the tags of the remote statuses stored with `tags_indexed = 0` (cron). */
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
 /**
- * Index the next page of stored local notes under their tags and store the
- * tag names, from the `local_status_tags` cursor (cron, self-chaining, stops once complete).
- */
-const BackfillLocalNoteTagsSchema = unitKind("BackfillLocalNoteTags");
-/**
- * Rename the next page of tag names stored before `normalizeHashtag` folded
- * accents, from the `tag_name_fold` cursor (cron, self-chaining, stops once complete).
- */
-const FoldTagNamesSchema = unitKind("FoldTagNames");
-/**
- * Rename the next page of domains stored in Unicode before `Hostname.fromInput`
- * read them in ASCII, from the `domain_name_ascii` cursor (cron, self-chaining,
- * stops once complete).
- */
-const AsciiDomainNamesSchema = unitKind("AsciiDomainNames");
-/**
- * Carry out what making the instance domain block on `domain` does, by its
- * current row: clear the media of `reject_media`, sever the follows of a
- * suspension. For a block that starts applying without being made, such as
- * one `AsciiDomainNames` renamed to the ASCII host its actors are on.
- */
-const ApplyDomainBlockEffectsSchema = z.object({
-  kind: z.literal("ApplyDomainBlockEffects"),
-  domain: Hostname.schema,
-});
-/**
  * Where recording a block's limits resumes: the last actor recorded, by its
- * account domain's key and its row id. `host` is only on a job queued while
- * the recording also read the actors' URI hosts: `AccountDomain` resumes as
- * any cursor, and `UriHost` means the account domains were all read, so the
- * job ends its chain.
+ * account domain's key and its row id.
  */
 const DomainBlockLimitsCursorSchema = z.object({
-  host: z.union([z.literal("AccountDomain"), z.literal("UriHost")]).optional(),
   afterKey: z.string(),
   afterRowId: z.number().int(),
 });
@@ -99,22 +67,14 @@ const DomainBlockLimitsCursorSchema = z.object({
  * actor after `cursor`, as Mastodon's `BlockDomainService` sets
  * `silenced_at` / `suspended_at`; once it is a `noop` or removed, delete the
  * rows it left. The block's current severity is what the rows mean, so a
- * change takes effect before the job runs. `run` says why: `Apply`, the block
- * was made or saved, as each run of Mastodon's `DomainBlockWorker` (its first
- * page forgets the admin's lifts of the block); `Backfill`, a block made
- * before its actors were recorded, of which only the actors first seen by
- * `seenBy`, its last change, are recorded (hourly sweep).
+ * change takes effect before the job runs. The block was made or saved: each
+ * chain runs as Mastodon's `DomainBlockWorker` does, and its first page
+ * forgets the admin's lifts of the block.
  */
-const DomainBlockLimitsRunSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("Apply") }),
-  z.object({ kind: z.literal("Backfill"), seenBy: z.string() }),
-]);
 const RecordDomainBlockLimitsSchema = z.object({
   kind: z.literal("RecordDomainBlockLimits"),
   domainBlockId: z.string().min(1),
   cursor: DomainBlockLimitsCursorSchema,
-  // A job queued before `run` existed applied its block.
-  run: DomainBlockLimitsRunSchema.default({ kind: "Apply" }),
 });
 /**
  * Queue the deletion of the rows each removed or `noop` block left in
@@ -129,46 +89,11 @@ const ResumeLiftedDomainBlockLimitsSchema = unitKind("ResumeLiftedDomainBlockLim
  */
 const PurgeSuspendedActorContentSchema = unitKind("PurgeSuspendedActorContent");
 /**
- * Move the next batch of attachments after `afterId` (empty for the first)
- * that are still at an id-derived key to a random key (cron, self-chaining).
- */
-const RekeyLegacyMediaSchema = z.object({
-  kind: z.literal("RekeyLegacyMedia"),
-  afterId: z.string(),
-});
-/**
  * Delete a batch of media unattached for over a day, rows and objects, as
  * Mastodon's `Vacuum::MediaAttachmentsVacuum` (six-hourly cron, chains while
  * a pass deletes a full batch).
  */
 const VacuumMediaAttachmentsSchema = unitKind("VacuumMediaAttachments");
-/**
- * Strip the metadata from the next page of media stored before stripping on
- * upload, in place (see `StoredMediaMetadata`): the rows of `source` after
- * `afterId` (empty for the first), then the next source. `tally` sums the
- * pages before, for the log line of the last one. The six-hourly cron queues
- * the first page; a page with work after it queues the next.
- */
-const StripStoredMediaMetadataSchema = z.object({
-  kind: z.literal("StripStoredMediaMetadata"),
-  source: StoredMediaMetadata.sourceSchema.default("attachments"),
-  afterId: z.string().default(""),
-  tally: StoredMediaMetadata.tallySchema.default(StoredMediaMetadata.emptyTally),
-});
-/**
- * Record the byte size of the next page of stored objects whose size is not
- * known (stored before sizes were recorded; see `StoredMediaSizes`), from a
- * HEAD of each: the rows of `source` after `afterId` (empty for the first),
- * then the later sources. `tally` sums the pages before, for the log line of
- * the last one. The six-hourly cron queues the first page; a full page
- * queues the next.
- */
-const BackfillStoredMediaSizesSchema = z.object({
-  kind: z.literal("BackfillStoredMediaSizes"),
-  source: StoredMediaSizes.sourceSchema.default("attachments"),
-  afterId: z.string().default(""),
-  tally: StoredMediaSizes.tallySchema.default(StoredMediaSizes.emptyTally),
-});
 /**
  * Delete the outbox and inbox rows past their retention, one bounded batch
  * per table (see `ActivityVacuum`); six-hourly cron, chains while a table
@@ -331,13 +256,13 @@ export type MovePhase = z.infer<typeof MovePhaseSchema>;
 /**
  * Carry the next page of an account that moved, local or remote, to the
  * account it moved to: the local accounts of `phase` after `afterId` (empty
- * for the first page). A job queued before phases existed moves follows.
+ * for the first page).
  */
 const MoveFollowsSchema = z.object({
   kind: z.literal("MoveFollows"),
   fromActorUri: z.url(),
   toActorUri: z.url(),
-  phase: MovePhaseSchema.default("follows"),
+  phase: MovePhaseSchema,
   afterId: z.string(),
 });
 
@@ -451,8 +376,7 @@ const ResolveRemoteThreadSchema = z.object({
  * `depth` levels below it (0 is the status itself), after the one with id
  * `after`, each expanded by its own `replies` collection. `resume` names the
  * status whose list an earlier job stopped in, and how many of its listed
- * replies that job already went through; a job queued before it existed
- * reads as starting the status afresh. `visited` counts the statuses of the tree
+ * replies that job already went through. `visited` counts the statuses of the tree
  * the walk reached (expanded or skipped), `listed` and `pages` the replies
  * listed and the collection pages read so far, and `stored` the statuses
  * stored, for the whole tree.
@@ -468,7 +392,7 @@ const BackfillRemoteThreadSchema = z.object({
         depth: z.number().int().nonnegative(),
         after: z.string(),
         resume: z.object({ id: StatusId.schema, offset: z.number().int().positive() }).optional(),
-        visited: z.number().int().nonnegative().default(0),
+        visited: z.number().int().nonnegative(),
         listed: z.number().int().nonnegative(),
         pages: z.number().int().nonnegative(),
         stored: z.number().int().nonnegative(),
@@ -590,20 +514,13 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   AwaitPollEndSchema,
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
-  BackfillLocalNoteTagsSchema,
-  FoldTagNamesSchema,
-  AsciiDomainNamesSchema,
-  ApplyDomainBlockEffectsSchema,
   RecordDomainBlockLimitsSchema,
   ResumeLiftedDomainBlockLimitsSchema,
   PurgeSuspendedActorContentSchema,
-  RekeyLegacyMediaSchema,
   VacuumMediaAttachmentsSchema,
   VacuumActivitiesSchema,
   RequeueDeadOutboxJobsSchema,
   RotateActorKeysSchema,
-  StripStoredMediaMetadataSchema,
-  BackfillStoredMediaSizesSchema,
   PublishScheduledStatusesSchema,
   CleanUpStatusesSchema,
   CleanUpAccountStatusesSchema,

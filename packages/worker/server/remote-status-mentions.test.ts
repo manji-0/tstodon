@@ -163,9 +163,9 @@ describe("a remote note's mentions", () => {
     const count = 30;
     await env.DB.prepare(
       `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?)
-       INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+       INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
        SELECT 'https://crowd.example/users/c' || n, 'c' || n, 'crowd.example', 'https://crowd.example/inbox',
-              'https://crowd.example/users/c' || n || '#main-key', 'x', '2030-01-01T00:00:00.000Z'
+              '2030-01-01T00:00:00.000Z'
        FROM series`,
     )
       .bind(count)

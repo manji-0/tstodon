@@ -22,8 +22,8 @@ const seedFollowers = async (accountId: string, host: string, count: number): Pr
     );
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
-         SELECT value, 'f', ?, value || '/inbox', value || '#main-key', 'pem', '2026-01-01T00:00:00.000Z'
+        `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
+         SELECT value, 'f', ?, value || '/inbox', '2026-01-01T00:00:00.000Z'
          FROM json_each(?)`,
       ).bind(host, uris),
       env.DB.prepare(

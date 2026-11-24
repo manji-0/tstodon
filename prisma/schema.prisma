@@ -120,12 +120,6 @@ model remote_actor_domain_lifts {
   @@index([actor_uri], map: "idx_remote_actor_domain_lifts_actor")
 }
 
-model domain_block_limit_backfills {
-  domain_block_id String @id
-  seen_by         String
-  claimed_at      String?
-}
-
 model remote_actor_moderation {
   actor_uri  String  @id
   moderation String?
@@ -213,10 +207,6 @@ model account_profiles {
   header_object_key   String?
   header_content_type String?
   updated_at          String  @default("CURRENT_TIMESTAMP")
-  avatar_metadata_stripped_at String?
-  avatar_metadata_strip_error String?
-  header_metadata_stripped_at String?
-  header_metadata_strip_error String?
   avatar_file_size    Int?
   header_file_size    Int?
 }
@@ -543,7 +533,6 @@ model account_ips {
 model backfill_cursors {
   name         String  @id
   after_id     String  @default("")
-  completed_at String?
 }
 
 model custom_emojis {
@@ -555,7 +544,7 @@ model custom_emojis {
   category          String?
   created_at        String  @default("CURRENT_TIMESTAMP")
   updated_at        String  @default("CURRENT_TIMESTAMP")
-  image_file_size   Int?
+  image_file_size   Int
 
   @@index([shortcode], map: "idx_custom_emojis_shortcode")
 }
@@ -600,7 +589,6 @@ model media_attachments {
   description  String?
   focus_x      Float?
   focus_y      Float?
-  legacy_object_key String?
   position     Int?
   width        Int?
   height       Int?
@@ -608,9 +596,7 @@ model media_attachments {
   preview_width Int?
   preview_height Int?
   blurhash     String?
-  metadata_stripped_at String?
-  metadata_strip_error String?
-  file_size    Int?
+  file_size    Int
   preview_file_size Int?
   statuses     statuses? @relation(fields: [status_id], references: [id], onUpdate: NoAction)
   accounts     accounts  @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -733,8 +719,6 @@ model remote_actors {
   domain            String
   inbox_uri         String
   shared_inbox_uri  String?
-  public_key_id     String              @unique(map: "sqlite_autoindex_remote_actors_2")
-  public_key_pem    String
   display_name      String              @default("")
   moved_to          String?
   fetched_at        String

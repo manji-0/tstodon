@@ -173,9 +173,9 @@ describe("outbox delivery cost", () => {
         const actor = `https://${host}/users/u`;
         return [
           env.DB.prepare(
-            `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
-             VALUES (?, 'u', ?, ?, ?, 'pem', '2026-11-01T00:00:00Z')`,
-          ).bind(actor, host, `https://${host}/inbox`, `${actor}#main-key`),
+            `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
+             VALUES (?, 'u', ?, ?, '2026-11-01T00:00:00Z')`,
+          ).bind(actor, host, `https://${host}/inbox`),
           env.DB.prepare(
             `INSERT INTO remote_follows (id, remote_actor_uri, target_account_id, remote_request_kind, follow_kind)
              VALUES (?, ?, ?, 'Fulfilled', 'Accepted')`,

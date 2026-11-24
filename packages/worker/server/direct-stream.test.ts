@@ -102,10 +102,16 @@ describe("direct stream", () => {
     const statusId = await postTo(author, recipient, "direct", "held back");
     expect(await socket.heardNothing(direct)).toBe(true);
 
+    const requests = z
+      .array(z.object({ id: z.string(), account: z.object({ id: z.string() }) }))
+      .parse((await json(recipient, "/api/v1/notifications/requests")).body);
+    const requestId = requests.find((request) => request.account.id === authorAccount.id)?.id;
     const accepted = await json(
       recipient,
-      `/api/v1/notifications/requests/${authorAccount.id}/accept`,
-      { method: "POST" },
+      `/api/v1/notifications/requests/${requestId ?? ""}/accept`,
+      {
+        method: "POST",
+      },
     );
     expect(accepted.status).toBe(200);
     const heard = await socket.next();

@@ -1,14 +1,13 @@
 import { createExecutionContext, env } from "cloudflare:test";
-import { CoveredHosts, IsoInstant, RemoteActor } from "@tstodon/domain";
+import { CoveredHosts } from "@tstodon/domain";
 import { Hono } from "hono";
-import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { ed25519Signer } from "../test/integrity-proof-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { webfingerAnswer } from "../test/webfinger-fixture";
 import { unsignedFetch } from "./federated-fetch";
 import { contentDigestHeader, signMessageRequest } from "./http-message-signature";
-import { importRsaPublicKey, signInboxRequest, verifyInboxRequest } from "./http-signature";
+import { signInboxRequest } from "./http-signature";
 import { readIntegrityProof } from "./integrity-proof";
 import { verifyForwardedActivity } from "./inbox-forward";
 import { forgetInboxRefusalWindows } from "./inbox-refusal";
@@ -16,12 +15,7 @@ import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { refreshRemoteActor } from "./remote-actor-fetch";
 import { multibaseKey } from "./multibase";
-import {
-  findRemoteActorByUri,
-  findRemoteActorKey,
-  LEGACY_PUBLIC_KEY_PEM,
-  upsertRemoteActor,
-} from "./remote-actor-store";
+import { findRemoteActorByUri, findRemoteActorKey } from "./remote-actor-store";
 import { postInbox } from "./routes/activitypub";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -882,46 +876,5 @@ describe("a publicKeyMultibase that is not base58 (FED-8)", () => {
     expect(
       (await findRemoteActorKey(env.DB, `${dot.actorUri}#secp256k1`))._unsafeUnwrap(),
     ).toBeUndefined();
-  });
-});
-
-describe("the remote_actors key columns", () => {
-  it("hold a key that parses and fails to verify with", async () => {
-    const legacy = await remoteActor("keys-legacy", "keys-legacy.example");
-    const rows = await env.DB.prepare(
-      "SELECT public_key_id, public_key_pem FROM remote_actors WHERE actor_uri = ?",
-    )
-      .bind(legacy.actorUri)
-      .all();
-    const row = z
-      .object({ public_key_id: z.string().min(1), public_key_pem: z.string().min(1) })
-      .parse(rows.results[0]);
-    expect(row.public_key_pem).toBe(LEGACY_PUBLIC_KEY_PEM);
-    expect(await importRsaPublicKey(row.public_key_pem)).toBeDefined();
-    const request = await legacy.delivery(create(legacy, "legacy"));
-    expect(
-      await verifyInboxRequest(
-        request,
-        { kind: "Rsa", publicKeyPem: row.public_key_pem },
-        await request.clone().text(),
-      ),
-    ).toBe(false);
-    // An actor stored without keys gets the same placeholder.
-    const fetchedAt = IsoInstant.parse(new Date().toISOString())._unsafeUnwrap();
-    const actor = RemoteActor.fromFetched({
-      actorUri: "https://keys-legacy.example/users/new",
-      username: "new",
-      domain: "keys-legacy.example",
-      inboxUri: "https://keys-legacy.example/users/new/inbox",
-      displayName: "new",
-      fetchedAt,
-    })._unsafeUnwrap();
-    expect((await upsertRemoteActor(env.DB, actor, [])).isOk()).toBe(true);
-    const written = await env.DB.prepare(
-      "SELECT public_key_pem FROM remote_actors WHERE actor_uri = ?",
-    )
-      .bind(actor.actorUri)
-      .first();
-    expect(written).toEqual({ public_key_pem: LEGACY_PUBLIC_KEY_PEM });
   });
 });

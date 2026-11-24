@@ -47,7 +47,6 @@ import {
   clearRemoteMediaForDomain,
   type DomainBlockInput,
   type DomainBlockRow,
-  findDomainBlockByDomain,
   findDomainBlockById,
   findDomainBlockRule,
   deleteDomainBlock,
@@ -413,9 +412,8 @@ const deleteObjectsUnder = async (bucket: R2Bucket, prefix: string): Promise<voi
  * a deletion that fails part way can be tried again, and a deletion that
  * commits always has its `Delete`. `false` when there was no such account.
  * Last, it
- * deletes whatever is left under the account's attachment prefix: a copy the
- * rekey job pointed a row at after the keys were listed, or one it could not
- * confirm. A copy the job makes after the rows are gone, it deletes itself.
+ * deletes whatever is left under the account's attachment prefix: an object
+ * no row named when the keys were listed.
  */
 export const purgeAccount = async (
   env: Env,
@@ -509,18 +507,6 @@ const blockEffects = async (
     });
   }
   return ok(undefined);
-};
-
-/** Apply the instance domain block on `domain` as it stands now, as making it would; nothing when there is none. */
-export const applyDomainBlockEffects = async (
-  env: Env,
-  domain: Hostname,
-): Promise<Result<void, RepositoryError>> => {
-  const block = await findDomainBlockByDomain(env.DB, domain);
-  if (block.isErr()) {
-    return err(block.error);
-  }
-  return block.value ? blockEffects(env, block.value) : ok(undefined);
 };
 
 const policyOf = (row: DomainBlockRow): DomainBlockPolicy => ({

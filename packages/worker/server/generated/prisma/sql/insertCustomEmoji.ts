@@ -24,7 +24,7 @@ export const insertCustomEmoji = $runtime.makeTypedQueryFactory(
   visibleInPicker: number,
   category: string | null,
   now: string,
-  imageFileSize: number | null,
+  imageFileSize: number,
 ) => $runtime.TypedSql<insertCustomEmoji.Parameters, insertCustomEmoji.Result>;
 
 export namespace insertCustomEmoji {
@@ -36,7 +36,7 @@ export namespace insertCustomEmoji {
     visibleInPicker: number,
     category: string | null,
     now: string,
-    imageFileSize: number | null,
+    imageFileSize: number,
   ];
   export type Result = {};
 }

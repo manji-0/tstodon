@@ -157,7 +157,7 @@ Name it as the workflow does (`d1/tstodon-<stamp>.sql.gz.age`, second precision)
 
 ### R2 media
 
-R2 has no object versioning to fall back on **(verify)**, and the Worker deletes objects as part of normal operation (`DELETE /api/v1/media/:id`, the six-hourly `VacuumMediaAttachments`, account purges, `MEDIA_REKEY_DELETE_LEGACY`). Options:
+R2 has no object versioning to fall back on **(verify)**, and the Worker deletes objects as part of normal operation (`DELETE /api/v1/media/:id`, the six-hourly `VacuumMediaAttachments`, account purges). Options:
 
 - **rclone** (or any S3-compatible sync) from the media bucket to a bucket in another account or provider, on a schedule. `rclone copy` keeps objects the Worker deleted; `rclone sync` mirrors deletions. With an R2 API token (Object Read on the source):
 
@@ -273,16 +273,13 @@ Level is the `console` method. Every event's `kind` is unique to one meaning; th
 
 **Media.**
 
-| Event                                                | Level        | Meaning                                                                                                                                         |
-| ---------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MediaImageRejected`, `MediaVideoRejected`           | warn         | `POST /api/v{1,2}/media` refused a file whose metadata could not be stripped (422 to the client, `error` says why)                              |
-| `ProfileImageRejected`                               | warn         | The same for an avatar or header (`image`)                                                                                                      |
-| `MediaImageNotProcessed`                             | warn         | The `IMAGES` binding could not analyse an image (`reason`): stored without dimensions, preview or blurhash. A burst means Images is failing     |
-| `MediaPreviewNotStored`                              | warn         | The preview could not be written to R2                                                                                                          |
-| `MediaObjectsNotDeleted`                             | error        | An R2 delete failed (`keys` count, `message`); the objects stay as orphans                                                                      |
-| `LegacyMediaNotRekeyed`                              | error        | The rekey backfill skipped a row (`mediaId`, `reason`); retried hourly                                                                          |
-| `MediaMetadataNotStripped`, `MediaSizeNotRead`       | warn / error | A backfill skipped one object (`outcome`); warn when the object is missing, error otherwise. See the [deploy checklist](./cloudflare-deploy.md) |
-| `MediaMetadataBackfillDone`, `MediaSizeBackfillDone` | log          | A backfill run finished, with its counts                                                                                                        |
+| Event                                      | Level | Meaning                                                                                                                                     |
+| ------------------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MediaImageRejected`, `MediaVideoRejected` | warn  | `POST /api/v{1,2}/media` refused a file whose metadata could not be stripped (422 to the client, `error` says why)                          |
+| `ProfileImageRejected`                     | warn  | The same for an avatar or header (`image`)                                                                                                  |
+| `MediaImageNotProcessed`                   | warn  | The `IMAGES` binding could not analyse an image (`reason`): stored without dimensions, preview or blurhash. A burst means Images is failing |
+| `MediaPreviewNotStored`                    | warn  | The preview could not be written to R2                                                                                                      |
+| `MediaObjectsNotDeleted`                   | error | An R2 delete failed (`keys` count, `message`); the objects stay as orphans                                                                  |
 
 **Retention** (`activity-vacuum.ts`): `ActivityVacuumPass` (log) is one pass of the `VacuumActivities` job with the rows it deleted per table (`deliveries`, `outbound`, `inbox`, `undone`), whether it chained, and the retention in days it used (`off` for a table not pruned); `ActivityVacuumFailed` (error, `message`) is a pass that D1 refused, retried by the queue. See [Retention](#retention).
 
@@ -351,7 +348,7 @@ Every point is written by `writeMetric` in `packages/worker/server/metrics.ts` t
 | `stream.render`           | `[renders, delivered, errors, totalMs, maxMs, p50Ms, p95Ms]` | `[home or list or public, ok or error]`                                            | `errors`; `p95Ms` growth                                                    |
 | `metrics.dropped`         | `[droppedPoints, writtenPoints]`                             | `[fetch or queue or scheduled or workflow, indexThatLostMost]`                     | Any point: an invocation hit the data point budget                          |
 
-`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `AuthorizeFollowRequests`, `SeverSuspendedActorFollows`, `ResumeSuspendedActorSeverances`, `FanOutRemovedStatuses`, `BackfillRemoteTags`, `BackfillLocalNoteTags`, `FoldTagNames`, `AsciiDomainNames`, `ApplyDomainBlockEffects`, `RekeyLegacyMedia`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys`, `StripStoredMediaMetadata`, `BackfillStoredMediaSizes` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
+`outbox.job.page` is written by every paged job: `FanOutHome`, `FanOutPublic`, `DistributePollUpdate`, `ProcessExpiredPolls`, `MoveFollows`, `BackfillRemoteOutbox`, `BackfillRemoteThread`, `ProcessCsvImport`, `CleanUpAccountStatuses`, `SeverBlockedDomainFollows`, `AuthorizeFollowRequests`, `SeverSuspendedActorFollows`, `ResumeSuspendedActorSeverances`, `FanOutRemovedStatuses`, `BackfillRemoteTags`, `VacuumMediaAttachments`, `VacuumActivities`, `RequeueDeadOutboxJobs`, `RotateActorKeys` (`blob1` is the job kind as queued). The delivery Workflow writes one `outbox.deliver` point per attempt.
 
 Query with the SQL API (an API token with Account Analytics Read):
 
@@ -484,7 +481,7 @@ A delivery that ends `Failed` or `Skipped` completes normally (status `complete`
 
 ### Cron health
 
-Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.ts`): hourly (`17 * * * *`) and six-hourly (`17 */6 * * *`). The handler only queues jobs (polls, link cards, tag backfills, media rekey, scheduled posts, post clean-up; the six-hourly one also media vacuum, the activity vacuum, metadata strip and size backfills) and refreshes stale remote actors directly on the hourly run. It writes the `cron` metric only when every send succeeded. Check:
+Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.ts`): hourly (`17 * * * *`) and six-hourly (`17 */6 * * *`). The handler only queues jobs (polls, link cards, the remote tag backfill, scheduled posts, post clean-up; the six-hourly one media vacuum and the activity vacuum) and refreshes stale remote actors directly on the hourly run. It writes the `cron` metric only when every send succeeded. Check:
 
 - the `cron` query above (a missing hour is a failed run);
 - dashboard: Workers & Pages → `tstodon` → Settings → Triggers (Cron Triggers) and its past events **(verify path)**;
@@ -515,7 +512,7 @@ Two schedules, both at minute 17 (`packages/worker/app/crons/outbox-maintenance.
             (SELECT SUM(COALESCE(image_file_size,0)) FROM custom_emojis) AS emojis"
   ```
 
-  A bucket much larger than this sum means orphans (`MediaObjectsNotDeleted`, rekey copies kept while `MEDIA_REKEY_DELETE_LEGACY` is off).
+  A bucket much larger than this sum means orphans (`MediaObjectsNotDeleted`).
 
 - **Images**: transformations used by uploads (dimensions, preview, blurhash). `MediaImageNotProcessed` bursts mean the binding is failing or over quota.
 
@@ -603,9 +600,8 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 
 1. Compare `wrangler r2 bucket info tstodon-media` with the D1 size sum above.
 2. Unattached uploads are deleted after a day by `VacuumMediaAttachments` (six-hourly); check its `outbox.job.page` points.
-3. While `MEDIA_REKEY_DELETE_LEGACY` is off, every rekeyed attachment exists twice (see [Moving attachments off id-derived keys](./cloudflare-deploy.md#moving-attachments-off-id-derived-keys)). Turning it on halves those.
-4. `MediaObjectsNotDeleted` lines name failed deletes; the objects stay until removed by hand.
-5. Per-account usage is on the admin dashboard (`space_usage`) once sizes are recorded (`BackfillStoredMediaSizes`).
+3. `MediaObjectsNotDeleted` lines name failed deletes; the objects stay until removed by hand.
+4. Per-account usage is on the admin dashboard (`space_usage`).
 
 ### Access misconfiguration or admin lockout
 
@@ -732,18 +728,6 @@ To run a pass now, send `{"kind": "VacuumActivities"}` to the queue as above. To
 The hourly cron also runs one slice of remote status retention (`remote-status-retention.ts`): the next 1000 cached remote statuses after a cursor in `backfill_cursors` (`remote_status_retention`), in id order, whose id sorts before the cutoff. Of those, it deletes the ones last written before the cutoff that nothing local needs, then the authors of the slice that nothing refers to any more and that were cached before the cutoff. A short slice moves the cursor back to the start, so every cached status is looked at again each cycle. `REMOTE_STATUS_RETENTION_DAYS` (7) sets the cutoff; `off` stops it.
 
 A remote status is kept, whatever its age, when it is direct; when a local account follows its author (in any state), its author follows a local account, or its author was reported; when a local account favourited, bookmarked, boosted, replied to, voted in, or muted the thread of it; when a local status quotes it or it quotes a local status, or any status quotes it; when it mentions a local account (with the vote and quote rules, this covers every notification that points at a remote status); when it replies to a local status, or to such a reply; when a cached remote status replies to it (the parent goes on a later cycle once its replies have gone); and when an actor a local account follows, or one that follows a local account, boosted it. Deleting one cascades to its tags, edits, mention rows, remote pins and the boosts of it; a profile view backfills the actor's outbox and pins again. A remote actor is kept while any status, follow, favourite, boost, mention, notification, block, mute, endorsement, note, report or moderation row refers to it. Every probe is an index seek; a slice reads about six rows per status examined and writes only what it deletes.
-
-### Running the media backfills
-
-The three media backfills run from the crons and need no starting; each is idempotent and safe to start again:
-
-| Job                        | Started by      | Progress and done                                                |
-| -------------------------- | --------------- | ---------------------------------------------------------------- |
-| `RekeyLegacyMedia`         | hourly cron     | `LegacyMediaNotRekeyed`; the count query in the deploy checklist |
-| `StripStoredMediaMetadata` | six-hourly cron | `MediaMetadataNotStripped`, `MediaMetadataBackfillDone`          |
-| `BackfillStoredMediaSizes` | six-hourly cron | `MediaSizeNotRead`, `MediaSizeBackfillDone`                      |
-
-The steps, queries and cache purges are in the deploy checklist: [Moving attachments off id-derived keys](./cloudflare-deploy.md#moving-attachments-off-id-derived-keys), [Stripping metadata from stored media](./cloudflare-deploy.md#stripping-metadata-from-stored-media) and [Recording stored media sizes](./cloudflare-deploy.md#recording-stored-media-sizes). To start one at once, send its message to the queue with the Queues REST API as shown there.
 
 ## Upgrades
 

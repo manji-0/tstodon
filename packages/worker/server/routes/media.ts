@@ -10,11 +10,7 @@ import {
   parseMediaFocus,
   updateMediaMetadata,
 } from "../media-store";
-import {
-  isLegacyAttachmentObjectKey,
-  newAttachmentObjectKey,
-  parseMediaObjectKey,
-} from "../media-keys";
+import { newAttachmentObjectKey, parseMediaObjectKey } from "../media-keys";
 import { emojiImageType } from "../admin-custom-emojis";
 import { notFound } from "../not-found";
 import { imagesBindingAnalyzer, isAnalyzedImageType, processUploadedImage } from "../media-image";
@@ -164,14 +160,9 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
 
 /** How a served object may be cached, by what can happen to the bytes under its key. */
 const cachePolicy = (objectKey: string): Readonly<{ header: string; edge: boolean }> => {
-  if (isLegacyAttachmentObjectKey(objectKey)) {
-    return { header: "no-store", edge: false };
-  }
   // A new custom emoji image goes under a new `emoji/<entityId>` key and the
   // old one is deleted, so the bytes under a key never change; an emoji is
-  // still kept off the edge cache so that a deleted image stops answering,
-  // and an emoji stored before keys changed with the image may have been
-  // replaced in place.
+  // still kept off the edge cache so that a deleted image stops answering.
   if (objectKey.startsWith("emoji/")) {
     return { header: "public, max-age=3600", edge: false };
   }
@@ -179,10 +170,8 @@ const cachePolicy = (objectKey: string): Readonly<{ header: string; edge: boolea
 };
 
 /**
- * Serve an object from R2 through the edge cache. An attachment at a legacy,
- * id-derived key bypasses the cache, so it stops answering as soon as the
- * rekey job deletes it; a custom emoji bypasses it too, and is cached for an
- * hour by whoever asked.
+ * Serve an object from R2 through the edge cache. A custom emoji bypasses it,
+ * and is cached for an hour by whoever asked.
  */
 const serveR2Object = async (
   c: Context<{ Bindings: Env }>,
@@ -201,8 +190,9 @@ const serveR2Object = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const stored = object.httpMetadata?.contentType ?? "";
-  // An emoji stored before uploads checked the type may be an SVG or an HTML
-  // document: it is served as bytes, not as a page of this origin.
+  // Defence in depth on the media origin: an emoji object whose stored type is
+  // not an image type (an SVG, an HTML document) is served as bytes, never as
+  // a page of this origin, whatever put it in the bucket.
   const contentType = objectKey.startsWith("emoji/")
     ? (emojiImageType(stored) ?? "application/octet-stream")
     : stored.length > 0

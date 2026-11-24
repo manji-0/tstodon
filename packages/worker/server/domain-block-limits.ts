@@ -39,17 +39,15 @@ const PAGE = 500;
  * earlier ones. The actor URI's host is not read: Mastodon's
  * `Account.by_domain_and_subdomains` matches the account domain only.
  */
-export const RECORD_PAGE_SQL = `SELECT rowid AS row_id, host_key AS key, actor_uri, created_at FROM remote_actors
+export const RECORD_PAGE_SQL = `SELECT rowid AS row_id, host_key AS key, actor_uri FROM remote_actors
     WHERE host_key >= ?2 AND host_key < ?3 AND (host_key, rowid) > (?4, ?5)
     ORDER BY host_key, rowid LIMIT ?6`;
 
 const PageRow = z.object({ row_id: z.number(), key: z.string(), actor_uri: z.string() });
 
-/** Statements that forget what the admin's lifts and a pending backfill kept for a block. */
-const forgetBlockState = (db: D1Database, blockId: string): D1PreparedStatement[] => [
-  db.prepare("DELETE FROM remote_actor_domain_lifts WHERE domain_block_id = ?").bind(blockId),
-  db.prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?").bind(blockId),
-];
+/** Forget the admin's lifts of a block. */
+const forgetLifts = (db: D1Database, blockId: string): D1PreparedStatement =>
+  db.prepare("DELETE FROM remote_actor_domain_lifts WHERE domain_block_id = ?").bind(blockId);
 
 const isStart = (cursor: Cursor): boolean =>
   cursor.afterKey === START.afterKey && cursor.afterRowId === START.afterRowId;
@@ -61,60 +59,31 @@ const isStart = (cursor: Cursor): boolean =>
  * suspension, each actor recorded gets its content's purge, unless an admin
  * lifted the block on it or suspended it first, as Mastodon's
  * `suspend_accounts!` empties only the accounts it suspends
- * ({@link startSuspendedActorContentPurge}). The first page of
- * an `Apply` run forgets the admin's lifts of the block and a pending
- * backfill in the same batch, so a failure is retried with the page. A
- * `Backfill` run records only the actors first seen by its `seenBy`, and
- * each of its pages stamps the backfill's claim; an actor first seen
- * later was recorded when cached. A legacy `UriHost`
- * cursor reads nothing. Resolves to the cursor after the page, `undefined`
- * once every actor is read.
+ * ({@link startSuspendedActorContentPurge}). The first page forgets the
+ * admin's lifts of the block in the same batch, so a failure is retried with
+ * the page. Resolves to the cursor after the page, `undefined` once every
+ * actor is read.
  */
 const recordPage = (
   db: D1Database,
   blockId: string,
   domain: Hostname,
   cursor: Cursor,
-  run: RecordJob["run"],
 ): Promise<Result<Cursor | undefined, RepositoryError>> =>
   runD1(async () => {
-    const finish = async (): Promise<undefined> => {
-      if (run.kind === "Backfill") {
-        await db
-          .prepare("DELETE FROM domain_block_limit_backfills WHERE domain_block_id = ?")
-          .bind(blockId)
-          .run();
-      }
-      return undefined;
-    };
-    if (cursor.host === "UriHost") {
-      return finish();
-    }
     const { from, to } = hostKeyRange(domain);
     const binds = [blockId, from, to, cursor.afterKey, cursor.afterRowId, PAGE];
-    const before =
-      run.kind === "Apply"
-        ? isStart(cursor)
-          ? forgetBlockState(db, blockId)
-          : []
-        : [
-            db
-              .prepare(
-                "UPDATE domain_block_limit_backfills SET claimed_at = ? WHERE domain_block_id = ?",
-              )
-              .bind(nowIso(), blockId),
-          ];
     const results = await db.batch([
-      ...before,
+      ...(isStart(cursor) ? [forgetLifts(db, blockId)] : []),
       db
         .prepare(
           `INSERT OR IGNORE INTO remote_actor_domain_limits (domain_block_id, actor_uri)
            SELECT ?1, p.actor_uri FROM (${RECORD_PAGE_SQL}) p
            WHERE EXISTS (
              SELECT 1 FROM domain_blocks WHERE id = ?1 AND severity IN ('silence', 'suspend')
-           ) AND (?7 IS NULL OR julianday(p.created_at) <= julianday(?7))`,
+           )`,
         )
-        .bind(...binds, run.kind === "Backfill" ? run.seenBy : null),
+        .bind(...binds),
       db
         .prepare(
           `INSERT OR REPLACE INTO remote_actor_content_purges (actor_uri, before)
@@ -141,10 +110,10 @@ const recordPage = (
     if (last !== undefined && rows.length === PAGE) {
       return { afterKey: last.key, afterRowId: last.row_id };
     }
-    return finish();
+    return undefined;
   });
 
-/** Delete the next page of rows a lifted block left, with its lifts and backfill. */
+/** Delete the next page of rows a lifted block left, with its lifts. */
 const forgetPage = (db: D1Database, blockId: string): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const [deleted] = await db.batch([
@@ -155,7 +124,7 @@ const forgetPage = (db: D1Database, blockId: string): Promise<Result<number, Rep
            )`,
         )
         .bind(blockId, PAGE),
-      ...forgetBlockState(db, blockId),
+      forgetLifts(db, blockId),
     ]);
     return deleted?.meta.changes ?? 0;
   });
@@ -185,13 +154,7 @@ export const processRecordDomainBlockLimitsJob = (env: Env, job: RecordJob) =>
       }
       return { outcome: "ok", size: forgotten.value, chained, step: "Forget" };
     }
-    const next = await recordPage(
-      env.DB,
-      block.id,
-      Hostname.ofAuthority(block.domain),
-      job.cursor,
-      job.run,
-    );
+    const next = await recordPage(env.DB, block.id, Hostname.ofAuthority(block.domain), job.cursor);
     if (next.isErr()) {
       return { outcome: "retry", size: 0, chained: false };
     }
@@ -207,7 +170,6 @@ const applyJob = (domainBlockId: string): RecordJob => ({
   kind: "RecordDomainBlockLimits",
   domainBlockId,
   cursor: START,
-  run: { kind: "Apply" },
 });
 
 /**
@@ -218,20 +180,16 @@ const applyJob = (domainBlockId: string): RecordJob => ({
  * block again limits every actor it covers again, as each run of Mastodon's
  * `DomainBlockWorker` does (`process_domain_block!` over the accounts
  * `without_silenced` / `without_suspended`): its first page forgets the
- * admin's lifts of the block, and a pending backfill, which a full recording
- * supersedes.
+ * admin's lifts of the block.
  */
 export const startDomainBlockLimits = (env: Env, domainBlockId: string): Promise<void> =>
   startJob(env, applyJob(domainBlockId), processRecordDomainBlockLimitsJob, "Queued");
 
-/** Distinct blocks with rows, and backfills, one hourly sweep looks at. */
+/** Distinct blocks with rows one hourly sweep looks at. */
 const RESUME_SCAN = 200;
 
 /** Messages one `sendBatch` takes. */
 const QUEUE_BATCH = 100;
-
-/** How long a backfill's claim holds without a page stamping it. */
-const BACKFILL_CLAIM_HOURS = 1;
 
 const BlockIdRow = z.object({ id: z.string() });
 
@@ -260,55 +218,19 @@ const listLiftedDomainBlockIds = (db: D1Database): Promise<Result<string[], Repo
     return parseRows(BlockIdRow, results).map((row) => row.id);
   });
 
-const ClaimedBackfill = z.object({ id: z.string(), seen_by: z.string() });
-
-/**
- * Claim the silences and suspensions whose actors are still to be recorded
- * (`domain_block_limit_backfills`) that no chain records now: unclaimed, or whose claim no
- * page stamped for {@link BACKFILL_CLAIM_HOURS}.
- */
-const claimBackfills = (
-  db: D1Database,
-): Promise<Result<z.infer<typeof ClaimedBackfill>[], RepositoryError>> =>
-  runD1(async () => {
-    const { results } = await db
-      .prepare(
-        `UPDATE domain_block_limit_backfills SET claimed_at = ?1
-         WHERE domain_block_id IN (
-           SELECT domain_block_id FROM domain_block_limit_backfills
-           WHERE claimed_at IS NULL OR julianday(claimed_at) < julianday(?1) - ?2 / 24.0
-           LIMIT ?3
-         )
-         RETURNING domain_block_id AS id, seen_by`,
-      )
-      .bind(nowIso(), BACKFILL_CLAIM_HOURS, RESUME_SCAN)
-      .all();
-    return parseRows(ClaimedBackfill, results);
-  });
-
 /**
  * Queue the deletion of the rows each lifted block left, for a chain that
  * stopped before it finished: a next page that could not be queued, or a job
  * that gave up its retries (hourly cron). A chain still running gets a
- * second job; both delete what is left. Each backfill no chain holds gets
- * its recording queued, until a chain finishes it.
+ * second job; both delete what is left.
  */
 export const processResumeLiftedDomainBlockLimitsJob = (env: Env) =>
   measureJobPage(env, "ResumeLiftedDomainBlockLimits", async () => {
-    const [lifted, backfills] = await Promise.all([
-      listLiftedDomainBlockIds(env.DB),
-      claimBackfills(env.DB),
-    ]);
-    if (lifted.isErr() || backfills.isErr()) {
+    const lifted = await listLiftedDomainBlockIds(env.DB);
+    if (lifted.isErr()) {
       return { outcome: "retry", size: -1, chained: false };
     }
-    const jobs: RecordJob[] = [
-      ...lifted.value.map(applyJob),
-      ...backfills.value.map((backfill): RecordJob => ({
-        ...applyJob(backfill.id),
-        run: { kind: "Backfill", seenBy: backfill.seen_by },
-      })),
-    ];
+    const jobs = lifted.value.map(applyJob);
     for (let start = 0; start < jobs.length; start += QUEUE_BATCH) {
       await env.OUTBOX_PROCESS_QUEUE.sendBatch(
         jobs.slice(start, start + QUEUE_BATCH).map((body) => ({ body })),

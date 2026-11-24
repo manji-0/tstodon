@@ -51,10 +51,10 @@ const search = async (email: string, query: string): Promise<z.infer<typeof ApiA
 const cacheRemoteActor = async (username: string, domain: string): Promise<void> => {
   const actorUri = `https://${domain}/users/${username}`;
   await env.DB.prepare(
-    `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-     VALUES (?, ?, ?, ?, ?, 'pem', ?, '2026-01-01T00:00:00.000Z')`,
+    `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+     VALUES (?, ?, ?, ?, ?, '2026-01-01T00:00:00.000Z')`,
   )
-    .bind(actorUri, username, domain, `${actorUri}/inbox`, `${actorUri}#main-key`, username)
+    .bind(actorUri, username, domain, `${actorUri}/inbox`, username)
     .run();
 };
 
@@ -65,9 +65,9 @@ const cacheRemoteActors = async (
     actors.map(({ username, domain, uriHost }) => {
       const actorUri = `https://${uriHost ?? domain}/users/${username}`;
       return env.DB.prepare(
-        `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-         VALUES (?, ?, ?, ?, ?, 'pem', ?, '2026-01-01T00:00:00.000Z')`,
-      ).bind(actorUri, username, domain, `${actorUri}/inbox`, `${actorUri}#main-key`, username);
+        `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+         VALUES (?, ?, ?, ?, ?, '2026-01-01T00:00:00.000Z')`,
+      ).bind(actorUri, username, domain, `${actorUri}/inbox`, username);
     }),
   );
 };

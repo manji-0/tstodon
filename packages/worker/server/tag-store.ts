@@ -79,33 +79,12 @@ export const followTag = async (
     ])
   ).map(() => undefined);
 
-/**
- * The stored names of `listed` that `tag` stands for: `tag` itself, and a
- * name stored before `normalizeHashtag` folded accents (`café` for `cafe`)
- * that the `FoldTagNames` job has not renamed yet, so removing `cafe` also
- * removes it rather than leaving it for the job to bring back as `cafe`.
- */
-const spellingsOf = (listed: ReadonlyArray<string>, tag: string): string[] => [
-  ...new Set([tag, ...listed.filter((name) => normalizeHashtag(name) === tag)]),
-];
-
 export const unfollowTag = async (
   db: D1Database,
   accountId: string,
   tag: string,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const listed = await queryTyped(db, listFollowedTagsSql(accountId), TagNameRow);
-    let removed = false;
-    for (const name of spellingsOf(
-      listed.map((row) => row.tag_name),
-      tag,
-    )) {
-      const rows = await queryTyped(db, unfollowTagSql(accountId, name), TagNameRow);
-      removed ||= rows.length > 0;
-    }
-    return removed;
-  });
+  runD1(async () => (await queryTyped(db, unfollowTagSql(accountId, tag), TagNameRow)).length > 0);
 
 export const isTagFollowed = async (
   db: D1Database,
@@ -160,18 +139,7 @@ export const unfeatureTag = async (
   accountId: string,
   tag: string,
 ): Promise<Result<boolean, RepositoryError>> =>
-  runD1(async () => {
-    const listed = await queryTyped(db, listFeaturedTagsSql(accountId), TagNameRow);
-    let removed = false;
-    for (const name of spellingsOf(
-      listed.map((row) => row.tag_name),
-      tag,
-    )) {
-      const rows = await queryTyped(db, unfeatureTagSql(accountId, name), TagNameRow);
-      removed ||= rows.length > 0;
-    }
-    return removed;
-  });
+  runD1(async () => (await queryTyped(db, unfeatureTagSql(accountId, tag), TagNameRow)).length > 0);
 
 export const isTagFeatured = async (
   db: D1Database,

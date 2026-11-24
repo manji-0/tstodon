@@ -30,16 +30,7 @@ const kindsOf = (jobs: ReadonlyArray<CronJob>, kind?: CronJob["kind"]): string[]
   jobs.filter((cronJob) => kind === undefined || cronJob.kind === kind).map(({ job }) => job.kind);
 
 /** Jobs that queue their next page when a page is full. */
-const PAGED = new Set([
-  "BackfillRemoteTags",
-  "BackfillLocalNoteTags",
-  "FoldTagNames",
-  "AsciiDomainNames",
-  "RekeyLegacyMedia",
-  "VacuumMediaAttachments",
-  "VacuumActivities",
-  "BackfillStoredMediaSizes",
-]);
+const PAGED = new Set(["BackfillRemoteTags", "VacuumMediaAttachments", "VacuumActivities"]);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -68,7 +59,6 @@ describe("handleScheduled", () => {
     // Nothing is due on the test database: no scheduled post, no ended poll.
     expect(hourly).not.toContain("PublishScheduledStatuses");
     expect(hourly).not.toContain("ProcessExpiredPolls");
-    expect(sixHourly).toContain("StripStoredMediaMetadata");
   });
 
   it("queues the scheduled posts job once a post is due", async () => {

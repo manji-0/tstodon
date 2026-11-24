@@ -18,8 +18,6 @@ export * from "./sql/authorizeFollowRequest";
 
 export * from "./sql/authorizeRemoteFollowRequest";
 
-export * from "./sql/backfillLocalStatusTags";
-
 export * from "./sql/cancelAccountMove";
 
 export * from "./sql/cancelRemoteActorDeliveries";
@@ -49,8 +47,6 @@ export * from "./sql/claimRemotePollRefresh";
 export * from "./sql/claimRemoteStatusThreadBackfill";
 
 export * from "./sql/claimRemoteStatusThreadResolve";
-
-export * from "./sql/clearLegacyMediaKey";
 
 export * from "./sql/clearNotifications";
 
@@ -674,8 +670,6 @@ export * from "./sql/listIpBlocks";
 
 export * from "./sql/listKnownRemoteInboxes";
 
-export * from "./sql/listLegacyMedia";
-
 export * from "./sql/listLinkCards";
 
 export * from "./sql/listListMembers";
@@ -695,8 +689,6 @@ export * from "./sql/listLocalBoostsOfRemoteActor";
 export * from "./sql/listLocalBoostsOfRemoteObject";
 
 export * from "./sql/listLocalFollowsOfActor";
-
-export * from "./sql/listLocalNoteTextsAfter";
 
 export * from "./sql/listLocalThreadAncestors";
 
@@ -824,25 +816,11 @@ export * from "./sql/listUnfollowedSilencedAuthorsJson";
 
 export * from "./sql/listUnindexedRemoteStatuses";
 
-export * from "./sql/listUnsizedMedia";
-
-export * from "./sql/listUnstrippedAvatars";
-
-export * from "./sql/listUnstrippedHeaders";
-
-export * from "./sql/listUnstrippedMedia";
-
 export * from "./sql/listViewerStatusAccessJson";
 
 export * from "./sql/lockFollowersSynchronization";
 
-export * from "./sql/markAvatarMetadataStripped";
-
-export * from "./sql/markHeaderMetadataStripped";
-
 export * from "./sql/markLocalProfileFieldVerified";
-
-export * from "./sql/markMediaMetadataStripped";
 
 export * from "./sql/markPollExpiryNotified";
 
@@ -916,15 +894,7 @@ export * from "./sql/recordAccountActivityDay";
 
 export * from "./sql/recordAccountIp";
 
-export * from "./sql/recordAvatarFileSize";
-
-export * from "./sql/recordCustomEmojiFileSize";
-
 export * from "./sql/recordDeletedAccountName";
-
-export * from "./sql/recordHeaderFileSize";
-
-export * from "./sql/recordMediaFileSizes";
 
 export * from "./sql/recountPollOptionIfActive";
 
@@ -937,8 +907,6 @@ export * from "./sql/rejectFollowRequest";
 export * from "./sql/rejectOutboundFollow";
 
 export * from "./sql/rejectRemoteFollowRequest";
-
-export * from "./sql/rekeyLegacyMedia";
 
 export * from "./sql/releaseInboxActivity";
 
@@ -971,8 +939,6 @@ export * from "./sql/reserveStatusIdempotency";
 export * from "./sql/resolveDirectConversationRoots";
 
 export * from "./sql/revokeOutboundFollow";
-
-export * from "./sql/rewriteEditedMediaKey";
 
 export * from "./sql/rotateAccountKeys";
 

@@ -23,4 +23,4 @@ WHERE id IN (
     ORDER BY m.created_at
     LIMIT $2
   )
-RETURNING object_key, legacy_object_key, preview_object_key
+RETURNING object_key, preview_object_key

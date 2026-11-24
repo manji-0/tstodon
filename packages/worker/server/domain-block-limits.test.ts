@@ -2,7 +2,7 @@ import { SELF, env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAdminAccount, type ApiAdminAccountJSON } from "@tstodon/api";
-import { CoveredHosts, IsoInstant, OutboxJob, RemoteActor } from "@tstodon/domain";
+import { CoveredHosts, IsoInstant, RemoteActor } from "@tstodon/domain";
 import { authHeaders } from "../test/auth-fixture";
 import { postForm, signUp } from "../test/passkey-browser";
 import { patchD1 } from "../test/meter";
@@ -274,10 +274,9 @@ describe("a block over more actors than one page", () => {
     await block("open.many-susp.example", "noop");
     await env.DB.prepare(
       `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?)
-       INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+       INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
        SELECT printf('https://open.many-susp.example/users/u%04d', n), printf('u%04d', n),
               'open.many-susp.example', 'https://open.many-susp.example/inbox',
-              printf('https://open.many-susp.example/users/u%04d#main-key', n), 'x',
               '2026-11-01T00:00:00.000Z'
        FROM series`,
     )
@@ -750,73 +749,6 @@ describe("an actor on a host a suspension covers", () => {
   });
 });
 
-describe("a silence or suspension made before its actors were recorded", () => {
-  it("records the actors first seen by its last change, from the hourly sweep", async () => {
-    await block("open.old-susp.example", "noop");
-    const before = await remoteActor("before", "open.old-susp.example");
-    const after = await remoteActor("after", "open.old-susp.example");
-    const firstSeen = (actorUri: string, at: string) =>
-      env.DB.prepare("UPDATE remote_actors SET created_at = ? WHERE actor_uri = ?").bind(
-        at,
-        actorUri,
-      );
-    // A block whose actors are still to be recorded.
-    const id = "old-susp-block";
-    await env.DB.batch([
-      firstSeen(before.actorUri, "2026-01-01T00:00:00.000Z"),
-      firstSeen(after.actorUri, "2026-03-01T00:00:00.000Z"),
-      env.DB.prepare(
-        `INSERT INTO domain_blocks (id, domain, severity, created_at, updated_at)
-         VALUES (?, 'old-susp.example', 'suspend', '2025-12-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')`,
-      ).bind(id),
-      env.DB.prepare(
-        "INSERT INTO domain_block_limit_backfills (domain_block_id, seen_by) VALUES (?, ?)",
-      ).bind(id, "2026-02-01T00:00:00.000Z"),
-    ]);
-
-    await settled(async () => {
-      expect(await processOutboxJob(env, { kind: "ResumeLiftedDomainBlockLimits" })).toBe("ok");
-    });
-
-    expect(await limitRows("actor_uri", before.actorUri)).toBe(1);
-    expect(await limitRows("actor_uri", after.actorUri)).toBe(0);
-    const left = await env.DB.prepare(
-      "SELECT count(*) AS n FROM domain_block_limit_backfills",
-    ).first();
-    expect(z.object({ n: z.number() }).parse(left).n).toBe(0);
-  });
-
-  it("is not started again while a chain holds its claim", async () => {
-    const actor = await remoteActor("claimed", "claimed-susp.example");
-    const id = "claimed-susp-block";
-    const now = new Date().toISOString();
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO domain_blocks (id, domain, severity, created_at, updated_at)
-         VALUES (?, 'claimed-susp.example', 'suspend', ?, ?)`,
-      ).bind(id, now, now),
-      env.DB.prepare(
-        `INSERT INTO domain_block_limit_backfills (domain_block_id, seen_by, claimed_at)
-         VALUES (?, ?, ?)`,
-      ).bind(id, now, now),
-    ]);
-    const sweep = () =>
-      settled(async () => {
-        expect(await processOutboxJob(env, { kind: "ResumeLiftedDomainBlockLimits" })).toBe("ok");
-      });
-
-    await sweep();
-    expect(await limitRows("actor_uri", actor.actorUri)).toBe(0);
-
-    // A claim no page stamped for an hour is a chain that stopped.
-    await env.DB.prepare("UPDATE domain_block_limit_backfills SET claimed_at = ?")
-      .bind(new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
-      .run();
-    await sweep();
-    expect(await limitRows("actor_uri", actor.actorUri)).toBe(1);
-  });
-});
-
 describe("the admin page of an actor a domain silence limits", () => {
   it("shows it limited and lifts the limit from its button", async () => {
     const { known, note } = await knownUnderNoop("page-sil.example");
@@ -873,7 +805,7 @@ const boostedBothWays = async (actor: Remote): Promise<string> => {
   return z.object({ id: z.string() }).parse(await reblog.json()).id;
 };
 
-/** A suspension stored with its actors recorded and their content kept, as its purge queues it. */
+/** A suspension stored with its actors recorded and their content kept. */
 const recordedSuspension = (id: string, domain: string, actorUris: ReadonlyArray<string>) => {
   const at = "2026-11-01T00:00:00.000Z";
   return env.DB.batch([
@@ -886,16 +818,8 @@ const recordedSuspension = (id: string, domain: string, actorUris: ReadonlyArray
         "INSERT INTO remote_actor_domain_limits (domain_block_id, actor_uri) VALUES (?, ?)",
       ).bind(id, uri),
     ),
-    env.DB.prepare(
-      "INSERT INTO domain_block_limit_backfills (domain_block_id, seen_by) VALUES (?, ?)",
-    ).bind(id, at),
   ]);
 };
-
-const hourlySweep = () =>
-  settled(async () => {
-    expect(await processOutboxJob(env, { kind: "ResumeLiftedDomainBlockLimits" })).toBe("ok");
-  });
 
 /**
  * Mastodon v4.7.5's `BlockDomainService#suspend_accounts!` runs
@@ -1057,37 +981,6 @@ describe("the content a domain suspension emptied", () => {
     await moderate(actor.actorUri, "suspend");
 
     await block("empty-own.example", "suspend");
-
-    expect(await statusRows(actor.actorUri)).toBe(1);
-  });
-
-  it("is emptied by the hourly sweep for a suspension recorded before", async () => {
-    const { actor } = await knownOnDomain("empty-old.example");
-    const id = "empty-old-block";
-    await recordedSuspension(id, "empty-old.example", [actor.actorUri]);
-    expect(await statusRows(actor.actorUri)).toBe(1);
-
-    await hourlySweep();
-
-    expect(await statusRows(actor.actorUri)).toBe(0);
-    await changeBlock(id, "silence");
-    expect(await accountStatusUris(actor.actorUri)).toEqual([]);
-    expect(await notificationSenders()).not.toContain(RemoteAccountId.encode(actor.actorUri));
-  });
-
-  it("is not emptied again by the sweep for an actor an admin unsuspended", async () => {
-    const actor = await remoteActor("lifted", "empty-lifted.example");
-    expect(await createNote(actor, "https://empty-lifted.example/notes/since")).toBe(202);
-    const id = "empty-lifted-block";
-    await recordedSuspension(id, "empty-lifted.example", [actor.actorUri]);
-    await env.DB.prepare(
-      `INSERT INTO remote_actor_domain_lifts (domain_block_id, actor_uri, severity)
-       VALUES (?, ?, 'suspend')`,
-    )
-      .bind(id, actor.actorUri)
-      .run();
-
-    await hourlySweep();
 
     expect(await statusRows(actor.actorUri)).toBe(1);
   });
@@ -1529,20 +1422,6 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
     expect(asked.filter((url) => url.host === `covered.${domain}`)).toEqual([]);
   });
 
-  it("is emptied by the hourly sweep for a suspension recorded before", async () => {
-    const domain = "held-old.example";
-    const actor = await profiledActor(domain);
-    await heldBothWays(actor);
-    const id = "held-old-block";
-    await recordedSuspension(id, domain, [actor.actorUri]);
-
-    await hourlySweep();
-    await changeBlock(id, "noop");
-
-    expect(await heldOf(actor.actorUri)).toEqual(NOTHING_HELD);
-    await expectPurgedProfile(domain, actor.actorUri);
-  });
-
   it("is emptied by an admin's unsuspension of an actor whose purge is queued", async () => {
     const domain = "held-lift.example";
     const actor = await profiledActor(domain);
@@ -1772,26 +1651,5 @@ describe("an actor whose URI's host a suspension covers and whose account domain
 
     expect(await accountById(actor.actorUri)).toBe("Shown");
     expect(await publicRemoteUris()).toContain(note);
-  });
-});
-
-describe("a recording job queued while the URI hosts were read too", () => {
-  it("ends its chain at a UriHost cursor, keeping the admin's lifts", async () => {
-    const { actor } = await knownOnDomain("legacy-cursor.example");
-    const id = await block("legacy-cursor.example", "suspend");
-    expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
-    const queued = OutboxJob.parse({
-      kind: "RecordDomainBlockLimits",
-      domainBlockId: id,
-      cursor: { host: "UriHost", afterKey: "", afterRowId: 0 },
-      run: { kind: "Apply" },
-    })._unsafeUnwrap();
-
-    await settled(async () => {
-      expect(await processOutboxJob(env, queued)).toBe("ok");
-    });
-
-    expect(await liftRows(actor.actorUri)).toBe(1);
-    expect(await accountById(actor.actorUri)).toBe("Shown");
   });
 });

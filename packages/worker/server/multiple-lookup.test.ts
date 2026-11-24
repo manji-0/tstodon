@@ -123,10 +123,10 @@ describe("multiple lookups", () => {
 
     const actorUri = "https://remote.example/users/multi-restricted";
     await env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-       VALUES (?, 'multi-restricted', 'remote.example', ?, ?, 'pem', 'Restricted Remote', '2026-01-01T00:00:00.000Z')`,
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+       VALUES (?, 'multi-restricted', 'remote.example', ?, 'Restricted Remote', '2026-01-01T00:00:00.000Z')`,
     )
-      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .bind(actorUri, `${actorUri}/inbox`)
       .run();
     for (const [id, visibility] of [
       ["multi-restricted-remote-dm", "direct"],
@@ -192,10 +192,10 @@ describe("multiple lookups", () => {
   it("includes remote accounts and statuses and renders suspended accounts suspended", async () => {
     const actorUri = "https://remote.example/users/multi";
     await env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-       VALUES (?, 'multi', 'remote.example', ?, ?, 'pem', 'Multi Remote', '2026-01-01T00:00:00.000Z')`,
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+       VALUES (?, 'multi', 'remote.example', ?, 'Multi Remote', '2026-01-01T00:00:00.000Z')`,
     )
-      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .bind(actorUri, `${actorUri}/inbox`)
       .run();
     await env.DB.prepare(
       `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at)

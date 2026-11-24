@@ -399,9 +399,9 @@ export const seedNoise = async (noiseAccountId: string, favouriterId: string, n:
        FROM series WHERE n % 10 = 0`,
     ).bind(noiseAccountId, favouriterId),
     env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
        VALUES ('https://noise.example/users/n', 'n', 'noise.example', 'https://noise.example/inbox',
-               'https://noise.example/users/n#main-key', 'x', '2020-01-01T00:00:00.000Z')`,
+               '2020-01-01T00:00:00.000Z')`,
     ),
     env.DB.prepare(
       `${series} INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json, tags_indexed)

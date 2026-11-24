@@ -60,7 +60,6 @@ describe("a fetched actor's write", () => {
         null,
         null,
         null,
-        "",
       ).sql,
     ],
     [
@@ -81,7 +80,6 @@ describe("a fetched actor's write", () => {
         null,
         null,
         null,
-        "",
       ).sql,
     ],
   ])("seeks the actor's suspensions: %s", async (_name, sql) => {

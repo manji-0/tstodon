@@ -386,10 +386,10 @@ describe("push delivery", () => {
     );
     const actorUri = "https://remote.example/users/push-fan";
     await env.DB.prepare(
-      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, display_name, fetched_at)
-       VALUES (?, 'push-fan', 'remote.example', ?, ?, 'pem', 'Push Fan', '2026-10-01T00:00:00.000Z')`,
+      `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, display_name, fetched_at)
+       VALUES (?, 'push-fan', 'remote.example', ?, 'Push Fan', '2026-10-01T00:00:00.000Z')`,
     )
-      .bind(actorUri, `${actorUri}/inbox`, `${actorUri}#main-key`)
+      .bind(actorUri, `${actorUri}/inbox`)
       .run();
     const status = await json("/api/v1/statuses", {
       method: "POST",

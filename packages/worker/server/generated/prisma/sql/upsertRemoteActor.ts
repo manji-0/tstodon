@@ -21,10 +21,9 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param followersUri
  * @param followingUri
  * @param featuredTagsUri
- * @param legacyPublicKeyPem
  */
 export const upsertRemoteActor = $runtime.makeTypedQueryFactory(
-  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\npublic_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,\noutbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri\n) VALUES ($1, $2, $3, $4, $5, $1, $17, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)\nON CONFLICT(actor_uri) DO UPDATE SET\nusername = excluded.username,\ndomain = excluded.domain,\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\ndisplay_name = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN remote_actors.display_name ELSE excluded.display_name END,\nprofile_json = CASE WHEN NOT EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN excluded.profile_json\nWHEN json_valid(remote_actors.profile_json) THEN json_set(remote_actors.profile_json,\n'$.profileUrl', json(excluded.profile_json -> '$.profileUrl'),\n'$.bot', json(excluded.profile_json -> '$.bot'),\n'$.publishedAt', json(excluded.profile_json -> '$.publishedAt'))\nELSE remote_actors.profile_json END,\noutbox_uri = excluded.outbox_uri,\nfeatured_uri = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN remote_actors.featured_uri ELSE excluded.featured_uri END,\nfeatured_tags_uri = excluded.featured_tags_uri,\nfollowers_uri = excluded.followers_uri,\nfollowing_uri = excluded.following_uri,\nfetched_at = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN remote_actors.fetched_at ELSE excluded.fetched_at END,\nlast_webfingered_at = excluded.last_webfingered_at,\nupdated_at = excluded.updated_at\nRETURNING display_name, profile_json, featured_uri, fetched_at",
+  "INSERT INTO remote_actors (\nactor_uri, username, domain, inbox_uri, shared_inbox_uri,\ndisplay_name, fetched_at, created_at, updated_at, profile_json,\noutbox_uri, featured_uri, last_webfingered_at, followers_uri, following_uri, featured_tags_uri\n) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)\nON CONFLICT(actor_uri) DO UPDATE SET\nusername = excluded.username,\ndomain = excluded.domain,\ninbox_uri = excluded.inbox_uri,\nshared_inbox_uri = excluded.shared_inbox_uri,\ndisplay_name = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN remote_actors.display_name ELSE excluded.display_name END,\nprofile_json = CASE WHEN NOT EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN excluded.profile_json\nWHEN json_valid(remote_actors.profile_json) THEN json_set(remote_actors.profile_json,\n'$.profileUrl', json(excluded.profile_json -> '$.profileUrl'),\n'$.bot', json(excluded.profile_json -> '$.bot'),\n'$.publishedAt', json(excluded.profile_json -> '$.publishedAt'))\nELSE remote_actors.profile_json END,\noutbox_uri = excluded.outbox_uri,\nfeatured_uri = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN remote_actors.featured_uri ELSE excluded.featured_uri END,\nfeatured_tags_uri = excluded.featured_tags_uri,\nfollowers_uri = excluded.followers_uri,\nfollowing_uri = excluded.following_uri,\nfetched_at = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)\nTHEN remote_actors.fetched_at ELSE excluded.fetched_at END,\nlast_webfingered_at = excluded.last_webfingered_at,\nupdated_at = excluded.updated_at\nRETURNING display_name, profile_json, featured_uri, fetched_at",
 ) as (
   actorUri: string,
   username: string,
@@ -42,7 +41,6 @@ export const upsertRemoteActor = $runtime.makeTypedQueryFactory(
   followersUri: string | null,
   followingUri: string | null,
   featuredTagsUri: string | null,
-  legacyPublicKeyPem: string,
 ) => $runtime.TypedSql<upsertRemoteActor.Parameters, upsertRemoteActor.Result>;
 
 export namespace upsertRemoteActor {
@@ -63,7 +61,6 @@ export namespace upsertRemoteActor {
     followersUri: string | null,
     followingUri: string | null,
     featuredTagsUri: string | null,
-    legacyPublicKeyPem: string,
   ];
   export type Result = {
     display_name: string;

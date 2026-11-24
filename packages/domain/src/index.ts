@@ -118,38 +118,6 @@ export {
   type VideoMetadataStrip,
 } from "./video-metadata";
 export { UploadMetadata, type UnstrippableUpload } from "./upload-metadata";
-export {
-  StoredMediaMetadata,
-  type ListUnstrippedMedia,
-  type MarkStoredMedia,
-  type ReadStoredMedia,
-  type StoredMediaCursor,
-  type StoredMediaLimits,
-  type StoredMediaMark,
-  type StoredMediaObject,
-  type StoredMediaOutcome,
-  type StoredMediaPass,
-  type StoredMediaReport,
-  type StoredMediaSource,
-  type StoredMediaStrip,
-  type StoredMediaTally,
-  type UnstrippedMedia,
-} from "./stored-media-metadata";
-export {
-  StoredMediaSizes,
-  type HeadStoredMedia,
-  type ListUnsizedMedia,
-  type RecordStoredMediaSizes,
-  type StoredMediaSize,
-  type StoredMediaSizeCursor,
-  type StoredMediaSizePass,
-  type StoredMediaSizeReport,
-  type StoredMediaSizeSource,
-  type StoredMediaSizeTally,
-  type StoredMediaSlot,
-  type UnsizedMedia,
-  type UnsizedObject,
-} from "./stored-media-sizes";
 export { MediaId } from "./media-id";
 export { MediaDimensions, type VideoDimensions } from "./media-dimensions";
 export {

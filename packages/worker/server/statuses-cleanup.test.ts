@@ -108,7 +108,7 @@ describe("automated post deletion job", () => {
         "INSERT INTO polls (id, status_id, expires_at, options_json) VALUES ('poll-1', ?, ?, '[]')",
       ).bind(poll, new Date(Date.now() + DAY_MS).toISOString()),
       env.DB.prepare(
-        "INSERT INTO media_attachments (id, account_id, status_id, object_key, content_type) VALUES ('media-1', ?, ?, 'cleanup/media-1', 'image/png')",
+        "INSERT INTO media_attachments (id, account_id, status_id, object_key, content_type, file_size) VALUES ('media-1', ?, ?, 'cleanup/media-1', 'image/png', 0)",
       ).bind(owner, media),
       env.DB.prepare(
         "INSERT INTO favourites (id, account_id, local_status_id) VALUES (?, ?, ?)",
