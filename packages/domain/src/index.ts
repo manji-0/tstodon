@@ -306,7 +306,6 @@ export { StatusDraftError } from "./status-draft-error";
 export type { FindThreadParent, ThreadStatus } from "./thread-status";
 export type {
   FindRemoteActorInbox,
-  ListLocalBoosterAccountIds,
   ListLocalBoosterFollowerInboxes,
   ListLocalSharerAccountIds,
   ListRemoteFollowerInboxes,

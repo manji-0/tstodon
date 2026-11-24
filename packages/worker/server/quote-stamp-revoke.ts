@@ -1,21 +1,18 @@
-import { schemaResult } from "@tstodon/core";
 import {
   type InstanceIdentity,
   type LocalAccount,
   type LocalStatus as LocalStatusValue,
-  type RemoteActor,
   type ThreadStatus,
 } from "@tstodon/domain";
-import { z } from "zod";
 import { localNoteRef } from "./activitypub";
-import { enqueueActivityToInboxes, forwardActivityToInboxes } from "./delivery";
+import { enqueueActivityToInboxes } from "./delivery";
 import { type FoundStatus, foundStatusTarget } from "./found-status";
 import {
   localQuoteAuthorization,
   quoteAuthorizationDeleteActivity,
 } from "./quote-authorization-document";
 import { statusTargetRef } from "./quote-uri";
-import { quoteStampReach, stampDeleteForward } from "./status-reach";
+import { quoteStampReach } from "./status-reach";
 import { statusReachOperations } from "./status-reach-operations";
 
 /** A found status as a thread node. */
@@ -56,46 +53,5 @@ export const federateStampDeletion = async (
     : await enqueueActivityToInboxes(env, quotedAuthor, "Delete", activity, reach.value);
   if (enqueued.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteStampDeleteNotFederated", quoteId }));
-  }
-};
-
-/** An activity that carries a Linked Data signature, which lets another server check it forwarded. */
-const parseLdSigned = schemaResult(
-  z.object({ signature: z.record(z.string(), z.unknown()) }).passthrough(),
-);
-
-/**
- * Forward an inbound stamp `Delete` to the audience of the quoting status
- * this server distributed ({@link stampDeleteForward}), as Mastodon's
- * `Delete#revoke_quote` does with `ActivityPub::Forwarder`. As there, only a
- * body with a Linked Data `signature` is forwarded, as received, since the
- * receivers check that signature rather than ours. Best effort.
- */
-export const forwardStampDelete = async (
-  env: Env,
-  identity: InstanceIdentity,
-  sender: RemoteActor,
-  body: unknown,
-  quoting: ThreadStatus,
-): Promise<void> => {
-  const signed = parseLdSigned(body);
-  if (signed.isErr()) {
-    return;
-  }
-  const forward = await stampDeleteForward(statusReachOperations(env, identity), quoting, sender);
-  if (forward.isErr() || forward.value === undefined) {
-    return;
-  }
-  const enqueued = await forwardActivityToInboxes(
-    env,
-    forward.value.signerAccountId,
-    "Delete",
-    signed.value,
-    forward.value.inboxes,
-  );
-  if (enqueued.isErr()) {
-    console.error(
-      JSON.stringify({ kind: "QuoteStampDeleteNotForwarded", statusId: quoting.status.id }),
-    );
   }
 };

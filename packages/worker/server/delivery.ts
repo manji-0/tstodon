@@ -132,25 +132,6 @@ export const enqueueActivityToInboxes = (
 ): Promise<Result<void, EnqueueLocalActivityError>> =>
   enqueueSignedActivity(env, kind, { kind: "Own", account, activity: payload }, inboxUrls);
 
-/**
- * Forward an activity another server signed, as received, to `inboxUrls`
- * (Mastodon's `ActivityPub::Forwarder`): its body is not tstodon's, so it is
- * not typed as one of tstodon's activities.
- */
-export const forwardActivityToInboxes = (
-  env: Env,
-  accountId: string,
-  kind: string,
-  body: Readonly<Record<string, unknown>>,
-  inboxUrls: ReadonlyArray<string>,
-): Promise<Result<void, EnqueueLocalActivityError>> =>
-  enqueueSignedActivity(
-    env,
-    kind,
-    { kind: "AsIs", signer: { kind: "Account", accountId }, body },
-    inboxUrls,
-  );
-
 /** {@link enqueueTargetedActivity}, signed by the instance actor rather than a user. */
 export const enqueueInstanceActorActivity = (
   env: Env,

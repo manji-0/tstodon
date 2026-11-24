@@ -6,6 +6,7 @@ import {
   type OutboxJob as OutboxJobValue,
   RemoteActor,
   type RemoteStatus,
+  type ThreadStatus,
 } from "@tstodon/domain";
 import { deliverExpandedActivity } from "./delivery";
 import { forwardableBody } from "./ld-signature";
@@ -13,32 +14,52 @@ import { writeMetric } from "./metrics";
 import type { OutboxJobOutcome } from "./outbox-job";
 import { findOutboundActivity, insertForwardedActivity } from "./outbox-store";
 import { listAcceptedRemoteFollowerInboxesOf } from "./remote-actor-store";
-import { remoteActivityForward } from "./status-reach";
+import { distributable, remoteActivityForward } from "./status-reach";
 import { statusReachOperations } from "./status-reach-operations";
 
-/** An inbound activity about a remote status, as received. */
+/** An inbound activity about a status, as received. */
 export type ReceivedActivity = Readonly<{ kind: "Create" | "Update" | "Delete"; body: unknown }>;
 
-const logNotForwarded = (status: RemoteStatus, step: string, message: string): void => {
+const logNotForwarded = (status: ThreadStatus, step: string, message: string): void => {
   console.error(
-    JSON.stringify({ kind: "ActivityNotForwarded", statusId: status.id, step, message }),
+    JSON.stringify({ kind: "ActivityNotForwarded", statusId: status.status.id, step, message }),
   );
 };
 
 /**
- * Forward `activity`, which `author` sent about its status `status`, to the
- * local audience that would miss it (`remoteActivityForward`): Mastodon's
- * `Create#forward_for_reply`, and `ActivityPub::Forwarder` for an `Update`
- * or a `Delete`. The body goes as received, and only one that carries its
- * actor's Linked Data signature: the receivers check that signature, ours
- * only signs the request. The inboxes are listed by an `ExpandForward` job.
- * Best effort: the activity is applied here whether or not this fails.
+ * Forward `activity`, which `author` sent about its status `status`, as
+ * Mastodon's `Create#forward_for_reply`, and `ActivityPub::Forwarder` for an
+ * `Update` or a `Delete`: only for a public or unlisted status
+ * (`Forwarder#forwardable?`), to {@link forwardInboundActivity}'s audience.
  */
 export const forwardRemoteActivity = async (
   env: Env,
   identity: InstanceIdentity,
   status: RemoteStatus,
   author: RemoteActor,
+  activity: ReceivedActivity,
+): Promise<void> => {
+  const thread: ThreadStatus = { kind: "Remote", status };
+  if (distributable(thread)) {
+    await forwardInboundActivity(env, identity, thread, author, activity);
+  }
+};
+
+/**
+ * Forward `activity`, which `sender` sent about `status`, to the local
+ * audience that would miss it (`remoteActivityForward`), whatever the
+ * status's visibility: `Delete#revoke_quote` calls `ActivityPub::Forwarder`
+ * for the quoting status without asking `forwardable?`. The body goes as
+ * received, and only one that carries a Linked Data signature: the receivers
+ * check that signature, ours only signs the request. The inboxes are listed
+ * by an `ExpandForward` job. Best effort: the activity is applied here
+ * whether or not this fails.
+ */
+export const forwardInboundActivity = async (
+  env: Env,
+  identity: InstanceIdentity,
+  status: ThreadStatus,
+  sender: RemoteActor,
   activity: ReceivedActivity,
 ): Promise<void> => {
   const body = forwardableBody(activity.body);
@@ -51,7 +72,7 @@ export const forwardRemoteActivity = async (
   }
   const plan = await remoteActivityForward(
     statusReachOperations(env, identity),
-    { kind: "Remote", status },
+    status,
     FORWARD_MAX_ACCOUNTS,
   );
   if (plan.isErr()) {
@@ -92,7 +113,7 @@ export const forwardRemoteActivity = async (
       kind: "ExpandForward",
       activityId: activityId.value,
       followersOf,
-      exceptInboxes: [RemoteActor.deliveryInbox(author)],
+      exceptInboxes: [RemoteActor.deliveryInbox(sender)],
     });
   } catch (cause) {
     logNotForwarded(status, "queue", cause instanceof Error ? cause.message : String(cause));

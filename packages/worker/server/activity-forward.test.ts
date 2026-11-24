@@ -343,3 +343,103 @@ describe("forwarding once, the replied-to author first", () => {
     expect(planned?.followersOf).toHaveLength(FORWARD_MAX_ACCOUNTS);
   });
 });
+
+describe("forwarding a quote stamp's Delete", () => {
+  /**
+   * Bob quotes Carol's note with her stamp; `follower` is a remote actor for
+   * the test to have follow a local account. `bobExtra` changes Bob's note.
+   */
+  const stampSetup = async (slug: string, bobExtra: Record<string, unknown> = {}) => {
+    const carol = await remoteActor(`${slug}-carol`, `${slug}-c.example`);
+    const bob = await remoteActor(`${slug}-bob`, `${slug}-b.example`);
+    const follower = await remoteActor(`${slug}-follower`, `${slug}-f.example`);
+    const carolNote = note(carol, "quoted");
+    expect(
+      await carol.send({ id: `${carolNote.id}/activity`, type: "Create", object: carolNote }),
+    ).toBe(202);
+    const stampUri = `${carol.actorUri}/stamps/${slug}`;
+    const bobNote = note(bob, "quoting", {
+      quote: carolNote.id,
+      quoteAuthorization: stampUri,
+      interactionPolicy: { canQuote: { automaticApproval: [PUBLIC] } },
+      ...bobExtra,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      new Request(input, init).url === stampUri
+        ? Response.json({
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: stampUri,
+            type: "QuoteAuthorization",
+            attributedTo: carol.actorUri,
+            interactingObject: bobNote.id,
+            interactionTarget: carolNote.id,
+          })
+        : new Response(null, { status: 202 }),
+    );
+    expect(await bob.send({ id: `${bobNote.id}/activity`, type: "Create", object: bobNote })).toBe(
+      202,
+    );
+    const row = await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(bobNote.id)
+      .first<{ id: string }>();
+    if (row === null) {
+      throw new Error("Bob's note was not stored");
+    }
+    const revoke = async () => {
+      const signed = await carol.ldSigned({
+        id: `${stampUri}#delete`,
+        type: "Delete",
+        to: [PUBLIC],
+        object: { id: stampUri, type: "QuoteAuthorization" },
+      });
+      const sent: OutboxJob[] = [];
+      const inbox = capturingInbox(sent);
+      expect(await inbox.post(await carol.forward(signed))).toBe(202);
+      return { signed, sent, testEnv: inbox.testEnv };
+    };
+    return { follower, bobNoteId: row.id, revoke };
+  };
+
+  it("reaches the followers of the local accounts that quoted the quoting status", async () => {
+    const quoter = "fwd-stamp-quoter@example.com";
+    const stamp = await stampSetup("fwd-stamp");
+    await followLocal(stamp.follower, quoter);
+    await api(quoter, "/api/v1/statuses", {
+      status: "quoting Bob",
+      quoted_status_id: stamp.bobNoteId,
+    });
+
+    const revoked = await stamp.revoke();
+
+    const forwarded = await expandForward(revoked.testEnv, revoked.sent);
+    expect(forwarded.row).toMatchObject({
+      account_id: (await signedInAccount(quoter)).id,
+      kind: "Delete",
+    });
+    expect(forwarded.payload).toEqual(revoked.signed);
+    expect(forwarded.inboxes).toEqual([`${stamp.follower.actorUri}/inbox`]);
+  });
+
+  it("reaches the replied-to author's followers whatever the quoting status's visibility", async () => {
+    // `Delete#revoke_quote` forwards without asking `Forwarder#forwardable?`.
+    const author = "fwd-stamp-private-author@example.com";
+    const status = await api(author, "/api/v1/statuses", { status: "reply to me" });
+    const authorUri = await actorOf(author);
+    const stamp = await stampSetup("fwd-stamp-private", {
+      inReplyTo: `${authorUri}/statuses/${status.id}`,
+      to: [authorUri],
+      cc: [],
+      tag: [{ type: "Mention", href: authorUri }],
+    });
+    await followLocal(stamp.follower, author);
+
+    const revoked = await stamp.revoke();
+
+    const forwarded = await expandForward(revoked.testEnv, revoked.sent);
+    expect(forwarded.row).toMatchObject({
+      account_id: (await signedInAccount(author)).id,
+      kind: "Delete",
+    });
+    expect(forwarded.inboxes).toEqual([`${stamp.follower.actorUri}/inbox`]);
+  });
+});

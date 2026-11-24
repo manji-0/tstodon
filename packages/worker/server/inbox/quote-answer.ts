@@ -10,12 +10,12 @@ import { err, ok, type Result } from "neverthrow";
 import { findAccountById } from "../account-store";
 import { localNoteRef } from "../activitypub";
 import { refId } from "../activitypub-wire";
+import { forwardInboundActivity } from "../activity-forward";
 import { nowIso } from "../clock";
 import { readableRow, type RepositoryError } from "../d1";
 import { announceRemoteQuoteChange } from "../remote-quote-announce";
 import { announceNoteUpdate } from "../local-status-update";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
-import { forwardStampDelete } from "../quote-stamp-revoke";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findDeliveredRemoteStatusById } from "../remote-status-store";
 import { readStatusById } from "../status-store";
@@ -177,7 +177,7 @@ export const receiveQuoteAnswer = async (
  * is revoked, whether the quoting status is local or remote. A local quoting
  * status is announced on its author's streams. `body`, the `Delete` as
  * received, is forwarded to each quoting status's audience here
- * (`forwardStampDelete`, Mastodon's `ActivityPub::Forwarder`). `false` when
+ * (`forwardInboundActivity`, Mastodon's `ActivityPub::Forwarder`). `false` when
  * `uri` is no stamp the signer gave, so the `Delete` is for something else.
  */
 export const revokeQuoteStamp = async (
@@ -205,10 +205,13 @@ export const revokeQuoteStamp = async (
       if (settled.isErr()) {
         return err(settled.error);
       }
-      await forwardStampDelete(env, identity, signer, body, {
-        kind: "Local",
-        status: quoting.value.note,
-      });
+      await forwardInboundActivity(
+        env,
+        identity,
+        { kind: "Local", status: quoting.value.note },
+        signer,
+        { kind: "Delete", body },
+      );
       revoked = true;
       continue;
     }
@@ -234,10 +237,13 @@ export const revokeQuoteStamp = async (
     }
     if (remoteQuoting.value) {
       await announceRemoteQuoteChange(env, remoteQuoting.value);
-      await forwardStampDelete(env, identity, signer, body, {
-        kind: "Remote",
-        status: remoteQuoting.value,
-      });
+      await forwardInboundActivity(
+        env,
+        identity,
+        { kind: "Remote", status: remoteQuoting.value },
+        signer,
+        { kind: "Delete", body },
+      );
     }
     revoked = true;
   }
