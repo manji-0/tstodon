@@ -82,6 +82,36 @@ export const recordSilentRemoteStatusMention = async (
 };
 
 /**
+ * Give `accountId` a silent mention of the cached remote note `statusId`
+ * unless the note names it already, and make a direct note limited when it
+ * does, as `Create#postprocess_audience_and_deliver`. One batch, so a
+ * delivery that fails leaves both undone. Resolves to whether the mention
+ * was added.
+ */
+export const addDeliveredRemoteStatusMention = async (
+  db: D1Database,
+  statusId: string,
+  accountId: string,
+): Promise<Result<boolean, RepositoryError>> => {
+  const batched = await runD1Batch(db, [
+    db
+      .prepare(
+        `UPDATE remote_statuses SET visibility = 'limited'
+         WHERE id = ?1 AND visibility = 'direct' AND NOT EXISTS (
+           SELECT 1 FROM remote_status_mentions WHERE status_id = ?1 AND account_id = ?2
+         )`,
+      )
+      .bind(statusId, accountId),
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO remote_status_mentions (status_id, account_id, silent) VALUES (?, ?, 1)",
+      )
+      .bind(statusId, accountId),
+  ]);
+  return batched.map(([, inserted]) => (inserted?.meta.changes ?? 0) > 0);
+};
+
+/**
  * The local accounts a cached remote note addresses with a mention, not the
  * silent ones that only grant access to it.
  */

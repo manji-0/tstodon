@@ -35,33 +35,43 @@ const call = async (email: string, path: string, init: RequestInit = {}): Promis
 
 const actorUrl = (username: string) => `https://example.com/users/${username}`;
 
+type NoteAudience = Readonly<{ to: string[]; cc?: string[]; tag?: string[] }>;
+
+const noteUri = (slug: string) => `https://${HOST}/notes/${slug}`;
+
+/** The note `author` wrote as `slug`, addressed to `note`. */
+const noteDocument = (author: string, slug: string, note: NoteAudience) => ({
+  id: noteUri(slug),
+  type: "Note",
+  attributedTo: author,
+  content: `<p>${slug}</p>`,
+  published: new Date().toISOString(),
+  to: note.to,
+  cc: note.cc ?? [],
+  tag: (note.tag ?? []).map((href) => ({ type: "Mention", href })),
+});
+
+/** The `Create` of {@link noteDocument}, sent by `sender`: the same activity id each time. */
+const noteCreate = (sender: Remote, author: string, slug: string, note: NoteAudience) => ({
+  id: `${noteUri(slug)}/create`,
+  type: "Create",
+  actor: sender.actorUri,
+  object: noteDocument(author, slug, note),
+});
+
 /** Send a note `remote` wrote in a `Create`, to the shared inbox or to `inbox`'s own. */
 const sendNote = async (
   remote: Remote,
   slug: string,
-  note: Readonly<{ to: string[]; cc?: string[]; tag?: string[]; inbox?: string }>,
+  note: NoteAudience & Readonly<{ inbox?: string }>,
 ): Promise<string> => {
-  const objectUri = `https://${HOST}/notes/${slug}`;
-  const activity = {
-    id: `${objectUri}/create`,
-    type: "Create",
-    object: {
-      id: objectUri,
-      type: "Note",
-      attributedTo: remote.actorUri,
-      content: `<p>${slug}</p>`,
-      published: new Date().toISOString(),
-      to: note.to,
-      cc: note.cc ?? [],
-      tag: (note.tag ?? []).map((href) => ({ type: "Mention", href })),
-    },
-  };
+  const activity = noteCreate(remote, remote.actorUri, slug, note);
   expect(
     note.inbox === undefined
       ? await remote.send(activity)
       : await remote.sendTo(note.inbox, activity),
   ).toBe(202);
-  return objectUri;
+  return noteUri(slug);
 };
 
 const stored = async (objectUri: string) => {
@@ -105,10 +115,14 @@ const mentionNotified = async (email: string, statusId: string): Promise<boolean
     .some((entry) => entry.status?.id === statusId);
 
 /** Follow `remote` as `email`, and have it accept. */
-const followRemote = async (email: string, remote: Remote): Promise<void> => {
+const followRemote = async (
+  email: string,
+  remote: Remote,
+  options: Readonly<{ notify?: boolean }> = {},
+): Promise<void> => {
   await call(email, `/api/v1/accounts/${RemoteAccountId.encode(remote.actorUri)}/follow`, {
     method: "POST",
-    body: "{}",
+    body: JSON.stringify(options),
   });
   const viewer = await signedInAccount(email);
   const [row] = parseRows(
@@ -381,5 +395,188 @@ describe("a remote direct note with an audience-only account", () => {
     const row = await stored(objectUri);
     expect(row.visibility).toBe("limited");
     expect((await statusAs("lim-update-cc@example.com", row.id)).status).toBe(200);
+  });
+});
+
+describe("a Create of a note already held, delivered to a personal inbox", () => {
+  // `Create#create_status` runs `postprocess_audience_and_deliver` on each
+  // delivery to a personal inbox (`delivered_to_account_id`) of a status it
+  // holds: Mastodon skips no repeated activity id.
+  const notified = async (email: string, type: string, statusId: string): Promise<boolean> =>
+    z
+      .array(z.object({ type: z.string(), status: z.object({ id: z.string() }).nullish() }))
+      .parse(await call(email, `/api/v1/notifications?types[]=${type}`))
+      .some((entry) => entry.type === type && entry.status?.id === statusId);
+
+  const mentioning = (username: string): NoteAudience => ({
+    to: [actorUrl(username)],
+    tag: [actorUrl(username)],
+  });
+
+  it("gives the inbox's owner a silent mention and makes a direct note limited", async () => {
+    const mentioned = await signedInAccount("held-shared-mentioned@example.com");
+    const owner = await signedInAccount("held-shared-owner@example.com");
+    const author = await remoteActor("heldshared", HOST);
+    const create = noteCreate(
+      author,
+      author.actorUri,
+      "held-shared",
+      mentioning(mentioned.username),
+    );
+    expect(await author.send(create)).toBe(202);
+    const before = await stored(noteUri("held-shared"));
+    expect(before.visibility).toBe("direct");
+    expect((await statusAs("held-shared-owner@example.com", before.id)).status).toBe(404);
+
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    const after = await stored(noteUri("held-shared"));
+    expect(after.visibility).toBe("limited");
+    const seen = await statusAs("held-shared-owner@example.com", after.id);
+    expect(seen.status).toBe(200);
+    expect(seen.body?.visibility).toBe("private");
+    expect(seen.body?.mentions.map((mention) => mention.username)).toEqual([mentioned.username]);
+    expect(await mentionNotified("held-shared-owner@example.com", after.id)).toBe(false);
+  });
+
+  it("reaches the owner of a second personal inbox the same activity comes to", async () => {
+    const mentioned = await signedInAccount("held-second-mentioned@example.com");
+    const owner = await signedInAccount("held-second-owner@example.com");
+    const author = await remoteActor("heldsecond", HOST);
+    const create = noteCreate(
+      author,
+      author.actorUri,
+      "held-second",
+      mentioning(mentioned.username),
+    );
+    expect(await author.sendTo(mentioned.username, create)).toBe(202);
+    expect((await stored(noteUri("held-second"))).visibility).toBe("direct");
+
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    const row = await stored(noteUri("held-second"));
+    expect(row.visibility).toBe("limited");
+    expect((await statusAs("held-second-owner@example.com", row.id)).status).toBe(200);
+  });
+
+  it("answers its redelivery to the same personal inbox as a duplicate", async () => {
+    const email = "held-redelivered@example.com";
+    const mentioned = await signedInAccount("held-redelivered-mentioned@example.com");
+    const owner = await signedInAccount(email);
+    const author = await remoteActor("heldredelivered", HOST);
+    const create = noteCreate(
+      author,
+      author.actorUri,
+      "held-redelivered",
+      mentioning(mentioned.username),
+    );
+    expect(await author.send(create)).toBe(202);
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    const row = await stored(noteUri("held-redelivered"));
+    expect((await statusAs(email, row.id)).status).toBe(200);
+    await env.DB.prepare(
+      "DELETE FROM remote_status_mentions WHERE status_id = ? AND account_id = ?",
+    )
+      .bind(row.id, owner.id)
+      .run();
+
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    expect((await statusAs(email, row.id)).status).toBe(404);
+  });
+
+  it("changes nothing when the inbox's owner is mentioned already", async () => {
+    const mentioned = await signedInAccount("held-tagged@example.com");
+    const author = await remoteActor("heldtagged", HOST);
+    const create = noteCreate(
+      author,
+      author.actorUri,
+      "held-tagged",
+      mentioning(mentioned.username),
+    );
+    expect(await author.send(create)).toBe(202);
+    expect(await author.sendTo(mentioned.username, create)).toBe(202);
+    const row = await stored(noteUri("held-tagged"));
+    expect(row.visibility).toBe("direct");
+    expect((await statusAs("held-tagged@example.com", row.id)).body?.visibility).toBe("direct");
+  });
+
+  it("reaches a note this server fetched before it was delivered", async () => {
+    const mentioned = await signedInAccount("held-fetched-mentioned@example.com");
+    const owner = await signedInAccount("held-fetched-owner@example.com");
+    const author = await remoteActor("heldfetched", HOST);
+    const audience = mentioning(mentioned.username);
+    const fetched = await storeNoteDocument(
+      env,
+      parseInstanceIdentity(env)._unsafeUnwrap(),
+      noteUri("held-fetched"),
+      noteDocument(author.actorUri, "held-fetched", audience),
+      { fetchSigner: unsignedFetch },
+    );
+    expect(fetched.isOk()).toBe(true);
+    expect((await stored(noteUri("held-fetched"))).visibility).toBe("direct");
+
+    const create = noteCreate(author, author.actorUri, "held-fetched", audience);
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    const row = await stored(noteUri("held-fetched"));
+    expect(row.visibility).toBe("limited");
+    expect((await statusAs("held-fetched-owner@example.com", row.id)).status).toBe(200);
+  });
+
+  it("reaches the home of an owner following the author, with the status notification its follow asks for", async () => {
+    // `postprocess_audience_and_deliver` queues `FeedInsertWorker`, whose
+    // `notify?` sends a follow's `status` notification.
+    const email = "held-follower@example.com";
+    const mentioned = await signedInAccount("held-follower-mentioned@example.com");
+    const owner = await signedInAccount(email);
+    const author = await remoteActor("heldfollower", HOST);
+    await followRemote(email, author, { notify: true });
+    const create = noteCreate(
+      author,
+      author.actorUri,
+      "held-follower",
+      mentioning(mentioned.username),
+    );
+    expect(await author.send(create)).toBe(202);
+    const row = await stored(noteUri("held-follower"));
+    expect(await idsIn(email, "/api/v1/timelines/home")).not.toContain(row.id);
+    expect(await notified(email, "status", row.id)).toBe(false);
+
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    expect(await idsIn(email, "/api/v1/timelines/home")).toContain(row.id);
+    expect(await notified(email, "status", row.id)).toBe(true);
+    expect(await notified(email, "mention", row.id)).toBe(false);
+  });
+
+  it("sends no status notification to an owner who does not follow the author", async () => {
+    const email = "held-stranger@example.com";
+    const owner = await signedInAccount(email);
+    const author = await remoteActor("heldstranger", HOST);
+    const create = noteCreate(author, author.actorUri, "held-stranger", {
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+    });
+    expect(await author.send(create)).toBe(202);
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    const row = await stored(noteUri("held-stranger"));
+    expect(row.visibility).toBe("public");
+    expect(await notified(email, "status", row.id)).toBe(false);
+  });
+
+  it("is ignored from an actor that did not write the note", async () => {
+    // `create_status` rejects a `Create` whose actor is not the status's author.
+    const mentioned = await signedInAccount("held-impostor-mentioned@example.com");
+    const owner = await signedInAccount("held-impostor-owner@example.com");
+    const author = await remoteActor("heldauthor", HOST);
+    const impostor = await remoteActor("heldimpostor", HOST);
+    const audience = mentioning(mentioned.username);
+    expect(await author.send(noteCreate(author, author.actorUri, "held-impostor", audience))).toBe(
+      202,
+    );
+    expect(
+      await impostor.sendTo(
+        owner.username,
+        noteCreate(impostor, author.actorUri, "held-impostor", audience),
+      ),
+    ).toBe(202);
+    const row = await stored(noteUri("held-impostor"));
+    expect(row.visibility).toBe("direct");
+    expect((await statusAs("held-impostor-owner@example.com", row.id)).status).toBe(404);
   });
 });

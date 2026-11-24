@@ -1242,7 +1242,7 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
   // Claimed before it is applied and marked handled only after: a failed
   // apply gives the claim back, so the sender's retry is applied, not
   // answered as a duplicate.
-  const claimKey = inboxClaimKey(activityId.value, activityJson.value);
+  const claimKey = inboxClaimKey(activityId.value, activityJson.value, inbox);
   const claim = await claimInboxActivity(c.env.DB, {
     activityId: claimKey,
     payload: activityJson.value,
