@@ -557,6 +557,31 @@ describe("forwards that name a context tstodon does not ship", () => {
     expect(await storedContent(forward.objectUri)).toBeUndefined();
   });
 
+  it.each([
+    "https://w3id.org/security/data-integrity/v1",
+    "https://w3id.org/security/data-integrity/v2",
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/suites/ed25519-2020/v1",
+    "https://www.w3.org/ns/credentials/v2",
+    "https://schema.org",
+    "http://schema.org/",
+    "https://schema.org/",
+  ])("reads %s as Mastodon preloads it, without fetching it", async (url) => {
+    const slug = `fwd-ctx-gem-${url.replace(/[^a-z0-9]+/g, "-")}`;
+    const alice = await remoteActor(`${slug}-alice`, `${slug}.example`);
+    const relay = await remoteActor(`${slug}-relay`, "fwd-forwarder.example");
+    // Activity Streams last, so that its terms win: after it, schema.org's
+    // would redefine `content` and the rest (`AmbiguousJsonLd`).
+    const activity = { ...create(alice, slug), "@context": [url, AS] };
+    const signed = await alice.ldSigned(activity);
+    const fetched = serveContexts({});
+
+    expect((await post(relay.forward(signed))).status).toBe(202);
+
+    expect(fetched).toEqual([]);
+    expect(await storedContent(`${alice.actorUri}/statuses/${slug}`)).toBeDefined();
+  });
+
   it("fetches at most five contexts for one document", async () => {
     const contexts = Object.fromEntries(
       Array.from({ length: 6 }, (_, n) => [`https://fwd-ctx-many.example/ns/${n}`, SENSITIVE]),
