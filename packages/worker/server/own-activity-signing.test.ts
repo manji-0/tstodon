@@ -278,6 +278,18 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
     expect(await verifiesAsForward(JSON.parse(sent), account.publicKeyPem)).toBe(false);
     // Stored as sent: the next inbox gets the same body, not another signature.
     expect(await storedPayload(activityId)).toBe(sent);
+    // Dated no earlier than the rotation, so no later delivery takes it for the old key's.
+    const rotatedAt = z
+      .object({ key_rotated_at: z.string() })
+      .parse(
+        await env.DB.prepare("SELECT key_rotated_at FROM accounts WHERE id = ?")
+          .bind(account.id)
+          .first(),
+      ).key_rotated_at;
+    const created = z
+      .object({ signature: z.object({ created: z.string() }) })
+      .parse(JSON.parse(sent)).signature.created;
+    expect(Date.parse(created)).toBeGreaterThanOrEqual(Date.parse(rotatedAt));
     expect(await (await deliverTarget(activityId, INBOX)).text()).toBe(sent);
   });
 

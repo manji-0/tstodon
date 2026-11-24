@@ -157,9 +157,9 @@ const parseStoredSignature = schemaResult(StoredSignatureSchema);
  * forwarded body carries another actor's signature and is left alone.
  *
  * `created` has whole seconds and `rotatedAt` milliseconds, so a signature
- * made in the second of the rotation, with either key, counts as older: it
- * is made again, never kept stale, and comes back unchanged when it was
- * already the new key's.
+ * made in the second of the rotation, with either key, counts as older and
+ * is made again. The new one is dated no earlier than the second after the
+ * rotation, so it is made once.
  */
 export const resignedAfterRotation = async (
   payloadJson: string,
@@ -184,7 +184,10 @@ export const resignedAfterRotation = async (
   ) {
     return undefined;
   }
-  const signature = await ldSignature(stored.value, key, now);
+  const signedAt = new Date(
+    Math.max(now.getTime(), Math.ceil(Date.parse(rotatedAt) / 1000) * 1000),
+  );
+  const signature = await ldSignature(stored.value, key, signedAt);
   if (signature.isErr()) {
     console.error(
       JSON.stringify({
@@ -195,10 +198,7 @@ export const resignedAfterRotation = async (
     );
     return undefined;
   }
-  const resigned = JSON.stringify({ ...stored.value, signature: signature.value });
-  // In the second of the rotation, a body already signed again comes back
-  // the same (an RSA PKCS#1 v1.5 signature is deterministic).
-  return resigned === payloadJson ? undefined : resigned;
+  return JSON.stringify({ ...stored.value, signature: signature.value });
 };
 
 /** `context` with the security vocabulary, which `sign!` adds after signing. */
