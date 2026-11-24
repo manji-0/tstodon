@@ -1,8 +1,0 @@
-{
-  "$schema": "../../node_modules/void/schema.json",
-  "sourceDir": "app",
-  "inference": {
-    "bindings": { "db": true, "kv": false, "storage": false, "ai": false }
-  },
-  "routing": { "notFound": "none" }
-}

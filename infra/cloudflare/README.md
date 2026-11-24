@@ -4,7 +4,7 @@
 <!-- constrained-by ../../docs/operations/cloudflare-deploy.md -->
 
 Terraform / OpenTofu for the Cloudflare side of tstodon: D1, R2, the
-outbox Queue and its dead-letter queue (IDs/names for `packages/worker/wrangler.jsonc`),
+outbox Queue and its dead-letter queue (IDs/names for `cloudflare` in `packages/worker/void.config.ts`),
 the media bucket's public hostname and CORS policy, and the Cloudflare Access
 applications in front of the browser paths. Browser login is Cloudflare Access
 (its own passkeys, or an IdP such as WorkOS); the Worker reads its JWT through
@@ -54,9 +54,9 @@ tofu apply
 ### Suggested apply order
 
 1. Apply to create D1 / R2 / the outbox Queue, its dead-letter queue and the pull queue, the media hostname and its CORS policy, and the Access applications.
-2. Copy `tofu output -json wrangler_bindings` into production `packages/worker/wrangler.jsonc`, `tofu output access_aud` into `CF_ACCESS_AUD` and `tofu output media_public_base_url` into `MEDIA_PUBLIC_BASE_URL`.
+2. Copy `tofu output -json wrangler_bindings` under `cloudflare` in production `packages/worker/void.config.ts`, `tofu output access_aud` into `CF_ACCESS_AUD` and `tofu output media_public_base_url` into `MEDIA_PUBLIC_BASE_URL`.
 3. Skipped: `pnpm run deploy` applies remote D1 migrations.
-4. `pnpm run deploy` (`void deploy --backend cloudflare`)
+4. `pnpm run deploy` (`void deploy --platform cloudflare`)
 5. Re-apply with `attach_queue_consumer = true` so the three Queue consumers point at the Worker (the outbox and pull consumers with `dead_letter_queue` set to the dead-letter queue).
 
 ## Outputs to wire
@@ -108,7 +108,7 @@ Check both with the curl loops in the [launch checklist](../../docs/operations/l
 ## Out of scope
 
 - Durable Object / Workflow / Analytics Engine provisioning
-- Automatically rewriting `wrangler.jsonc`
+- Automatically rewriting `packages/worker/void.config.ts`
 - The Zero Trust organization and its identity providers
 - The edge rate-limiting rule (dashboard, [deploy checklist](../../docs/operations/cloudflare-deploy.md#rate-limiting-at-the-edge))
 - The D1 backup bucket: it belongs in another account ([runbook](../../docs/operations/runbook.md#scheduled-d1-backups))

@@ -1,0 +1,6 @@
+# Void writes these (`void.config.ts` merged with what it infers from `app/`,
+# and the Cloudflare Build Output of `vp build`).
+.void-wrangler.jsonc
+.cloudflare
+# Local values for `pnpm dev` (secrets from `app/env.ts`, var overrides). Never commit it.
+.env

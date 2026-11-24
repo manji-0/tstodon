@@ -1,30 +1,30 @@
 output "d1_database_id" {
-  description = "Paste into wrangler.jsonc d1_databases[0].database_id."
+  description = "Paste into void.config.ts cloudflare.d1_databases[0].database_id."
   value       = var.create_d1 ? cloudflare_d1_database.tstodon[0].id : null
 }
 
 output "r2_media_bucket_name" {
-  description = "Paste into wrangler.jsonc r2_buckets MEDIA bucket_name."
+  description = "Paste into void.config.ts cloudflare.r2_buckets MEDIA bucket_name."
   value       = var.create_r2 ? cloudflare_r2_bucket.media[0].name : null
 }
 
 output "outbox_queue_name" {
-  description = "Paste into wrangler.jsonc queues producers/consumers queue name."
+  description = "Paste into void.config.ts cloudflare.queues producers/consumers queue name."
   value       = var.create_queue ? cloudflare_queue.outbox_process[0].queue_name : null
 }
 
 output "outbox_dlq_name" {
-  description = "Paste into wrangler.jsonc queues producers OUTBOX_DLQ queue name."
+  description = "Paste into void.config.ts cloudflare.queues producers OUTBOX_DLQ queue name."
   value       = var.create_queue ? cloudflare_queue.outbox_dlq[0].queue_name : null
 }
 
 output "pull_queue_name" {
-  description = "Paste into wrangler.jsonc queues producers PULL_QUEUE queue name."
+  description = "Paste into void.config.ts cloudflare.queues producers PULL_QUEUE queue name."
   value       = var.create_queue ? cloudflare_queue.pull[0].queue_name : null
 }
 
 output "wrangler_bindings" {
-  description = "Values to copy into wrangler.jsonc for production bindings."
+  description = "Values to copy under cloudflare in void.config.ts for production bindings."
   value = {
     d1_database_name          = var.create_d1 ? cloudflare_d1_database.tstodon[0].name : null
     d1_database_id            = var.create_d1 ? cloudflare_d1_database.tstodon[0].id : null

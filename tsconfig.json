@@ -7,6 +7,8 @@
     "*.ts",
     "packages/worker/vite.config.ts",
     "packages/worker/void-plugins.ts",
+    "packages/worker/void.config.ts",
+    "packages/worker/app/env.ts",
     "packages/worker/web-build.ts",
     "packages/worker/vitest.config.ts"
   ]

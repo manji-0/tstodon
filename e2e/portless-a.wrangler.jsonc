@@ -1,7 +1,7 @@
 // e2e instance tstodon-e2e-a behind portless — https://a.tstodon.localhost (app port 8791).
 // Same D1 and R2 ids as e2e/a.wrangler.jsonc. Start it with TSTODON_PERSIST_TO=.wrangler/e2e-a
 // so e2e/lib.ts, which reads that persist dir through e2e/a.wrangler.jsonc, sees this state.
-// BETTER_AUTH_SECRET stays in the environment. See docs/getting-started/e2e-federation-portless.md.
+// `vp dev` reads it through TSTODON_WRANGLER_CONFIG. See docs/getting-started/e2e-federation-portless.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "tstodon-e2e-a",
