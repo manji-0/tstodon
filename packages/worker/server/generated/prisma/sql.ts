@@ -390,6 +390,8 @@ export * from "./sql/findRemoteBlocksOfAccountJson";
 
 export * from "./sql/findRemoteBoostById";
 
+export * from "./sql/findRemoteCustomEmojis";
+
 export * from "./sql/findRemoteFollow";
 
 export * from "./sql/findRemoteFollowsJson";

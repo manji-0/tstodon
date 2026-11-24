@@ -66,7 +66,8 @@ describe("the custom emoji of a remote account", () => {
     const shown = await account(author.actorUri);
     expect(shown.display_name).toBe(":blobcat: Name");
     expect(shown.note).toContain(":Party:");
-    expect(shown.emojis).toEqual([emoji("blobcat"), emoji("Party")]);
+    // In the order `emojifiable_text` writes them: the note, then the name.
+    expect(shown.emojis).toEqual([emoji("Party"), emoji("blobcat")]);
   });
 
   // With its tags gone, the name still writes `:ok:`, which Mastodon knows

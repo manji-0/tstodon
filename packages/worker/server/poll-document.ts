@@ -1,7 +1,7 @@
 import type { ApiPollJSON } from "@tstodon/api";
-import type { RemoteEmoji, RemotePollValue } from "@tstodon/domain";
+import type { RemotePollValue } from "@tstodon/domain";
 import { type CustomEmoji, customEmojiJson, emojisInTexts } from "./emoji";
-import { remoteEmojisJson, remoteEmojisInTexts } from "./remote-emoji-document";
+import type { EmojisOf } from "./remote-emoji-catalog";
 import type { PollRecord } from "./poll-store";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
 
@@ -36,6 +36,10 @@ export const pollJson = (poll: PollRecord, emojis: ReadonlyArray<CustomEmoji>): 
 
 const REMOTE_POLL_PREFIX = "remote-";
 
+/** The texts of a remote poll `Poll#emojis` scans: its options. */
+export const remotePollTexts = (poll: RemotePollValue): ReadonlyArray<string> =>
+  poll.kind === "NoPoll" ? [] : poll.options.map((option) => option.title);
+
 /** Local poll ids are numeric, so the prefix keeps a remote poll's id apart from them. */
 export const remotePollId = (statusId: string): string => `${REMOTE_POLL_PREFIX}${statusId}`;
 
@@ -45,14 +49,16 @@ export const statusIdOfRemotePoll = (pollId: string): string | undefined =>
 
 /**
  * The Poll entity of a cached remote poll. Votes cast from this server are
- * added to the author's counts until the author reports a fresh tally.
+ * added to the author's counts until the author reports a fresh tally. Its
+ * emoji are those of the author's domain its options write, as `Poll#emojis`.
  */
 export const remotePollJson = (
   statusId: string,
   poll: Exclude<RemotePollValue, { kind: "NoPoll" }>,
-  votes: RemotePollVotes = NO_REMOTE_POLL_VOTES,
-  emojis: ReadonlyArray<RemoteEmoji> = [],
+  pollVotes: RemotePollVotes | undefined,
+  emojis: EmojisOf,
 ): ApiPollJSON => {
+  const votes = pollVotes ?? NO_REMOTE_POLL_VOTES;
   const expiresAt = poll.ends.kind === "At" ? poll.ends.at : null;
   const options = poll.options.map((option, index) => ({
     title: option.title,
@@ -75,12 +81,6 @@ export const remotePollJson = (
     voted: votes.ownChoices.length > 0,
     own_votes: [...votes.ownChoices],
     options,
-    // Only the emoji the option titles use belong to the poll.
-    emojis: remoteEmojisJson(
-      remoteEmojisInTexts(
-        poll.options.map((option) => option.title),
-        emojis,
-      ),
-    ),
+    emojis: emojis(remotePollTexts(poll)),
   };
 };

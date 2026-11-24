@@ -1,9 +1,6 @@
-import type { ApiCustomEmojiJSON } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
 import { IsoInstant, type RemoteEmoji, RemoteEmojiSchema } from "@tstodon/domain";
 import { z } from "zod";
-import { scannedShortcodes } from "./emoji";
-import { httpUrl } from "./sanitize-html";
 
 const parseRemoteEmoji = schemaResult(RemoteEmojiSchema);
 
@@ -35,17 +32,20 @@ const tagEntries = (raw: unknown) => {
 };
 
 /**
- * The longest image URL kept. The URL is stored with the note or the profile
- * and written twice in every entity that lists the emoji, so a hostile
- * document must not set its size.
+ * The longest image URL kept. The URL is written twice in every entity that
+ * lists the emoji, so a hostile document must not set its size.
  */
 const MAX_EMOJI_URL_LENGTH = 2048;
+
+/** A document declares far fewer; this only bounds what a hostile one makes stored. */
+const MAX_DECLARED = 50;
 
 /**
  * The custom emoji a note or an actor declares in the `Emoji` objects of its
  * `tag` (a list or one object), the first of each shortcode, case and all, as
  * Mastodon keeps one `CustomEmoji` per shortcode as written. A tag whose
- * image URL is longer than `MAX_EMOJI_URL_LENGTH` is left out.
+ * image URL is longer than `MAX_EMOJI_URL_LENGTH` is left out, and those
+ * past `MAX_DECLARED`.
  */
 export const declaredEmojis = (raw: unknown): ReadonlyArray<RemoteEmoji> => {
   const seen = new Set<string>();
@@ -70,67 +70,9 @@ export const declaredEmojis = (raw: unknown): ReadonlyArray<RemoteEmoji> => {
     if (parsed.isOk()) {
       emojis.push(parsed.value);
     }
+    if (emojis.length === MAX_DECLARED) {
+      break;
+    }
   }
   return emojis;
 };
-
-/**
- * The emoji whose `:shortcode:` appears in one of `texts`. A shortcode
- * matches as written, case and all, as `CustomEmoji.from_text` looks it up.
- */
-export const remoteEmojisInTexts = (
-  texts: ReadonlyArray<string>,
-  emojis: ReadonlyArray<RemoteEmoji>,
-): ReadonlyArray<RemoteEmoji> => {
-  const used = new Set(scannedShortcodes(texts));
-  return emojis.filter((emoji) => used.has(emoji.shortcode));
-};
-
-/** A document writes far fewer; this only bounds a hostile one. */
-const MAX_UNDECLARED = 50;
-
-/**
- * The shortcodes `texts` write, as `CustomEmoji.from_text` scans them, that
- * no emoji of `declared` names: the emoji Mastodon shows from those it
- * knows for the author's domain though the document does not declare them.
- * A shortcode matches as written, case and all, as `EntityCache#emoji`
- * looks it up.
- */
-export const undeclaredShortcodes = (
-  texts: ReadonlyArray<string>,
-  declared: ReadonlyArray<RemoteEmoji>,
-): ReadonlyArray<string> => {
-  const named = new Set(declared.map((emoji) => emoji.shortcode));
-  return scannedShortcodes(texts)
-    .filter((shortcode) => !named.has(shortcode))
-    .slice(0, MAX_UNDECLARED);
-};
-
-/** A profile writes far fewer; this only bounds a hostile document. */
-const MAX_ACTOR_EMOJIS = 50;
-
-/**
- * The custom emoji an actor declares and `texts` (its display name, note and
- * fields) write. A shortcode matches as written, case and all, as Mastodon's
- * `CustomEmoji.from_text` finds an account's emoji.
- */
-export const actorEmojis = (
-  raw: unknown,
-  texts: ReadonlyArray<string>,
-): ReadonlyArray<RemoteEmoji> =>
-  remoteEmojisInTexts(texts, declaredEmojis(raw)).slice(0, MAX_ACTOR_EMOJIS);
-
-/** CustomEmoji entities of a remote note's emoji; one whose image is not an http(s) URL is left out. */
-export const remoteEmojisJson = (emojis: ReadonlyArray<RemoteEmoji>): ApiCustomEmojiJSON[] =>
-  emojis.flatMap((emoji) =>
-    httpUrl(emoji.url) === undefined
-      ? []
-      : [
-          {
-            shortcode: emoji.shortcode,
-            url: emoji.url,
-            static_url: emoji.url,
-            visible_in_picker: false,
-          },
-        ],
-  );

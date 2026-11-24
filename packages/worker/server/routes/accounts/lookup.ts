@@ -41,6 +41,7 @@ import {
   documentsInOrder,
   mastodonAccountDocument,
   mastodonAccountDocuments,
+  loadProfileEmojis,
   mastodonRemoteAccount,
 } from "../../account-documents";
 import { mastodonRelationship } from "../../relationship-document";
@@ -226,8 +227,9 @@ export const getV1AccountsSearch = async (
       if (shown.isErr()) {
         return jsonRepositoryError(c, shown.error.message);
       }
+      const emojis = await loadProfileEmojis(c.env.DB, shown.value);
       for (const actor of shown.value) {
-        push(mastodonRemoteAccount(identity.value, actor));
+        push(mastodonRemoteAccount(identity.value, actor, emojis));
       }
     }
   }
@@ -254,7 +256,10 @@ export const getV1AccountsSearch = async (
   if (page.isErr()) {
     return jsonRepositoryError(c, page.error.message);
   }
-  const rendered = await mastodonAccountDocuments(c.env, identity.value, page.value.local);
+  const [rendered, emojis] = await Promise.all([
+    mastodonAccountDocuments(c.env, identity.value, page.value.local),
+    loadProfileEmojis(c.env.DB, page.value.remote),
+  ]);
   for (const document of documentsInOrder(
     page.value.local.map((account) => account.id),
     rendered,
@@ -262,7 +267,7 @@ export const getV1AccountsSearch = async (
     push(document);
   }
   for (const actor of page.value.remote) {
-    push(mastodonRemoteAccount(identity.value, actor));
+    push(mastodonRemoteAccount(identity.value, actor, emojis));
   }
   return c.json(documents.slice(0, limit));
 };
@@ -431,13 +436,14 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  const remotePresentations = await remoteAccountPresentations(c.env, [...remotes.value.values()]);
+  const [remotePresentations, localDocuments, emojis] = await Promise.all([
+    remoteAccountPresentations(c.env, [...remotes.value.values()]),
+    mastodonAccountDocuments(c.env, identity.value, [...locals.value.values()]),
+    loadProfileEmojis(c.env.DB, [...remotes.value.values()]),
+  ]);
   if (remotePresentations.isErr()) {
     return jsonRepositoryError(c, remotePresentations.error.message);
   }
-  const localDocuments = await mastodonAccountDocuments(c.env, identity.value, [
-    ...locals.value.values(),
-  ]);
   return c.json(
     ids.flatMap((id) => {
       const local = localDocuments.get(id);
@@ -456,7 +462,7 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
       const document = presentedAccountDocument(
         identity.value,
         remotePresentation,
-        mastodonRemoteAccount(identity.value, actor),
+        mastodonRemoteAccount(identity.value, actor, emojis),
       );
       return document ? [document] : [];
     }),

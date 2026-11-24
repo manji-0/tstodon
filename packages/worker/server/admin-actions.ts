@@ -40,6 +40,7 @@ import { removedBoostsFromRows } from "./removed-boost";
 import { runTypedBatch } from "./typed-sql";
 import { federateActorChange } from "./local-actor";
 import { parseInstanceIdentity } from "./runtime-config";
+import { deleteRemoteCustomEmojisOfDomain } from "./remote-custom-emoji-store";
 import { severAndNotify } from "./severance";
 import { severSuspendedActor } from "./suspended-actor-severance";
 import {
@@ -480,7 +481,7 @@ const savedBlock = async (
 
 /**
  * What making a block does to what is stored: the media of `reject_media`
- * cleared, the actors at or under the domain limited as the block says (in
+ * cleared, the domain's custom emoji deleted by it or a suspension, the actors at or under the domain limited as the block says (in
  * queued pages, `startDomainBlockLimits`), the follows of a suspension
  * severed. Each finds nothing the second time, so a block can be applied
  * again, and applying a changed block lifts what its old severity set.
@@ -492,6 +493,9 @@ const blockEffects = async (
   const host = Hostname.ofAuthority(block.domain);
   if (block.reject_media !== 0) {
     await clearRemoteMediaForDomain(env.DB, host);
+  }
+  if (block.reject_media !== 0 || block.severity === "suspend") {
+    await deleteRemoteCustomEmojisOfDomain(env.DB, host);
   }
   await startDomainBlockLimits(env, block.id);
   if (block.severity === "suspend") {

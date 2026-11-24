@@ -9,6 +9,7 @@ import {
   postButton,
 } from "./admin-pages";
 import { escapeHtml } from "./html";
+import type { RemoteEmojiEntry } from "./remote-custom-emoji-store";
 import { checkbox, messageLine, minuteText, type PageMessage } from "./settings-pages";
 
 /**
@@ -187,10 +188,107 @@ const emojiItem = (emoji: EmojiEntry): string => `
           ${postButton("/admin/custom_emojis", "Delete", { do: "delete", id: emoji.id }, "danger")}
         </li>`;
 
-/** Mastodon's `GET /admin/custom_emojis`, with the form that uploads one. */
+/** Which emoji the list shows, as Mastodon's location filter: both, local or remote. */
+export type EmojiLocation = "All" | "Local" | "Remote";
+
+/** `CustomEmojiFilter`'s keys as the list was asked for, kept by its forms and links. */
+export type EmojiFilterView = Readonly<{
+  location: EmojiLocation;
+  domain: string;
+  shortcode: string;
+}>;
+
+/** The query parameters that ask for the list `filter` shows. */
+const filterParams = (filter: EmojiFilterView): ReadonlyArray<readonly [string, string]> => [
+  ...(filter.location === "Local" ? [["local", "1"] as const] : []),
+  ...(filter.location === "Remote" ? [["remote", "1"] as const] : []),
+  ...(filter.domain === "" ? [] : [["by_domain", filter.domain] as const]),
+  ...(filter.shortcode === "" ? [] : [["shortcode", filter.shortcode] as const]),
+];
+
+/** The path of the list `filter` shows, `extra` added to its query. */
+export const emojiListPath = (
+  filter: EmojiFilterView,
+  extra: ReadonlyArray<readonly [string, string]> = [],
+): string => {
+  const query = new URLSearchParams([...filterParams(filter), ...extra]).toString();
+  return query === "" ? "/admin/custom_emojis" : `/admin/custom_emojis?${query}`;
+};
+
+/** A page of the remote emoji the filter lists, and the key the next page starts after. */
+export type RemoteEmojiListing = Readonly<{
+  entries: ReadonlyArray<RemoteEmojiEntry>;
+  next: string | undefined;
+}>;
+
+const hiddenFields = (filter: EmojiFilterView): string =>
+  filterParams(filter)
+    .map(
+      ([name, value]) =>
+        `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`,
+    )
+    .join("");
+
+const locationLink = (filter: EmojiFilterView, location: EmojiLocation, label: string): string =>
+  filter.location === location
+    ? `<strong>${label}</strong>`
+    : `<a href="${escapeHtml(emojiListPath({ location, domain: "", shortcode: filter.shortcode }))}">${label}</a>`;
+
+/** The search over shortcodes and, unless local emoji alone are listed, domains. */
+const emojiSearch = (filter: EmojiFilterView): string => `
+      <p>${locationLink(filter, "All", "All")} · ${locationLink(filter, "Local", "Local")} · ${locationLink(filter, "Remote", "Remote")}</p>
+      <form method="get" action="/admin/custom_emojis">${filter.location === "Local" ? `<input type="hidden" name="local" value="1" />` : filter.location === "Remote" ? `<input type="hidden" name="remote" value="1" />` : ""}
+        <label for="search-shortcode">Shortcode</label>
+        <input id="search-shortcode" name="shortcode" value="${escapeHtml(filter.shortcode)}" autocomplete="off" />${
+          filter.location === "Local"
+            ? ""
+            : `
+        <label for="search-domain">Domain</label>
+        <input id="search-domain" name="by_domain" value="${escapeHtml(filter.domain)}" autocomplete="off" />`
+        }
+        <button type="submit">Search</button>
+        <a href="/admin/custom_emojis">Reset</a>
+      </form>`;
+
+const remoteEmojiItem = (emoji: RemoteEmojiEntry): string => `
+        <li>
+          <input type="checkbox" name="emoji" value="${escapeHtml(`${emoji.domain}/${emoji.shortcode}`)}" aria-label="Select :${escapeHtml(emoji.shortcode)}: of ${escapeHtml(emoji.domain)}" />
+          <img src="${escapeHtml(emoji.imageUrl)}" alt=":${escapeHtml(emoji.shortcode)}:" width="24" height="24" />
+          <strong>:${escapeHtml(emoji.shortcode)}:</strong>
+          <span class="muted">${escapeHtml(emoji.domain)} · ${emoji.disabled ? "Disabled" : "Enabled"}</span>
+        </li>`;
+
+/** The remote emoji with the batch `enable` and `disable` actions, as Mastodon's batch table. */
+const remoteEmojis = (filter: EmojiFilterView, listing: RemoteEmojiListing): string =>
+  listing.entries.length === 0
+    ? `
+      <h2>Remote</h2>
+      <p class="muted">No remote custom emojis.</p>`
+    : `
+      <h2>Remote</h2>
+      <form method="post" action="/admin/custom_emojis">${hiddenFields(filter)}${list(listing.entries.map(remoteEmojiItem))}
+        <button type="submit" name="do" value="enable">Enable</button>
+        <button type="submit" name="do" value="disable">Disable</button>
+      </form>${
+        listing.next === undefined
+          ? ""
+          : `
+      <p><a href="${escapeHtml(emojiListPath(filter, [["after", listing.next]]))}">Next page</a></p>`
+      }`;
+
+/**
+ * Mastodon's `GET /admin/custom_emojis`: the local emoji, the remote ones a
+ * page at a time, or both, under its location, shortcode and domain filter,
+ * with the form that uploads one.
+ */
 export const emojisPage = (
   instanceName: string,
-  view: Readonly<{ emojis: ReadonlyArray<EmojiEntry>; form: EmojiForm }>,
+  view: Readonly<{
+    filter: EmojiFilterView;
+    emojis: ReadonlyArray<EmojiEntry> | undefined;
+    remote: RemoteEmojiListing | undefined;
+    form: EmojiForm;
+  }>,
   message?: PageMessage,
 ): string =>
   adminPage(
@@ -198,12 +296,16 @@ export const emojisPage = (
     "Custom emojis",
     "/admin/custom_emojis",
     `      <h1>Custom emojis</h1>
-${messageLine(message)}${
-      view.emojis.length === 0
-        ? `
+${messageLine(message)}${emojiSearch(view.filter)}${
+      view.emojis === undefined
+        ? ""
+        : view.emojis.length === 0
+          ? `
+      <h2>Local</h2>
       <p class="muted">No custom emojis.</p>`
-        : list(view.emojis.map(emojiItem))
-    }
+          : `
+      <h2>Local</h2>${list(view.emojis.map(emojiItem))}`
+    }${view.remote === undefined ? "" : remoteEmojis(view.filter, view.remote)}
       <h2>Upload an emoji</h2>
       <form method="post" action="/admin/custom_emojis" enctype="multipart/form-data">
         <input type="hidden" name="do" value="upload" />

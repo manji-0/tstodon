@@ -1,10 +1,10 @@
-import { env } from "cloudflare:workers";
 import {
   type AccountHandle,
   Hostname,
   IsoInstant,
   RemoteActor,
   type RemoteActorKey,
+  type RemoteEmoji,
   type InstanceIdentity,
   type RemoteActorProfile,
   WebfingerConfirmation,
@@ -28,8 +28,8 @@ import {
 import { ActorDocumentSchema, refId } from "./activitypub-wire";
 import { type PublishedKey, publishedKeys, resolvePublishedKeys } from "./actor-keys";
 import { actorFields } from "./remote-actor-fields";
-import { actorEmojis } from "./remote-emoji-document";
-import { recordProfileEmojis } from "./remote-emoji-refresh";
+import { declaredEmojis } from "./remote-emoji-document";
+import { recordProfileEmojis } from "./remote-emoji-record";
 import {
   claimRemoteActorKeyRefetch,
   claimRemoteActorRefresh,
@@ -164,13 +164,6 @@ const actorProfile = (
     discoverable: actorFlag(document.discoverable),
     indexable: actorFlag(document.indexable),
     publishedAt: published.isOk() ? published.value : null,
-    emojis: [
-      ...actorEmojis(document, [
-        document.name ?? "",
-        note,
-        ...fields.flatMap((field) => [field.name, field.value]),
-      ]),
-    ],
     fields,
   };
 };
@@ -239,6 +232,8 @@ const ownCollectionUri = (value: unknown, actorUri: URL): string | undefined => 
 export type FetchedRemoteActor = Readonly<{
   actor: RemoteActor;
   publishedKeys: ReadonlyArray<PublishedKey>;
+  /** The custom emoji its `Emoji` tags declare, which caching it records (`process_emoji`). */
+  emojis: ReadonlyArray<RemoteEmoji>;
   declaredHandle?: AccountHandle | undefined;
 }>;
 
@@ -332,6 +327,7 @@ export const remoteActorFromDocument = (
   return ok({
     actor: actor.value,
     publishedKeys: keys.value,
+    emojis: declaredEmojis(raw),
     declaredHandle: declaredHandleOf(raw),
   });
 };
@@ -520,11 +516,8 @@ export const cacheFetchedActor = async (
 };
 
 /**
- * {@link cacheFetchedActor} once its keys are read, then the profile's emoji
- * ({@link recordProfileEmojis}). The `RefreshRemoteEmoji` job that a
- * replaced image starts is sent on the Worker's own `OUTBOX_PROCESS_QUEUE`,
- * read from `cloudflare:workers`'s global `env`, since the fetch paths carry
- * only `db`: a queue a caller injects elsewhere is not used for that send.
+ * {@link cacheFetchedActor} once its keys are read, then the emoji the
+ * document declares ({@link recordProfileEmojis}).
  */
 const cacheActorWithKeys = async (
   db: D1Database,
@@ -537,10 +530,7 @@ const cacheActorWithKeys = async (
   const stored = await writeFetchedActor(db, identity, fetched, keys, options, check);
   // A suspended actor's write keeps its profile, and the profile's emoji with it.
   if (stored.isOk() && !profileKept(fetched.actor, stored.value)) {
-    await recordProfileEmojis(
-      { DB: db, OUTBOX_PROCESS_QUEUE: env.OUTBOX_PROCESS_QUEUE },
-      stored.value,
-    );
+    await recordProfileEmojis(db, stored.value, fetched.emojis);
   }
   return stored;
 };

@@ -5,7 +5,6 @@ import { CoveredHosts } from "./covered-hosts";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
 import { ProfileFieldSchema } from "./profile-field";
-import { RemoteEmojiSchema } from "./remote-status";
 
 /**
  * What a remote actor shows on its profile. `note` is plain text: the actor's
@@ -26,11 +25,6 @@ const RemoteActorProfileSchema = z.object({
   indexable: z.boolean().default(false),
   publishedAt: IsoInstant.schema.nullable(),
   /**
-   * The custom emoji the display name, the note and the fields write, from
-   * the actor's `Emoji` tags. None on a profile stored before they were kept.
-   */
-  emojis: z.array(RemoteEmojiSchema).default([]),
-  /**
    * The profile fields, from the actor's `PropertyValue` attachments. `value`
    * is the actor's HTML as sent: sanitise it before it is rendered. None on a
    * profile stored before they were kept.
@@ -50,7 +44,6 @@ const EMPTY_PROFILE: RemoteActorProfile = {
   discoverable: false,
   indexable: false,
   publishedAt: null,
-  emojis: [],
   fields: [],
 };
 

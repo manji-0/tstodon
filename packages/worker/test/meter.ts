@@ -404,9 +404,9 @@ export const seedNoise = async (noiseAccountId: string, favouriterId: string, n:
                'https://noise.example/users/n#main-key', 'x', '2020-01-01T00:00:00.000Z')`,
     ),
     env.DB.prepare(
-      `${series} INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json, tags_indexed, emojis_json)
+      `${series} INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json, tags_indexed)
        SELECT printf('rnoise%07d', n), 'https://noise.example/users/n', printf('https://noise.example/statuses/%d', n),
-              '<p>noise</p>', 'public', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '[]', 1, '[]'
+              '<p>noise</p>', 'public', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '[]', 1
        FROM series`,
     ),
   ]);

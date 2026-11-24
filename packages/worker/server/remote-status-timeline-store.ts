@@ -317,7 +317,7 @@ export const listPublicRemoteStatuses = async (
   });
 
 export const REMOTE_STATUS_SELECT = `s.id, s.actor_uri, s.object_uri, s.url, s.content_html, s.spoiler_text,
-       s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.emojis_json, s.quote_policy_json`;
+       s.visibility, s.sensitive, s.language, s.published_at, s.edited_at, s.media_json, s.card_json, s.poll_json, s.quote_policy_json`;
 
 /**
  * Public remote statuses on a tag timeline, by their indexed tags

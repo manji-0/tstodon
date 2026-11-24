@@ -13,9 +13,10 @@ import {
   RemoteVisibility,
   type RemoteStatus as RemoteStatusValue,
 } from "@tstodon/domain";
-import { remotePollJson } from "./poll-document";
+import { remotePollJson, remotePollTexts } from "./poll-document";
 import { NO_REMOTE_POLL_VOTES, type RemotePollVotes } from "./remote-poll-vote-store";
-import { remoteEmojisJson } from "./remote-emoji-document";
+import type { EmojisOf } from "./remote-emoji-catalog";
+import { statusEmojiTexts } from "./emoji";
 import { httpUrl, sanitizeRemoteHtml } from "./sanitize-html";
 import { NO_STATUS_INTERACTIONS, type StatusInteractionCounts } from "./status-interaction-store";
 
@@ -33,10 +34,15 @@ export type RemoteStatusExtras = Readonly<{
   quoteApproval?: QuoteApprovalForViewer | undefined;
 }>;
 
-/** A remote status with `account`, its author as the reader is shown it. */
+/**
+ * A remote status with `account`, its author as the reader is shown it, and
+ * the emoji of the author's domain its texts write (`emojis`), as Mastodon's
+ * `Status#emojis` and `Poll#emojis`.
+ */
 export const mastodonRemoteStatus = (
   status: RemoteStatusValue,
   account: ApiAccountJSON,
+  emojis: EmojisOf,
   extras: RemoteStatusExtras = {},
 ): ApiOriginalStatusJSON => {
   const card = extras.card ?? null;
@@ -73,12 +79,12 @@ export const mastodonRemoteStatus = (
     ),
     mentions: [...(extras.mentions ?? [])],
     tags: [...(extras.tags ?? [])],
-    emojis: remoteEmojisJson(status.emojis),
+    emojis: emojis(remoteStatusEmojiTexts(status)),
     card,
     poll:
       status.poll.kind === "NoPoll"
         ? null
-        : remotePollJson(status.id, status.poll, pollVotes, status.emojis),
+        : remotePollJson(status.id, status.poll, pollVotes, emojis),
     quote: null,
     quotes_count: interactions.quotes,
     quote_approval: {
@@ -90,6 +96,15 @@ export const mastodonRemoteStatus = (
     tagged_collections: [],
   };
 };
+
+/** The texts of a remote status `Status#emojis` scans: the spoiler, the text and the poll's options. */
+export const remoteStatusEmojiTexts = (
+  status: Pick<RemoteStatusValue, "spoilerText" | "contentHtml" | "poll">,
+): ReadonlyArray<string> =>
+  statusEmojiTexts(
+    { spoilerText: status.spoilerText, text: status.contentHtml },
+    remotePollTexts(status.poll),
+  );
 
 type RemoteMediaType = "image" | "video" | "audio";
 

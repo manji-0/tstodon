@@ -20,8 +20,18 @@ export type remote_custom_emojisModel =
 
 export type AggregateRemote_custom_emojis = {
   _count: Remote_custom_emojisCountAggregateOutputType | null;
+  _avg: Remote_custom_emojisAvgAggregateOutputType | null;
+  _sum: Remote_custom_emojisSumAggregateOutputType | null;
   _min: Remote_custom_emojisMinAggregateOutputType | null;
   _max: Remote_custom_emojisMaxAggregateOutputType | null;
+};
+
+export type Remote_custom_emojisAvgAggregateOutputType = {
+  disabled: number | null;
+};
+
+export type Remote_custom_emojisSumAggregateOutputType = {
+  disabled: number | null;
 };
 
 export type Remote_custom_emojisMinAggregateOutputType = {
@@ -29,6 +39,7 @@ export type Remote_custom_emojisMinAggregateOutputType = {
   shortcode: string | null;
   image_url: string | null;
   updated_at: string | null;
+  disabled: number | null;
 };
 
 export type Remote_custom_emojisMaxAggregateOutputType = {
@@ -36,6 +47,7 @@ export type Remote_custom_emojisMaxAggregateOutputType = {
   shortcode: string | null;
   image_url: string | null;
   updated_at: string | null;
+  disabled: number | null;
 };
 
 export type Remote_custom_emojisCountAggregateOutputType = {
@@ -43,7 +55,16 @@ export type Remote_custom_emojisCountAggregateOutputType = {
   shortcode: number;
   image_url: number;
   updated_at: number;
+  disabled: number;
   _all: number;
+};
+
+export type Remote_custom_emojisAvgAggregateInputType = {
+  disabled?: true;
+};
+
+export type Remote_custom_emojisSumAggregateInputType = {
+  disabled?: true;
 };
 
 export type Remote_custom_emojisMinAggregateInputType = {
@@ -51,6 +72,7 @@ export type Remote_custom_emojisMinAggregateInputType = {
   shortcode?: true;
   image_url?: true;
   updated_at?: true;
+  disabled?: true;
 };
 
 export type Remote_custom_emojisMaxAggregateInputType = {
@@ -58,6 +80,7 @@ export type Remote_custom_emojisMaxAggregateInputType = {
   shortcode?: true;
   image_url?: true;
   updated_at?: true;
+  disabled?: true;
 };
 
 export type Remote_custom_emojisCountAggregateInputType = {
@@ -65,6 +88,7 @@ export type Remote_custom_emojisCountAggregateInputType = {
   shortcode?: true;
   image_url?: true;
   updated_at?: true;
+  disabled?: true;
   _all?: true;
 };
 
@@ -110,6 +134,18 @@ export type Remote_custom_emojisAggregateArgs<
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+   **/
+  _avg?: Remote_custom_emojisAvgAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+   **/
+  _sum?: Remote_custom_emojisSumAggregateInputType;
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
    **/
   _min?: Remote_custom_emojisMinAggregateInputType;
@@ -141,6 +177,8 @@ export type remote_custom_emojisGroupByArgs<
   take?: number;
   skip?: number;
   _count?: Remote_custom_emojisCountAggregateInputType | true;
+  _avg?: Remote_custom_emojisAvgAggregateInputType;
+  _sum?: Remote_custom_emojisSumAggregateInputType;
   _min?: Remote_custom_emojisMinAggregateInputType;
   _max?: Remote_custom_emojisMaxAggregateInputType;
 };
@@ -150,7 +188,10 @@ export type Remote_custom_emojisGroupByOutputType = {
   shortcode: string;
   image_url: string;
   updated_at: string;
+  disabled: number;
   _count: Remote_custom_emojisCountAggregateOutputType | null;
+  _avg: Remote_custom_emojisAvgAggregateOutputType | null;
+  _sum: Remote_custom_emojisSumAggregateOutputType | null;
   _min: Remote_custom_emojisMinAggregateOutputType | null;
   _max: Remote_custom_emojisMaxAggregateOutputType | null;
 };
@@ -176,6 +217,7 @@ export type remote_custom_emojisWhereInput = {
   shortcode?: Prisma.StringFilter<"remote_custom_emojis"> | string;
   image_url?: Prisma.StringFilter<"remote_custom_emojis"> | string;
   updated_at?: Prisma.StringFilter<"remote_custom_emojis"> | string;
+  disabled?: Prisma.IntFilter<"remote_custom_emojis"> | number;
 };
 
 export type remote_custom_emojisOrderByWithRelationInput = {
@@ -183,6 +225,7 @@ export type remote_custom_emojisOrderByWithRelationInput = {
   shortcode?: Prisma.SortOrder;
   image_url?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type remote_custom_emojisWhereUniqueInput = Prisma.AtLeast<
@@ -195,6 +238,7 @@ export type remote_custom_emojisWhereUniqueInput = Prisma.AtLeast<
     shortcode?: Prisma.StringFilter<"remote_custom_emojis"> | string;
     image_url?: Prisma.StringFilter<"remote_custom_emojis"> | string;
     updated_at?: Prisma.StringFilter<"remote_custom_emojis"> | string;
+    disabled?: Prisma.IntFilter<"remote_custom_emojis"> | number;
   },
   "domain_shortcode"
 >;
@@ -204,9 +248,12 @@ export type remote_custom_emojisOrderByWithAggregationInput = {
   shortcode?: Prisma.SortOrder;
   image_url?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   _count?: Prisma.remote_custom_emojisCountOrderByAggregateInput;
+  _avg?: Prisma.remote_custom_emojisAvgOrderByAggregateInput;
   _max?: Prisma.remote_custom_emojisMaxOrderByAggregateInput;
   _min?: Prisma.remote_custom_emojisMinOrderByAggregateInput;
+  _sum?: Prisma.remote_custom_emojisSumOrderByAggregateInput;
 };
 
 export type remote_custom_emojisScalarWhereWithAggregatesInput = {
@@ -221,6 +268,7 @@ export type remote_custom_emojisScalarWhereWithAggregatesInput = {
   shortcode?: Prisma.StringWithAggregatesFilter<"remote_custom_emojis"> | string;
   image_url?: Prisma.StringWithAggregatesFilter<"remote_custom_emojis"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"remote_custom_emojis"> | string;
+  disabled?: Prisma.IntWithAggregatesFilter<"remote_custom_emojis"> | number;
 };
 
 export type remote_custom_emojisCreateInput = {
@@ -228,6 +276,7 @@ export type remote_custom_emojisCreateInput = {
   shortcode: string;
   image_url: string;
   updated_at: string;
+  disabled?: number;
 };
 
 export type remote_custom_emojisUncheckedCreateInput = {
@@ -235,6 +284,7 @@ export type remote_custom_emojisUncheckedCreateInput = {
   shortcode: string;
   image_url: string;
   updated_at: string;
+  disabled?: number;
 };
 
 export type remote_custom_emojisUpdateInput = {
@@ -242,6 +292,7 @@ export type remote_custom_emojisUpdateInput = {
   shortcode?: Prisma.StringFieldUpdateOperationsInput | string;
   image_url?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_custom_emojisUncheckedUpdateInput = {
@@ -249,6 +300,7 @@ export type remote_custom_emojisUncheckedUpdateInput = {
   shortcode?: Prisma.StringFieldUpdateOperationsInput | string;
   image_url?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_custom_emojisCreateManyInput = {
@@ -256,6 +308,7 @@ export type remote_custom_emojisCreateManyInput = {
   shortcode: string;
   image_url: string;
   updated_at: string;
+  disabled?: number;
 };
 
 export type remote_custom_emojisUpdateManyMutationInput = {
@@ -263,6 +316,7 @@ export type remote_custom_emojisUpdateManyMutationInput = {
   shortcode?: Prisma.StringFieldUpdateOperationsInput | string;
   image_url?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_custom_emojisUncheckedUpdateManyInput = {
@@ -270,6 +324,7 @@ export type remote_custom_emojisUncheckedUpdateManyInput = {
   shortcode?: Prisma.StringFieldUpdateOperationsInput | string;
   image_url?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type remote_custom_emojisDomainShortcodeCompoundUniqueInput = {
@@ -282,6 +337,11 @@ export type remote_custom_emojisCountOrderByAggregateInput = {
   shortcode?: Prisma.SortOrder;
   image_url?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
+};
+
+export type remote_custom_emojisAvgOrderByAggregateInput = {
+  disabled?: Prisma.SortOrder;
 };
 
 export type remote_custom_emojisMaxOrderByAggregateInput = {
@@ -289,6 +349,7 @@ export type remote_custom_emojisMaxOrderByAggregateInput = {
   shortcode?: Prisma.SortOrder;
   image_url?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type remote_custom_emojisMinOrderByAggregateInput = {
@@ -296,6 +357,11 @@ export type remote_custom_emojisMinOrderByAggregateInput = {
   shortcode?: Prisma.SortOrder;
   image_url?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
+};
+
+export type remote_custom_emojisSumOrderByAggregateInput = {
+  disabled?: Prisma.SortOrder;
 };
 
 export type remote_custom_emojisSelect<
@@ -306,6 +372,7 @@ export type remote_custom_emojisSelect<
     shortcode?: boolean;
     image_url?: boolean;
     updated_at?: boolean;
+    disabled?: boolean;
   },
   ExtArgs["result"]["remote_custom_emojis"]
 >;
@@ -318,6 +385,7 @@ export type remote_custom_emojisSelectCreateManyAndReturn<
     shortcode?: boolean;
     image_url?: boolean;
     updated_at?: boolean;
+    disabled?: boolean;
   },
   ExtArgs["result"]["remote_custom_emojis"]
 >;
@@ -330,6 +398,7 @@ export type remote_custom_emojisSelectUpdateManyAndReturn<
     shortcode?: boolean;
     image_url?: boolean;
     updated_at?: boolean;
+    disabled?: boolean;
   },
   ExtArgs["result"]["remote_custom_emojis"]
 >;
@@ -339,12 +408,13 @@ export type remote_custom_emojisSelectScalar = {
   shortcode?: boolean;
   image_url?: boolean;
   updated_at?: boolean;
+  disabled?: boolean;
 };
 
 export type remote_custom_emojisOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  "domain" | "shortcode" | "image_url" | "updated_at",
+  "domain" | "shortcode" | "image_url" | "updated_at" | "disabled",
   ExtArgs["result"]["remote_custom_emojis"]
 >;
 
@@ -359,6 +429,7 @@ export type $remote_custom_emojisPayload<
       shortcode: string;
       image_url: string;
       updated_at: string;
+      disabled: number;
     },
     ExtArgs["result"]["remote_custom_emojis"]
   >;
@@ -935,6 +1006,7 @@ export interface remote_custom_emojisFieldRefs {
   readonly shortcode: Prisma.FieldRef<"remote_custom_emojis", "String">;
   readonly image_url: Prisma.FieldRef<"remote_custom_emojis", "String">;
   readonly updated_at: Prisma.FieldRef<"remote_custom_emojis", "String">;
+  readonly disabled: Prisma.FieldRef<"remote_custom_emojis", "Int">;
 }
 
 // Custom InputTypes

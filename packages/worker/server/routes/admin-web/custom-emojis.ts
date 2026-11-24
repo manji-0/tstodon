@@ -8,11 +8,21 @@ import {
   uploadCustomEmoji,
   uploadedFile,
 } from "../../admin-custom-emojis";
-import { type EmojiForm, emojisPage } from "../../admin-content-pages";
+import {
+  type EmojiFilterView,
+  type EmojiForm,
+  emojiListPath,
+  emojisPage,
+} from "../../admin-content-pages";
 import { confirmPage } from "../../admin-pages";
 import { errorPage } from "../../auth-pages";
 import { customEmojiFromRow, listCustomEmojiRows } from "../../custom-emoji-store";
 import { pageRedirect } from "../../page-redirect";
+import {
+  pageRemoteCustomEmojis,
+  type RemoteEmojiKey,
+  setRemoteCustomEmojisDisabled,
+} from "../../remote-custom-emoji-store";
 import { parseInstanceIdentity } from "../../runtime-config";
 import type { PageMessage } from "../../settings-pages";
 import { instanceName, type SettingsContext } from "../account-settings";
@@ -27,39 +37,112 @@ import {
   withNotice,
 } from "./shared";
 
-/** Mastodon's `/admin/custom_emojis` page: list, upload, show or hide in the picker, and delete. */
+/**
+ * Mastodon's `/admin/custom_emojis` page: list, upload, show or hide in the
+ * picker, and delete the local emoji; list the remote ones, and enable or
+ * disable them (`Form::CustomEmojiBatch#enable!` / `#disable!`).
+ */
 
 const BLANK_FORM: EmojiForm = { shortcode: "", category: "", visibleInPicker: true };
 
 const EmojiCommandSchema = z.object({
-  do: z.union([z.literal("upload"), z.literal("show"), z.literal("hide"), z.literal("delete")]),
+  do: z.union([
+    z.literal("upload"),
+    z.literal("show"),
+    z.literal("hide"),
+    z.literal("delete"),
+    z.literal("enable"),
+    z.literal("disable"),
+  ]),
   id: z.string().default(""),
   shortcode: z.string().trim().default(""),
   category: z.string().trim().default(""),
 });
 
+/**
+ * `CustomEmojiFilter`'s keys: `local`, `remote`, `by_domain` (which lists
+ * the remote emoji, as the controller sets `remote` for it) and `shortcode`;
+ * `after` is where a page of the remote ones starts.
+ */
+const EmojiFilterSchema = z.object({
+  local: z.string().default(""),
+  remote: z.string().default(""),
+  by_domain: z.string().trim().toLowerCase().default(""),
+  shortcode: z.string().trim().default(""),
+  after: z.string().default(""),
+});
+
+type EmojiFilter = EmojiFilterView & Readonly<{ after: RemoteEmojiKey | undefined }>;
+
+/** A remote emoji named `<domain>/<shortcode>`, as the list's checkboxes and cursor name one. */
+const remoteEmojiKey = (value: string): RemoteEmojiKey | undefined => {
+  const slash = value.indexOf("/");
+  return slash <= 0 || slash === value.length - 1
+    ? undefined
+    : { domain: value.slice(0, slash), shortcode: value.slice(slash + 1) };
+};
+
+const emojiFilter = (raw: Readonly<Record<string, string | undefined>>): EmojiFilter => {
+  const parsed = schemaResult(EmojiFilterSchema)(raw);
+  const value = parsed.isOk() ? parsed.value : EmojiFilterSchema.parse({});
+  return {
+    location:
+      value.by_domain !== "" || (value.remote !== "" && value.local === "")
+        ? "Remote"
+        : value.local !== ""
+          ? "Local"
+          : "All",
+    domain: value.by_domain,
+    shortcode: value.shortcode,
+    after: remoteEmojiKey(value.after),
+  };
+};
+
 const renderEmojis = async (
   c: SettingsContext,
   mediaPublicBaseUrl: string,
+  filter: EmojiFilter,
   form: EmojiForm,
   message: PageMessage | undefined,
   status: 200 | 422 = 200,
 ) => {
-  const rows = await listCustomEmojiRows(c.env.DB);
+  const [rows, remote] = await Promise.all([
+    listCustomEmojiRows(c.env.DB),
+    pageRemoteCustomEmojis(c.env.DB, filter, filter.after),
+  ]);
   if (rows.isErr()) {
     return serverError(c, rows.error);
   }
+  if (remote.isErr()) {
+    return serverError(c, remote.error);
+  }
+  const { next } = remote.value;
+  const listing =
+    filter.location === "Local"
+      ? undefined
+      : {
+          entries: remote.value.entries,
+          next: next && `${next.domain}/${next.shortcode}`,
+        };
+  const shortcode = filter.shortcode.toLowerCase();
   return c.html(
     emojisPage(
       instanceName(c.env),
       {
-        emojis: rows.value.map((row) => ({
-          id: row.id,
-          shortcode: row.shortcode,
-          url: customEmojiFromRow(row, mediaPublicBaseUrl).url,
-          category: row.category,
-          visibleInPicker: row.visible_in_picker !== 0,
-        })),
+        filter,
+        emojis:
+          filter.location === "Remote"
+            ? undefined
+            : rows.value
+                .filter((row) => row.shortcode.toLowerCase().includes(shortcode))
+                .map((row) => ({
+                  id: row.id,
+                  shortcode: row.shortcode,
+                  url: customEmojiFromRow(row, mediaPublicBaseUrl).url,
+                  category: row.category,
+                  visibleInPicker: row.visible_in_picker !== 0,
+                })),
+        remote: listing,
         form,
       },
       message,
@@ -77,7 +160,13 @@ export const getAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
   const identity = parseInstanceIdentity(c.env);
   return identity.isErr()
     ? c.html(errorPage(instanceName(c.env), "The server is misconfigured."), 500)
-    : renderEmojis(c, identity.value.mediaPublicBaseUrl, BLANK_FORM, noticeOf(c));
+    : renderEmojis(
+        c,
+        identity.value.mediaPublicBaseUrl,
+        emojiFilter(c.req.query()),
+        BLANK_FORM,
+        noticeOf(c),
+      );
 };
 
 /** Upload, show, hide, or (after a confirmation) delete one emoji. */
@@ -119,6 +208,7 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
       return renderEmojis(
         c,
         identity.value.mediaPublicBaseUrl,
+        emojiFilter({}),
         { shortcode: value.shortcode, category: value.category, visibleInPicker },
         { kind: "error", text: UPLOAD_EMOJI_ERRORS[uploaded.error.kind] },
         422,
@@ -147,6 +237,30 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
           )
         : notFound(c, "emoji");
     }
+    case "enable":
+    case "disable": {
+      const filter = emojiFilter({
+        local: textParts(parts, "local")[0],
+        remote: textParts(parts, "remote")[0],
+        by_domain: textParts(parts, "by_domain")[0],
+        shortcode: textParts(parts, "shortcode")[0],
+      });
+      const keys = textParts(parts, "emoji").flatMap((key) => remoteEmojiKey(key) ?? []);
+      if (keys.length === 0) {
+        return pageRedirect(c, emojiListPath(filter, [["notice", "no_emoji_selected"]]), 303);
+      }
+      const changed = await setRemoteCustomEmojisDisabled(c.env.DB, keys, value.do === "disable");
+      if (changed.isErr()) {
+        return serverError(c, changed.error);
+      }
+      return pageRedirect(
+        c,
+        emojiListPath(filter, [
+          ["notice", value.do === "disable" ? "emojis_disabled" : "emojis_enabled"],
+        ]),
+        303,
+      );
+    }
     case "delete": {
       if (textParts(parts, "confirmed")[0] !== "1") {
         return c.html(
@@ -171,4 +285,4 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
   }
 };
 
-warmSchemas([EmojiCommandSchema]);
+warmSchemas([EmojiCommandSchema, EmojiFilterSchema]);

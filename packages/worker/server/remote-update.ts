@@ -19,7 +19,7 @@ import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch
 import type { ReceivedActivity } from "./activity-forward";
 import { actorMovedTo, cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
 import { setRemoteActorMovedTo } from "./remote-actor-store";
-import { recordNoteEmojis } from "./remote-emoji-refresh";
+import { recordNoteEmojis } from "./remote-emoji-record";
 import { findMoveTarget } from "./remote-move";
 import { contentChanged, isNewer, remoteRevisionStatement } from "./remote-status-edit";
 import { settleInvalidRemoteStatus } from "./remote-status-heal";
@@ -246,7 +246,7 @@ const applyNoteUpdate = async (
   if (stored.value === undefined) {
     return ok(undefined);
   }
-  await recordNoteEmojis(env, signer, stored.value);
+  await recordNoteEmojis(env.DB, signer, target.raw, stored.value);
   await queuePollNotifications(env, cached.value.poll, stored.value);
   // A note stored from a `Create`, or from an `Update` handled as one, whose
   // late steps failed left its marker. A delivery that edits nothing, with no

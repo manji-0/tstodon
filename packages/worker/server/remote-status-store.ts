@@ -2,8 +2,6 @@ import {
   IsoInstant,
   type RemoteAttachment,
   RemoteAttachmentSchema,
-  type RemoteEmoji,
-  RemoteEmojiSchema,
   RemotePoll,
   QuoteInteractionPolicy,
   RemoteStatus,
@@ -87,7 +85,6 @@ export const RemoteStatusRowSchema = z.object({
   media_json: z.string(),
   card_json: z.string().nullable(),
   poll_json: z.string().nullable(),
-  emojis_json: z.string(),
   quote_policy_json: z.string().nullable(),
 });
 
@@ -97,11 +94,6 @@ export const parseRemoteStatusRow = schemaResult(RemoteStatusRowSchema);
 
 const mediaFromJson = (raw: string): ReadonlyArray<RemoteAttachment> => {
   const parsed = schemaResult(z.array(RemoteAttachmentSchema))(parseJsonText(raw).unwrapOr([]));
-  return parsed.isOk() ? parsed.value : [];
-};
-
-const emojisFromJson = (raw: string): ReadonlyArray<RemoteEmoji> => {
-  const parsed = schemaResult(z.array(RemoteEmojiSchema))(parseJsonText(raw).unwrapOr([]));
   return parsed.isOk() ? parsed.value : [];
 };
 
@@ -155,7 +147,6 @@ export const remoteStatusFromRow = (
     editedAt,
     media: mediaFromJson(row.media_json),
     poll: pollFromJson(row.poll_json),
-    emojis: emojisFromJson(row.emojis_json),
     quotePolicy: quotePolicyFromJson(row.quote_policy_json),
     ...(row.url ? { url: row.url } : {}),
   }).mapErr(() => invalid);
@@ -351,7 +342,7 @@ export const findRemoteStatusesByObjectUris = async (
     db
       .prepare(
         `SELECT id, actor_uri, object_uri, url, content_html, spoiler_text, visibility, sensitive,
-           language, published_at, edited_at, media_json, card_json, poll_json, emojis_json,
+           language, published_at, edited_at, media_json, card_json, poll_json,
            quote_policy_json
          FROM remote_statuses WHERE object_uri ${sqlInJsonEach()}`,
       )
@@ -437,7 +428,6 @@ const remoteStatusRowOf = (status: RemoteStatus): RemoteStatusRow => ({
   media_json: JSON.stringify(status.media),
   card_json: null,
   poll_json: status.poll.kind === "NoPoll" ? null : JSON.stringify(status.poll),
-  emojis_json: JSON.stringify(status.emojis),
   quote_policy_json:
     status.quotePolicy.automatic.length === 0 && status.quotePolicy.manual.length === 0
       ? null
@@ -476,7 +466,6 @@ const remoteStatusRowStatement = (
       inReplyTo?.uri ?? null,
       row.edited_at,
       row.poll_json,
-      row.emojis_json,
       row.quote_policy_json,
       inReplyTo?.localStatusId ?? null,
     ),
@@ -521,7 +510,6 @@ const salvagedRowSchema = (fill: RemoteStatusRow): z.ZodType<RemoteStatusRow> =>
     media_json: column.media_json.catch(fill.media_json),
     card_json: column.card_json.catch(null),
     poll_json: column.poll_json.catch(fill.poll_json),
-    emojis_json: column.emojis_json.catch(fill.emojis_json),
     quote_policy_json: column.quote_policy_json.catch(fill.quote_policy_json),
   });
 };
@@ -538,7 +526,6 @@ const REWRITTEN_COLUMNS = [
   "edited_at",
   "media_json",
   "poll_json",
-  "emojis_json",
   "quote_policy_json",
 ] as const;
 

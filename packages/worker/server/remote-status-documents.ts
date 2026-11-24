@@ -36,7 +36,8 @@ import { findRemoteActorsByUris, remoteFollowerActorUris } from "./remote-actor-
 import { acceptedOutboundFollowActorUris } from "./outbound-follow-store";
 import { findRemotePollVotes } from "./remote-poll-vote-store";
 import { findRemoteStatusReplyTargets } from "./remote-reply-store";
-import { mastodonRemoteStatus } from "./remote-status-document";
+import { emojisOf, loadRemoteEmojis } from "./remote-emoji-catalog";
+import { mastodonRemoteStatus, remoteStatusEmojiTexts } from "./remote-status-document";
 import { findAccountsByIds } from "./account-store";
 import { mentionEntities } from "./mention-documents";
 import { listShownRemoteStatusMentions } from "./mention-store";
@@ -327,7 +328,7 @@ const renderRemoteStatuses = async <Q>(
   }
   // One read per page for the mentioned accounts, as for the tags and cards.
   const mentioned = mentions.isOk() ? [...mentions.value.values()] : [];
-  const [presented, mentionedAccounts, mentionedActors] = await Promise.all([
+  const [presented, mentionedAccounts, mentionedActors, emojis] = await Promise.all([
     presentedAccounts(env, identity, [], [...actors.value.values()]),
     findAccountsByIds(
       env.DB,
@@ -336,6 +337,14 @@ const renderRemoteStatuses = async <Q>(
     findRemoteActorsByUris(
       env.DB,
       mentioned.flatMap((entry) => entry.actorUris).filter((uri) => !actors.value.has(uri)),
+    ),
+    // One read per page for the emoji the statuses write, of each author's domain.
+    loadRemoteEmojis(
+      env.DB,
+      statuses.flatMap((status) => {
+        const actor = actors.value.get(status.actorUri);
+        return actor ? [{ domain: actor.domain, texts: remoteStatusEmojiTexts(status) }] : [];
+      }),
     ),
   ]);
   if (presented.isErr()) {
@@ -356,12 +365,13 @@ const renderRemoteStatuses = async <Q>(
   };
   const documents = statuses.flatMap((status) => {
     const author = presented.value.get(RemoteAccountId.encode(status.actorUri));
-    if (!author || !authors(author.presentation)) {
+    const actor = actors.value.get(status.actorUri);
+    if (!author || !actor || !authors(author.presentation)) {
       return [];
     }
     const rawCard = cards.isOk() ? cards.value.get(status.id) : undefined;
     const card = rawCard ? parseCardJson(rawCard) : undefined;
-    const document = mastodonRemoteStatus(status, author.document, {
+    const document = mastodonRemoteStatus(status, author.document, emojisOf(emojis, actor.domain), {
       card: card ? cardDocument(card) : null,
       tags: (tags.isOk() ? (tags.value.get(status.id) ?? []) : []).map((name) => ({
         name,

@@ -176,9 +176,9 @@ describe("D1 rows read do not grow with unrelated rows", () => {
                    'https://flood.example/users/f#main-key', 'x', '2020-01-01T00:00:00.000Z')`,
         ),
         env.DB.prepare(
-          `${series} INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json, tags_indexed, emojis_json)
+          `${series} INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json, tags_indexed)
            SELECT printf('rflood%07d', n), 'https://flood.example/users/f', printf('https://flood.example/statuses/%d', n),
-                  '<p>#budgetflood</p>', 'public', '2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z', '[]', 1, '[]'
+                  '<p>#budgetflood</p>', 'public', '2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z', '[]', 1
            FROM series`,
         ),
         env.DB.prepare(
@@ -806,6 +806,96 @@ describe("D1 statements do not grow with how many things a request names", () =>
         many.statements,
         `listing 8 quotes made ${many.statements} statements, listing one ${few.statements}`,
       ).toBe(few.statements);
+    },
+  );
+
+  // A remote post's custom emoji are read when it is rendered, as Mastodon's
+  // `CustomEmoji.from_text`: one statement a page, a key seek per emoji.
+  it(
+    "renders a page of remote posts with many custom emoji in a fixed number of statements",
+    { timeout: 60_000 },
+    async () => {
+      const reader = await signedInAccount("budget-emoji-reader@example.com");
+      const token = await accessTokenFor(reader.id);
+      if (!token) throw new Error("token");
+      const domain = "budget-emoji.example";
+      const page = 20;
+      /** An actor of `domain` with a page of posts, each writing `emojis` known emoji. */
+      const author = async (name: string, emojis: number) => {
+        const actorUri = `https://${domain}/users/${name}`;
+        const shortcodes = (post: number) =>
+          Array.from({ length: emojis }, (_, n) => `${name}_${post}_${n}`);
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, public_key_id, public_key_pem, fetched_at)
+             VALUES (?1, ?2, ?3, ?1 || '/inbox', ?1 || '#main-key', 'x', '2020-01-01T00:00:00.000Z')`,
+          ).bind(actorUri, name, domain),
+          ...Array.from({ length: page }, (_, post) =>
+            env.DB.prepare(
+              `INSERT INTO remote_statuses (id, actor_uri, object_uri, content_html, visibility, published_at, created_at, updated_at, media_json)
+               VALUES (?1, ?2, ?2 || '/statuses/' || ?1, ?3, 'public', '2020-01-01T00:00:00.000Z',
+                 '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '[]')`,
+            ).bind(
+              `remoji${name}${String(post).padStart(3, "0")}`,
+              actorUri,
+              `<p>${shortcodes(post)
+                .map((shortcode) => `:${shortcode}:`)
+                .join(" ")}</p>`,
+            ),
+          ),
+          env.DB.prepare(
+            `INSERT INTO remote_custom_emojis (domain, shortcode, image_url, updated_at)
+             SELECT ?1, value, 'https://' || ?1 || '/e/' || value || '.png', '2020-01-01T00:00:00.000Z'
+             FROM json_each(?2)`,
+          ).bind(
+            domain,
+            JSON.stringify(Array.from({ length: page }, (_, post) => shortcodes(post)).flat()),
+          ),
+        ]);
+        return RemoteAccountId.encode(actorUri);
+      };
+      const [one, twenty] = [await author("one", 1), await author("twenty", 20)];
+      const statuses = (id: string) =>
+        metered(() =>
+          SELF.fetch(`https://example.com/api/v1/accounts/${id}/statuses?limit=${page}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        );
+      const Emojis = z.array(z.object({ emojis: z.array(z.unknown()) }));
+      const shown = await SELF.fetch(
+        `https://example.com/api/v1/accounts/${twenty}/statuses?limit=${page}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(Emojis.parse(await shown.json()).map((status) => status.emojis.length)).toEqual(
+        Array.from({ length: page }, () => 20),
+      );
+      patchD1();
+      await statuses(one);
+      await statuses(twenty);
+      const few = await statuses(one);
+      const many = await statuses(twenty);
+      expect([few.status, many.status]).toEqual([200, 200]);
+      expect(
+        many.statements,
+        `a page writing 400 emoji made ${many.statements} statements, one writing 20 ${few.statements}`,
+      ).toBe(few.statements);
+      // A key seek per emoji the page writes: the primary key's entry, then the row.
+      const extra = page * 20 - page;
+      expect(many.rowsRead - few.rowsRead).toBe(2 * extra);
+
+      await env.DB.prepare(
+        `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${NOISE})
+         INSERT INTO remote_custom_emojis (domain, shortcode, image_url, updated_at)
+         SELECT ?1, 'noise_' || n, 'https://' || ?1 || '/e/noise.png', '2020-01-01T00:00:00.000Z'
+         FROM series`,
+      )
+        .bind(domain)
+        .run();
+      const growth = (await statuses(twenty)).rowsRead - many.rowsRead;
+      expect(
+        growth,
+        `the page read ${growth} more rows after ${NOISE} more emoji of its domain`,
+      ).toBeLessThan(MAX_GROWTH);
     },
   );
 });
