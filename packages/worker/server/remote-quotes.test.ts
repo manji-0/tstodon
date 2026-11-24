@@ -5,6 +5,7 @@ import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import { openStream } from "../test/stream-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -402,7 +403,8 @@ describe("quoting a remote status", () => {
       },
     };
 
-    expect(await quote.bob.send(deletion)).toBe(202);
+    // The inboxes are listed by the `ExpandForward` job the inbox queues.
+    expect(await withQueueDrained(["ExpandForward"], () => quote.bob.send(deletion))).toBe(202);
 
     expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("revoked");
     const forwarded = await queued(quote.carol.id, "Delete");
