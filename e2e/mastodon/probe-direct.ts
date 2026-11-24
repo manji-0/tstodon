@@ -249,7 +249,7 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
   const mentioned = await signUp(A, "lima");
   const addressed = await signUp(A, "limb");
   const bystander = await signUp(A, "limc");
-  const checkLimited = async (noteUri: string): Promise<void> => {
+  const checkReach = async (noteUri: string): Promise<void> => {
     for (const viewer of [mentioned, addressed]) {
       const seen = await resolveStatus(viewer, noteUri);
       if (seen.visibility !== "private") {
@@ -261,6 +261,9 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
     if (found.statuses.length > 0) {
       throw new StepFailure("an account it does not reach finds it");
     }
+  };
+  const checkLimited = async (noteUri: string): Promise<void> => {
+    await checkReach(noteUri);
     await notified(mentioned, "mention", sender, noteUri);
     const conversations = await call(mentioned, "/api/v1/conversations?limit=40", Conversations);
     if (conversations.some((entry) => entry.last_status?.uri === noteUri)) {
@@ -290,18 +293,34 @@ const limitedNote = async (stamp: string, sender: E2eUser): Promise<void> => {
   );
   // `Create#postprocess_audience_and_deliver`: the same activity, at the
   // shared inbox first and then at a personal one, reaches that inbox's owner.
+  // The first delivery stores a direct message from a stranger, so its mention
+  // waits in a notification request (`NotifyService#message?`), and turning
+  // the status limited afterwards does not take it out of that request.
   await step(
     "a note held already, then sent to the personal inbox of a tstodon user it does not tag, is limited: Mastodon → tstodon",
     async () => {
       const slug = `limited-held-${stamp}`;
       const audience = { to: [mentioned.uri], tag: mentioned };
-      deliverUntagged(sender, slug, { ...audience, inbox: `${A}/inbox` });
-      await checkLimited(
-        deliverUntagged(sender, slug, {
-          ...audience,
-          inbox: `${A}/users/${addressed.username}/inbox`,
-        }),
+      const noteUri = deliverUntagged(sender, slug, { ...audience, inbox: `${A}/inbox` });
+      deliverUntagged(sender, slug, {
+        ...audience,
+        inbox: `${A}/users/${addressed.username}/inbox`,
+      });
+      await checkReach(noteUri);
+      const request = await eventually(
+        "the mentioned account has a notification request",
+        async () => {
+          const requests = await call(
+            mentioned,
+            "/api/v1/notifications/requests",
+            NotificationRequests,
+          );
+          return requests.find((entry) => entry.account.uri === sender.uri);
+        },
       );
+      if (request.last_status?.uri !== noteUri) {
+        throw new StepFailure(`the request's last status is ${String(request.last_status?.uri)}`);
+      }
     },
   );
 };
