@@ -18,6 +18,7 @@ import {
   readLdSignature,
   verifyLdSignature,
 } from "./ld-signature";
+import { remoteContextsFor } from "./jsonld-remote-contexts";
 import { resolveKeyOwner } from "./remote-actor-fetch";
 import { allowListAdmits } from "./runtime-config";
 
@@ -156,7 +157,7 @@ const verifyLdSigned = async (
   if (keyHostRefused(signed.value.keyId, options)) {
     return { kind: "Unverified", reason: "DomainRefused" };
   }
-  const bytes = await ldSignedBytes(signed.value);
+  const bytes = await ldSignedBytes(signed.value, remoteContextsFor(db, identity, options, now));
   if (bytes.isErr()) {
     return { kind: "Unverified", reason: bytes.error.kind };
   }

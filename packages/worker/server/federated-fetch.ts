@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { schemaResult, type SensitiveValue } from "@tstodon/core";
 import { CoveredHosts, Hostname, type InstanceIdentity } from "@tstodon/domain";
 import { RemoteWebfingerSchema } from "./activitypub-wire";
@@ -380,6 +381,58 @@ export const fetchActivityJson = async (
   const response = await getActivity(identity, href, options, ACTIVITY_JSON_ACCEPT);
   return response.isOk() ? readDocument(response.value) : err(response.error);
 };
+
+/** A JSON-LD context as fetched: its body, and that body read. */
+export type FetchedJsonLdContext = Readonly<{
+  json: string;
+  document: Readonly<Record<string, unknown>>;
+}>;
+
+/**
+ * GET a JSON-LD context a document names, as Mastodon's
+ * `load_jsonld_context`: unsigned (`Request.new(:get, url)`, no
+ * `on_behalf_of`), asking for `application/ld+json`, and taken only from a
+ * 200 answered as `application/ld+json`, up to 1 MiB (`body_with_limit`).
+ * The host guard, deadline and same-origin redirects are
+ * {@link fetchActivityJson}'s. A body that is not a JSON object is refused.
+ */
+export const fetchJsonLdContext = async (
+  identity: InstanceIdentity,
+  href: string,
+  options: FederatedHostOptions,
+): Promise<Result<FetchedJsonLdContext, FederatedFetchError>> => {
+  const response = await getActivity(
+    identity,
+    href,
+    { ...options, fetchSigner: unsignedFetch },
+    "application/ld+json",
+  );
+  if (response.isErr()) {
+    return err(response.error);
+  }
+  const mediaType = (response.value.headers.get("content-type") ?? "")
+    .split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (response.value.status !== 200 || mediaType !== "application/ld+json") {
+    await response.value.body?.cancel();
+    return err({ kind: "InvalidSignature" });
+  }
+  try {
+    const json = await readBodyText(response.value, MAX_FETCHED_BYTES);
+    if (json.isErr()) {
+      return err({ kind: "InvalidSignature" });
+    }
+    const document = parseJsonObject(JSON.parse(json.value));
+    return document.isOk()
+      ? ok({ json: json.value, document: document.value })
+      : err({ kind: "InvalidSignature" });
+  } catch {
+    return err({ kind: "VerificationUnavailable" });
+  }
+};
+
+const parseJsonObject = schemaResult(z.record(z.string(), z.unknown()));
 
 /**
  * What a URL serves for a lookup: its ActivityPub document, or the URL of

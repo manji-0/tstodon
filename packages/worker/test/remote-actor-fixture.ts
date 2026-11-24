@@ -24,8 +24,13 @@ export type Remote = Readonly<{
   /**
    * `activity` as `delivery` sends it, with this actor's Linked Data
    * signature (`RsaSignature2017`) made at `date`, now by default.
+   * `contexts` serves the documents of contexts tstodon does not ship.
    */
-  ldSigned: (activity: Record<string, unknown>, date?: Date) => Promise<Record<string, unknown>>;
+  ldSigned: (
+    activity: Record<string, unknown>,
+    date?: Date,
+    contexts?: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  ) => Promise<Record<string, unknown>>;
   /**
    * A shared-inbox delivery of `body` exactly as given, signed with this
    * actor's key: how a server forwards another actor's activity.
@@ -157,11 +162,13 @@ export const remoteActor = async (
   const ldSigned = async (
     activity: Record<string, unknown>,
     date: Date = new Date(),
+    contexts: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {},
   ): Promise<Record<string, unknown>> => {
     const signed = await signLdDocument(
       asDelivered(activity),
       { keyId: `${actorUri}#main-key`, privateKeyJwk: keys.privateKeyJwk },
       date,
+      async (url) => contexts[url],
     );
     if (signed.isErr()) {
       throw new Error(`LD signature failed: ${signed.error.kind}`);

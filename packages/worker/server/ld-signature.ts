@@ -32,8 +32,8 @@ export type LdSignatureRefusal =
   | Readonly<{ kind: "Expired" }>
   /**
    * The document uses JSON-LD Mastodon refuses (`@graph`, `@included`,
-   * `@reverse`, more than 1000 values), names a context the Worker does not
-   * ship, or is not valid JSON-LD.
+   * `@reverse`, more than 1000 values), names a context that could not be
+   * had, or is not valid JSON-LD.
    */
   | Readonly<{ kind: "UnsupportedJsonLd" }>
   /**
@@ -134,13 +134,26 @@ export const readLdSignature = (
 };
 
 /**
- * Each context a document may name, under `https://` and `http://` as
- * Mastodon preloads them. Any other is refused: a context is never fetched.
+ * The document of a context tstodon does not ship, as Mastodon's
+ * `load_jsonld_context` fetches it; undefined when there is none to have.
  */
-const loadContext = async (url: string) => {
-  const document = JSONLD_CONTEXTS.get(url.replace(/^http:\/\//, "https://"));
+export type RemoteContexts = (
+  url: string,
+) => Promise<Readonly<Record<string, unknown>> | undefined>;
+
+/** No context but those tstodon ships: what its own documents name. */
+const shippedOnly: RemoteContexts = async () => undefined;
+
+/**
+ * jsonld.js's `documentLoader`: each context Mastodon preloads, under
+ * `https://` and `http://`, then what `remote` has. Any other context fails
+ * the processing, as a failed `load_jsonld_context` does in Mastodon.
+ */
+const contextLoader = (remote: RemoteContexts) => async (url: string) => {
+  const document =
+    JSONLD_CONTEXTS.get(url.replace(/^http:\/\//, "https://")) ?? (await remote(url));
   if (document === undefined) {
-    throw new Error(`JSON-LD context not shipped: ${url}`);
+    throw new Error(`JSON-LD context not available: ${url}`);
   }
   return { contextUrl: null, documentUrl: url, document };
 };
@@ -153,12 +166,13 @@ const loadContext = async (url: string) => {
  */
 export const canonicalizeJsonLd = async (
   document: unknown,
+  remote: RemoteContexts = shippedOnly,
 ): Promise<Result<string, Readonly<{ kind: "UnsupportedJsonLd" }>>> => {
   try {
     return ok(
       await jsonld.canonize(document, {
         format: "application/n-quads",
-        documentLoader: loadContext,
+        documentLoader: contextLoader(remote),
         safe: false,
         canonizeOptions: { algorithm: "RDFC-1.0", maxWorkFactor: 1 },
       }),
@@ -179,10 +193,11 @@ const sha256Hex = async (text: string): Promise<string> =>
 const signedBytes = async (
   options: Readonly<Record<string, unknown>>,
   document: Readonly<Record<string, unknown>>,
+  remote: RemoteContexts,
 ): Promise<Result<Uint8Array, Readonly<{ kind: "UnsupportedJsonLd" }>>> => {
   const [canonicalOptions, canonicalDocument] = await Promise.all([
     canonicalizeJsonLd({ ...options, "@context": IDENTITY_CONTEXT }),
-    canonicalizeJsonLd(document),
+    canonicalizeJsonLd(document, remote),
   ]);
   if (canonicalOptions.isErr()) {
     return err(canonicalOptions.error);
@@ -275,9 +290,10 @@ const allCovered = (expanded: unknown): boolean => {
 const readsAsCompacted = async (
   document: Readonly<Record<string, unknown>>,
   context: unknown,
+  remote: RemoteContexts,
 ): Promise<Result<boolean, Readonly<{ kind: "UnsupportedJsonLd" }>>> => {
   try {
-    const options = { documentLoader: loadContext, safe: false };
+    const options = { documentLoader: contextLoader(remote), safe: false };
     const [expanded, compacted] = await Promise.all([
       jsonld.expand(document, options),
       jsonld.compact(document, context, options),
@@ -300,13 +316,14 @@ const readsAsCompacted = async (
  */
 const readsAsSigned = async (
   signed: LdSignedDocument,
+  remote: RemoteContexts,
 ): Promise<Result<void, LdSignatureRefusal>> => {
   // `type` is a bare name the identity context does not define; it is
   // compared as a string, and not covered.
   const { type: _type, ...options } = signed.signature;
   const [document, signature] = await Promise.all([
-    readsAsCompacted(signed.document, MASTODON_FULL_CONTEXT),
-    readsAsCompacted({ ...options, "@context": IDENTITY_CONTEXT }, IDENTITY_CONTEXT),
+    readsAsCompacted(signed.document, MASTODON_FULL_CONTEXT, remote),
+    readsAsCompacted({ ...options, "@context": IDENTITY_CONTEXT }, IDENTITY_CONTEXT, shippedOnly),
   ]);
   if (document.isErr()) {
     return err(document.error);
@@ -321,15 +338,18 @@ const readsAsSigned = async (
  * The bytes `signed`'s signature covers, once the body is found to read as
  * them ({@link readsAsSigned}). Canonicalizing is the costly part of a
  * check, so a caller that tries more than one key computes this once.
+ * `remote` has the contexts the document names that tstodon does not ship;
+ * pass one per document, so every step reads the same context.
  */
 export const ldSignedBytes = async (
   signed: LdSignedDocument,
+  remote: RemoteContexts = shippedOnly,
 ): Promise<Result<Uint8Array, LdSignatureRefusal>> => {
-  const unambiguous = await readsAsSigned(signed);
+  const unambiguous = await readsAsSigned(signed, remote);
   if (unambiguous.isErr()) {
     return err(unambiguous.error);
   }
-  return signedBytes(signed.options, signed.document);
+  return signedBytes(signed.options, signed.document, remote);
 };
 
 /** Base64 as Ruby's lenient `Base64.decode64` reads it: whitespace is ignored. */
@@ -378,6 +398,7 @@ export const ldSignature = async (
   document: Readonly<Record<string, unknown>>,
   key: Readonly<{ keyId: string; privateKeyJwk: SensitiveValue<string> }>,
   now: Date,
+  remote: RemoteContexts = shippedOnly,
 ): Promise<Result<LdSignature, LdSigningError>> => {
   const options = {
     type: LD_SIGNATURE_TYPE,
@@ -387,7 +408,7 @@ export const ldSignature = async (
   };
   const { type: _type, ...covered } = options;
   const { signature: _previous, ...unsigned } = document;
-  const bytes = await signedBytes(covered, unsigned);
+  const bytes = await signedBytes(covered, unsigned, remote);
   if (bytes.isErr()) {
     return err(bytes.error);
   }
@@ -409,8 +430,9 @@ export const signLdDocument = async (
   document: Readonly<Record<string, unknown>>,
   key: Readonly<{ keyId: string; privateKeyJwk: SensitiveValue<string> }>,
   now: Date,
+  remote: RemoteContexts = shippedOnly,
 ): Promise<Result<Record<string, unknown>, LdSigningError>> => {
-  const signature = await ldSignature(document, key, now);
+  const signature = await ldSignature(document, key, now, remote);
   if (signature.isErr()) {
     return err(signature.error);
   }
