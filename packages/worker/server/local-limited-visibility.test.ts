@@ -321,6 +321,29 @@ describe("a local status posted limited", () => {
     expect(inboxes).not.toContain(`${follower.actorUri}/inbox`);
   });
 
+  it("is in its author's outbox for a remote actor it mentions, follower or not, and for no other", async () => {
+    // `AccountStatusesFilter#filtered_scope`: any status that mentions the fetcher.
+    const email = "loclim-outbox@example.com";
+    const author = await signedInAccount(email);
+    const mentioned = await remoteActor("loclimoutboxmentioned", HOST);
+    const mentionedFollower = await remoteActor("loclimoutboxfan", HOST);
+    const follower = await remoteActor("loclimoutboxfollower", HOST);
+    await remoteFollows(mentionedFollower, author.username);
+    await remoteFollows(follower, author.username);
+    const status = await post(email, {
+      status: `@loclimoutboxmentioned@${HOST} @loclimoutboxfan@${HOST} in the outbox`,
+      visibility: "limited",
+    });
+    const listed = async (reader: Remote) => {
+      const response = await reader.fetch(`/users/${author.username}/outbox?page=true`);
+      expect(response.status).toBe(200);
+      return (await response.text()).includes(status.uri);
+    };
+    expect(await listed(mentioned)).toBe(true);
+    expect(await listed(mentionedFollower)).toBe(true);
+    expect(await listed(follower)).toBe(false);
+  });
+
   it("is found by status search for its mentions, not for its author's followers", async () => {
     const email = "loclim-search@example.com";
     const author = await signedInAccount(email);

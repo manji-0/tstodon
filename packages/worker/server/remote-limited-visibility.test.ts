@@ -8,7 +8,9 @@ import { acceptPrivateMentions } from "../test/notification-policy-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { unsignedFetch } from "./federated-fetch";
+import { applyRemoteCreate } from "./inbox/create";
 import { RemoteAccountId } from "./remote-account-id";
+import { findRemoteActorByUri } from "./remote-actor-store";
 import { storeNoteDocument } from "./remote-status-persist";
 import { parseInstanceIdentity } from "./runtime-config";
 
@@ -35,7 +37,7 @@ const call = async (email: string, path: string, init: RequestInit = {}): Promis
 
 const actorUrl = (username: string) => `https://example.com/users/${username}`;
 
-type NoteAudience = Readonly<{ to: string[]; cc?: string[]; tag?: string[] }>;
+type NoteAudience = Readonly<{ to: string[]; cc?: string[]; tag?: string[]; inReplyTo?: string }>;
 
 const noteUri = (slug: string) => `https://${HOST}/notes/${slug}`;
 
@@ -49,6 +51,7 @@ const noteDocument = (author: string, slug: string, note: NoteAudience) => ({
   to: note.to,
   cc: note.cc ?? [],
   tag: (note.tag ?? []).map((href) => ({ type: "Mention", href })),
+  ...(note.inReplyTo === undefined ? {} : { inReplyTo: note.inReplyTo }),
 });
 
 /** The `Create` of {@link noteDocument}, sent by `sender`: the same activity id each time. */
@@ -557,6 +560,68 @@ describe("a Create of a note already held, delivered to a personal inbox", () =>
     const row = await stored(noteUri("held-stranger"));
     expect(row.visibility).toBe("public");
     expect(await notified(email, "status", row.id)).toBe(false);
+  });
+
+  it("keeps the conversation and direct timeline it joined as a direct note", async () => {
+    // `deliver_to_conversation!` wrote the `AccountConversation` when the note
+    // was stored; `update(visibility: :limited)` leaves it.
+    const email = "held-conversation@example.com";
+    const mentioned = await signedInAccount(email);
+    await acceptPrivateMentions(email);
+    const owner = await signedInAccount("held-conversation-owner@example.com");
+    await acceptPrivateMentions("held-conversation-owner@example.com");
+    const author = await remoteActor("heldconversation", HOST);
+    const create = noteCreate(
+      author,
+      author.actorUri,
+      "held-conversation",
+      mentioning(mentioned.username),
+    );
+    expect(await author.send(create)).toBe(202);
+    const root = await stored(noteUri("held-conversation"));
+    expect(await conversationStatusIds(email)).toEqual([root.id]);
+
+    expect(await author.sendTo(owner.username, create)).toBe(202);
+    expect((await stored(noteUri("held-conversation"))).visibility).toBe("limited");
+    expect(await conversationStatusIds(email)).toEqual([root.id]);
+    expect(await idsIn(email, "/api/v1/timelines/direct")).toEqual([root.id]);
+    expect(await conversationStatusIds("held-conversation-owner@example.com")).toEqual([]);
+
+    // A direct reply to it stays in the same conversation, as the chain walks through it.
+    await sendNote(author, "held-conversation-reply", {
+      ...mentioning(mentioned.username),
+      inReplyTo: noteUri("held-conversation"),
+    });
+    const reply = await stored(noteUri("held-conversation-reply"));
+    expect(await conversationStatusIds(email)).toEqual([reply.id]);
+  });
+
+  it("is postprocessed for an inbox whose delivery found it stored by another one meanwhile", async () => {
+    // Two deliveries of a new note to two personal inboxes at once: the one
+    // that loses the insert finds the note stored, as Mastodon's
+    // `create:<uri>` lock has the second see it.
+    const mentioned = await signedInAccount("held-race-mentioned@example.com");
+    const owner = await signedInAccount("held-race-owner@example.com");
+    const author = await remoteActor("heldrace", HOST);
+    const audience = mentioning(mentioned.username);
+    expect(await author.send(noteCreate(author, author.actorUri, "held-race", audience))).toBe(202);
+    const signer = (await findRemoteActorByUri(env.DB, author.actorUri))._unsafeUnwrap();
+    if (signer === undefined) {
+      throw new Error("the author was not cached");
+    }
+    // The read this delivery made before the other one stored the note.
+    const applied = await applyRemoteCreate(
+      env,
+      parseInstanceIdentity(env)._unsafeUnwrap(),
+      signer,
+      noteDocument(author.actorUri, "held-race", audience),
+      { fetchSigner: unsignedFetch, deliveredTo: owner.id },
+      { objectUri: noteUri("held-race"), row: undefined },
+    );
+    expect(applied.isOk()).toBe(true);
+    const row = await stored(noteUri("held-race"));
+    expect(row.visibility).toBe("limited");
+    expect((await statusAs("held-race-owner@example.com", row.id)).status).toBe(200);
   });
 
   it("is ignored from an actor that did not write the note", async () => {

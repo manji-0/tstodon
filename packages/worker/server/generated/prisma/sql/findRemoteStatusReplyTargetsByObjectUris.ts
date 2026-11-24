@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param objectUrisJson
  */
 export const findRemoteStatusReplyTargetsByObjectUris = $runtime.makeTypedQueryFactory(
-  "SELECT id, object_uri, visibility, in_reply_to_uri, in_reply_to_account_id, in_reply_to_actor_uri\nFROM remote_statuses\nWHERE object_uri IN (SELECT value FROM json_each($1))",
+  "SELECT id, object_uri, visibility, limited_from_direct, in_reply_to_uri, in_reply_to_account_id, in_reply_to_actor_uri\nFROM remote_statuses\nWHERE object_uri IN (SELECT value FROM json_each($1))",
 ) as (
   objectUrisJson: string,
 ) => $runtime.TypedSql<
@@ -22,6 +22,7 @@ export namespace findRemoteStatusReplyTargetsByObjectUris {
     id: string | null;
     object_uri: string;
     visibility: string;
+    limited_from_direct: number;
     in_reply_to_uri: string | null;
     in_reply_to_account_id: string | null;
     in_reply_to_actor_uri: string | null;

@@ -96,7 +96,7 @@ export const addDeliveredRemoteStatusMention = async (
   const batched = await runD1Batch(db, [
     db
       .prepare(
-        `UPDATE remote_statuses SET visibility = 'limited'
+        `UPDATE remote_statuses SET visibility = 'limited', limited_from_direct = 1
          WHERE id = ?1 AND visibility = 'direct' AND NOT EXISTS (
            SELECT 1 FROM remote_status_mentions WHERE status_id = ?1 AND account_id = ?2
          )`,

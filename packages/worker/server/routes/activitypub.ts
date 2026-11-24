@@ -682,11 +682,11 @@ const outboxReader = async (
     follow.value?.requestKind === "Fulfilled"
       ? {
           visibilities: ["public", "unlisted", "private"],
-          mentioned: { actorUri: signer.actorUri, visibilities: ["direct"] },
+          mentioned: { actorUri: signer.actorUri, visibilities: ["direct", "limited"] },
         }
       : {
           visibilities: ["public", "unlisted"],
-          mentioned: { actorUri: signer.actorUri, visibilities: ["private", "direct"] },
+          mentioned: { actorUri: signer.actorUri, visibilities: ["private", "direct", "limited"] },
         },
   );
 };

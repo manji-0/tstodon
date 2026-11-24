@@ -65,8 +65,12 @@ export const applyRemoteCreate = async (
     return err(created.error);
   }
   // `Create#create_status`: a status held already, by the actor that sends
-  // it, is postprocessed for the personal inbox it came to.
-  const held = read.row;
+  // it, is postprocessed for the personal inbox it came to. The status is the
+  // one stored now, not the read before: another delivery may have stored it
+  // in between, which Mastodon's `create:<uri>` lock orders. For the
+  // delivery that stored it, its own inbox's owner is named already, and
+  // the postprocess changes nothing.
+  const held = created.value;
   return held !== undefined &&
     held.actorUri === signer.actorUri &&
     options.deliveredTo !== undefined

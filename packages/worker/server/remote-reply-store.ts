@@ -23,6 +23,7 @@ const ReplyTargetRowSchema = z.object({
   id: z.string(),
   object_uri: z.string(),
   visibility: z.string(),
+  limited_from_direct: z.number(),
   in_reply_to_uri: z.string().nullable(),
   in_reply_to_account_id: z.string().nullable(),
   in_reply_to_actor_uri: z.string().nullable(),
@@ -33,7 +34,8 @@ type ReplyTargetRow = z.infer<typeof ReplyTargetRowSchema>;
 const replyTargetFromRow = (row: ReplyTargetRow): RemoteReplyTarget => ({
   id: row.id,
   objectUri: row.object_uri,
-  direct: row.visibility === "direct",
+  // A direct note a later delivery made limited keeps its place in a chain.
+  direct: row.visibility === "direct" || row.limited_from_direct !== 0,
   inReplyToUri: row.in_reply_to_uri ?? undefined,
   replyLink: ReplyLink.fromColumns(
     row.in_reply_to_uri !== null,
