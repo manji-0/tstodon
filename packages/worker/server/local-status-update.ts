@@ -12,8 +12,10 @@ import { synchronizesFollowers } from "./followers-synchronization";
 import { startHomeFanOut } from "./home-fan-out";
 import { newEntityId } from "./ids";
 import { mastodonStatus } from "./local-status-documents";
+import { notifyAccount } from "./notify";
 import { readNoteObject } from "./local-note-object";
 import { deferStatusActivity, deferToOwedActivity } from "./pending-status-federation";
+import { listAcceptedQuoteEdges } from "./quote-store";
 import { startPublicFanOut } from "./public-fan-out";
 import { findStatusById } from "./status-store";
 import { publishToAccount } from "./stream-publish";
@@ -102,4 +104,27 @@ export const announceNoteUpdate = async (
     await startPublicFanOut(env, { event: "status.update", entryId: note.id });
   }
   return rendered.isErr() ? err(rendered.error) : ok(document);
+};
+
+/**
+ * Tell the local authors whose accepted quotes quote the note that it
+ * changed (`quoted_update`), as Mastodon's
+ * `FanOutOnWriteService#notify_about_update!`. Mastodon runs it for an edit,
+ * and for the quoted author's `Accept` of the note's own quote, which
+ * distributes the note as an update without `skip_notifications`. The note's
+ * author is not told of its own note.
+ */
+export const notifyQuotersOfUpdate = async (env: Env, note: LocalNote): Promise<void> => {
+  const edges = await listAcceptedQuoteEdges(env.DB, note.id);
+  const quoters = (edges.isOk() ? edges.value : []).filter(
+    (edge) => edge.accountId !== note.accountId,
+  );
+  for (const edge of quoters) {
+    await notifyAccount(env, {
+      accountId: edge.accountId,
+      fromAccountId: note.accountId,
+      kind: "quoted_update",
+      statusId: edge.statusId,
+    });
+  }
 };

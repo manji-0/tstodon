@@ -454,6 +454,28 @@ export const mastodonRails = (script: string): string =>
     script,
   );
 
+const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
+
+/**
+ * POST `activity` to `inbox` with Mastodon's own `ActivityPub::DeliveryWorker`,
+ * signed with `sender`'s key, for an activity Mastodon's API cannot make.
+ * Base64 keeps the JSON out of Ruby's string interpolation (`#{`, `#@`).
+ * `perform` returns without raising on a 4xx (`@unsalvageable`), so the
+ * script checks that the request went through (`@performed`).
+ */
+export const mastodonDeliver = (sender: E2eUser, activity: unknown, inbox: string): void => {
+  mastodonRails(
+    [
+      `json = Base64.strict_decode64("${base64(JSON.stringify(activity))}").force_encoding("UTF-8")`,
+      `sender = Account.find_local!(Base64.strict_decode64("${base64(sender.username)}"))`,
+      `inbox = Base64.strict_decode64("${base64(inbox)}")`,
+      "worker = ActivityPub::DeliveryWorker.new",
+      "worker.perform(json, sender.id, inbox, { 'bypass_availability' => true })",
+      'raise "not delivered to #{inbox}" unless worker.instance_variable_get(:@performed)',
+    ].join("\n"),
+  );
+};
+
 /**
  * Fresh Mastodon users for one run, made by `provision.rb` as the standing
  * ones are. A scenario that changes an account for good (a move, a deletion)

@@ -24,7 +24,7 @@ import { authenticate } from "../../auth";
 import { nowIso } from "../../clock";
 import { deleteLocalStatus } from "../../local-status-delete";
 import { mastodonSourceStatus } from "../../status-source-document";
-import { announceNoteUpdate } from "../../local-status-update";
+import { announceNoteUpdate, notifyQuotersOfUpdate } from "../../local-status-update";
 import { formatPostText } from "../../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../../mention-store";
 import { mentionLinks, resolveMentions, type ResolvedMentions } from "../../mention-resolve";
@@ -52,7 +52,6 @@ import {
 } from "../../status-body-schema";
 import { parseBodyParams, readOptionalParams, readQueryParams } from "../../request-params";
 import { parseInstanceIdentity } from "../../runtime-config";
-import { notifyAccount } from "../../notify";
 import { findStatusById, replaceStatusMedia, updateLocalNote } from "../../status-store";
 import {
   findStatusUpdatedAt,
@@ -68,7 +67,6 @@ import {
   findQuoteByQuoting,
   findStatusQuotePolicy,
   isQuotePolicy,
-  listAcceptedQuoteEdges,
   setStatusQuotePolicy,
 } from "../../quote-store";
 import {
@@ -444,19 +442,7 @@ const editNote = async (
   if (!applied.value) {
     return err(ApiRefusal.notFound);
   }
-  // Authors who quoted this status hear that the original changed.
-  const quoteEdges = await listAcceptedQuoteEdges(env.DB, existing.id);
-  const quoters = (quoteEdges.isOk() ? quoteEdges.value : []).filter(
-    (edge) => edge.accountId !== author.id,
-  );
-  for (const edge of quoters) {
-    await notifyAccount(env, {
-      accountId: edge.accountId,
-      fromAccountId: author.id,
-      kind: "quoted_update",
-      statusId: edge.statusId,
-    });
-  }
+  await notifyQuotersOfUpdate(env, existing);
   startLinkCard(env, "Status", existing.id, revised.text);
   const pollApplied = await applyPollRevision(env.DB, existing.id, pollRevision.value);
   if (pollApplied.isErr()) {

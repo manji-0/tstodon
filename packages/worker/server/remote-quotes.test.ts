@@ -106,12 +106,12 @@ const QuoteRequestSchema = z.object({
   instrument: z.object({ id: z.string(), quote: z.string(), cc: z.array(z.string()) }),
 });
 
-/** Alice (local) quotes a public note of Bob (remote) that anyone may quote. */
-const quoteBob = async (slug: string) => {
+/** Alice (local) quotes a public note of Bob (remote) that anyone may quote, or that `policy` names. */
+const quoteBob = async (slug: string, policy: Record<string, unknown> = canQuotePublic) => {
   const email = `${slug}-alice@example.com`;
   const alice = await signedInAccount(email);
   const bob = await remoteActor(`${slug}-bob`);
-  const bobNote = await remoteNote(bob, slug);
+  const bobNote = await remoteNote(bob, slug, policy);
   const posted = await postQuote(email, bobNote.id);
   expect(posted.status).toBe(200);
   const quotingId = read(QuoteDocumentSchema, posted.body).id;
@@ -487,5 +487,74 @@ describe("quoting a remote status", () => {
     const posted = await postQuote(email, bobNote.id);
     expect(posted.status).toBe(422);
     expect(posted.body).toEqual(expect.objectContaining({ kind: "QuoteNotAllowed" }));
+  });
+});
+
+const NotificationsSchema = z.array(
+  z.object({
+    type: z.string(),
+    account: z.object({ id: z.string() }),
+    status: z.object({ id: z.string() }).nullable(),
+  }),
+);
+
+const notificationsOf = async (email: string) => {
+  const response = await json("/api/v1/notifications", { headers: await authHeaders(email) });
+  expect(response.status).toBe(200);
+  return read(NotificationsSchema, response.body);
+};
+
+describe("a quote that waits for the quoted author's manual approval", () => {
+  const manualPublic = { interactionPolicy: { canQuote: { manualApproval: [PUBLIC] } } };
+
+  it("stays pending until the Accept, which tells those who quoted the quoting post", async () => {
+    const quote = await quoteBob("rq-manual", manualPublic);
+    expect(quote.posted.quote).toEqual({ state: "pending", quoted_status: null });
+    const carolEmail = "rq-manual-carol@example.com";
+    await signedInAccount(carolEmail);
+    const carols = await postQuote(carolEmail, quote.quotingId);
+    expect(carols.status).toBe(200);
+    const carolsId = read(QuoteDocumentSchema, carols.body).id;
+    expect((await quoteOf(carolEmail, carolsId)).state).toBe("accepted");
+
+    expect(
+      await quote.bob.send({
+        id: `${quote.bob.actorUri}#accepts/quote_requests/1`,
+        type: "Accept",
+        object: quote.request.body.id,
+        result: `${quote.bob.actorUri}/quote_authorizations/1`,
+      }),
+    ).toBe(202);
+
+    expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("accepted");
+    // As Mastodon's `accept_quote!`, which distributes the note as an update
+    // without `skip_notifications`: `FanOutOnWriteService#notify_about_update!`.
+    expect((await notificationsOf(carolEmail)).filter((n) => n.type === "quoted_update")).toEqual([
+      expect.objectContaining({ account: { id: quote.alice.id }, status: { id: carolsId } }),
+    ]);
+    // The quoting author hears of Carol's quote, and of nothing else.
+    expect((await notificationsOf(quote.email)).map((n) => n.type)).toEqual(["quote"]);
+  });
+
+  it("is told nothing on a Reject, which leaves the quote rejected", async () => {
+    const quote = await quoteBob("rq-manual-reject", manualPublic);
+    const carolEmail = "rq-manual-reject-carol@example.com";
+    await signedInAccount(carolEmail);
+    expect((await postQuote(carolEmail, quote.quotingId)).status).toBe(200);
+
+    expect(
+      await quote.bob.send({
+        id: `${quote.bob.actorUri}#rejects/quote_requests/1`,
+        type: "Reject",
+        object: quote.request.body.id,
+      }),
+    ).toBe(202);
+
+    expect(await quoteOf(quote.email, quote.quotingId)).toEqual({
+      state: "rejected",
+      quoted_status: null,
+    });
+    expect(await notificationsOf(carolEmail)).toEqual([]);
+    expect((await notificationsOf(quote.email)).map((n) => n.type)).toEqual(["quote"]);
   });
 });
