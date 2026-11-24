@@ -58,20 +58,32 @@ const onHomeTimeline = async (viewer: E2eUser, uri: string): Promise<boolean> =>
  * it reads from the database: its relationship answer is cached, and a read
  * that overlaps the commit ending a follow can cache the follow for a day
  * (see `followsAfterAccept`).
+ *
+ * Mastodon may end a follow only on its first Sidekiq retry, so its wait
+ * covers one. The `Undo(Follow)` and `Reject(Follow)` of a mutual follow
+ * reach its inbox together, as Mastodon's own `AfterBlockDomainFromAccountService`
+ * sends them, and its two `ActivityPub::ProcessingWorker` jobs then lock the
+ * two accounts' `account_stats` rows in opposite orders (`Follow#decrement_cache_counters`).
+ * PostgreSQL ends one with a deadlock, and Sidekiq runs it again 15 to 25 s
+ * later, plus up to 7.5 s until its scheduler polls.
  */
 const followsEnded = (viewer: E2eUser, accountId: string) =>
-  eventually(`${viewer.username}'s server ends both follows`, async () => {
-    if (viewer.origin === MASTODON) {
-      const lists = await Promise.all(
-        ["following", "followers"].map((list) =>
-          call(viewer, `/api/v1/accounts/${viewer.id}/${list}?limit=80`, Accounts),
-        ),
-      );
-      return lists.flat().some((account) => account.id === accountId) ? undefined : true;
-    }
-    const state = await relationship(viewer, accountId);
-    return state.following || state.followed_by ? undefined : true;
-  });
+  eventually(
+    `${viewer.username}'s server ends both follows`,
+    async () => {
+      if (viewer.origin === MASTODON) {
+        const lists = await Promise.all(
+          ["following", "followers"].map((list) =>
+            call(viewer, `/api/v1/accounts/${viewer.id}/${list}?limit=80`, Accounts),
+          ),
+        );
+        return lists.flat().some((account) => account.id === accountId) ? undefined : true;
+      }
+      const state = await relationship(viewer, accountId);
+      return state.following || state.followed_by ? undefined : true;
+    },
+    viewer.origin === MASTODON ? 45_000 : undefined,
+  );
 
 /**
  * `blocker` blocks the domain of `peer`, with whom it follows both ways
