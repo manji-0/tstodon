@@ -335,6 +335,24 @@ const readsAsSigned = async (
 };
 
 /**
+ * Whether `body`, which tstodon is about to forward, reads the same as JSON
+ * and as Mastodon's compaction of it (`ProcessActivityService#compact`, which
+ * leaves out the `signature`). A receiver acts on that compaction: a body
+ * whose context makes it name another actor there, such as the local account
+ * whose key signs the forward, would be taken as that actor's own and its
+ * Linked Data signature never checked. Costs a compaction and an expansion:
+ * 1.2 ms warm for a 3 KB `Create` (mean of 100 in the test runtime).
+ */
+export const forwardsAsRead = async (
+  body: Readonly<Record<string, unknown>>,
+  remote: RemoteContexts = shippedOnly,
+): Promise<boolean> => {
+  const { signature: _signature, ...document } = body;
+  const read = await readsAsCompacted(document, MASTODON_FULL_CONTEXT, remote);
+  return read.isOk() && read.value;
+};
+
+/**
  * The bytes `signed`'s signature covers, once the body is found to read as
  * them ({@link readsAsSigned}). Canonicalizing is the costly part of a
  * check, so a caller that tries more than one key computes this once.

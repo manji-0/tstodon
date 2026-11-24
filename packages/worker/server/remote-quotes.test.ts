@@ -392,6 +392,11 @@ describe("quoting a remote status", () => {
   it("forwards a signed stamp Delete to the followers of the quoting note's local boosters", async () => {
     const quote = await boostedQuote("rq-stamp-forward");
     const deletion = {
+      // As Mastodon's `DeleteQuoteAuthorizationSerializer` sends it.
+      "@context": [
+        "https://www.w3.org/ns/activitystreams",
+        { QuoteAuthorization: "https://w3id.org/fep/044f#QuoteAuthorization" },
+      ],
       id: `${quote.stamp}#delete`,
       type: "Delete",
       object: { id: quote.stamp, type: "QuoteAuthorization" },

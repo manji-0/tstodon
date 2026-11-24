@@ -9,7 +9,10 @@ import {
   type ThreadStatus,
 } from "@tstodon/domain";
 import { deliverExpandedActivity } from "./delivery";
-import { forwardableBody } from "./ld-signature";
+import { suspendedDomains } from "./admin-domain-block-store";
+import { remoteContextsFor } from "./jsonld-remote-contexts";
+import { forwardableBody, forwardsAsRead } from "./ld-signature";
+import { federationAllowHosts } from "./runtime-config";
 import { writeMetric } from "./metrics";
 import type { OutboxJobOutcome } from "./outbox-job";
 import { findOutboundActivity, insertForwardedActivity } from "./outbox-store";
@@ -86,6 +89,18 @@ export const forwardInboundActivity = async (
     .map((id) => AccountId.parse(id))
     .flatMap((id) => (id.isOk() ? [id.value] : []));
   if (followersOf.length === 0) {
+    return;
+  }
+  // Checked only once there is someone to forward to; a context the body
+  // names was fetched and kept when the inbound check read it.
+  const [allowHosts, blockedHosts] = await Promise.all([
+    federationAllowHosts(env),
+    suspendedDomains(env.DB),
+  ]);
+  if (
+    !(await forwardsAsRead(body, remoteContextsFor(env.DB, identity, { allowHosts, blockedHosts })))
+  ) {
+    console.warn(JSON.stringify({ kind: "ForwardRefused", statusId: status.status.id, forwardOf }));
     return;
   }
   const inserted = await insertForwardedActivity(env.DB, {

@@ -274,6 +274,45 @@ describe("forwarding a remote status's Update and Delete to its local sharers' f
     expect(await inbox.post(await signedDelivery(carol, remove(lonely)))).toBe(202);
     expect(forwardJobs(sent)).toEqual([]);
   });
+
+  it("does not forward a body that a receiver's JSON-LD compaction reads otherwise", async () => {
+    // Mastodon acts on the compacted form of a signed body. Here the JSON says
+    // Carol deletes her note, but its context makes `actor` a term with no
+    // IRI and `alias` Activity Streams' `actor`: compacted, the actor is the
+    // local booster, whose key signs the forward, so a Mastodon receiver would
+    // skip the Linked Data check and delete the booster's account.
+    const booster = "fwd-remap-booster@example.com";
+    const follower = await remoteActor("fwd-remap-follower", "fwd-remap-f.example");
+    const carol = await remoteActor("fwd-remap-carol", "fwd-remap-c.example");
+    await followLocal(follower, booster);
+    const boosted = note(carol, "boosted");
+    expect(
+      await carol.send({ id: `${boosted.id}/activity`, type: "Create", object: boosted }),
+    ).toBe(202);
+    const row = await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+      .bind(boosted.id)
+      .first<{ id: string }>();
+    await api(booster, `/api/v1/statuses/${row?.id}/reblog`, {});
+    const boosterUri = await actorOf(booster);
+    const sent: OutboxJob[] = [];
+    const inbox = capturingInbox(sent);
+    const remapped = await carol.ldSigned({
+      "@context": [
+        "https://www.w3.org/ns/activitystreams",
+        { actor: null, alias: { "@id": "as:actor", "@type": "@id" } },
+      ],
+      id: `${boosted.id}#delete`,
+      type: "Delete",
+      actor: carol.actorUri,
+      alias: boosterUri,
+      to: [PUBLIC],
+      object: { id: boosted.id, type: "Tombstone" },
+    });
+
+    expect(await inbox.post(await carol.forward(remapped))).toBe(202);
+
+    expect(forwardJobs(sent)).toEqual([]);
+  });
 });
 
 describe("forwarding once, the replied-to author first", () => {
@@ -387,6 +426,11 @@ describe("forwarding a quote stamp's Delete", () => {
     }
     const revoke = async () => {
       const signed = await carol.ldSigned({
+        // As Mastodon's `DeleteQuoteAuthorizationSerializer` sends it.
+        "@context": [
+          "https://www.w3.org/ns/activitystreams",
+          { QuoteAuthorization: "https://w3id.org/fep/044f#QuoteAuthorization" },
+        ],
         id: `${stampUri}#delete`,
         type: "Delete",
         to: [PUBLIC],
