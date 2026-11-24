@@ -5,7 +5,7 @@
 
 Tracked leftovers so e2e work can proceed without losing them.
 
-Migration numbers in the entries below (`migration 0138` and the like) name the files that `packages/worker/app/db/migrations/0001_baseline.sql` replaced; they live in git history before that file was added.
+Migration numbers in the entries below (`migration 0138` and the like) name the files that `packages/worker/app/db/migrations/0001_baseline.sql` replaced; they live in git history before that file was added. The legacy-data jobs, tables and env vars these entries name (such as `RekeyLegacyMedia`, `MEDIA_REKEY_DELETE_LEGACY`, `FoldTagNames` and `domain_block_limit_backfills`) were removed before the first release.
 
 ## D1 / heavy scenarios (deferred)
 

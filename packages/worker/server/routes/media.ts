@@ -190,8 +190,9 @@ const serveR2Object = async (
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   const stored = object.httpMetadata?.contentType ?? "";
-  // An emoji stored before uploads checked the type may be an SVG or an HTML
-  // document: it is served as bytes, not as a page of this origin.
+  // Defence in depth on the media origin: an emoji object whose stored type is
+  // not an image type (an SVG, an HTML document) is served as bytes, never as
+  // a page of this origin, whatever put it in the bucket.
   const contentType = objectKey.startsWith("emoji/")
     ? (emojiImageType(stored) ?? "application/octet-stream")
     : stored.length > 0

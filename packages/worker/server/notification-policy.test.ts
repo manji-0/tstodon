@@ -49,6 +49,19 @@ const RequestSchema = z.object({
   last_status: z.object({ id: z.string().min(1) }).nullable(),
 });
 
+/** The id of the request `senderId`'s held notifications make for `recipientEmail`. */
+const requestIdOf = async (recipientEmail: string, senderId: string): Promise<string> => {
+  const listed = read(
+    z.array(RequestSchema),
+    (await json("/api/v1/notifications/requests", { headers: await auth(recipientEmail) })).body,
+  );
+  const id = listed.find((request) => request.account?.id === senderId)?.id;
+  if (id === undefined) {
+    throw new Error("no request from that sender");
+  }
+  return id;
+};
+
 const credentials = async (email: string): Promise<{ id: string; username: string }> => {
   const response = await json("/api/v1/accounts/verify_credentials", {
     headers: await auth(email),
@@ -210,7 +223,7 @@ describe("notification policy", () => {
     const recipientEmail = "policy-dm-held@example.com";
     const senderEmail = "policy-dm-sender@example.com";
     const recipient = await credentials(recipientEmail);
-    const sender = await credentials(senderEmail);
+    await credentials(senderEmail);
     const conversationIds = async (email: string): Promise<ReadonlyArray<string>> =>
       read(
         z.array(z.object({ last_status: z.object({ id: z.string() }).nullable() })),
@@ -233,7 +246,7 @@ describe("notification policy", () => {
     expect(await conversationIds(recipientEmail)).toEqual([]);
     expect(await conversationIds(senderEmail)).toEqual([heldId]);
 
-    const accepted = await json(`/api/v1/notifications/requests/${sender.id}/accept`, {
+    const accepted = await json(`/api/v1/notifications/requests/${request?.id ?? ""}/accept`, {
       method: "POST",
       headers: await auth(recipientEmail),
     });
@@ -251,10 +264,10 @@ describe("notification policy", () => {
       status: `@${recipient.username} unwanted`,
       visibility: "direct",
     });
-    const dismissed = await json(`/api/v1/notifications/requests/${sender.id}/dismiss`, {
-      method: "POST",
-      headers: await auth(recipientEmail),
-    });
+    const dismissed = await json(
+      `/api/v1/notifications/requests/${await requestIdOf(recipientEmail, sender.id)}/dismiss`,
+      { method: "POST", headers: await auth(recipientEmail) },
+    );
     expect(dismissed.status).toBe(200);
 
     const listed = await json("/api/v1/conversations", { headers: await auth(recipientEmail) });
@@ -266,10 +279,10 @@ describe("notification policy", () => {
       status: `@${recipient.username} wanted`,
       visibility: "direct",
     });
-    const accepted = await json(`/api/v1/notifications/requests/${sender.id}/accept`, {
-      method: "POST",
-      headers: await auth(recipientEmail),
-    });
+    const accepted = await json(
+      `/api/v1/notifications/requests/${await requestIdOf(recipientEmail, sender.id)}/accept`,
+      { method: "POST", headers: await auth(recipientEmail) },
+    );
     expect(accepted.status).toBe(200);
     const after = read(
       z.array(z.object({ last_status: z.object({ content: z.string() }).nullable() })),
@@ -314,10 +327,10 @@ describe("notification policy", () => {
     });
     expect(read(z.array(RequestSchema), before.body)).toHaveLength(1);
 
-    const dismissed = await json(`/api/v1/notifications/requests/${sender.id}/dismiss`, {
-      method: "POST",
-      headers: await auth(recipientEmail),
-    });
+    const dismissed = await json(
+      `/api/v1/notifications/requests/${await requestIdOf(recipientEmail, sender.id)}/dismiss`,
+      { method: "POST", headers: await auth(recipientEmail) },
+    );
     expect(dismissed.status).toBe(200);
     expect(await notifications(recipientEmail)).toHaveLength(0);
     const after = await json("/api/v1/notifications/requests", {
@@ -449,12 +462,11 @@ describe("notification policy", () => {
     expect(olderPage).toHaveLength(1);
     expect(olderPage[0]?.id).toBe(requests[1]?.id);
 
-    // A resolved request can still be addressed by the sender for compatibility.
-    const dismissed = await json(`/api/v1/notifications/requests/${senders[0]?.id ?? ""}/dismiss`, {
-      method: "POST",
+    // A request is named by its own id only, as Mastodon's `set_request`.
+    const bySender = await json(`/api/v1/notifications/requests/${senders[0]?.id ?? ""}`, {
       headers: await auth(recipientEmail),
     });
-    expect(dismissed.status).toBe(200);
+    expect(bySender.status).toBe(404);
   });
 });
 

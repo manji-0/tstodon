@@ -151,29 +151,18 @@ export const listNotificationRequests = async (
     return newestFirst(cursor, page);
   });
 
-/**
- * Find a request by its own id. The sender's account id is accepted too, so
- * ids handed out before the request groups existed keep working.
- */
+/** Find a request by its id, as Mastodon's `RequestsController#set_request`. */
 export const findNotificationRequest = async (
   db: D1Database,
   accountId: string,
   id: string,
 ): Promise<Result<NotificationRequest | undefined, RepositoryError>> =>
   runD1(async () => {
-    const byId = await db
+    const { results } = await db
       .prepare(`${REQUEST_SELECT} WHERE g.account_id = ? AND g.id = ? GROUP BY g.id`)
       .bind(accountId, id)
       .all();
-    const found = requestFromRow(byId.results?.[0]);
-    if (found) {
-      return found;
-    }
-    const bySender = await db
-      .prepare(`${REQUEST_SELECT} WHERE g.account_id = ? AND g.from_account_id = ? GROUP BY g.id`)
-      .bind(accountId, id)
-      .all();
-    return requestFromRow(bySender.results?.[0]);
+    return requestFromRow(results?.[0]);
   });
 
 export const countNotificationRequests = async (
