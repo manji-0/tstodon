@@ -79,7 +79,7 @@ For a fresh clone, start with:
 - `docs/operations/launch-checklist.md` (go-live verification and federation smoke test)
 - `docs/operations/runbook.md` (backups, monitoring, incidents, upgrades)
 
-D1 migrations are `packages/worker/app/db/migrations/*.sql`, applied by Wrangler (`pnpm db:migrate:local`; remote via `pnpm run deploy`). A migration that drops a table, index, view or trigger (e.g. a SQLite table rebuild, an index replaced by a wider one), renames, or runs an `UPDATE` / `DELETE` without `WHERE` (a backfill) needs a standalone `-- void:allow-destructive` line, with a comment saying why, or Void's deploy gate refuses every deploy. `scripts/check-migrations.mjs` runs that gate (`pnpm lint`, `pnpm check`, CI).
+D1 migrations are `packages/worker/app/db/migrations/*.sql`, applied by Wrangler (`pnpm db:migrate:local`; remote via `pnpm run deploy`). `0001_baseline.sql` creates the whole schema, grouped by concept; a change is a new file numbered after the last one. A migration that drops a table, index, view or trigger (e.g. a SQLite table rebuild, an index replaced by a wider one), renames, or runs an `UPDATE` / `DELETE` without `WHERE` (a backfill) needs a standalone `-- void:allow-destructive` line, with a comment saying why, or Void's deploy gate refuses every deploy. `scripts/check-migrations.mjs` runs that gate (`pnpm lint`, `pnpm check`, CI).
 
 Do not commit private Cloudflare values, `BETTER_AUTH_SECRET`, API keys, or private key material.
 

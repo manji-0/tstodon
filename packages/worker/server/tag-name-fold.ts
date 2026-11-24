@@ -9,7 +9,7 @@ import {
 } from "./generated/prisma/sql";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
-/** The `backfill_cursors` row migration 0135 seeds: the last stored name read. */
+/** Its `backfill_cursors` row: the last stored name read. */
 const CURSOR = "tag_name_fold";
 
 /** Names read per page; a page is one batch of 15 statements, whatever its size. */
@@ -68,7 +68,7 @@ const renameMembership = (
 
 /**
  * As `renameMembership`, for an account's follow or feature: the earliest
- * `created_at` wins. A table with `id`s (migration 0166) keeps the row's id,
+ * `created_at` wins. A table with `id`s keeps the row's id,
  * the earliest of two merged ones, as that id pages the list.
  */
 const renameDatedMembership = (table: string, keepsId = false): ReadonlyArray<string> => [
@@ -83,7 +83,12 @@ const renameDatedMembership = (table: string, keepsId = false): ReadonlyArray<st
 
 /**
  * The statements that rename `[[old, new], ...]` (bound as JSON) in every
- * table, by the merge rules of migration 0135. Each takes the pairs as its
+ * table. Where the folded name is already stored, the rows merge: a follow,
+ * a feature, a status's tag and a stream subscription keep the union (the
+ * folded row where both exist); `tags` takes the more restrictive `usable`
+ * and `listable` (0), the folded row's `display_name` else the old row's,
+ * and the earlier `created_at`; in `trend_reviews`, `Rejected` wins over
+ * `Approved`. Each takes the pairs as its
  * one parameter, so a page of any size is these fourteen statements.
  */
 const RENAMES: ReadonlyArray<string> = [
@@ -125,8 +130,8 @@ export type TagNameFoldPage = Readonly<{ scanned: number; renamed: number; chain
 /**
  * Rename the next page of tag names stored before `normalizeHashtag` folded
  * accents (`café`) to the name it gives now (`cafe`), in every table that
- * holds one, merging with the rows already under that name (the rules are
- * in migration 0135), and move the cursor past them. A short page marks the
+ * holds one, merging with the rows already under that name (see
+ * `RENAMES`), and move the cursor past them. A short page marks the
  * cursor complete, after which every run reads the cursor and stops. The
  * renames and the cursor are one batch, and a rename of a name no row holds
  * writes nothing, so a repeated or concurrent page leaves the same rows.

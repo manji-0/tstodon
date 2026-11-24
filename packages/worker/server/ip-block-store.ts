@@ -24,7 +24,7 @@ import { newEntityId } from "./ids";
 import { queryTyped, runTyped } from "./typed-sql";
 
 /**
- * The `ip_blocks` table (migration 0122). A row whose range or severity does
+ * The `ip_blocks` table. A row whose range or severity does
  * not parse is left out, so a hand-edited row cannot break enforcement.
  */
 

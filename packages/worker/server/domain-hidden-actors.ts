@@ -7,8 +7,7 @@
  * domain (`remote_actors.host`) or the actor URI's host (`uri_host`), as
  * `RemoteActor.onAnyHost`. The viewer's block names that exact host, as
  * Mastodon's `domain_blocking?`; an instance rule also covers its subdomains,
- * each host following its most specific rule (`remote_actor_domain_rules`,
- * migration 0163). An admin's silence or suspension of a single actor hides
+ * each host following its most specific rule (`remote_actor_domain_rules`). An admin's silence or suspension of a single actor hides
  * it like its domain's.
  */
 const hiddenActorsSql = (severities: string, moderations: string): string => `(

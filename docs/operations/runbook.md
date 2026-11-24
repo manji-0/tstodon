@@ -670,24 +670,6 @@ tstodon handles a **remote** actor's rotation the same way: when a signature fai
    - fix forward: revert the code change on `main`, keep the migration, deploy;
    - if the migration damaged data, [restore D1 with Time Travel](#d1-time-travel-point-in-time-restore) to just before the deploy, then deploy the version that matches that schema.
 4. Do not edit an applied migration file; Void's deploy gate compares the migrations with what wrangler would apply.
-5. Hashtag names (migration 0135): a build from before the accent fold writes tag names such as `café`, which the `FoldTagNames` job renames once and then stops scanning. If such a build ran after the job completed (a rollback across that change), deploy forward and then make the job scan again:
-
-   ```sh
-   wrangler d1 execute <database> --remote --command "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'tag_name_fold'"
-   ```
-
-   The next hourly cron renames what the old build wrote; a rename of a name already folded writes nothing.
-
-6. Internationalized domains (migration 0164): a build from before it stores a domain block, a user's domain block, an allowed domain or an email domain block typed in Unicode (`bücher.example`) as it is, where newer builds look up its ASCII form (`xn--bcher-kva.example`). The `AsciiDomainNames` job renames such rows once and then stops scanning. If such a build ran after the job completed, deploy forward and then make the job scan again:
-
-   ```sh
-   wrangler d1 execute <database> --remote --command "UPDATE backfill_cursors SET after_id = '', completed_at = NULL WHERE name = 'domain_name_ascii'"
-   ```
-
-   The next hourly cron renames what the old build wrote, merging into a row already stored under the ASCII name.
-
-7. Remote actor keys (migration 0152): the keys moved from `remote_actors.public_key_id` / `public_key_pem` to `remote_actor_keys`. The migration writes the old columns as the actor URI and a placeholder RSA key (`LEGACY_PUBLIC_KEY_PEM`) whose private half was thrown away, and newer builds keep writing them so. A build from before the migration, during the deploy or after a rollback, therefore reads every actor: no signature verifies against the placeholder, so it fetches the signer's key again (a key id that is not the actor URI is not found under it, and is fetched at once), and writes the real key into the old columns. Signatures may fail for a few minutes while actors are refetched (one refetch per actor per five minutes). Keys that build stores are not in `remote_actor_keys`; after deploying forward again, the first signature from each such actor fails against a stale key there and refetches the actor once. No manual step is needed.
-8. Poll ends (migration 0174): a build from before `AwaitPollEnd` does not know the job, so the ones already queued dead-letter (`Unparseable` in `outbox_dead_jobs`). Delete them: the hourly `ProcessExpiredPolls` ends those polls, at most an hour late.
 
 ### Dead-lettered jobs
 
@@ -774,24 +756,6 @@ The steps, queries and cache purges are in the deploy checklist: [Moving attachm
 3. `pnpm run ci`, then `pnpm run deploy`. Void validates the bindings and the migrations, applies pending migrations to remote D1, verifies none remain, then runs `wrangler deploy`, which also uploads the cron triggers and the queue consumer settings.
 4. If Terraform manages the queue consumer, keep `queue_consumer_max_concurrency` equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; both write the same setting.
 5. Watch for 30 minutes: exceptions in Workers Logs, `OutboxJobRejected` (producer and consumer disagree on a job shape; it settles once the new version is everywhere), `outbox.enqueue` volume, the next cron run.
-
-### Remote tag reindex (migration 0136)
-
-Migration 0136 marks the stored remote statuses whose HTML has a non-ASCII character and a `#` (`tags_indexed = 0`), and the hourly `BackfillRemoteTags` job then indexes them again from that HTML, 100 a pass, one pass after another while passes are full. Until a status's pass has run, it keeps the tags it had.
-
-The migration is one `UPDATE` that reads every remote status. On local SQLite it took 6 to 10 seconds for 1,000,000 statuses (1.1 GB), and D1 ends a statement at 30 seconds; D1 itself was not measured. Count the rows before deploying:
-
-```sh
-wrangler d1 execute <database> --remote --command "SELECT COUNT(*) FROM remote_statuses"
-```
-
-If the migration times out, it changes nothing and the deploy stops before the new code. Run its statement in `id` ranges, so that each run writes fewer rows, then deploy again: the migration then only reads (about a second per 1,000,000 statuses locally).
-
-```sh
-wrangler d1 execute <database> --remote --command "UPDATE remote_statuses SET tags_indexed = 0 WHERE tags_indexed = 1 AND id >= '<from>' AND id < '<to>' AND length(content_html) <> length(CAST(content_html AS BLOB)) AND (instr(content_html, '#') > 0 OR instr(content_html, '＃') > 0)"
-```
-
-Progress of the job: `SELECT COUNT(*) FROM remote_statuses WHERE tags_indexed = 0` falls to 0, and `outbox.job.page` has a `BackfillRemoteTags` point per pass.
 
 ### A newer Mastodon web UI
 

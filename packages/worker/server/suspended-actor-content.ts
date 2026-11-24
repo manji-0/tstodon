@@ -11,7 +11,7 @@ import type { TypedSqlLike } from "./typed-sql";
 
 /**
  * What a domain suspension's actors had when it was recorded
- * (`remote_actor_content_purges`, migration 0176), deleted in bounded queued
+ * (`remote_actor_content_purges`), deleted in bounded queued
  * pages, as Mastodon's `BlockDomainService#suspend_accounts!` runs
  * `DeleteAccountService` with `reserve_username` on each account. One chain
  * runs at a time, holding the lease (`remote_actor_content_purge_lease`)

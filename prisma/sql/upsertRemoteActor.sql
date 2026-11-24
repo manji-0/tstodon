@@ -16,9 +16,9 @@
 -- @param {String} $16:featuredTagsUri?
 -- @param {String} $17:legacyPublicKeyPem
 -- The actor's keys are in `remote_actor_keys`; `public_key_id` and
--- `public_key_pem` are unread (migration 0152) and written as the actor URI
--- and a placeholder key, which a build from before 0152 can still read.
--- A suspended actor (`suspended_remote_actors`, migration 0179) keeps its
+-- `public_key_pem` are unread and written as the actor URI and a placeholder
+-- key (`LEGACY_PUBLIC_KEY_PEM`).
+-- A suspended actor (`suspended_remote_actors`) keeps its
 -- cached name, profile, featured collection and `fetched_at`, as Mastodon's
 -- `ProcessAccountService` skips `set_immediate_attributes!` and
 -- `set_fetchable_attributes!`; its profile URL, `bot` and `publishedAt`
