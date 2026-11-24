@@ -6,6 +6,7 @@ import {
   type Cast,
   contextOf,
   eventually,
+  fetchWaitingOutRateLimit,
   follow,
   mastodonRails,
   notified,
@@ -78,15 +79,27 @@ const sameMembers = (actual: readonly string[], expected: readonly string[]): bo
   actual.length === expected.length && expected.every((uri) => actual.includes(uri));
 
 /**
- * Mastodon fetches the reply tree of a remote post when a signed-in user
+ * Both servers fetch the reply tree of a remote post when a signed-in user
  * reads its context, and only once the post is five minutes old
- * (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`). This dates Mastodon's copy ten
- * minutes back, so the next context read starts the fetch.
+ * (`FETCH_REPLIES_INITIAL_WAIT_MINUTES`). This dates a status on Mastodon ten
+ * minutes back: Mastodon's copy of a tstodon post, so the next context read
+ * there starts the fetch, or a Mastodon post before tstodon first fetches it,
+ * as tstodon's copy takes its `published` from Mastodon's `created_at`.
  */
-const ageOnMastodon = (copy: Status): void => {
+const ageOnMastodon = (status: Status): void => {
   mastodonRails(
-    `Status.find(${JSON.stringify(copy.id)}).update_columns(created_at: 10.minutes.ago)`,
+    `Status.find(${JSON.stringify(status.id)}).update_columns(created_at: 10.minutes.ago)`,
   );
+};
+
+/** Whether `viewer`'s context read of its copy of a status says a reply fetch is running. */
+const contextRefreshes = async (viewer: E2eUser, statusId: string): Promise<boolean> => {
+  const response = await fetchWaitingOutRateLimit(viewer, `/api/v1/statuses/${statusId}/context`);
+  await response.arrayBuffer();
+  if (!response.ok) {
+    throw new StepFailure(`context of ${statusId} on ${viewer.origin} → ${response.status}`);
+  }
+  return response.headers.get("Mastodon-Async-Refresh") !== null;
 };
 
 /** A chain of replies on one server: each author replies to the post before. */
@@ -217,6 +230,9 @@ export const threadScenarios = async ({
       throw new StepFailure("three authors are needed");
     }
     const root = await post(author, { status: `star root ${stamp}` });
+    if (reader.origin !== mona.origin) {
+      ageOnMastodon(root);
+    }
     const replies: Status[] = [];
     for (const replier of [author, second, third]) {
       replies.push(
@@ -238,7 +254,11 @@ export const threadScenarios = async ({
   /** A chain below a root: only the first reply is in the root's `replies`. */
   const repliesOfReplies = async (reader: E2eUser, authors: readonly E2eUser[]): Promise<void> => {
     const chain = await localChain(`${stamp} down`, authors);
-    const root = await resolveStatus(reader, chain[0]?.uri ?? "");
+    const [first] = chain;
+    if (first && reader.origin !== mona.origin) {
+      ageOnMastodon(first);
+    }
+    const root = await resolveStatus(reader, first?.uri ?? "");
     if (reader.origin === mona.origin) {
       ageOnMastodon(root);
     }
@@ -246,6 +266,19 @@ export const threadScenarios = async ({
       sameMembers(seen.descendants, uris(chain.slice(1))),
     );
   };
+
+  await bothWays(
+    "a post younger than five minutes has no reply fetch started by its context",
+    alice,
+    mona,
+    async (from, to) => {
+      const root = await post(from, { status: `fresh root ${stamp}` });
+      const copy = await resolveStatus(to, root.uri);
+      if (await contextRefreshes(to, copy.id)) {
+        throw new StepFailure("the context read of a fresh post started a reply fetch");
+      }
+    },
+  );
 
   await step(
     "context backfills the replies to a resolved root: tstodon reads a Mastodon thread",

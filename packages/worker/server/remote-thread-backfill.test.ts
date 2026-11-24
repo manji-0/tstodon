@@ -15,7 +15,9 @@ import {
   THREAD_BACKFILL_REPLY_LIMIT,
   THREAD_COLLECTION_REPLY_LIMIT,
   THREAD_REFRESH_RUNNING_LIMIT_MS,
+  THREAD_COLLECTION_PAGE_LIMIT,
   THREAD_REPLIES_COOLDOWN_MS,
+  THREAD_REPLIES_INITIAL_WAIT_MS,
   THREAD_TREE_NODES_PER_JOB,
   THREAD_TREE_NODE_LIMIT,
   THREAD_TREE_PAGE_LIMIT,
@@ -536,7 +538,7 @@ describe("opening a remote status", () => {
       noteUri(author, `fan-out-reply-${index}`),
     );
     const opened = noteDocument(author, "fan-out-opened", {
-      published: now,
+      published: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
       replies: { type: "Collection", first: { type: "CollectionPage", items: replyUris } },
     });
     await deliver(author, opened);
@@ -576,23 +578,40 @@ describe("opening a remote status", () => {
       replies: { type: "Collection", first: { type: "CollectionPage", items: replyUris } },
     });
     await deliver(author, opened);
+    // Only the replies around the limit are served; the others answer 404.
+    const edge = replyUris.slice(THREAD_COLLECTION_REPLY_LIMIT - 2);
     const recording = recordingEnv();
 
     await requested(await statusIdOf(opened.id), recording.env);
-    await serving(new Map([[opened.id, opened]]), () => runQueued(recording));
-
-    const Next = z.object({
-      from: z.object({
-        listed: z.number(),
-        resume: z.object({ id: z.string(), offset: z.number() }),
-      }),
-    });
-    expect(read(Next, recording.sent[0]).from).toEqual(
-      expect.objectContaining({
-        listed: THREAD_COLLECTION_REPLY_LIMIT,
-        resume: { id: expect.any(String), offset: THREAD_BACKFILL_REPLY_LIMIT },
-      }),
+    await serving(
+      new Map<string, unknown>([
+        [opened.id, opened],
+        ...edge.map(
+          (uri) =>
+            [
+              uri,
+              noteDocument(author, new URL(uri).pathname.split("/").at(-1) ?? "", {
+                inReplyTo: opened.id,
+              }),
+            ] as const,
+        ),
+      ]),
+      () => drain(recording),
     );
+
+    const cached = async (uri: string) =>
+      (await env.DB.prepare("SELECT 1 FROM remote_statuses WHERE object_uri = ?")
+        .bind(uri)
+        .first()) !== null;
+    expect(await Promise.all(edge.map(cached))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
   });
 
   it("does not fetch the thread of a followers-only status", async () => {
@@ -747,7 +766,9 @@ describe("the reply tree of an opened remote status", () => {
     await serving(documents, () => runQueued(setup));
     for (const counts of [
       { listed: THREAD_TREE_REPLY_LIMIT - 1, pages: 1 },
-      { listed: 1, pages: THREAD_TREE_PAGE_LIMIT - 1 },
+      // The reply's list is one page with no `next`, which Mastodon's
+      // `collection_items` counts as two: the page and the one it found missing.
+      { listed: 1, pages: THREAD_TREE_PAGE_LIMIT - 2 },
       { listed: 1, pages: 1, visited: THREAD_TREE_NODE_LIMIT - 1 },
     ]) {
       // As if the cooldown since the last walk read the reply had passed.
@@ -760,7 +781,15 @@ describe("the reply tree of an opened remote status", () => {
       recording.sent.push({
         kind: "BackfillRemoteThread",
         statusId: rootId,
-        from: { kind: "Level", depth: 1, after: "", visited: 0, stored: 1, ...counts },
+        from: {
+          kind: "Level",
+          startedAt: new Date().toISOString(),
+          depth: 1,
+          after: "",
+          visited: 0,
+          stored: 1,
+          ...counts,
+        },
       });
       await serving(documents, () => runQueued(recording));
       // The reply was expanded, and the walk ends there.
@@ -835,16 +864,16 @@ describe("the reply tree of an opened remote status", () => {
     const root = withReplies(author, "cooldown-root", [recent, stale]);
     await deliver(author, root);
     const rootId = await statusIdOf(root.id);
+    const recentNote = withReplies(author, "cooldown-recent", [leaf("cooldown-recent")], {
+      inReplyTo: root.id,
+    });
+    const staleNote = withReplies(author, "cooldown-stale", [leaf("cooldown-stale")], {
+      inReplyTo: root.id,
+    });
     const documents = new Map<string, unknown>([
       [root.id, root],
-      [
-        recent,
-        withReplies(author, "cooldown-recent", [leaf("cooldown-recent")], { inReplyTo: root.id }),
-      ],
-      [
-        stale,
-        withReplies(author, "cooldown-stale", [leaf("cooldown-stale")], { inReplyTo: root.id }),
-      ],
+      [recent, recentNote],
+      [stale, staleNote],
       [
         leaf("cooldown-recent"),
         noteDocument(author, "cooldown-recent-leaf", { inReplyTo: recent }),
@@ -861,15 +890,17 @@ describe("the reply tree of an opened remote status", () => {
       env.DB.prepare("UPDATE remote_statuses SET replies_fetched_at = ? WHERE object_uri = ?")
         .bind(new Date(Date.now() - ago).toISOString(), objectUri)
         .run();
-    const recording = recordingEnv();
-    await requested(rootId, recording.env);
-    // The first pass stores both replies and records that it read the root's.
-    await serving(documents, () => runQueued(recording));
-    expect(await repliesFetchedAt(root.id)).not.toBeNull();
-
+    // Both replies were cached before the walk, and read by an earlier one.
+    await deliver(author, recentNote);
+    await deliver(author, staleNote);
     await stamp(recent, THREAD_REPLIES_COOLDOWN_MS - 60_000);
     await stamp(stale, THREAD_REPLIES_COOLDOWN_MS + 60_000);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
     const before = Date.now();
+    // The first pass records that it read the root's replies.
+    await serving(documents, () => runQueued(recording));
+    expect(await repliesFetchedAt(root.id)).not.toBeNull();
     await serving(documents, () => drain(recording));
 
     expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([
@@ -937,9 +968,10 @@ describe("the reply tree of an opened remote status", () => {
       statusId: rootId,
       from: {
         kind: "Level",
+        startedAt: new Date().toISOString(),
         depth: 1,
         after: "",
-        resume: { id: await statusIdOf(second), offset: 1 },
+        resume: { id: await statusIdOf(second), reading: { kind: "Note" }, offset: 1 },
         visited: 0,
         listed: 2,
         pages: 1,
@@ -957,6 +989,121 @@ describe("the reply tree of an opened remote status", () => {
       b1: await cached(leaf("b1")),
       b2: await cached(leaf("b2")),
     }).toEqual({ a1: true, b1: false, b2: true });
+  });
+
+  it("fetches again each status it had before and did not read within the cooldown, as Mastodon's FetchReplyWorker", async () => {
+    const author = await remoteActor("refetch-author", "tree.example");
+    const [stale, recent] = [noteUri(author, "refetch-stale"), noteUri(author, "refetch-recent")];
+    const root = withReplies(author, "refetch-root", [stale, recent]);
+    const staleNote = noteDocument(author, "refetch-stale", { inReplyTo: root.id });
+    const recentNote = noteDocument(author, "refetch-recent", { inReplyTo: root.id });
+    for (const note of [root, staleNote, recentNote]) {
+      await deliver(author, note);
+    }
+    await env.DB.prepare("UPDATE remote_statuses SET replies_fetched_at = ? WHERE object_uri = ?")
+      .bind(new Date(Date.now() - 60_000).toISOString(), recent)
+      .run();
+    const edited = <T extends { content: string }>(note: T) => ({
+      ...note,
+      content: "<p>edited</p>",
+      updated: new Date().toISOString(),
+    });
+    const rootId = await statusIdOf(root.id);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(
+      new Map<string, unknown>([
+        [root.id, edited(root)],
+        [stale, edited(staleNote)],
+        [recent, edited(recentNote)],
+      ]),
+      () => drain(recording),
+    );
+
+    const content = async (uri: string) =>
+      (
+        await env.DB.prepare("SELECT content_html FROM remote_statuses WHERE object_uri = ?")
+          .bind(uri)
+          .first<{ content_html: string }>()
+      )?.content_html;
+    expect({
+      root: await content(root.id),
+      stale: await content(stale),
+      recent: await content(recent),
+    }).toEqual({
+      root: "<p>edited</p>",
+      stale: "<p>edited</p>",
+      recent: "<p>refetch-recent</p>",
+    });
+  });
+
+  it("leaves out a reply it had before that was published in the last five minutes, and expands one it stores", async () => {
+    const author = await remoteActor("fresh-author", "tree.example");
+    const justNow = () => new Date(Date.now() - 60_000).toISOString();
+    const [cached, fetched] = [noteUri(author, "fresh-cached"), noteUri(author, "fresh-fetched")];
+    const leaf = (slug: string) => noteUri(author, `${slug}-leaf`);
+    const root = withReplies(author, "fresh-root", [cached, fetched]);
+    const cachedNote = withReplies(author, "fresh-cached", [leaf("fresh-cached")], {
+      inReplyTo: root.id,
+      published: justNow(),
+    });
+    await deliver(author, root);
+    await deliver(author, cachedNote);
+    const rootId = await statusIdOf(root.id);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(
+      new Map<string, unknown>([
+        [root.id, root],
+        [cached, cachedNote],
+        [
+          fetched,
+          withReplies(author, "fresh-fetched", [leaf("fresh-fetched")], {
+            inReplyTo: root.id,
+            published: justNow(),
+          }),
+        ],
+        [leaf("fresh-cached"), noteDocument(author, "fresh-cached-leaf", { inReplyTo: cached })],
+        [leaf("fresh-fetched"), noteDocument(author, "fresh-fetched-leaf", { inReplyTo: fetched })],
+      ]),
+      () => drain(recording),
+    );
+
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri).sort()).toEqual(
+      [cached, fetched, leaf("fresh-fetched")].sort(),
+    );
+  });
+
+  it(`reads on past ${THREAD_COLLECTION_PAGE_LIMIT} pages of one collection in the next job, as Mastodon reads up to the tree's ${THREAD_TREE_PAGE_LIMIT}`, async () => {
+    const author = await remoteActor("sparse-author", "tree.example");
+    const root = noteUri(author, "sparse-root");
+    const reply = noteUri(author, "sparse-reply");
+    const pageUri = (index: number) => `${root}/replies?page=${index}`;
+    const empty = THREAD_COLLECTION_PAGE_LIMIT + 2;
+    const page = (index: number) => ({
+      id: pageUri(index),
+      type: "CollectionPage",
+      items: index === empty ? [reply] : [],
+      ...(index < empty ? { next: pageUri(index + 1) } : {}),
+    });
+    const rootNote = noteDocument(author, "sparse-root", {
+      replies: { id: `${root}/replies`, type: "Collection", first: pageUri(0) },
+    });
+    await deliver(author, rootNote);
+    const rootId = await statusIdOf(root);
+    const recording = recordingEnv();
+    await requested(rootId, recording.env);
+    await serving(
+      new Map<string, unknown>([
+        [root, rootNote],
+        [reply, noteDocument(author, "sparse-reply", { inReplyTo: root })],
+        ...Array.from({ length: empty + 1 }, (_, index) => [pageUri(index), page(index)] as const),
+      ]),
+      () => drain(recording),
+    );
+
+    expect((await contextOf(rootId)).descendants.map((entry) => entry.uri)).toEqual([reply]);
+    expect(await finishedAt(rootId)).not.toBeNull();
   });
 
   it("does not store a note that replies to itself", async () => {
@@ -1097,20 +1244,50 @@ describe("Mastodon async refresh of a remote thread", () => {
     );
   });
 
-  it("queues a fetch for a status published in the last five minutes", async () => {
-    // tstodon has no ThreadResolveWorker: a fresh reply's parent arrives only
-    // through this fetch, so Mastodon's initial wait is not applied (INT-4).
+  it("queues no fetch for a status published in the last five minutes, as Mastodon's initial wait", async () => {
     const author = await remoteActor("refresh-recent", "thread.example");
     const opened = {
       ...noteDocument(author, "refresh-recent-opened"),
-      published: new Date(Date.now() - 60 * 1000).toISOString(),
+      published: new Date(Date.now() - THREAD_REPLIES_INITIAL_WAIT_MS + 60_000).toISOString(),
     };
     await deliver(author, opened);
     const openedId = await statusIdOf(opened.id);
 
     const recording = recordingEnv();
     await requested(openedId, recording.env);
+    expect(recording.sent).toEqual([]);
+    const response = await contextResponse(openedId, await authHeaders(READER));
+    expect(response.headers.get("Mastodon-Async-Refresh")).toBeNull();
+
+    // Once five minutes old, it is fetched.
+    await env.DB.prepare("UPDATE remote_statuses SET published_at = ? WHERE id = ?")
+      .bind(new Date(Date.now() - THREAD_REPLIES_INITIAL_WAIT_MS - 1000).toISOString(), openedId)
+      .run();
+    await requested(openedId, recording.env);
     expect(recording.sent).toHaveLength(1);
+  });
+
+  it("queues the thread job of a fresh status's parent instead", async () => {
+    const author = await remoteActor("refresh-recent-parent", "thread.example");
+    const parent = noteUri(author, "refresh-recent-parent");
+    const quoting = noteDocument(author, "refresh-recent-quoting");
+    // A note stored under another, as a quoted note is, queues no thread job.
+    await deliver(author, quoting);
+    const quotedId = await statusIdOf(quoting.id);
+    await env.DB.prepare(
+      "UPDATE remote_statuses SET in_reply_to_uri = ?, published_at = ?, thread_resolve_queued_at = NULL WHERE id = ?",
+    )
+      .bind(parent, new Date().toISOString(), quotedId)
+      .run();
+
+    await requested(quotedId, recordingEnv().env);
+
+    const row = await env.DB.prepare(
+      "SELECT thread_resolve_queued_at FROM remote_statuses WHERE id = ?",
+    )
+      .bind(quotedId)
+      .first<{ thread_resolve_queued_at: string | null }>();
+    expect(row?.thread_resolve_queued_at).not.toBeNull();
   });
 
   it("reports a running fetch of a status published in the last five minutes", async () => {

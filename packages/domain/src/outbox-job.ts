@@ -374,9 +374,12 @@ const ResolveRemoteThreadSchema = z.object({
  * Store the notes above a cached remote status in its thread (`Root`), then
  * walk its reply tree one level at a time (`Level`): the cached statuses
  * `depth` levels below it (0 is the status itself), after the one with id
- * `after`, each expanded by its own `replies` collection. `resume` names the
- * status whose list an earlier job stopped in, and how many of its listed
- * replies that job already went through. `visited` counts the statuses of the tree
+ * `after`, each expanded by its own `replies` collection. `startedAt` is when
+ * the first pass began: a status cached since was stored by the walk.
+ * `resume` names the status whose list an earlier job stopped in: where the
+ * list is read from (the note, or the page an earlier job reached, after
+ * `itemsBefore` listed replies), and how many of the replies read from there
+ * that job already went through. `visited` counts the statuses of the tree
  * the walk reached (expanded or skipped), `listed` and `pages` the replies
  * listed and the collection pages read so far, and `stored` the statuses
  * stored, for the whole tree.
@@ -389,9 +392,23 @@ const BackfillRemoteThreadSchema = z.object({
       z.object({ kind: z.literal("Root") }),
       z.object({
         kind: z.literal("Level"),
+        startedAt: IsoInstant.schema,
         depth: z.number().int().nonnegative(),
         after: z.string(),
-        resume: z.object({ id: StatusId.schema, offset: z.number().int().positive() }).optional(),
+        resume: z
+          .object({
+            id: StatusId.schema,
+            reading: z.discriminatedUnion("kind", [
+              z.object({ kind: z.literal("Note") }),
+              z.object({
+                kind: z.literal("Page"),
+                uri: z.url(),
+                itemsBefore: z.number().int().nonnegative(),
+              }),
+            ]),
+            offset: z.number().int().nonnegative(),
+          })
+          .optional(),
         visited: z.number().int().nonnegative(),
         listed: z.number().int().nonnegative(),
         pages: z.number().int().nonnegative(),
