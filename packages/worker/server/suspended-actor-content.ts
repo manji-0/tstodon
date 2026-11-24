@@ -219,7 +219,9 @@ const purgePage = (db: D1Database): Promise<Result<Page, RepositoryError>> =>
         .prepare(`DELETE FROM remote_featured_tags WHERE actor_uri IN (${unfetchedSince})`)
         .bind(finishedJson),
       db
-        .prepare(`UPDATE remote_actors SET ${PURGED_PROFILE} WHERE actor_uri IN (${unfetchedSince})`)
+        .prepare(
+          `UPDATE remote_actors SET ${PURGED_PROFILE} WHERE actor_uri IN (${unfetchedSince})`,
+        )
         .bind(finishedJson),
       db
         .prepare(
