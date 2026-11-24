@@ -27,7 +27,7 @@ const range = hostKeyRange(Hostname.ofAuthority("example.com"));
 
 /**
  * A domain rule covers its subdomains through `remote_actor_domain_rules`
- * (migration 0163): each rule is read once and the actors it covers are one
+ * (`host_keys`): each rule is read once and the actors it covers are one
  * range of a host key index, so no statement reads every actor or every rule
  * per actor to apply them.
  */

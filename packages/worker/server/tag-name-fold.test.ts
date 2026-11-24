@@ -228,7 +228,7 @@ describe("accent folding of tag names", () => {
   it("keeps a renamed follow's id, even where a new id would repeat it", async () => {
     const id = (await signedInAccount(author)).id;
     // The rename writes its row at the next rowid, 65536 above the old one:
-    // the id migration 0166's trigger derives from the same `created_at`
+    // the id the `followed_tags_id` trigger derives from the same `created_at`
     // would be the old row's.
     await env.DB.batch([
       env.DB.prepare(

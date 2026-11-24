@@ -24,9 +24,8 @@ import {
 import { queryTyped, runTyped } from "./typed-sql";
 
 /**
- * The byte sizes of what tstodon stores in the `MEDIA` bucket (migration
- * 0125): the `BackfillStoredMediaSizes` job that fills in the sizes of
- * objects stored before they were recorded, and the sums the admin metrics
+ * The byte sizes of what tstodon stores in the `MEDIA` bucket: the
+ * `BackfillStoredMediaSizes` job that fills in the sizes not recorded yet, and the sums the admin metrics
  * and the export page show.
  */
 

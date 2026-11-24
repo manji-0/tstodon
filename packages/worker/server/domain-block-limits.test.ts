@@ -760,7 +760,7 @@ describe("a silence or suspension made before its actors were recorded", () => {
         at,
         actorUri,
       );
-    // A block stored before migration 0169, as migration 0171 finds it.
+    // A block whose actors are still to be recorded.
     const id = "old-susp-block";
     await env.DB.batch([
       firstSeen(before.actorUri, "2026-01-01T00:00:00.000Z"),
@@ -873,7 +873,7 @@ const boostedBothWays = async (actor: Remote): Promise<string> => {
   return z.object({ id: z.string() }).parse(await reblog.json()).id;
 };
 
-/** A suspension stored with its actors recorded and their content kept, as migration 0176 queues it. */
+/** A suspension stored with its actors recorded and their content kept, as its purge queues it. */
 const recordedSuspension = (id: string, domain: string, actorUris: ReadonlyArray<string>) => {
   const at = "2026-11-01T00:00:00.000Z";
   return env.DB.batch([

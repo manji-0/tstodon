@@ -14,7 +14,7 @@ import { elapsedMs, writeMetric } from "./metrics";
 import { optionalEnvString, parseInstanceIdentity } from "./runtime-config";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
-/** The `backfill_cursors` row migration 0139 seeds for this job. */
+/** This job's `backfill_cursors` row. */
 const CURSOR = "remote_status_retention";
 
 /** `REMOTE_STATUS_RETENTION_DAYS` when unset, as cfwdon's public remote purge. */

@@ -11,7 +11,7 @@ import { parseInstanceIdentity } from "./runtime-config";
 
 /**
  * The `Reject(Follow)` and `Undo(Follow)` a domain suspension owes the
- * suspended server (`severance_notices`, migration 0175), sent in bounded
+ * suspended server (`severance_notices`), sent in bounded
  * queued pages. `severRelationships` writes them with the follows it removes.
  */
 

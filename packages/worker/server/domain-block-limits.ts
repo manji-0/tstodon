@@ -12,11 +12,12 @@ import type { TypedSqlLike } from "./typed-sql";
 
 /**
  * The limitation an instance domain block keeps on the actors it found when
- * it was made (`remote_actor_domain_limits`, migration 0169), as Mastodon's
+ * it was made (`remote_actor_domain_limits`), as Mastodon's
  * `BlockDomainService` stores `silenced_at` / `suspended_at` on each account
  * whose account domain is at or under the domain, and on the actors first
- * cached while it is their account domain's most specific rule (migration
- * 0177's trigger), as `ProcessAccountService#create_account` does. SQL reads
+ * cached while it is their account domain's most specific rule (the
+ * `remote_actors_record_domain_limits` trigger), as
+ * `ProcessAccountService#create_account` does. SQL reads
  * it through `remote_actor_domain_rules`,
  * as does account presentation ({@link listDomainBlockLimits}); the inbox and
  * signed fetches read {@link listDomainSuspendedActors}.
@@ -65,7 +66,7 @@ const isStart = (cursor: Cursor): boolean =>
  * backfill in the same batch, so a failure is retried with the page. A
  * `Backfill` run records only the actors first seen by its `seenBy`, and
  * each of its pages stamps the backfill's claim; an actor first seen
- * later was recorded when cached (migration 0177). A legacy `UriHost`
+ * later was recorded when cached. A legacy `UriHost`
  * cursor reads nothing. Resolves to the cursor after the page, `undefined`
  * once every actor is read.
  */
@@ -262,8 +263,8 @@ const listLiftedDomainBlockIds = (db: D1Database): Promise<Result<string[], Repo
 const ClaimedBackfill = z.object({ id: z.string(), seen_by: z.string() });
 
 /**
- * Claim the silences and suspensions made before their actors were recorded
- * (migration 0171) that no chain records now: unclaimed, or whose claim no
+ * Claim the silences and suspensions whose actors are still to be recorded
+ * (`domain_block_limit_backfills`) that no chain records now: unclaimed, or whose claim no
  * page stamped for {@link BACKFILL_CLAIM_HOURS}.
  */
 const claimBackfills = (

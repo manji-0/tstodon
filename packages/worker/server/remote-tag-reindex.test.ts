@@ -4,7 +4,6 @@ import { z } from "zod";
 import { ApiStatus } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
-import migration from "../app/db/migrations/0136_remote_tag_reindex.sql?raw";
 import { parseRows } from "./d1";
 import { processOutboxJob } from "./outbox-job";
 import { indexMissingRemoteTags } from "./remote-status-store";
@@ -79,16 +78,6 @@ const pending = async (prefix: string): Promise<unknown> =>
     .bind(`https://remote.example/notes/${prefix}`)
     .first();
 
-const runMigration = async (): Promise<void> => {
-  const statement = migration
-    .split("\n")
-    .filter((line) => !line.startsWith("--"))
-    .join("\n")
-    .trim()
-    .replace(/;$/, "");
-  await env.DB.prepare(statement).run();
-};
-
 const QUEUED: QueueSendResponse = {
   metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
 };
@@ -98,7 +87,7 @@ afterEach(() => {
 });
 
 describe("the remote tag reindex", () => {
-  it("indexes the stored statuses that can hold a non-ASCII tag again, from their HTML", async () => {
+  it("indexes the pending statuses again from their HTML, non-ASCII tags included", async () => {
     const author = await remoteActor("rtr-author");
     const unicode = await stored(
       author,
@@ -131,7 +120,12 @@ describe("the remote tag reindex", () => {
     expect(await tagNames(unicode)).toEqual(["rtrascii"]);
     expect(await timelineIds("日本語")).toEqual([]);
 
-    await runMigration();
+    // Every status but the ASCII-only one goes back to the job.
+    await env.DB.prepare(
+      "UPDATE remote_statuses SET tags_indexed = 0 WHERE object_uri LIKE 'https://remote.example/notes/rtr-%' AND id <> ?",
+    )
+      .bind(ascii)
+      .run();
     expect(await pending("rtr-")).toEqual({ count: 251 });
 
     let pages = 0;
@@ -156,7 +150,7 @@ describe("the remote tag reindex", () => {
         "SELECT COUNT(*) AS count FROM remote_status_tags WHERE tag = 'rtrmany'",
       ).first(),
     ).toEqual({ count: 250 });
-    // An ASCII-only status is not sent back: it keeps what it had.
+    // A status not sent back keeps what it had.
     expect(await tagNames(ascii)).toEqual([]);
     expect(await timelineIds("rtrplain")).toEqual([]);
 
@@ -175,7 +169,7 @@ describe("the remote tag reindex", () => {
       published: "2026-10-20T00:00:00.000Z",
       to: ["https://www.w3.org/ns/activitystreams#Public"],
     };
-    // Stored before tags were read from `tag`, and sent back by the migration.
+    // Stored without its `tag` array, and pending.
     const id = await stored(author, "rtr-race", object.content);
     await env.DB.prepare("UPDATE remote_statuses SET tags_indexed = 0 WHERE id = ?").bind(id).run();
 

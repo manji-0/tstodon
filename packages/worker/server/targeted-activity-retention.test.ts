@@ -3,7 +3,6 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { signedInAccount } from "../test/auth-fixture";
-import migration from "../app/db/migrations/0143_settle_targeted_fanout_rows.sql?raw";
 import { pruneOutboundActivities } from "./activity-vacuum";
 import { enqueueTargetedActivity } from "./delivery";
 import { persistOutboxTarget } from "./outbox-store";
@@ -81,46 +80,5 @@ describe("an activity sent to named inboxes", () => {
     ).toBe(true);
     expect((await pruneOutboundActivities(env.DB, FAR_FUTURE, 500)).isOk()).toBe(true);
     expect(await stored(activityId)).toBe(false);
-  });
-});
-
-describe("migration 0143", () => {
-  it("settles the fan-out row of an activity that has targets, and no other", async () => {
-    const account = await signedInAccount("targeted-migration@example.com");
-    const insert = async (id: string, withTarget: boolean): Promise<void> => {
-      await env.DB.batch([
-        env.DB.prepare(
-          "INSERT INTO outbound_activities (id, account_id, kind, payload_json, created_at) VALUES (?, ?, 'Accept', '{}', '2020-01-01T00:00:00.000Z')",
-        ).bind(id, account.id),
-        env.DB.prepare(
-          "INSERT INTO outbox_deliveries (id, activity_id, kind, attempt_count, created_at, updated_at) VALUES (?, ?, 'Queued', 0, '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
-        ).bind(`${id}-fanout`, id),
-        ...(withTarget
-          ? [
-              env.DB.prepare(
-                "INSERT INTO outbox_deliveries (id, activity_id, kind, attempt_count, inbox_url, created_at, updated_at) VALUES (?, ?, 'Delivered', 0, 'https://migrated.example/inbox', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
-              ).bind(`${id}-target`, id),
-            ]
-          : []),
-      ]);
-    };
-    await insert("migration-0143-targeted", true);
-    await insert("migration-0143-waiting", false);
-
-    const statement = migration
-      .split("\n")
-      .filter((line) => !line.startsWith("--"))
-      .join("\n")
-      .trim()
-      .replace(/;$/, "");
-    await env.DB.prepare(statement).run();
-
-    const { results } = await env.DB.prepare(
-      "SELECT activity_id, kind FROM outbox_deliveries WHERE inbox_url IS NULL AND activity_id LIKE 'migration-0143-%' ORDER BY activity_id",
-    ).all();
-    expect(read(Rows, results)).toEqual([
-      { activity_id: "migration-0143-targeted", kind: "Expanded" },
-      { activity_id: "migration-0143-waiting", kind: "Queued" },
-    ]);
   });
 });

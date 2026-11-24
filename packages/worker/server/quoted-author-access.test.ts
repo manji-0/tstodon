@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiStatus } from "@tstodon/api";
 import { schemaResult } from "@tstodon/core";
-import migration from "../app/db/migrations/0165_quoted_author_mentions.sql?raw";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliveredCreate } from "../test/delivery-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
@@ -75,6 +74,16 @@ const remoteNote = async (author: Remote, slug: string) => {
     await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?").bind(uri).first(),
   ).id;
 };
+
+const mentionRows = async (table: string, column: string, statusId: string) =>
+  read(
+    z.array(z.object({ who: z.string(), silent: z.number() })),
+    (
+      await env.DB.prepare(`SELECT ${column} AS who, silent FROM ${table} WHERE status_id = ?`)
+        .bind(statusId)
+        .all()
+    ).results,
+  );
 
 describe("the quoted author's silent mention", () => {
   it("lets a local quoted author open a followers-only quote, without a mention", async () => {
@@ -196,102 +205,17 @@ describe("the quoted author's silent mention", () => {
     expect(listed[0]?.account.suspended).toBe(true);
     expect(await quotesOf(fan, original)).toEqual([]);
   });
-});
-
-/** The migration's backfill statements. */
-const backfillStatements = (): string[] =>
-  migration
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("--"))
-    .join("\n")
-    .split(/;\s*\n(?=\S|$)/)
-    .map((statement) => statement.trim().replace(/;$/, ""))
-    .filter((statement) => statement.startsWith("INSERT"));
-
-const mentionRows = async (table: string, column: string, statusId: string) =>
-  read(
-    z.array(z.object({ who: z.string(), silent: z.number() })),
-    (
-      await env.DB.prepare(`SELECT ${column} AS who, silent FROM ${table} WHERE status_id = ?`)
-        .bind(statusId)
-        .all()
-    ).results,
-  );
-
-describe("migration 0165", () => {
-  it("reads each quote once by an index and seeks the rest by key", async () => {
-    for (const statement of backfillStatements()) {
-      const { results } = await env.DB.prepare(
-        `EXPLAIN QUERY PLAN ${statement.slice(statement.indexOf("SELECT"))}`,
-      ).all();
-      const plan = z
-        .array(z.object({ detail: z.string() }))
-        .parse(results)
-        .map((row) => row.detail);
-      expect(plan[0], statement).toMatch(/^SEARCH q USING INDEX sqlite_autoindex_status_quotes/);
-      for (const step of plan.slice(1)) {
-        expect(step, statement).toMatch(/^SEARCH \w+ USING (COVERING )?INDEX \S+ \(\w+=\?\)$/);
-      }
-    }
-  });
-
-  it("gives the quotes stored before it their silent mention", async () => {
-    const alice = "qaa-backfill-alice@example.com";
-    const carol = "qaa-backfill-carol@example.com";
-    const aliceAccount = await signedInAccount(alice);
-    const bob = await remoteActor("qaa-backfill-bob");
-    const original = await post(alice, { status: "quote me" });
-    const ofLocal = await post(carol, {
-      status: "hi",
-      quoted_status_id: original,
-      visibility: "private",
-    });
-    const ofLocalMentioning = await post(carol, {
-      status: `@${aliceAccount.username} hi`,
-      quoted_status_id: original,
-      visibility: "private",
-    });
-    const ofRemote = await post(carol, {
-      status: "hi",
-      quoted_status_id: await remoteNote(bob, "qaa-backfill"),
-      visibility: "private",
-    });
-    const unrelated = await post(carol, { status: `@${aliceAccount.username} plain` });
-    await env.DB.batch([
-      env.DB.prepare("DELETE FROM status_mentions WHERE status_id = ?").bind(ofLocal),
-      env.DB.prepare("DELETE FROM status_remote_mentions WHERE status_id = ?").bind(ofRemote),
-    ]);
-
-    const statements = backfillStatements();
-    expect(statements).toHaveLength(3);
-    for (const statement of statements) {
-      await env.DB.prepare(statement).run();
-    }
-
-    expect(await mentionRows("status_mentions", "account_id", ofLocal)).toEqual([
-      { who: aliceAccount.id, silent: 1 },
-    ]);
-    expect(await mentionRows("status_mentions", "account_id", ofLocalMentioning)).toEqual([
-      { who: aliceAccount.id, silent: 0 },
-    ]);
-    expect(await mentionRows("status_remote_mentions", "actor_uri", ofRemote)).toEqual([
-      { who: bob.actorUri, silent: 1 },
-    ]);
-    expect(await mentionRows("status_mentions", "account_id", unrelated)).toEqual([
-      { who: aliceAccount.id, silent: 0 },
-    ]);
-  });
 
   it("silently mentions the quoted author of a remote quote a QuoteRequest accepted", async () => {
-    const alice = "qaa-backfill-qr-alice@example.com";
+    const alice = "qaa-qr-alice@example.com";
     const aliceAccount = await signedInAccount(alice);
-    const bob = await remoteActor("qaa-backfill-qr-bob");
+    const bob = await remoteActor("qaa-qr-bob");
     const original = await post(alice, { status: "quote me" });
     const statusUri = `https://example.com/users/${aliceAccount.username}/statuses/${original}`;
-    const noteUri = "https://remote.example/notes/qaa-backfill-qr";
+    const noteUri = "https://remote.example/notes/qaa-qr";
     expect(
       await bob.send({
-        id: `${bob.actorUri}/quote_requests/qaa-backfill-qr`,
+        id: `${bob.actorUri}/quote_requests/qaa-qr`,
         type: "QuoteRequest",
         object: statusUri,
         instrument: {
@@ -311,17 +235,6 @@ describe("migration 0165", () => {
         .bind(noteUri)
         .first(),
     ).id;
-    expect(await mentionRows("remote_status_mentions", "account_id", remoteId)).toEqual([
-      { who: aliceAccount.id, silent: 1 },
-    ]);
-    await env.DB.prepare("DELETE FROM remote_status_mentions WHERE status_id = ?")
-      .bind(remoteId)
-      .run();
-
-    for (const statement of backfillStatements()) {
-      await env.DB.prepare(statement).run();
-    }
-
     expect(await mentionRows("remote_status_mentions", "account_id", remoteId)).toEqual([
       { who: aliceAccount.id, silent: 1 },
     ]);

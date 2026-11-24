@@ -186,8 +186,8 @@ export const actorMovedTo = (raw: unknown): string | undefined => {
 };
 
 /**
- * The authority SQL reads from a URI's text (`remote_actors.uri_authority`,
- * migration 0107): what follows `://` up to the first `/`, lower-cased, when
+ * The authority SQL reads from a URI's text (`remote_actors.uri_authority`):
+ * what follows `://` up to the first `/`, lower-cased, when
  * it is printable ASCII. SQLite's `lower` folds ASCII only, so an actor whose
  * id has another character there (a Unicode host such as the Kelvin sign
  * `\u212A`, which the URL parser reads as `k`) is refused rather than stored

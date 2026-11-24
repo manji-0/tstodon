@@ -23,15 +23,15 @@ import { err, ok, type Result } from "neverthrow";
  * `::Retention`) computed from what D1 stores. Mastodon counts some of these
  * in Redis as they happen; here they are counted from the rows:
  *
- * - `active_users` and the retention cohorts read `account_activity_days`
- *   (migration 0124), which tstodon records from the day it was deployed, so
- *   days before that count no one;
+ * - `active_users` and the retention cohorts read `account_activity_days`,
+ *   which tstodon records from the day it was deployed, so days before that
+ *   count no one;
  * - `interactions` counts favourites, boosts and replies of local posts, by
  *   local accounts and remote actors;
  * - `instance_media_attachments` and the `media` entry of `space_usage`
  *   sum the byte sizes recorded for what tstodon stores in the `MEDIA`
- *   bucket (migration 0125; sizes of objects stored before it count once
- *   `BackfillStoredMediaSizes` has read them). tstodon does not cache remote
+ *   bucket (an object whose size is not recorded yet counts once
+ *   `BackfillStoredMediaSizes` has read it). tstodon does not cache remote
  *   media, so the measure is 0 for any domain but this server's own;
  * - `sources` is every sign-up as `web`: accounts are created only by the
  *   web sign-in (Cloudflare Access), never by an app.

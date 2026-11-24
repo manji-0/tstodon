@@ -19,7 +19,7 @@
 -- keeps the handle and confirmation time it holds as this runs, so a
 -- confirmation another actor made during the round trip is not undone with a
 -- value read before it. Returns the handle the row ends up with.
--- A suspended actor (`suspended_remote_actors`, migration 0179) keeps its
+-- A suspended actor (`suspended_remote_actors`) keeps its
 -- cached name, profile, featured collection and `fetched_at`, as Mastodon's
 -- `ProcessAccountService` skips `set_immediate_attributes!` and
 -- `set_fetchable_attributes!`; its profile URL, `bot` and `publishedAt`

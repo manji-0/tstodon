@@ -189,7 +189,7 @@ const StatusStatsRow = z.object({
 });
 
 /**
- * The counters triggers keep in `status_stats` (migration 0138) for local and
+ * The counters triggers keep in `status_stats` for local and
  * remote statuses alike, and with a viewer whether they favourited, boosted
  * or bookmarked each.
  */

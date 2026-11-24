@@ -13,11 +13,7 @@ import {
 import { recordTagNames, searchableTagNames } from "./hashtags";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
-/**
- * The `backfill_cursors` row migration 0132 seeds for this job. Migration
- * 0108's `local_note_tags` row is left as it is: it is complete on a running
- * instance, where the notes still need their `local_status_tags` rows.
- */
+/** This job's `backfill_cursors` row. */
 const CURSOR = "local_status_tags";
 
 /** Notes read per page: their text is short, and a page is three statements. */

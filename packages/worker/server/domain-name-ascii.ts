@@ -15,7 +15,7 @@ import {
 } from "./generated/prisma/sql";
 import { d1PrepareTyped, queryTyped } from "./typed-sql";
 
-/** The `backfill_cursors` row migration 0164 seeds: the last stored domain read. */
+/** Its `backfill_cursors` row: the last stored domain read. */
 const CURSOR = "domain_name_ascii";
 
 /** Domains read per page; a page is one batch of 12 statements, whatever its size. */
@@ -67,11 +67,16 @@ const STRICTER_SEVERITY = `CASE
 
 /**
  * The statements that rename `[[old, new], ...]` (bound as JSON) in every
- * table, by the merge rules of migration 0164. Each takes the pairs as its
- * one parameter.
+ * table. Where the ASCII name is already stored, the rows merge into that
+ * row: a domain block takes the stricter severity (suspend, then silence,
+ * then noop), each of `reject_media`, `reject_reports` and `obfuscate` if
+ * either row has it, the kept row's comments else the old row's, and the
+ * earlier `created_at`; an allowed domain or an email domain block the
+ * earlier `created_at`; a user's domain blocks one block per account, the
+ * earlier `created_at`. Each takes the pairs as its one parameter.
  */
 const RENAMES: ReadonlyArray<string> = [
-  // A merged block goes, and the actors it limited with it (migration 0169):
+  // A merged block goes, and the actors it limited with it:
   // the kept block's own rows limit them, once `ApplyDomainBlockEffects` runs.
   `DELETE FROM remote_actor_domain_limits WHERE domain_block_id IN (
      SELECT o.id FROM domain_blocks o WHERE o.domain IN ${OLD_NAMES} AND EXISTS (
@@ -94,7 +99,7 @@ const RENAMES: ReadonlyArray<string> = [
     "d.created_at",
     "created_at = min(a.created_at, o.created_at)",
   ),
-  // The renamed block keeps its id (migration 0166), which pages the list.
+  // The renamed block keeps its id, which pages the list.
   `INSERT INTO account_domain_blocks (account_id, domain, created_at, id)
    SELECT r.account_id, ${NEW}, r.created_at, r.id
    FROM json_each(?1) e JOIN account_domain_blocks r ON r.domain = ${OLD}
@@ -138,7 +143,7 @@ const pageRenames = (
  * `xn--bcher-kva.example`), in the domain blocks, a user's domain blocks,
  * the allow list and the email domain blocks, merging with a row already
  * stored under the ASCII name, and move the cursor past them. SQLite has no
- * punycode, so this runs in the Worker rather than in migration 0164. A short
+ * punycode, so this runs in the Worker rather than in SQL. A short
  * page marks the cursor complete, after which every run reads the cursor and
  * stops. The renames and the cursor are one batch, so a repeated or
  * concurrent page leaves the same rows.
