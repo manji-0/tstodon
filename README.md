@@ -21,10 +21,10 @@ The project is early software. The [local core](docs/planning/local-core.md) cla
 
 ## Requirements
 
-- Node.js 26+
+- Node.js 26.12+ (Void's CLI refuses an older 26)
 - `pnpm`
 - Cloudflare account access for Workers, D1, and R2 operations
-- `wrangler` authentication for deploys and remote resource changes
+- Cloudflare authentication for deploys and remote resource changes (`void connect --platform cloudflare`, or `CLOUDFLARE_API_TOKEN`)
 
 Optional: `nix develop` (or `direnv allow` with [nix-direnv](https://github.com/nix-community/nix-direnv)) provides Node 26, pnpm, wrangler, and process-compose from [flake.nix](flake.nix).
 

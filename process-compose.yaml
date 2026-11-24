@@ -4,7 +4,7 @@ processes:
   tstodon-a:
     command: pnpm exec vp -C packages/worker dev --port 8791 --strictPort --host 127.0.0.1
     environment:
-      - CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=../../e2e/a.wrangler.jsonc
+      - TSTODON_WRANGLER_CONFIG=e2e/a.wrangler.jsonc
       - VOID_INSPECTOR_PORT=false
       - TSTODON_PERSIST_TO=.wrangler/e2e-a
     availability:
@@ -21,9 +21,15 @@ processes:
   tstodon-b:
     command: pnpm exec vp -C packages/worker dev --port 8792 --strictPort --host 127.0.0.1
     environment:
-      - CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH=../../e2e/b.wrangler.jsonc
+      - TSTODON_WRANGLER_CONFIG=e2e/b.wrangler.jsonc
       - VOID_INSPECTOR_PORT=false
       - TSTODON_PERSIST_TO=.wrangler/e2e-b
+    # B starts once A answers: each `vp dev` writes its instance's config to
+    # packages/worker/.void-wrangler.jsonc and reads it back while it starts
+    # (and fills the upstream asset cache), as e2e/federation-ci.sh does.
+    depends_on:
+      tstodon-a:
+        condition: process_healthy
     availability:
       restart: "always"
     readiness_probe:

@@ -9,8 +9,8 @@ This file tells AI coding agents how to work in this repository without losing p
 - `packages/core` for Result/schema helpers, branded IDs, and `Sensitive`.
 - `packages/domain` for Zod 4.6 `kind`-discriminated domain models.
 - `packages/api` (`@tstodon/api`) for Mastodon's REST entities as they appear on the wire: Zod schemas and their types (`ApiStatus` / `ApiStatusJSON`), and Zod-free enum-like constants in `@tstodon/api/values`. REST JSON shapes live here: the Worker's document builders return these types, and the web UI's `src/mastodon/api_types/*.ts` re-export them. The ActivityPub documents tstodon sends are schemas in `@tstodon/api/activitypub` (server-only). See `packages/api/README.md`.
-- `packages/worker` for the app [Void](https://void.cloud) builds, serves, and deploys, in Void's "SPA + API" shape: the Worker runtime and its client, Mastodon's web frontend. `packages/worker` is the Void project root (`vite.config.ts` with `voidPlugin()`, `void.json`, `wrangler.jsonc`, `public/`):
-  - `app/`: Void's conventions (`void.json` `sourceDir`): `routes/`, `middleware/`, `crons/`, `queues/`, `db/migrations/`.
+- `packages/worker` for the app [Void](https://void.cloud) builds, serves, and deploys, in Void's "SPA + API" shape: the Worker runtime and its client, Mastodon's web frontend. `packages/worker` is the Void project root (`vite.config.ts` with `voidPlugin()`, `void.config.ts`, `public/`). `void.config.ts` holds Void's settings and, under `cloudflare`, the Worker's Cloudflare config (bindings, vars, resource IDs; there is no `wrangler.jsonc`, so run Wrangler as `pnpm wrangler:worker <args>`):
+  - `app/`: Void's conventions (`void.config.ts` `sourceDir`): `routes/`, `middleware/`, `crons/`, `queues/`, `db/migrations/`, and `env.ts`, the schema of the Worker's secrets.
   - `server/`: the Worker's shared code (`#server/*`).
   - `src/`: the frontend, Mastodon's web app vendored from upstream (see `packages/worker/src/UPSTREAM.md`), with upstream's Vite plugins in `config/` and the client build composed in `web-build.ts`.
   - `public/`: committed static files, served at `/`.
@@ -58,6 +58,7 @@ pnpm dev
 pnpm build
 pnpm e2e:web
 pnpm db:migrate:local
+pnpm wrangler:worker <args>
 pnpm run ci
 pnpm run deploy
 ```
@@ -81,7 +82,7 @@ For a fresh clone, start with:
 
 D1 migrations are `packages/worker/app/db/migrations/*.sql`, applied by Wrangler (`pnpm db:migrate:local`; remote via `pnpm run deploy`). `0001_baseline.sql` creates the whole schema, grouped by concept; a change is a new file numbered after the last one. A migration that drops a table, index, view or trigger (e.g. a SQLite table rebuild, an index replaced by a wider one), renames, or runs an `UPDATE` / `DELETE` without `WHERE` (a backfill) needs a standalone `-- void:allow-destructive` line, with a comment saying why, or Void's deploy gate refuses every deploy. `scripts/check-migrations.mjs` runs that gate (`pnpm lint`, `pnpm check`, CI).
 
-Do not commit private Cloudflare values, `BETTER_AUTH_SECRET`, API keys, or private key material.
+Do not commit private Cloudflare values, `BETTER_AUTH_SECRET`, API keys, or private key material. Local values go in `packages/worker/.env` (gitignored), the only dotenv file Void reads; production secrets are set with `pnpm -C packages/worker exec void secret put <NAME>` (names declared in `packages/worker/app/env.ts`).
 
 ## Markdown Documentation Policy
 

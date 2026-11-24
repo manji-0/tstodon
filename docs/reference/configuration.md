@@ -4,7 +4,7 @@
 
 <!-- constrained-by ../architecture/tstodon-architecture.md#cloudflare-mapping -->
 
-Configured in `packages/worker/wrangler.jsonc`:
+Configured under `cloudflare` in `packages/worker/void.config.ts` (Void's project config; it holds what a root `wrangler.jsonc` held, and Void merges it with the crons and queue consumers it infers from `app/`):
 
 - `DB` — D1
 - `MEDIA` — R2
@@ -18,9 +18,19 @@ Configured in `packages/worker/wrangler.jsonc`:
 - `METRICS` — Analytics Engine
 - `ASSETS` — static assets
 
-There is no KV namespace and no `send_email` binding: `REMOTE_DNS_CACHE` was read by nothing, and the mailer (`EMAIL`, `EMAIL_FROM`, `EMAIL_TRANSPORT`, `APP_CACHE` for captured mail) lost its last caller when sign-in moved to Cloudflare Access (#82); both were removed (OPS-7). `packages/worker/void.json` keeps Void's KV inference off (`"kv": false`), so `void deploy` does not add a namespace back. Mail is not planned (MAIL-1 in [open TODOs](../planning/open-todos.md), closed): sign-in is Access, and notifications go through the app and Web Push.
+There is no KV namespace and no `send_email` binding: `REMOTE_DNS_CACHE` was read by nothing, and the mailer (`EMAIL`, `EMAIL_FROM`, `EMAIL_TRANSPORT`, `APP_CACHE` for captured mail) lost its last caller when sign-in moved to Cloudflare Access (#82); both were removed (OPS-7). `packages/worker/void.config.ts` keeps Void's KV inference off (`inference.bindings.kv: false`), so `void deploy` does not add a namespace back. Mail is not planned (MAIL-1 in [open TODOs](../planning/open-todos.md), closed): sign-in is Access, and notifications go through the app and Web Push.
 
-Placeholder resource IDs in `packages/worker/wrangler.jsonc` are local-only. Create real D1 / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
+Placeholder resource IDs in `packages/worker/void.config.ts` are local-only. Create real D1 / R2 / Queue resources with [`infra/cloudflare`](../../infra/cloudflare/README.md) before deploying (`tofu output -json wrangler_bindings`).
+
+## Vars and secrets
+
+<!-- constrained-by ../operations/cloudflare-deploy.md -->
+
+Plaintext settings are Worker vars: `vars` under `cloudflare` in `packages/worker/void.config.ts`. Every var this page names goes there, including the optional ones the file leaves out.
+
+Secrets are declared in `packages/worker/app/env.ts` (Void's env schema): `VAPID_PRIVATE_JWK` and `BETTER_AUTH_SECRET`, both optional in the schema. In production they are Worker secrets, set with `pnpm -C packages/worker exec void secret put <NAME>`; Void refuses to set a name `env.ts` does not declare, and refuses to build when a declared name is also a var. `void deploy` creates `BETTER_AUTH_SECRET` when it is missing and never uploads a local file.
+
+Under `pnpm dev`, the Worker gets the vars from `void.config.ts`, then every line of `packages/worker/.env` (gitignored) over them; a shell variable overrides a line of `.env` or a key of `env.ts`. `.env` is the only dotenv file Void reads: it refuses to start beside a `.dev.vars`, `.dev.vars.*`, `.env.*` or `.env.example` in `packages/worker`. Builds do not read `.env`.
 
 ## Instance vars
 
@@ -111,7 +121,7 @@ The sign-in time is `accounts.current_sign_in_at`, Mastodon's `users.current_sig
 
 <!-- constrained-by ../operations/runbook.md#dead-lettered-jobs -->
 
-`tstodon-outbox-process` dead-letters to `tstodon-outbox-dlq` (`deadLetterQueue` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `queueConsumerOptions` in `void-plugins.ts` writes it as the consumer's `dead_letter_queue`, since Void's queue file has no such option). The outbox handler decides about a job that returns retry: it retries it twice, then sends `{"kind": "DeadOutboxJob", "job": <body as queued>, "attempts": 3}` to `OUTBOX_DLQ` and acks it. Queues itself moves what the handler cannot decide: a message it throws on, or one that is not an `OutboxJob`, after `max_retries` (3, so 4 deliveries). If the send to `OUTBOX_DLQ` fails, the message is retried instead, so Queues dead-letters it in the end.
+`tstodon-outbox-process` dead-letters to `tstodon-outbox-dlq` (`deadLetterQueue` in `packages/worker/app/queues/tstodon-outbox-process.ts`; `queueDeadLetterQueues` in `void-plugins.ts` writes it as the consumer's `dead_letter_queue` in the build output, since Void's queue file has no such option). The outbox handler decides about a job that returns retry: it retries it twice, then sends `{"kind": "DeadOutboxJob", "job": <body as queued>, "attempts": 3}` to `OUTBOX_DLQ` and acks it. Queues itself moves what the handler cannot decide: a message it throws on, or one that is not an `OutboxJob`, after `max_retries` (3, so 4 deliveries). If the send to `OUTBOX_DLQ` fails, the message is retried instead, so Queues dead-letters it in the end.
 
 The dead-letter queue's consumer (`app/queues/tstodon-outbox-dlq.ts`: batches of 10, `max_retries` 5, `max_concurrency` 1) stores each message in the D1 table `outbox_dead_jobs`: `job_kind`, `reason` (`RetriesExhausted`, `HandlerFailed` or `Unparseable`), `body_json`, `attempts`, `dead_count`, `error`, `first_seen_at` and `last_seen_at`. The `RequeueDeadOutboxJobs` job sends stored jobs back. Both queues are provisioned by [`infra/cloudflare`](../../infra/cloudflare/README.md) (`outbox_queue_name`, `outbox_dlq_name`). In `vp dev`, Void writes the consumers without `dead_letter_queue` (the option is added to the build output only), so only the handler's own sends reach the local dead-letter queue.
 
@@ -152,7 +162,7 @@ API requests authenticate with `Authorization: Bearer <access token>` (streaming
 
 | Var                      | Purpose                                                                                                                                                                                                                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `BETTER_AUTH_SECRET`     | **Secret**, required off `localhost` / `127.0.0.1` / a name ending in `.local`: signs the Better Auth user and session rows. It is not the login. Void supplies a dev secret only on those hosts                                                                               |
+| `BETTER_AUTH_SECRET`     | **Secret**, required in production: signs the Better Auth user and session rows. It is not the login. `void deploy` creates it when missing; Void's dev server supplies a development secret on any host                                                                       |
 | `CF_ACCESS_TEAM_DOMAIN`  | Access team issuer, `https://<team>.cloudflareaccess.com`. Leading and trailing whitespace and a trailing slash are ignored. Required for browser login                                                                                                                        |
 | `CF_ACCESS_AUD`          | Access application audience (AUD) tag the JWT must carry (`tofu output access_aud` when `infra/cloudflare` creates it)                                                                                                                                                         |
 | `CF_ACCESS_JWKS_JSON`    | Access public JWKS, as JSON. When empty, `CF_ACCESS_JWKS_URL` is used, and when that is empty the keys are fetched from `<team>/cdn-cgi/access/certs`. Only RSA keys are used                                                                                                  |
@@ -165,7 +175,7 @@ API requests authenticate with `Authorization: Bearer <access token>` (streaming
 An account is an instance admin when its Better Auth user's `role` includes `admin`. `ADMIN_USERNAMES` grants that role only when the user row is first created, never again on a later login, so a hand demotion stays demoted. When `CF_ACCESS_ADMIN_GROUPS` is non-empty, it is the ongoing source of truth: every Access login sets admin if the JWT's groups intersect that list and clears admin if they do not. When the list is empty or unset, login does not change an existing role. Promote an existing account in D1 while that list is empty:
 
 ```sh
-pnpm -C packages/worker exec wrangler d1 execute tstodon --remote --command \
+pnpm wrangler:worker d1 execute tstodon --remote --command \
   "UPDATE \"user\" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE username = 'alice')"
 ```
 
@@ -175,21 +185,23 @@ Admins suspend accounts on the admin accounts page (`/admin/accounts`). `app/aut
 
 An existing account links only when the Access email equals `access_email` exactly. Any other spelling does not attach to that account: open registrations create a second account, and closed registrations leave the person signed out.
 
+The first `pnpm run deploy` creates `BETTER_AUTH_SECRET`. To set or rotate it yourself:
+
 ```sh
-openssl rand -base64 32 | pnpm -C packages/worker exec wrangler secret put BETTER_AUTH_SECRET
+openssl rand -base64 32 | pnpm -C packages/worker exec void secret put BETTER_AUTH_SECRET
 ```
 
 ### Streaming tokens
 
 <!-- constrained-by ../operations/runbook.md#logs -->
 
-The streaming API (`/api/v1/streaming`) takes the access token as Mastodon's does: in `Authorization: Bearer`, as the WebSocket subprotocol (`Sec-WebSocket-Protocol`, echoed back in the handshake), or as the `access_token` query parameter, which a browser's `EventSource` and many third-party clients use. The web UI sends it as the subprotocol, as upstream does. The query parameter stays supported, so `wrangler.jsonc` sets `observability.redact_query_string` to keep it out of Workers Logs and traces (see the runbook's Logs section for what that does not cover).
+The streaming API (`/api/v1/streaming`) takes the access token as Mastodon's does: in `Authorization: Bearer`, as the WebSocket subprotocol (`Sec-WebSocket-Protocol`, echoed back in the handshake), or as the `access_token` query parameter, which a browser's `EventSource` and many third-party clients use. The web UI sends it as the subprotocol, as upstream does. The query parameter stays supported, so `void.config.ts` sets `observability.redact_query_string` to keep it out of Workers Logs and traces (see the runbook's Logs section for what that does not cover).
 
 ## Local development authentication
 
 <!-- derived-from #authentication -->
 
-`pnpm dev` serves on `localhost`, where Void supplies a dev `BETTER_AUTH_SECRET`. A browser there is not signed in until Cloudflare Access (or a test that sends `Cf-Access-Jwt-Assertion`) is in front of it: `/auth/sign_in` only explains that Access is the login. Worker tests that need an API token seed a Better Auth user, its account, and an OAuth access token in D1 (`packages/worker/test/auth-fixture.ts`, `authHeaders(email, { admin })`). Tests of the browser login mint a JWT with the published test key in `packages/worker/test/access-jwt-fixture.ts` (the private key stays in that test file) and trust the matching public JWKS from `miniflare.bindings` in the root `vite.config.ts`, next to `BETTER_AUTH_SECRET`. That key's `kid` (`tstodon-local-access`) is accepted only on `localhost`, `127.0.0.1`, `::1`, a name ending in `.local`, and a name ending in `.localhost` (the portless e2e pair). The e2e wrangler configs carry the same public JWKS and sign in the same way.
+`pnpm dev` needs no `BETTER_AUTH_SECRET`: Void's dev server supplies a development one. A browser there is not signed in until Cloudflare Access (or a test that sends `Cf-Access-Jwt-Assertion`) is in front of it: `/auth/sign_in` only explains that Access is the login. Worker tests that need an API token seed a Better Auth user, its account, and an OAuth access token in D1 (`packages/worker/test/auth-fixture.ts`, `authHeaders(email, { admin })`). Tests of the browser login mint a JWT with the published test key in `packages/worker/test/access-jwt-fixture.ts` (the private key stays in that test file) and trust the matching public JWKS from `miniflare.bindings` in the root `vite.config.ts`, next to `BETTER_AUTH_SECRET`. That key's `kid` (`tstodon-local-access`) is accepted only on `localhost`, `127.0.0.1`, `::1`, a name ending in `.local`, and a name ending in `.localhost` (the portless e2e pair). The e2e wrangler configs carry the same public JWKS and sign in the same way.
 
 ## Web UI
 
@@ -199,7 +211,7 @@ The browser UI is Mastodon's own web app (its React frontend, AGPL-3.0 like this
 
 `pnpm build` (`vp -C packages/worker build`) builds the client, then the Worker (`builder.buildApp` in `packages/worker/vite.config.ts`). The client build writes Mastodon's packs under `packages/worker/dist/client/packs/`, the service worker as `dist/client/sw.js`, and copies `packages/worker/public/` (`sounds/`, `badge.png`, the Web Push icons, `index.html`) beside them; that directory is the Worker's static assets. Before it, the build fetches the large static trees upstream keeps in `public/` and tstodon does not commit (`public/emoji`, `public/ocr`) from that upstream commit into `.cache/mastodon-web/upstream/<commit>/` (once per commit; the first build needs `git` and network access to GitHub) and links `public/emoji` into `packages/worker/public/` (gitignored). `public/ocr` (the alt text OCR language data) is not served, as before vendoring. `pnpm dev` serves the frontend from source with Vite's hot reload; `pnpm run deploy` (`void deploy`) runs the same build.
 
-`app/middleware/04.web-app.ts` plays the part of Mastodon's Rails layout: on the web app's paths (`/`, `/home`, `/@user…`, `/explore…`, `/notifications…`, … — `WEB_APP_PATHS` in `server/web-app.ts`) it renders the HTML shell and the `initial-state` document (`ApiInitialState` in `@tstodon/api`, the shape `src/mastodon/initial_state.ts` reads). The `<script>` and `<link>` tags come from `virtual:tstodon/web-manifest` (`server/web-manifest.ts`): in a build, the Worker build reads the client's Vite manifest (`dist/client/.vite/manifest.json`, written first; `public/.assetsignore` keeps `.vite/` out of the uploaded and served assets, so the build reads it but `GET /.vite/manifest.json` is a 404) and embeds the entry files, their CSS and the chunks to preload, with `ref` set to the upstream tag with `+tstodon` (`v4.7.5+tstodon`); on the dev server it names the source entry points, Vite's HMR client and the React Refresh preamble. `/favicon.ico` redirects to the build's favicon. `/web/*` redirects to `/*`, and `/@user` (or `/@user/:id`) requested as ActivityPub redirects to `/users/user` (or the note). A path nothing answers is a 404. `routing.notFound` is `none` in `void.json`, which turns off Void's SPA fallback: that fallback replaces a Worker 404 with `public/index.html` and status 200 for any GET whose `Accept` names `text/html`. Mastodon's fetches name it (`text/html;q=0.1`, after the ActivityPub types) and read the status: a 404 for a note they may not fetch makes Mastodon use its stored copy, and a 200 page does not. The same holds for a browser: a client route of the web app that is not in `WEB_APP_PATHS` (`/accounts/:id`, `/timelines/...`) is a 404 where it used to be the static page, as in upstream Mastodon, whose Rails routes do not serve those paths either. The paths in `WEB_APP_PATHS` (`/home`, `/deck/home`, `/@user/1`, `/statuses/new`, …) get the shell with status 200 (`server/web-app.test.ts`).
+`app/middleware/04.web-app.ts` plays the part of Mastodon's Rails layout: on the web app's paths (`/`, `/home`, `/@user…`, `/explore…`, `/notifications…`, … — `WEB_APP_PATHS` in `server/web-app.ts`) it renders the HTML shell and the `initial-state` document (`ApiInitialState` in `@tstodon/api`, the shape `src/mastodon/initial_state.ts` reads). The `<script>` and `<link>` tags come from `virtual:tstodon/web-manifest` (`server/web-manifest.ts`): in a build, the Worker build reads the client's Vite manifest (`dist/client/.vite/manifest.json`, written first; `public/.assetsignore` keeps `.vite/` out of the uploaded and served assets, so the build reads it but `GET /.vite/manifest.json` is a 404) and embeds the entry files, their CSS and the chunks to preload, with `ref` set to the upstream tag with `+tstodon` (`v4.7.5+tstodon`); on the dev server it names the source entry points, Vite's HMR client and the React Refresh preamble. `/favicon.ico` redirects to the build's favicon. `/web/*` redirects to `/*`, and `/@user` (or `/@user/:id`) requested as ActivityPub redirects to `/users/user` (or the note). A path nothing answers is a 404. `routing.notFound` is `none` in `void.config.ts`, which turns off Void's SPA fallback: that fallback replaces a Worker 404 with `public/index.html` and status 200 for any GET whose `Accept` names `text/html`. Mastodon's fetches name it (`text/html;q=0.1`, after the ActivityPub types) and read the status: a 404 for a note they may not fetch makes Mastodon use its stored copy, and a 200 page does not. The same holds for a browser: a client route of the web app that is not in `WEB_APP_PATHS` (`/accounts/:id`, `/timelines/...`) is a 404 where it used to be the static page, as in upstream Mastodon, whose Rails routes do not serve those paths either. The paths in `WEB_APP_PATHS` (`/home`, `/deck/home`, `/@user/1`, `/statuses/new`, …) get the shell with status 200 (`server/web-app.test.ts`).
 
 Posts are embedded as in Mastodon 4.3+ (`server/status-embed.ts`). `GET /api/oembed?url=…` (Mastodon's `OEmbedSerializer`, with `maxwidth` / `maxheight`) and `GET /api/web/embeds/:id` (the web UI's "Get embed code" dialog) answer for a local post that is public or unlisted, not a boost, by an account that is not suspended; anything else is a 404. `url` is the post's `/@user/:id` or `/users/user/statuses/:id` URL on `INSTANCE_PUBLIC_ORIGIN`. The oEmbed HTML is a link to the post plus Mastodon's `/embed.js` (`packages/worker/public/embed.js`, unmodified), which replaces the link with a frame of `/@user/:id/embed`: a page any site may frame (no `X-Frame-Options`, `Cache-Control: public, max-age=180`) that boots the `embed` pack with a signed-out initial state. A post's page (`/@user/:id`) carries `<link rel="alternate" type="application/json+oembed">` when the post can be embedded. Unlike Mastodon, `GET /api/web/embeds/:id` answers 404 for a remote post instead of fetching its server's oEmbed; the web UI offers "Embed" for local posts only.
 
@@ -219,7 +231,7 @@ Each account picks a colour scheme (`auto`, `light`, `dark`) and a contrast (`au
 
 ```sh
 node -e 'const {generateKeyPairSync}=require("crypto");console.log(JSON.stringify(generateKeyPairSync("ec",{namedCurve:"P-256"}).privateKey.export({format:"jwk"})))' \
-  | pnpm exec wrangler secret put VAPID_PRIVATE_JWK
+  | pnpm -C packages/worker exec void secret put VAPID_PRIVATE_JWK
 ```
 
 The test runner injects its own fixture key through `miniflare.bindings` in the root `vite.config.ts`; it is never used outside tests.
@@ -234,7 +246,7 @@ The test runner injects its own fixture key through `miniflare.bindings` in the 
 
 <!-- constrained-by #limited-federation -->
 
-`AUTHORIZED_FETCH` (off unless set to `true`, `1`, `yes` or `on`; not in `wrangler.jsonc` by default, add it under `vars`) is Mastodon's secure mode for this server's own ActivityPub objects (`server/authorized-fetch.ts`). With it on, a GET (or HEAD) of these needs a valid HTTP signature (draft-cavage, covering `(request-target)`) by a remote actor whose domain federates here:
+`AUTHORIZED_FETCH` (off unless set to `true`, `1`, `yes` or `on`; not in `void.config.ts` by default, add it under `vars`) is Mastodon's secure mode for this server's own ActivityPub objects (`server/authorized-fetch.ts`). With it on, a GET (or HEAD) of these needs a valid HTTP signature (draft-cavage, covering `(request-target)`) by a remote actor whose domain federates here:
 
 | Path                                        | Unsigned, or a signature that does not verify | Signed by an allowed actor | Signer's domain suspended or not on the allow list, or the signer suspended by an admin |
 | ------------------------------------------- | --------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------- |
@@ -257,7 +269,7 @@ Mastodon also turns secure mode on with `LIMITED_FEDERATION_MODE`; here `FEDERAT
 
 ## Followers synchronization
 
-`DISABLE_FOLLOWERS_SYNCHRONIZATION` (off unless set to exactly `true`; not in `wrangler.jsonc` by default) is Mastodon's switch of the same name for FEP-8fcf. With it on, deliveries of followers-only statuses carry no `Collection-Synchronization` header, and a header received on the inbox is ignored. The `followers_synchronization` endpoint still answers, as in Mastodon.
+`DISABLE_FOLLOWERS_SYNCHRONIZATION` (off unless set to exactly `true`; not in `void.config.ts` by default) is Mastodon's switch of the same name for FEP-8fcf. With it on, deliveries of followers-only statuses carry no `Collection-Synchronization` header, and a header received on the inbox is ignored. The `followers_synchronization` endpoint still answers, as in Mastodon.
 
 ## IP blocks
 
@@ -306,11 +318,11 @@ An authenticated API request counts against its token and its account, not its a
 - `RATE_LIMITS_ENABLED`: `false` (or `0`, `off`, `no`) turns every limit off. Unset means on. The test Worker sets it to `false` in the root `vite.config.ts`; `server/rate-limit.test.ts` turns the limits on for the apps it builds.
 - `RATE_LIMITS`: a JSON object of overrides by bucket name, each `{ "limit": n, "period": seconds }` or `false` to lift that bucket. For example `{"api_ip": {"limit": 600, "period": 300}, "inbox_domain": false}`. Buckets not named keep the defaults. A value that is not JSON, names an unknown bucket or has a malformed rule is ignored as a whole (the defaults apply and the Worker logs a warning).
 
-Both are optional plain vars (`wrangler.jsonc` `vars`, or the dashboard); neither is a secret.
+Both are optional plain vars (`vars` in `void.config.ts`, or the dashboard); neither is a secret.
 
 **Storage.** Each subject (an address, an account, an app token, a sending server) is one instance of the `RateLimitCounter` Durable Object (`RATE_LIMIT_COUNTER`, migration tag `v2`), holding that subject's counters in memory and in its SQLite storage. Each isolate counts first: on the high-volume buckets (`api_ip`, `api_token`, `api_account`, `federation_fetch`, `inbox_ip`, `inbox_domain`) it counts a subject alone while its count stays within a quarter of the headroom the Durable Object last reported (hits 1 to 75 of `api_ip`'s 300 before any answer), and then calls the Durable Object with the hits it counted alone (the 76th call sends 76). A request that counts against any other bucket of the same subject calls it once with all of the subject's counters. A client that keeps going is asked about again at about 44% and 58% of its limit and on every request at the end, so one isolate holds it to its limit exactly; a client spread over n isolates can get up to (n - 1) quarters of the limit more before the shared count refuses it everywhere. The other buckets (the action families, `sign_in`, `oauth_token`, `app_registration`) call the Durable Object on every request: they are rare, long-windowed or small, and abuse-sensitive. Below the threshold the `X-RateLimit-*` headers report this isolate's count. Each isolate also remembers a counter the Durable Object reported over until that window ends and refuses without asking again. The policy is `RateLimit.mayCountLocally` in `packages/domain/src/rate-limit.ts`. Windows that ended are dropped on the subject's next call; one alarm an hour after a subject's last window ends deletes its storage if no window is live, or re-arms; it is not moved on each hit or window. No D1 write. If the Durable Object cannot be reached the request goes through (fail open), as with IP blocks. A Worker configured without the binding (the local e2e instances) counts nothing.
 
-The Workers Rate Limiting binding (`ratelimits` in `wrangler.jsonc`) was not used, not even for `inbox_ip`, `inbox_domain` and `federation_fetch`: it offers only 10- and 60-second periods, fixes each limit in `wrangler.jsonc` at deploy time (so `RATE_LIMITS` could not override it), counts per Cloudflare location, and reports no remaining count for `X-RateLimit-Remaining`; with isolate-first counting those buckets cost no Durable Object call at ordinary federation volume anyway. Workers KV is eventually consistent and takes one write per key per second; D1 would be a write per request. For volumetric floods, put a Cloudflare WAF rate-limiting rule in front of the Worker as an outer layer (see [Cloudflare Deploy Checklist](../operations/cloudflare-deploy.md#rate-limiting-at-the-edge)); it drops traffic before it reaches the Worker at all.
+The Workers Rate Limiting binding (`ratelimits` in the Worker config) was not used, not even for `inbox_ip`, `inbox_domain` and `federation_fetch`: it offers only 10- and 60-second periods, fixes each limit in the Worker config at deploy time (so `RATE_LIMITS` could not override it), counts per Cloudflare location, and reports no remaining count for `X-RateLimit-Remaining`; with isolate-first counting those buckets cost no Durable Object call at ordinary federation volume anyway. Workers KV is eventually consistent and takes one write per key per second; D1 would be a write per request. For volumetric floods, put a Cloudflare WAF rate-limiting rule in front of the Worker as an outer layer (see [Cloudflare Deploy Checklist](../operations/cloudflare-deploy.md#rate-limiting-at-the-edge)); it drops traffic before it reaches the Worker at all.
 
 ## Request body limits
 

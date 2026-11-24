@@ -12,7 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 const ROOT = path.resolve(import.meta.dirname, "../../..");
 
 const CONFIGS = [
-  "packages/worker/wrangler.jsonc",
+  "packages/worker/void.config.ts",
   "e2e/a.wrangler.jsonc",
   "e2e/b.wrangler.jsonc",
   "e2e/portless-a.wrangler.jsonc",
@@ -39,7 +39,7 @@ const sourceFiles = (): ReadonlyArray<string> =>
 describe("removed bindings (OPS-7)", () => {
   it.each(CONFIGS)("%s declares no KV namespace, mail binding or mail var", (config) => {
     const text = readFileSync(path.join(ROOT, config), "utf8");
-    expect(text).not.toMatch(/"kv_namespaces"|"send_email"/);
+    expect(text).not.toMatch(/\bkv_namespaces\b|\bsend_email\b/);
     expect(text).not.toMatch(REMOVED);
   });
 
@@ -50,10 +50,8 @@ describe("removed bindings (OPS-7)", () => {
     expect(hits).toEqual([]);
   });
 
-  it("Void's KV inference stays off, so a deploy adds no namespace back", () => {
-    const voidJson: unknown = JSON.parse(
-      readFileSync(path.join(ROOT, "packages/worker/void.json"), "utf8"),
-    );
-    expect(voidJson).toMatchObject({ inference: { bindings: { kv: false } } });
+  it("Void's KV inference stays off, so a deploy adds no namespace back", async () => {
+    const { default: voidConfig } = await import("../../worker/void.config");
+    expect(voidConfig).toMatchObject({ inference: { bindings: { kv: false } } });
   });
 });

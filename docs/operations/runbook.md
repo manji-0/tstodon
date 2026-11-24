@@ -7,7 +7,7 @@ Day-2 operations for a tstodon instance on Cloudflare: backups and restore, moni
 
 Conventions in this document:
 
-- `wrangler` means `pnpm -C packages/worker exec wrangler`, run from the repository root, so it reads `packages/worker/wrangler.jsonc`.
+- `wrangler` means `pnpm wrangler:worker`, run from the repository root: Wrangler in `packages/worker`, against the Worker's config (`cloudflare` in `packages/worker/void.config.ts`). `void` means `pnpm -C packages/worker exec void`.
 - Resource names are the ones this repository ships: Worker `tstodon`, D1 database `tstodon` (binding `DB`), R2 bucket `tstodon-media` (`MEDIA`), Queues `tstodon-outbox-process` (`OUTBOX_PROCESS_QUEUE`) and `tstodon-pull` (`PULL_QUEUE`), Workflow `tstodon-outbox-delivery` (`OUTBOX_DELIVERY_WORKFLOW`), Analytics Engine dataset `tstodon_metrics` (`METRICS`). Substitute yours if `infra/cloudflare` created them under other names.
 - Facts about this server come from the code and are exact. Cloudflare limits, retention windows and dashboard paths are from Cloudflare's documentation as of writing; the ones marked **(verify)** are worth checking against the current docs or dashboard before you rely on them.
 
@@ -151,7 +151,7 @@ Name it as the workflow does (`d1/tstodon-<stamp>.sql.gz.age`, second precision)
    wrangler d1 execute tstodon-restore --remote --file restore.sql
    ```
 
-   Put the new `database_id` in `packages/worker/wrangler.jsonc` (and `D1_BACKUP_DATABASE_ID`) and `pnpm run deploy`. The dump includes `d1_migrations`, so the deploy applies only the migrations newer than the dump. Check the placement region still matches the new database's primary location. Pause the queue around the switch as for [Time Travel](#d1-time-travel-point-in-time-restore); its caveats (deliveries and queue messages in flight, federation and media do not rewind) apply here too, with a longer lost window.
+   Put the new `database_id` in `packages/worker/void.config.ts` (and `D1_BACKUP_DATABASE_ID`) and `pnpm run deploy`. The dump includes `d1_migrations`, so the deploy applies only the migrations newer than the dump. Check the placement region still matches the new database's primary location. Pause the queue around the switch as for [Time Travel](#d1-time-travel-point-in-time-restore); its caveats (deliveries and queue messages in flight, federation and media do not rewind) apply here too, with a longer lost window.
 
 4. Delete `restore.sql` (`shred -u restore.sql`) once the restore is verified.
 
@@ -190,21 +190,21 @@ Keep these in a password manager or vault, outside Cloudflare:
 | The D1 backup age identity (`AGE-SECRET-KEY-…`)                       | Two custodians, offline                | Every backup encrypted only to it is unreadable; see [key custody](#scheduled-d1-backups)                                                                                                                |
 | D1 backup tokens (`D1_BACKUP_*` secrets)                              | GitHub Actions secrets                 | Roll them (D1 Edit token on the production account, R2 token on the backup account) and update the secrets                                                                                               |
 | `infra/cloudflare/terraform.tfvars` and the OpenTofu state            | Your machine / state backend           | Re-import the resources                                                                                                                                                                                  |
-| `packages/worker/wrangler.jsonc` with production ids                  | Your deploy branch                     | Recreate from `tofu output -json wrangler_bindings`                                                                                                                                                      |
+| `packages/worker/void.config.ts` with production ids                  | Your deploy branch                     | Recreate from `tofu output -json wrangler_bindings`                                                                                                                                                      |
 
 **A D1 backup is a key backup.** It contains every actor's private signing key, the Better Auth `session` rows (whose `token` derives the web app's access token: `webAccessToken` in `server/web-app.ts`), push subscription endpoints and keys, Access email addresses and account IP history. OAuth client secrets, codes and access tokens are stored as SHA-256 digests. Treat an export like the secrets above: encrypt it, restrict who can read the bucket, and never attach one to an issue.
 
-`wrangler secret list` shows secret names, never values. Vars set in the dashboard are replaced by `wrangler.jsonc` on the next `wrangler deploy` unless `keep_vars` is set **(verify)**; keep production vars in your deploy copy of `wrangler.jsonc` so a deploy does not silently drop them.
+`void secret list` shows secret names, never values. Vars set in the dashboard are replaced by the vars in `void.config.ts` on the next deploy **(verify)**; keep production vars in your deploy copy of `void.config.ts` so a deploy does not silently drop them.
 
 ## Monitoring and alerting
 
 ### Logs
 
-`wrangler.jsonc` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation), and sets `observability.redact_query_string`, so request URLs in invocation logs and traces are recorded without their query string. That keeps the bearer tokens out of them that streaming clients may send as `?access_token=` (Mastodon's streaming API accepts it, and third-party clients use it; this web UI sends its token as the WebSocket subprotocol instead). Keep the setting if you change `observability`. A Tail Worker, `wrangler tail` and Logpush receive the request as the Worker saw it and may still carry the query string **(verify)**: treat their output as holding credentials. The Worker's own log lines never include a token. Where to read them:
+`void.config.ts` enables Workers Logs and traces with `head_sampling_rate: 1` (every invocation), and sets `observability.redact_query_string`, so request URLs in invocation logs and traces are recorded without their query string. That keeps the bearer tokens out of them that streaming clients may send as `?access_token=` (Mastodon's streaming API accepts it, and third-party clients use it; this web UI sends its token as the WebSocket subprotocol instead). Keep the setting if you change `observability`. A Tail Worker, `wrangler tail` and Logpush receive the request as the Worker saw it and may still carry the query string **(verify)**: treat their output as holding credentials. The Worker's own log lines never include a token. Where to read them:
 
 - **Workers Logs** (dashboard: Workers & Pages → `tstodon` → Observability / Logs). Kept 3 days on Free and 7 days on Paid **(verify)**. Every server event below is one `console.*` line holding a JSON object with a `kind` field; filter on the message containing `"kind":"OutboxJobDeadLettered"` (Workers Logs also extracts JSON fields for querying; check whether your view offers `kind` as a field). Invocations also carry the request path, status and outcome.
 - **Live tail**: `wrangler tail tstodon --format pretty` (add `--status error`, `--search OutboxWorkflowCreateFailed`, `--method POST`, `--ip self`). Tail sees queue, cron and Workflow invocations too.
-- **Logpush** to R2 or a third party for longer retention and alerting: needs Workers Paid, `"logpush": true` in `wrangler.jsonc` (not set in this repository) and a Logpush job for the Workers trace events dataset (dashboard: Analytics & Logs → Logpush) **(verify)**.
+- **Logpush** to R2 or a third party for longer retention and alerting: needs Workers Paid, `logpush: true` under `cloudflare` in `void.config.ts` (not set in this repository) and a Logpush job for the Workers trace events dataset (dashboard: Analytics & Logs → Logpush) **(verify)**.
 
 ### Log events
 
@@ -623,7 +623,7 @@ Symptoms and fixes:
 
 ### Key compromise and secret rotation
 
-- **`BETTER_AUTH_SECRET`**: `openssl rand -base64 32 | wrangler secret put BETTER_AUTH_SECRET`. Better Auth signs its session cookie with it, so existing browser cookies stop verifying; the next request that carries a valid Access JWT signs the person in again with a new session. Mastodon app tokens are unaffected (they are digests, not signed). The web app token is derived from the session row, not from this secret, so to end every browser session for certain, also delete the sessions; their web tokens go with them (`oauth_access_tokens.web_session_id` is `ON DELETE CASCADE`):
+- **`BETTER_AUTH_SECRET`**: `openssl rand -base64 32 | void secret put BETTER_AUTH_SECRET`. Better Auth signs its session cookie with it, so existing browser cookies stop verifying; the next request that carries a valid Access JWT signs the person in again with a new session. Mastodon app tokens are unaffected (they are digests, not signed). The web app token is derived from the session row, not from this secret, so to end every browser session for certain, also delete the sessions; their web tokens go with them (`oauth_access_tokens.web_session_id` is `ON DELETE CASCADE`):
 
   ```sh
   wrangler d1 execute tstodon --remote --command "DELETE FROM \"session\""
@@ -740,7 +740,7 @@ A remote status is kept, whatever its age, when it is direct; when a local accou
 
 1. Read the commits since the last deploy for new migrations (`packages/worker/app/db/migrations/`), new vars or bindings (`docs/reference/configuration.md`), and deploy notes in the [deploy checklist](./cloudflare-deploy.md) (backfills, flags).
 2. Note the current bookmark (`wrangler d1 time-travel info tstodon`) and version (`wrangler deployments list`), so you know what to return to.
-3. `pnpm run ci`, then `pnpm run deploy`. Void validates the bindings and the migrations, applies pending migrations to remote D1, verifies none remain, then runs `wrangler deploy`, which also uploads the cron triggers and the queue consumer settings.
+3. `pnpm run ci`, then `pnpm run deploy`. Void checks the secrets and the migrations, saves a D1 restore point, applies pending migrations to remote D1, uploads the build with the cron triggers and the queue consumer settings, and checks the new version before it takes traffic (a failed check restores the previous one). `void project rollback` returns to an earlier version; `void db restore` undoes D1 migrations from the printed restore point.
 4. If Terraform manages the queue consumer, keep `queue_consumer_max_concurrency` equal to `maxConcurrency` in `packages/worker/app/queues/tstodon-outbox-process.ts`; both write the same setting.
 5. Watch for 30 minutes: exceptions in Workers Logs, `OutboxJobRejected` (producer and consumer disagree on a job shape; it settles once the new version is everywhere), `outbox.enqueue` volume, the next cron run.
 

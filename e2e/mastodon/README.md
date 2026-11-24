@@ -58,7 +58,7 @@ TSTODON_AUTHORIZED_FETCH=true MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/ci.sh 
 4. It writes the logs to `.cache/e2e-mastodon/`: `tstodon-dev.log` (the Worker), `compose-<service>.log`, `compose-ps.txt`, `gate.log` and `sweep.log`. On a failure it also prints the last 150 lines of the Worker's, Mastodon's and the proxy's logs.
 5. It stops the Worker and removes the stack and the tstodon database. With `E2E_MASTODON_KEEP=1` the stack stays up.
 
-Do not run it beside a stack you started by hand: step 1 removes that stack. The certificates and Mastodon's secrets in `.state/`, `.dev.vars` and the `/etc/hosts` lines stay. `E2E_PROBE_AREAS` limits the sweep here too. A run takes about thirteen minutes once the images are pulled.
+Do not run it beside a stack you started by hand: step 1 removes that stack. The certificates and Mastodon's secrets in `.state/` and the `/etc/hosts` lines stay. `E2E_PROBE_AREAS` limits the sweep here too. A run takes about thirteen minutes once the images are pulled.
 
 The workflow `.github/workflows/e2e-mastodon.yml` installs the dependencies and calls this script, once for each of the four modes: both servers open, tstodon in secure mode, Mastodon in secure mode, both in secure mode. It runs:
 
@@ -74,7 +74,7 @@ Each server has its own switch. Run the sweep in each combination:
 
 ```sh
 MASTODON_AUTHORIZED_FETCH=true e2e/mastodon/bootstrap.sh       # Mastodon: restarts web and Sidekiq
-TSTODON_AUTHORIZED_FETCH=true e2e/mastodon/start-tstodon.sh    # tstodon: AUTHORIZED_FETCH in .dev.vars
+TSTODON_AUTHORIZED_FETCH=true e2e/mastodon/start-tstodon.sh    # tstodon: the AUTHORIZED_FETCH var
 ```
 
 The sweep reads which mode each server is in from an unsigned fetch of an actor. The `authorized-fetch` area then checks that a server in secure mode refuses unsigned fetches, and skips that step for a server that is not.
@@ -102,7 +102,7 @@ To start over, remove both sides' state. Mastodon generates new actor keys, and 
 
 ```sh
 docker compose -f e2e/mastodon/compose.yaml down -v
-rm -rf e2e/mastodon/.state e2e/mastodon/.dev.vars .wrangler/e2e-mastodon
+rm -rf e2e/mastodon/.state .wrangler/e2e-mastodon
 ```
 
 ## Scripts
@@ -167,7 +167,7 @@ The tstodon name has to end in `.localhost` (or `.local`). The scripts sign up t
 ### tstodon
 
 - `FEDERATION_ALLOW_HOSTS=tstodon.localhost,mastodon.test` (`tstodon.wrangler.jsonc`). A listed host skips the private-address refusal and the DNS check, which would ask a public resolver for `mastodon.test`.
-- `BETTER_AUTH_SECRET` goes in the untracked `e2e/mastodon/.dev.vars`. The Worker reads bindings. A variable exported to the `vp dev` process did not reach it. `start-tstodon.sh` writes `AUTHORIZED_FETCH` there too, from `TSTODON_AUTHORIZED_FETCH`.
+- `start-tstodon.sh` runs `vp dev` with `TSTODON_WRANGLER_CONFIG=e2e/mastodon/tstodon.wrangler.jsonc`, which `packages/worker/void.config.ts` reads in place of the production config. No `BETTER_AUTH_SECRET` is set: Void's dev server supplies one on any host. The Worker reads vars, not the `vp dev` process's environment, so `AUTHORIZED_FETCH` (from `TSTODON_AUTHORIZED_FETCH`) goes in as `TSTODON_WRANGLER_VARS`, a JSON object `void.config.ts` merges over the config's vars.
 - `NO_PROXY` names both hosts. With `HTTPS_PROXY` set, the Worker's fetches and `curl` go to the proxy otherwise, and it cannot reach these names.
 - `vp dev` sometimes loses its connection to workerd and answers 500 with its own error page (`"message":"fetch failed"`). The request never reached the Worker. The sweep's `call` sends a `GET` that got that page once more, and logs it. It does not resend any other method.
 

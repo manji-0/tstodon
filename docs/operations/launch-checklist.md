@@ -5,7 +5,7 @@
 
 Go-live verification for a tstodon instance on a real Cloudflare account, after the [Cloudflare deploy checklist](./cloudflare-deploy.md) has been followed once. Each item says what to run, what you should see, and where to look when you do not. Day-2 procedures (backups, alerts, incidents) are the [operations runbook](./runbook.md).
 
-Throughout, `wrangler` is `pnpm -C packages/worker exec wrangler` from the repository root, and:
+Throughout, `wrangler` is `pnpm wrangler:worker` (Wrangler in `packages/worker`, against the Worker's config in `void.config.ts`) and `void` is `pnpm -C packages/worker exec void`, both from the repository root, and:
 
 ```sh
 D=social.example.com          # INSTANCE_DOMAIN
@@ -22,19 +22,19 @@ M=https://media.example.com   # MEDIA_PUBLIC_BASE_URL
 - [ ] `wrangler d1 info tstodon` prints the database with a real id; `wrangler d1 migrations list tstodon --remote` reports no migrations to apply.
 - [ ] `wrangler r2 bucket info tstodon-media` answers; `wrangler r2 bucket cors list tstodon-media` shows your `INSTANCE_PUBLIC_ORIGIN`.
 - [ ] `wrangler queues info tstodon-outbox-process`, `wrangler queues info tstodon-outbox-dlq` and `wrangler queues info tstodon-pull` each list the Worker `tstodon` as producer and as consumer, and the outbox and pull consumers' dead-letter queue is `tstodon-outbox-dlq` (dashboard: Queues → `tstodon-outbox-process` → Settings). No consumer: re-apply Terraform with `attach_queue_consumer = true` (deploy checklist step 13) or redeploy.
-- [ ] No `0000…` placeholder ids are left anywhere in `wrangler.jsonc`.
+- [ ] No `0000…` placeholder ids are left anywhere under `cloudflare` in `packages/worker/void.config.ts`.
 - [ ] `wrangler deployments status` shows one active version; the dashboard (Workers & Pages → `tstodon` → Settings → Bindings) lists `DB`, `MEDIA`, `OUTBOX_PROCESS_QUEUE`, `OUTBOX_DLQ`, `PULL_QUEUE`, `STREAM_HUB`, `RATE_LIMIT_COUNTER`, `OUTBOX_DELIVERY_WORKFLOW`, `METRICS`, `IMAGES`, `ASSETS` (no KV namespace and no `EMAIL`).
 - [ ] `wrangler workflows list` includes `tstodon-outbox-delivery`.
-- [ ] The Worker placement region in `wrangler.jsonc` (`placement.region`) is near the D1 primary location.
+- [ ] The Worker placement region in `void.config.ts` (`placement.region`) is near the D1 primary location.
 
 ### Secrets and vars
 
-- [ ] `wrangler secret list` includes `BETTER_AUTH_SECRET` and `VAPID_PRIVATE_JWK`.
+- [ ] `void secret list` includes `BETTER_AUTH_SECRET` and `VAPID_PRIVATE_JWK`, and `void env check --remote` passes.
 - [ ] `curl -s $O/api/v2/instance | jq .configuration.vapid.public_key` is a string, not `null`.
-- [ ] `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` (and `CF_ACCESS_ADMIN_GROUPS` if used) are in your deploy copy of `wrangler.jsonc` `vars` or set as secrets. Vars added only in the dashboard are dropped by the next `wrangler deploy` unless `keep_vars` is set **(verify)**.
+- [ ] `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` (and `CF_ACCESS_ADMIN_GROUPS` if used) are in your deploy copy of `void.config.ts`, under `cloudflare.vars`. Vars added only in the dashboard are dropped by the next deploy **(verify)**.
 - [ ] `INSTANCE_DOMAIN`, `INSTANCE_PUBLIC_ORIGIN`, `MEDIA_PUBLIC_BASE_URL`, `CONTACT_EMAIL`, `SOURCE_URL` are yours, not `example.com`: `curl -s $O/api/v2/instance | jq '{domain, source_url, contact: .contact.email}'`.
 - [ ] `FEDERATION_ALLOW_HOSTS` is empty unless you mean limited federation (`curl -s $O/api/v2/instance | jq .configuration.limited_federation` is `false`); a leftover e2e host list silently refuses every other server.
-- [ ] Nothing secret is committed: `git grep -n "BETTER_AUTH_SECRET\|\"d\":" -- packages/worker/wrangler.jsonc` finds nothing.
+- [ ] Nothing secret is committed: `git grep -n "BETTER_AUTH_SECRET\|\"d\":" -- packages/worker/void.config.ts` finds nothing, and `git status --ignored packages/worker` shows `.env` only as ignored.
 - [ ] Secure mode is what you chose ([Authorized fetch](../reference/configuration.md#authorized-fetch-secure-mode); off unless `AUTHORIZED_FETCH=true`). With it on: `curl -s -o /dev/null -w '%{http_code}\n' -H 'Accept: application/activity+json' $O/users/alice/outbox` is `401`, `curl -s -H 'Accept: application/activity+json' $O/users/alice | jq 'keys'` lists only `@context`, `endpoints`, `id`, `inbox`, `outbox`, `preferredUsername`, `publicKey` and `type`, and `$O/actor` and `$O/.well-known/webfinger?resource=acct:alice@$D` still answer `200`. Either way, no Cache Rule caches `/users/*` regardless of the origin's `Cache-Control` (secure-mode answers are `private` and differ per signer).
 
 ### Cloudflare Access paths

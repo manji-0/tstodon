@@ -90,8 +90,9 @@ jobs:
 
       # From nothing to nothing: the stack, the Worker, `pnpm e2e:mastodon`,
       # `pnpm e2e:mastodon:probe`, the logs, the teardown. The script generates
-      # every secret it needs (the certificates, Mastodon's keys,
-      # BETTER_AUTH_SECRET); the workflow reads none from the repository.
+      # every secret it needs (the certificates, Mastodon's keys; Void's dev
+      # server supplies Better Auth's); the workflow reads none from the
+      # repository.
       - name: Interop e2e
         env:
           TSTODON_AUTHORIZED_FETCH: ${{ matrix.tstodon_authorized_fetch }}

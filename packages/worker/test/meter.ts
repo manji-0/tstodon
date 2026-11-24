@@ -93,11 +93,14 @@ export const meterWork = <T>(work: () => Promise<T>): Promise<T> => counting.run
 
 /**
  * The Worker `SELF` requests: the module `@cloudflare/vitest-plugin` imports
- * as `main` (the root Vitest config's `dist/ssr/wrangler.json`), whose
- * `fetch` it looks up on every request.
+ * as `main` (the root Vitest config's `dist/ssr/wrangler.json`). Its default
+ * export is Void's `WorkerEntrypoint` class, whose prototype's `fetch` each
+ * request's instance calls with the request's `ctx` as `this.ctx`.
  */
 const mainModule = "../dist/ssr/index.js";
-const worker: unknown = Reflect.get(await import(/* @vite-ignore */ mainModule), "default");
+const entrypoint: unknown = Reflect.get(await import(/* @vite-ignore */ mainModule), "default");
+const worker: unknown =
+  typeof entrypoint === "function" ? Reflect.get(entrypoint, "prototype") : undefined;
 
 const sqlOf = (statement: unknown): string => {
   const text =
@@ -178,7 +181,7 @@ export const patchD1 = (): void => {
     worker === null ||
     typeof Reflect.get(worker, "fetch") !== "function"
   ) {
-    throw new Error(`${mainModule} exports no default fetch handler to meter`);
+    throw new Error(`${mainModule} exports no default entrypoint class with fetch to meter`);
   }
   patchMethod(
     worker,
@@ -186,7 +189,10 @@ export const patchD1 = (): void => {
     (original) =>
       function (this: unknown, ...args: unknown[]) {
         const tally = meter.tally;
-        keepingAlive(args[2], tally);
+        keepingAlive(
+          typeof this === "object" && this !== null ? Reflect.get(this, "ctx") : undefined,
+          tally,
+        );
         return counting.run(tally, () => Reflect.apply(original, this, args));
       },
   );
