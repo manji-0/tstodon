@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { ApiAdminAccount, type ApiAdminAccountJSON } from "@tstodon/api";
 import { OutboxJob } from "@tstodon/domain";
@@ -14,6 +14,7 @@ import {
   withQueueDrained,
 } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { webfingerAnswer } from "../test/webfinger-fixture";
 import {
   listDomainBlockLimits,
   listLimitingDomainBlockIds,
@@ -1227,6 +1228,45 @@ const expectFullProfile = async (domain: string, actorUri: string): Promise<void
   });
 };
 
+/** Serve each of `actors`' documents with `profiledActor`'s profile, and its WebFinger. */
+const serveProfiledActors = (actors: ReadonlyArray<Remote>) => {
+  const documents = Object.fromEntries(
+    actors.map((actor) => {
+      const host = new URL(actor.actorUri).host;
+      return [
+        actor.actorUri,
+        {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: actor.actorUri,
+          type: "Person",
+          preferredUsername: "profiled",
+          name: "Remote profiled",
+          summary: "<p>hello from afar</p>",
+          inbox: `${actor.actorUri}/inbox`,
+          icon: { type: "Image", url: `https://${host}/avatar.png` },
+          image: { type: "Image", url: `https://${host}/header.png` },
+          attachment: [{ type: "PropertyValue", name: "Site", value: "elsewhere" }],
+          publicKey: {
+            id: `${actor.actorUri}#main-key`,
+            owner: actor.actorUri,
+            publicKeyPem: actor.publicKeyPem,
+          },
+        },
+      ];
+    }),
+  );
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(new Request(input, init).url);
+    if (url.pathname === "/.well-known/webfinger") {
+      return webfingerAnswer(documents, url);
+    }
+    const document = documents[url.href];
+    return document
+      ? Response.json(document, { headers: { "content-type": "application/activity+json" } })
+      : new Response(null, { status: 404 });
+  });
+};
+
 const expectPurgedProfile = async (domain: string, actorUri: string): Promise<void> => {
   const shown = await shownProfile(actorUri);
   expect(shown).toMatchObject({ display_name: "", note: "", fields: [] });
@@ -1283,6 +1323,65 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
     expect(await featuredTagNames(actor.actorUri)).toEqual([]);
     await profiledActor(domain);
     await expectFullProfile(domain, actor.actorUri);
+  });
+
+  // `ProcessAccountService#update_account` skips `set_immediate_attributes!`
+  // and `set_fetchable_attributes!` for a suspended account.
+  it("keeps its profile empty when it is fetched during the suspension", async () => {
+    const domain = "held-refetch.example";
+    const host = `open.${domain}`;
+    await block(host, "noop");
+    const actor = await profiledActor(host);
+    const id = await block(domain, "suspend");
+
+    await profiledActor(host);
+    await changeBlock(id, "noop");
+
+    expect(await accountById(actor.actorUri)).toBe("Shown");
+    await expectPurgedProfile(host, actor.actorUri);
+    await profiledActor(host);
+    await expectFullProfile(host, actor.actorUri);
+  });
+
+  it("keeps the profile an admin suspension found when it is fetched meanwhile", async () => {
+    const domain = "held-own-refetch.example";
+    const actor = await profiledActor(domain);
+    await moderate(actor.actorUri, "suspend");
+
+    await remoteActor("profiled", domain, { note: "changed while suspended" });
+    // The refetch the unsuspension queues is dropped.
+    await withQueueDrained([], () => moderate(actor.actorUri, "unsuspend"));
+
+    await expectFullProfile(domain, actor.actorUri);
+  });
+
+  // `UnsuspendAccountService#refresh_remote_account!` resolves the account
+  // straight away; `ProcessAccountService` refuses one `domain_not_allowed?`.
+  it("gets its profile back from the fetch an admin's unsuspension makes at once", async () => {
+    const domain = "held-unsuspend.example";
+    const host = `open.${domain}`;
+    await block(host, "noop");
+    const actor = await profiledActor(host);
+    const covered = await profiledActor(`covered.${domain}`);
+    await block(domain, "suspend");
+    await expectPurgedProfile(host, actor.actorUri);
+    const fetched = serveProfiledActors([actor, covered]);
+    let asked: URL[] = [];
+
+    try {
+      await withQueueDrained(["RefreshRemoteActor"], async () => {
+        await moderate(actor.actorUri, "unsuspend");
+        await moderate(covered.actorUri, "unsuspend");
+      });
+      asked = fetched.mock.calls.map(([input, init]) => new URL(new Request(input, init).url));
+    } finally {
+      fetched.mockRestore();
+    }
+
+    await expectFullProfile(host, actor.actorUri);
+    await expectPurgedProfile(`covered.${domain}`, covered.actorUri);
+    expect(asked.some((url) => url.href === actor.actorUri)).toBe(true);
+    expect(asked.filter((url) => url.host === `covered.${domain}`)).toEqual([]);
   });
 
   it("is emptied by the hourly sweep for a suspension recorded before", async () => {

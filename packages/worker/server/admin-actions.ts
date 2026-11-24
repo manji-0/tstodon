@@ -32,6 +32,7 @@ import {
   setRemoteActorModeration,
 } from "./remote-actor-moderation-store";
 import { departedAccountActivityStatements } from "./outbox-store";
+import { queueRemoteActorRefresh } from "./remote-actor-refresh";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { emptyRemoteActorContentSql } from "./suspended-actor-content";
 import { announceRemovedBoosts } from "./home-fan-out";
@@ -209,7 +210,10 @@ export const findAdminRemoteActor = async (
  * suspension also runs the actor's purge at once if it is still queued, so
  * what Mastodon's `BlockDomainService` deleted when the block was made
  * (`DeleteAccountService` with `reserve_username`) does not come back
- * (`emptyRemoteActorContentSql`).
+ * (`emptyRemoteActorContentSql`). An unsuspension queues a fetch of the
+ * actor, as `UnsuspendAccountService#refresh_remote_account!`: a suspended
+ * actor's fetches kept its cached profile, and a suspension's purge emptied
+ * it.
  */
 const liftRemoteActor = async (
   env: Env,
@@ -233,6 +237,9 @@ const liftRemoteActor = async (
   }
   if (emptied.length > 0) {
     await announceRemovedBoosts(env, removedBoostsFromRows(done.value[0]?.results));
+  }
+  if (severity === "suspend") {
+    await queueRemoteActorRefresh(env, actorUri);
   }
   return ok(undefined);
 };

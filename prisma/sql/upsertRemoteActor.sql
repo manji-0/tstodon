@@ -18,6 +18,8 @@
 -- The actor's keys are in `remote_actor_keys`; `public_key_id` and
 -- `public_key_pem` are unread (migration 0152) and written as the actor URI
 -- and a placeholder key, which a build from before 0152 can still read.
+-- A suspended actor's profile and `fetched_at` stay as cached
+-- (`suspended_remote_actors`, migration 0179).
 INSERT INTO remote_actors (
   actor_uri, username, domain, inbox_uri, shared_inbox_uri,
   public_key_id, public_key_pem, display_name, fetched_at, created_at, updated_at, profile_json,
@@ -28,13 +30,16 @@ ON CONFLICT(actor_uri) DO UPDATE SET
   domain = excluded.domain,
   inbox_uri = excluded.inbox_uri,
   shared_inbox_uri = excluded.shared_inbox_uri,
-  display_name = excluded.display_name,
-  profile_json = excluded.profile_json,
+  display_name = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)
+    THEN remote_actors.display_name ELSE excluded.display_name END,
+  profile_json = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)
+    THEN remote_actors.profile_json ELSE excluded.profile_json END,
   outbox_uri = excluded.outbox_uri,
   featured_uri = excluded.featured_uri,
   featured_tags_uri = excluded.featured_tags_uri,
   followers_uri = excluded.followers_uri,
   following_uri = excluded.following_uri,
-  fetched_at = excluded.fetched_at,
+  fetched_at = CASE WHEN EXISTS (SELECT 1 FROM suspended_remote_actors s WHERE s.actor_uri = excluded.actor_uri)
+    THEN remote_actors.fetched_at ELSE excluded.fetched_at END,
   last_webfingered_at = excluded.last_webfingered_at,
   updated_at = excluded.updated_at

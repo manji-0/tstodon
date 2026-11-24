@@ -70,6 +70,7 @@ import {
 import { processSendSeveranceNoticesJob } from "./severance-notices";
 import { processPurgeSuspendedActorContentJob } from "./suspended-actor-content";
 import { processRefetchAndVerifyQuoteJob, processRefreshQuoteJob } from "./quote-retry-jobs";
+import { processRefreshRemoteActorJob } from "./remote-actor-refresh";
 import { processFederatePendingStatusesJob } from "./pending-status-federation";
 import { processVerifyProfileLinksJob } from "./profile-link-verification";
 import { processSynchronizeFollowersJob } from "./remote-followers-synchronization";
@@ -426,6 +427,8 @@ export const processOutboxJob = async (
       return processSeverSuspendedActorFollowsJob(env, job);
     case "ResumeSuspendedActorSeverances":
       return processResumeSuspendedActorSeverancesJob(env);
+    case "RefreshRemoteActor":
+      return processRefreshRemoteActorJob(env, job);
     case "SendSeveranceNotices":
       return processSendSeveranceNoticesJob(env, job);
     case "FanOutHome":

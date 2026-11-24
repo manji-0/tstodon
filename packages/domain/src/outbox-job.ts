@@ -421,6 +421,15 @@ const SeverSuspendedActorFollowsSchema = z.object({
 });
 
 /**
+ * Fetch a remote actor an admin unsuspended again at once, as Mastodon's
+ * `UnsuspendAccountService#refresh_remote_account!`.
+ */
+const RefreshRemoteActorSchema = z.object({
+  kind: z.literal("RefreshRemoteActor"),
+  actorUri: z.url(),
+});
+
+/**
  * Queue a fresh `SeverSuspendedActorFollows` for each actor suspended over an
  * hour ago that still has follows with local accounts (hourly cron).
  */
@@ -657,6 +666,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   AuthorizeFollowRequestsSchema,
   SeverSuspendedActorFollowsSchema,
   ResumeSuspendedActorSeverancesSchema,
+  RefreshRemoteActorSchema,
   SendSeveranceNoticesSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,

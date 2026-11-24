@@ -1,3 +1,4 @@
+import type { InstanceIdentity, OutboxJob } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { refreshRemoteActor } from "./remote-actor-fetch";
 import { claimRemoteActorRefresh, listStaleRemoteActorUris } from "./remote-actor-store";
@@ -29,6 +30,51 @@ const CONCURRENCY = 4;
 /** Due actors listed per query. */
 const PAGE = 25;
 
+type RefreshJob = Extract<OutboxJob, { kind: "RefreshRemoteActor" }>;
+
+const fetchOptions = async (env: Env, identity: InstanceIdentity) => ({
+  allowHosts: await federationAllowHosts(env),
+  blockedHosts: await suspendedDomains(env.DB),
+  fetchSigner: instanceActorFetchSigner(env.DB, identity),
+});
+
+/**
+ * Queue a re-fetch of an actor an admin unsuspended, as Mastodon's
+ * `UnsuspendAccountService#refresh_remote_account!` resolves the account
+ * straight away. A send the queue refuses leaves it to the hourly refresh.
+ */
+export const queueRemoteActorRefresh = async (env: Env, actorUri: string): Promise<void> => {
+  const job: RefreshJob = { kind: "RefreshRemoteActor", actorUri };
+  try {
+    await env.OUTBOX_PROCESS_QUEUE.send(job);
+  } catch {
+    console.error(JSON.stringify({ kind: "JobNotQueued", jobKind: job.kind }));
+  }
+};
+
+/**
+ * Re-fetch one actor whatever its last refresh, as a refresh the cron makes
+ * ({@link refreshRemoteActor}). An actor on a host a suspension covers, or
+ * outside the allow list, is not fetched, as Mastodon's
+ * `ProcessAccountService` stops at `domain_not_allowed?`.
+ */
+export const processRefreshRemoteActorJob = async (
+  env: Env,
+  job: RefreshJob,
+): Promise<"ok" | "retry"> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return "retry";
+  }
+  const refreshed = await refreshRemoteActor(
+    env.DB,
+    identity.value,
+    job.actorUri,
+    await fetchOptions(env, identity.value),
+  );
+  return refreshed.isOk() ? "ok" : "retry";
+};
+
 /**
  * Hourly cron path: re-fetch the actors due a refresh (a day after both
  * their last WebFinger confirmation, or their last fetch when WebFinger
@@ -49,11 +95,7 @@ export const refreshStaleRemoteActors = async (
   if (identity.isErr()) {
     return;
   }
-  const options = {
-    allowHosts: await federationAllowHosts(env),
-    blockedHosts: await suspendedDomains(env.DB),
-    fetchSigner: instanceActorFetchSigner(env.DB, identity.value),
-  };
+  const options = await fetchOptions(env, identity.value);
   const deadline = Date.now() + budget.ms;
   let started = 0;
   const withinBudget = () => started < budget.actors && Date.now() < deadline;
