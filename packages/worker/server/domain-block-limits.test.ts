@@ -24,6 +24,7 @@ import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import {
   SUSPENDED_CONTENT_BOOST_PAGE,
+  SUSPENDED_CONTENT_FINISHED_PAGE,
   SUSPENDED_CONTENT_PAGE,
   startSuspendedActorContentPurge,
 } from "./suspended-actor-content";
@@ -1149,12 +1150,42 @@ const heldBothWays = async (actor: Remote): Promise<void> => {
       200,
     );
   }
-  expect(await heldOf(actor.actorUri)).toEqual({
-    blocking: true,
-    muting: true,
-    blocked_by: true,
-    listed: { blocks: true, mutes: true, endorsements: true },
-  });
+  expect(await heldOf(actor.actorUri)).toEqual(ALL_HELD);
+};
+
+const ALL_HELD = {
+  blocking: true,
+  muting: true,
+  blocked_by: true,
+  listed: { blocks: true, mutes: true, endorsements: true },
+};
+
+/** A purge of the actor queued with the cut-off `before`, as a recording page writes it. */
+const queuePurge = async (actorUri: string, before: string): Promise<void> => {
+  await env.DB.prepare("INSERT INTO remote_actor_content_purges (actor_uri, before) VALUES (?, ?)")
+    .bind(actorUri, before)
+    .run();
+};
+
+/** The actor features `#Cats`, as its outbox backfill stores it. */
+const featureTag = async (actorUri: string): Promise<void> => {
+  await env.DB.prepare(
+    "INSERT INTO remote_featured_tags (actor_uri, tag_name, name, position) VALUES (?, 'cats', 'Cats', 0)",
+  )
+    .bind(actorUri)
+    .run();
+};
+
+/** `GET /api/v1/accounts/:id/featured_tags`. */
+const featuredTagNames = async (actorUri: string): Promise<string[]> => {
+  const response = await SELF.fetch(
+    `https://example.com/api/v1/accounts/${RemoteAccountId.encode(actorUri)}/featured_tags`,
+  );
+  expect(response.status).toBe(200);
+  return z
+    .array(z.object({ name: z.string() }))
+    .parse(await response.json())
+    .map((tag) => tag.name);
 };
 
 const ShownProfile = z.object({
@@ -1237,13 +1268,16 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
   it("leaves its profile empty after a lift until it is fetched again", async () => {
     const domain = "held-profile.example";
     const actor = await profiledActor(domain);
+    await featureTag(actor.actorUri);
     await expectFullProfile(domain, actor.actorUri);
+    expect(await featuredTagNames(actor.actorUri)).toEqual(["Cats"]);
     const id = await block(domain, "suspend");
 
     await changeBlock(id, "noop");
 
     expect(await accountById(actor.actorUri)).toBe("Shown");
     await expectPurgedProfile(domain, actor.actorUri);
+    expect(await featuredTagNames(actor.actorUri)).toEqual([]);
     await profiledActor(domain);
     await expectFullProfile(domain, actor.actorUri);
   });
@@ -1262,16 +1296,67 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
     await expectPurgedProfile(domain, actor.actorUri);
   });
 
-  it("is emptied by an admin's unsuspension of an actor whose purge has not run", async () => {
+  it("is emptied by an admin's unsuspension of an actor whose purge is queued", async () => {
     const domain = "held-lift.example";
     const actor = await profiledActor(domain);
     await heldBothWays(actor);
     await recordedSuspension("held-lift-block", domain, [actor.actorUri]);
+    await queuePurge(actor.actorUri, new Date().toISOString());
 
     expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
 
+    expect(await purgeRows(actor.actorUri)).toBe(0);
     expect(await heldOf(actor.actorUri)).toEqual(NOTHING_HELD);
     await expectPurgedProfile(domain, actor.actorUri);
+  });
+
+  it("keeps a block made during the suspension when an admin unsuspends the actor", async () => {
+    const domain = "held-during.example";
+    const actor = await remoteActor("plain", domain);
+    await block(domain, "suspend");
+    const id = RemoteAccountId.encode(actor.actorUri);
+    expect((await viewerFetch(`/api/v1/accounts/${id}/block`, { method: "POST" })).status).toBe(
+      200,
+    );
+
+    expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
+
+    expect(await heldOf(actor.actorUri)).toMatchObject({ blocking: true });
+  });
+
+  it("keeps everything of an actor an admin suspended first, when unsuspended", async () => {
+    const domain = "held-own.example";
+    const actor = await profiledActor(domain);
+    await heldBothWays(actor);
+    await moderate(actor.actorUri, "suspend");
+    await block(domain, "suspend");
+
+    expect(await moderate(actor.actorUri, "unsuspend")).toMatchObject({ suspended: false });
+
+    expect(await heldOf(actor.actorUri)).toEqual(ALL_HELD);
+    await expectFullProfile(domain, actor.actorUri);
+  });
+
+  it("finishes many purges with nothing left a page at a time", async () => {
+    const count = SUSPENDED_CONTENT_FINISHED_PAGE + 7;
+    await env.DB.prepare(
+      `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ?1)
+       INSERT INTO remote_actor_content_purges (actor_uri, before)
+       SELECT 'https://held-done.example/users/u' || n, ?2 FROM series`,
+    )
+      .bind(count, new Date().toISOString())
+      .run();
+    const left = async (): Promise<number> => {
+      const row = await env.DB.prepare(
+        "SELECT count(*) AS n FROM remote_actor_content_purges WHERE actor_uri LIKE 'https://held-done.example/%'",
+      ).first();
+      return z.object({ n: z.number() }).parse(row).n;
+    };
+
+    expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
+    expect(await left()).toBe(7);
+    expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
+    expect(await left()).toBe(0);
   });
 
   it(
@@ -1334,22 +1419,19 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
     },
   );
 
-  it("keeps a block made after the suspension its purge was recorded by", async () => {
-    const actor = await remoteActor("plain", "held-after.example");
-    await env.DB.prepare(
-      "INSERT INTO remote_actor_content_purges (actor_uri, before) VALUES (?, ?)",
-    )
-      .bind(actor.actorUri, "2026-01-01T00:00:00.000Z")
-      .run();
-    const id = RemoteAccountId.encode(actor.actorUri);
-    expect((await viewerFetch(`/api/v1/accounts/${id}/block`, { method: "POST" })).status).toBe(
-      200,
-    );
+  it("keeps what was made, and a profile fetched, after its purge's cut-off", async () => {
+    const domain = "held-after.example";
+    const actor = await profiledActor(domain);
+    await featureTag(actor.actorUri);
+    await queuePurge(actor.actorUri, "2026-01-01T00:00:00.000Z");
+    await heldBothWays(actor);
 
     expect(await processOutboxJob(env, { kind: "PurgeSuspendedActorContent" })).toBe("ok");
 
     expect(await purgeRows(actor.actorUri)).toBe(0);
-    expect(await heldOf(actor.actorUri)).toMatchObject({ blocking: true });
+    expect(await heldOf(actor.actorUri)).toEqual(ALL_HELD);
+    await expectFullProfile(domain, actor.actorUri);
+    expect(await featuredTagNames(actor.actorUri)).toEqual(["Cats"]);
   });
 });
 
