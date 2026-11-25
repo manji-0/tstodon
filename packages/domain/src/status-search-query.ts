@@ -124,13 +124,38 @@ const readFullClause = (
     : { clause: { operator, prefix: undefined, body: body.body }, rest: body.rest };
 };
 
+/**
+ * `phrase = '"' (word space?)* '"'`, where a word holds neither a space nor
+ * a quote: the text up to the next quote, which must not start with a space.
+ * A scan rather than a backtracking pattern, as Parslet's PEG does not
+ * backtrack into the repetition: an unclosed quote is read in linear time.
+ */
+const readPhrase = (
+  input: string,
+): Readonly<{ words: ReadonlyArray<string>; rest: string }> | undefined => {
+  if (!input.startsWith('"')) {
+    return undefined;
+  }
+  const close = input.indexOf('"', 1);
+  if (close === -1) {
+    return undefined;
+  }
+  const inner = input.slice(1, close);
+  if (/^\s/.test(inner)) {
+    return undefined;
+  }
+  return {
+    words: inner.split(/\s+/).filter((word) => word.length > 0),
+    rest: input.slice(close + 1),
+  };
+};
+
 const readBody = (
   input: string,
 ): Readonly<{ body: RawClause["body"]; rest: string }> | undefined => {
-  const phrase = /^"((?:[^\s"]+\s*)*)"/.exec(input);
-  if (phrase !== null) {
-    const words = phrase[1]?.split(/\s+/).filter((word) => word.length > 0) ?? [];
-    return { body: { kind: "Phrase", words }, rest: input.slice(phrase[0].length) };
+  const phrase = readPhrase(input);
+  if (phrase !== undefined) {
+    return { body: { kind: "Phrase", words: phrase.words }, rest: phrase.rest };
   }
   const term = TERM.exec(input);
   if (term !== null) {
@@ -150,6 +175,9 @@ const PREFIXES = new Set(["has", "is", "language", "from", "before", "after", "d
 
 const DAY_MS = 86_400_000;
 
+/** The last instant a JavaScript `Date` holds. */
+const MAX_INSTANT_MS = 8_640_000_000_000_000;
+
 /**
  * `date_from_term`: epoch milliseconds, or an ISO 8601 date or date-time. A
  * date without a time is a whole UTC day (tstodon keeps no time zone per
@@ -159,20 +187,22 @@ const DAY_MS = 86_400_000;
  */
 const dayOrInstant = (term: string): Readonly<{ from: number; until: number }> | undefined => {
   if (/^\d+$/.test(term)) {
+    // Epoch milliseconds Elasticsearch cannot read as a date fail the search,
+    // which Mastodon answers with no status.
     const at = Number(term);
-    return { from: at, until: at + 1 };
+    return at <= MAX_INSTANT_MS ? { from: at, until: at + 1 } : undefined;
   }
   const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(term);
   if (day !== null) {
     const start = Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
-    const valid = new Date(start).toISOString().startsWith(term);
+    const valid = start >= 0 && new Date(start).toISOString().startsWith(term);
     return valid ? { from: start, until: start + DAY_MS } : undefined;
   }
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(term)) {
     return undefined;
   }
   const at = Date.parse(term);
-  return Number.isNaN(at) ? undefined : { from: at, until: at + 1 };
+  return Number.isNaN(at) || at < 0 ? undefined : { from: at, until: at + 1 };
 };
 
 /** `language_code_from_term`: the code as written, downcased, or its first part, when Mastodon supports it. */

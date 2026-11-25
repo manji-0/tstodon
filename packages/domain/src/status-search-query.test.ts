@@ -52,6 +52,24 @@ describe("StatusSearchQuery.parse", () => {
     expect(StatusSearchQuery.parse("during:yesterday").isErr()).toBe(true);
   });
 
+  it("refuses a date a `Date` cannot hold, which Elasticsearch fails on", () => {
+    expect(StatusSearchQuery.parse(`after:${"9".repeat(310)}`).isErr()).toBe(true);
+    expect(StatusSearchQuery.parse("before:8640000000000001").isErr()).toBe(true);
+    expect(StatusSearchQuery.parse("before:1969-12-31").isErr()).toBe(true);
+  });
+
+  // Parslet's PEG does not backtrack into a phrase's words.
+  it("reads a long unclosed quote in linear time", () => {
+    for (const query of [`"${"a".repeat(10_000)}`, `from:"${"a ".repeat(5_000)}`]) {
+      const started = performance.now();
+      expect(StatusSearchQuery.parse(query).isOk()).toBe(true);
+      expect(performance.now() - started).toBeLessThan(100);
+    }
+    expect(parsed('" spaced"').clauses).toEqual([
+      { kind: "Words", occurrence: "Must", words: ["spaced"] },
+    ]);
+  });
+
   it("keeps the last `in:` as the scope", () => {
     expect(parsed("in:public cat in:library")).toEqual({
       scope: "Library",
