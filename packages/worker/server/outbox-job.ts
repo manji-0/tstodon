@@ -31,6 +31,7 @@ import {
   synchronizeRemoteCollectionsJob,
   verifyFeaturedItemJob,
 } from "./remote-curated-collection";
+import { processResolveTaggedCollectionJob } from "./tagged-collections";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { vacuumMediaAttachments } from "./media-vacuum";
 import { vacuumActivities } from "./activity-vacuum";
@@ -404,6 +405,8 @@ export const processOutboxJob = async (
       return verifyFeaturedItemJob(env, job);
     case "SynchronizeRemoteCollections":
       return synchronizeRemoteCollectionsJob(env, job);
+    case "ResolveTaggedCollection":
+      return processResolveTaggedCollectionJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ApEmoji } from "./actor";
 import { ApUri, withContext } from "./context";
+import { ApCuratedCollection } from "./curated-collection";
+import { ApHashtag } from "./hashtag";
 
 /**
  * A media attachment, as Mastodon's `NoteSerializer` federates it: its
@@ -27,13 +29,7 @@ export const ApMention = z.object({
 });
 export type ApMentionJSON = z.infer<typeof ApMention>;
 
-/** A hashtag a note carries (Mastodon's `HashtagSerializer`): the tag page and `#name`. */
-export const ApHashtag = z.object({
-  type: z.literal("Hashtag"),
-  href: ApUri,
-  name: z.string().startsWith("#"),
-});
-export type ApHashtagJSON = z.infer<typeof ApHashtag>;
+export { ApHashtag, type ApHashtagJSON } from "./hashtag";
 
 /**
  * Who may quote the note (GoToSocial's `interactionPolicy`, FEP-044f): as
@@ -86,8 +82,11 @@ const noteFields = {
   inReplyTo: ApUri.nullable(),
   replies: ApReplies,
   attachment: z.array(ApDocument),
-  /** Mentions first, then hashtags, then custom emoji, as Mastodon's `virtual_tags`. */
-  tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag, ApEmoji])),
+  /**
+   * Mentions first, then hashtags, custom emoji and the collections the note
+   * tags, as Mastodon's `virtual_tags`.
+   */
+  tag: z.array(z.discriminatedUnion("type", [ApMention, ApHashtag, ApEmoji, ApCuratedCollection])),
   interactionPolicy: ApInteractionPolicy,
   /** The quoted status (FEP-044f), with Misskey's and Fedibird's names. */
   quote: ApUri.optional(),

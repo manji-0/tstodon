@@ -160,6 +160,7 @@ const richNote = noteDocument(
     media,
     quotePolicy: "public",
     emojis: [blob],
+    taggedCollections: [],
   },
 );
 
@@ -188,20 +189,33 @@ const question = noteDocument(
     visibility: { kind: "Unlisted" },
     poll: { kind: "Present" },
   }),
-  { poll: poll(false, false), media: noMedia, quotePolicy: "followers", emojis: [blob] },
+  {
+    poll: poll(false, false),
+    media: noMedia,
+    quotePolicy: "followers",
+    emojis: [blob],
+    taggedCollections: [],
+  },
 );
 
 const editedNote = noteDocument(identity, alice, note({ editedAt: "2026-11-19T01:00:00.000Z" }), {
   media: noMedia,
   quotePolicy: "nobody",
   emojis: [],
+  taggedCollections: [],
 });
 
 const closedPoll = noteDocument(
   identity,
   alice,
   note({ text: "both?", contentHtml: "<p>both?</p>", poll: { kind: "Present" } }),
-  { poll: poll(true, true), media: noMedia, quotePolicy: "public", emojis: [] },
+  {
+    poll: poll(true, true),
+    media: noMedia,
+    quotePolicy: "public",
+    emojis: [],
+    taggedCollections: [],
+  },
 );
 
 const fullActor = actorDocument(

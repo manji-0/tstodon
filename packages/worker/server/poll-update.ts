@@ -23,6 +23,7 @@ import { loadNotesReplies, repliedNote } from "./note-replies";
 import { loadNoteReply } from "./reply-target";
 import { parseInstanceIdentity } from "./runtime-config";
 import { findStatusById } from "./status-store";
+import { loadNotesTaggedCollections } from "./tagged-collection-documents";
 
 /** Mastodon's `DistributePollUpdateWorker` waits this long, so votes in between share one `Update`. */
 export const POLL_UPDATE_DELAY_SECONDS = 180;
@@ -117,6 +118,10 @@ const distributePollUpdate = async (
       media: media.value,
       quotePolicy: await loadNoteQuotePolicy(env.DB, author.value, note),
       emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+      // Best effort, as the quote.
+      taggedCollections: (await loadNotesTaggedCollections(env.DB, identity, [note.id]))
+        .map((collections) => collections.get(note.id) ?? [])
+        .unwrapOr([]),
     }),
     newEntityId(),
     nowIso(),

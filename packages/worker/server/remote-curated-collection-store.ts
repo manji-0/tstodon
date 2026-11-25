@@ -87,6 +87,7 @@ const withItems = async (
         createdAt: item.created_at,
         ...(item.activity_uri === null ? {} : { activityUri: item.activity_uri }),
         ...(item.approval_uri === null ? {} : { approvalUri: item.approval_uri }),
+        ...(item.uri === null ? {} : { uri: item.uri }),
       })),
     });
     return parsed.isOk() ? [parsed.value] : [];

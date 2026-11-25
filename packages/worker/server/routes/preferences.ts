@@ -1,4 +1,4 @@
-import { Languages, warmSchemas } from "@tstodon/core";
+import { SupportedLocales, warmSchemas } from "@tstodon/core";
 import { FediRole, QuoteApprovalPolicy, Visibility } from "@tstodon/domain";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -130,8 +130,6 @@ const QUOTE_POLICIES = {
   nobody: QuoteApprovalPolicy.Nobody,
 } as const;
 
-const LANGUAGE_CODES: ReadonlySet<string> = new Set(Languages.map(([code]) => code));
-
 const PostingDefaultsFormSchema = z.object({
   privacy: z.string().default(""),
   quote_policy: z.union([z.literal("public"), z.literal("followers"), z.literal("nobody")]),
@@ -139,7 +137,7 @@ const PostingDefaultsFormSchema = z.object({
     .string()
     .trim()
     .default("")
-    .refine((code) => code === "" || LANGUAGE_CODES.has(code)),
+    .refine((code) => code === "" || SupportedLocales.has(code)),
   sensitive: z.literal("1").optional(),
 });
 

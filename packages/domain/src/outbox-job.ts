@@ -5,6 +5,7 @@ import { ActivityId } from "./activity-id";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
 import { StatusId } from "./status-id";
+import { StatusTargetSchema } from "./status-target";
 
 const ExpandFollowersSchema = z.object({
   kind: z.literal("ExpandFollowers"),
@@ -551,6 +552,21 @@ const SynchronizeRemoteCollectionsSchema = z.object({
 });
 
 /**
+ * Tag the collection `uri` names on `status` once it is stored, as
+ * Mastodon's `TaggedCollectionResolveWorker`: a remote note's
+ * `FeaturedCollection` tag not stored yet (`lookup: "Uri"`, a document that
+ * must name itself), or a local post's link to a known server
+ * (`ProcessLinksService` through `ResolveURLService`; `lookup: "Url"`, a
+ * page that may name its document).
+ */
+const ResolveTaggedCollectionSchema = z.object({
+  kind: z.literal("ResolveTaggedCollection"),
+  status: StatusTargetSchema,
+  uri: z.url(),
+  lookup: z.literal(["Uri", "Url"]),
+});
+
+/**
  * Check the links of an account's profile fields, as Mastodon's
  * `VerifyAccountLinksWorker`: each field from `fromIndex` on whose link waits
  * for a check is marked verified when the linked page links back with
@@ -621,6 +637,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ProcessFeaturedItemSchema,
   VerifyFeaturedItemSchema,
   SynchronizeRemoteCollectionsSchema,
+  ResolveTaggedCollectionSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;
