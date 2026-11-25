@@ -408,7 +408,7 @@ At `--scale 1` the seed takes about 40 s. Every relation is a deterministic func
 | `favourites`, `notifications`     | 190,000, 109,950 | The viewer (account 1) has 10,000 notifications, grouped kinds included                               |
 | tags, media, polls, quotes, lists |                  | 75,000 tag rows (5% on one hot tag), 20,000 media, 2,000 polls, 1,990 quotes, 1,000 lists of 20       |
 
-Each request runs once to warm up and then `--runs` times. A row reports the p50 and p95 wall time, the D1 statements and serial rounds made before the response (`(+n)` counts the statements of the work after it), and the rows read and written including that work. Wall time is local Miniflare's (SQLite in process, no D1 round trip), so it ranks requests but does not predict production latency; statements, rounds and rows read are what D1 bills and what grows with data. A job row is one queue invocation.
+Each request runs once to warm up and then `--runs` times. A row reports the p50 and p95 wall time, the D1 statements and serial rounds made before the response (`(+n)` counts the statements of the work after it), and the rows read and written including that work. Wall time is local Miniflare's (SQLite in process, no D1 round trip), so it ranks requests but does not predict production latency; statements, rounds and rows read are what D1 bills and what grows with data. A job row is one queue invocation; a "whole run for one celebrity post" row sums the invocations of that job kind for one post.
 
 ### Results
 

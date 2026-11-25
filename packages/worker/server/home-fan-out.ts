@@ -43,9 +43,9 @@ export const HOME_FAN_OUT_PAGE_SIZE = 3;
 
 /**
  * Followers one `List` step lists. Listing reads every follower of the
- * author, whatever the page (about 2,200 rows for `pnpm bench`'s celebrity),
- * so it is done once for this many and not once per page; 600 is 200 page
- * jobs, two `sendBatch` calls.
+ * author, however few it returns (`pnpm bench`'s celebrity: about 2,200 rows
+ * for a page of 3, 11,900 for all 400), so it is done once for this many and
+ * not once per page; 600 is 200 page jobs, two `sendBatch` calls.
  */
 export const HOME_FAN_OUT_LIST_SIZE = 600;
 
