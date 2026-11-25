@@ -246,7 +246,12 @@ export const upsertRemoteCollection = async (
   return written.map(() => ({ id, before: before.value }));
 };
 
-/** `collection_items.where.not(uri: item_uris).delete_all`. */
+/**
+ * `collection_items.where.not(uri: item_uris).delete_all`. An item with no
+ * uri, a local account's accepted `FeatureRequest` the owner's item will
+ * name, stays while the list names any item (`NOT IN` is not true for NULL),
+ * and goes when it names none, as Rails writes an empty list `NOT (1=0)`.
+ */
 export const deleteRemoteItemsExcept = async (
   db: D1Database,
   collectionId: string,
@@ -256,7 +261,7 @@ export const deleteRemoteItemsExcept = async (
     await db
       .prepare(
         `DELETE FROM remote_collection_items
-         WHERE collection_id = ? AND (uri IS NULL OR uri NOT IN (SELECT value FROM json_each(?)))`,
+         WHERE collection_id = ? AND uri NOT IN (SELECT value FROM json_each(?))`,
       )
       .bind(collectionId, jsonStringArray(uris))
       .run();
@@ -301,7 +306,51 @@ export const listRemoteItemRows = async (
     return parseRows(ItemRow, results);
   });
 
-/** What `ProcessFeaturedItemService` and `VerifyFeaturedItemService` write of an item. */
+/** One item's row, with the uri of its collection, for `VerifyFeaturedItemService`. */
+export const findRemoteItemRow = async (
+  db: D1Database,
+  itemId: string,
+): Promise<
+  Result<Readonly<{ item: RemoteItemRow; collectionUri: string }> | undefined, RepositoryError>
+> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT i.*, c.uri AS collection_uri
+         FROM remote_collection_items i JOIN remote_collections c ON c.id = i.collection_id
+         WHERE i.id = ?`,
+      )
+      .bind(itemId)
+      .all();
+    const [row] = parseRows(ItemRow.extend({ collection_uri: z.string() }), results);
+    return row === undefined ? undefined : { item: row, collectionUri: row.collection_uri };
+  });
+
+/**
+ * `VerifyFeaturedItemService`'s `update!(account:, approval_uri:, state:
+ * :accepted)`: the item is the verified account's. Nothing changes when that
+ * account is in the collection already, or the authorization names another
+ * item, as Mastodon's unique indexes refuse the update.
+ */
+export const acceptRemoteItem = async (
+  db: D1Database,
+  itemId: string,
+  account: Readonly<{ accountId: string | null; actorUri: string | null }>,
+  approvalUri: string,
+  at: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        `UPDATE OR IGNORE remote_collection_items
+         SET account_id = ?, actor_uri = ?, approval_uri = ?, state = 'accepted', updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(account.accountId, account.actorUri, approvalUri, at, itemId)
+      .run();
+  });
+
+/** What `ProcessFeaturedItemService` writes of an item. */
 export type RemoteItemWrite = Readonly<{
   id: string;
   collectionId: string;
@@ -350,7 +399,9 @@ export const saveRemoteItem = async (
 
 /**
  * `FeatureRequest#accept_request!`: a local account accepted into a remote
- * collection, after its last item.
+ * collection, after its last item. None when the account is in the
+ * collection already, whatever the state of its item: Mastodon's `create!`
+ * raises on the unique `(account_id, collection_id)`.
  */
 export const insertAcceptedLocalItem = async (
   db: D1Database,
@@ -367,8 +418,7 @@ export const insertAcceptedLocalItem = async (
            (id, collection_id, account_id, position, state, activity_uri, created_at, updated_at)
          SELECT ?1, ?2, ?3, COALESCE(MAX(position), 0) + 1, 'accepted', ?4, ?5, ?5
          FROM remote_collection_items WHERE collection_id = ?2
-           AND NOT EXISTS (SELECT 1 FROM remote_collection_items
-                           WHERE collection_id = ?2 AND account_id = ?3)`,
+         ON CONFLICT DO NOTHING`,
       )
       .bind(id, collectionId, accountId, activityUri, at)
       .run(),

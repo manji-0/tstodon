@@ -3,19 +3,27 @@ import {
   ACTIVITY_STREAMS,
   type ApContextJSON,
   type ApCuratedCollectionJSON,
+  type ApFeatureAuthorizationDocumentJSON,
   type ApFeaturedItemJSON,
 } from "@tstodon/api/activitypub";
 import {
   Collection,
   type CollectionItem,
-  type InstanceIdentity,
+  InstanceIdentity,
+  type LocalAccount,
   type RemoteCollection,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
-import { blockedAccountIds, findCollections, findItemCollectionIds } from "./collection-store";
+import {
+  blockedAccountIds,
+  findCollectionOfItem,
+  findCollections,
+  findItemCollectionIds,
+} from "./collection-store";
 import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
 import {
+  findRemoteCollectionOfItem,
   findRemoteCollections,
   findRemoteItemCollectionIds,
 } from "./remote-curated-collection-store";
@@ -282,4 +290,40 @@ export const curatedCollectionObject = (
       (item) => featuredItemObject(identity, collection, item, actorUriOf) ?? [],
     ),
   };
+};
+
+/**
+ * `FeatureAuthorizationsController#show`: `account`'s consent to its accepted
+ * item `itemId`, in a local collection or a remote one; none when it has no
+ * such item.
+ */
+export const featureAuthorizationDocument = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  account: LocalAccount,
+  itemId: string,
+): Promise<Result<ApFeatureAuthorizationDocumentJSON | undefined, RepositoryError>> => {
+  const [local, remote] = await Promise.all([
+    findCollectionOfItem(db, itemId),
+    findRemoteCollectionOfItem(db, itemId),
+  ]);
+  if (local.isErr()) {
+    return err(local.error);
+  }
+  if (remote.isErr()) {
+    return err(remote.error);
+  }
+  const collection = local.value ?? remote.value;
+  const item = collection?.items.find((candidate) => candidate.id === itemId);
+  if (!collection || !item || item.accountId !== account.id || item.state !== "accepted") {
+    return ok(undefined);
+  }
+  return ok({
+    "@context": featureAuthorizationContext,
+    id: featureAuthorizationUri(identity, item.accountId, item.id),
+    type: "FeatureAuthorization",
+    interactingObject:
+      collection.kind === "LocalCollection" ? collectionUri(identity, collection) : collection.uri,
+    interactionTarget: InstanceIdentity.actorUrl(identity, account.username),
+  });
 };

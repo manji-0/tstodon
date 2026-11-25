@@ -9,7 +9,7 @@ Configured under `cloudflare` in `packages/worker/void.config.ts` (Void's projec
 - `DB` — D1
 - `MEDIA` — R2
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out, `ProcessExpiredPolls` and the other outbox jobs)
-- `PULL_QUEUE` — Queue producer/consumer `tstodon-pull` for fetch work a remote server sets off, kept off the outbox queue: a remote reply's thread job (`ResolveRemoteThread`). Batches of 1, `max_retries` 3, `max_concurrency` 2; it dead-letters to `tstodon-outbox-dlq`, and a requeued job goes to the outbox queue
+- `PULL_QUEUE` — Queue producer/consumer `tstodon-pull` for fetch work a remote server sets off, kept off the outbox queue: a remote reply's thread job (`ResolveRemoteThread`) and a remote collection's item jobs (`ProcessFeaturedItem`, `VerifyFeaturedItem`). Batches of 1, `max_retries` 3, `max_concurrency` 2; it dead-letters to `tstodon-outbox-dlq`, and a requeued job goes to the outbox queue
 - `OUTBOX_DLQ` — producer of `tstodon-outbox-dlq`, the outbox queue's dead-letter queue (see [Outbox dead-letter queue](#outbox-dead-letter-queue))
 - `STREAM_HUB` — Durable Object
 - `RATE_LIMIT_COUNTER` — Durable Object `RateLimitCounter`, the rate-limit counters (see [Rate limits](#rate-limits))

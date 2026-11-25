@@ -10,6 +10,7 @@ import { notifyAddedToCollection } from "../collection-notify";
 import { parseRows, type RepositoryError, runD1 } from "../d1";
 import { z } from "zod";
 import { enqueueTargetedActivity } from "../delivery";
+import { newEntityId } from "../ids";
 import {
   addRemoteCollectionItem,
   fetchRemoteCollection,
@@ -25,7 +26,7 @@ import type { InboxHandler, RemoteDelivery } from "./handler";
 
 type Handled = Promise<Result<boolean, RepositoryError>>;
 
-const fetchOptions = (delivery: RemoteDelivery<"Add" | "Remove" | "FeatureRequest">) => ({
+const fetchOptions = (delivery: RemoteDelivery<"FeatureRequest">) => ({
   allowHosts: delivery.allowHosts,
   blockedHosts: delivery.blockedHosts,
   fetchSigner: delivery.fetchSigner,
@@ -37,19 +38,13 @@ const fetchOptions = (delivery: RemoteDelivery<"Add" | "Remove" | "FeatureReques
  * when the target is neither.
  */
 export const receiveCollectionAdd = async (delivery: RemoteDelivery<"Add">): Handled => {
-  const { env, identity, signer, received } = delivery;
+  const { env, signer, received } = delivery;
   const target = refId(received.target);
   if (target === undefined) {
     return ok(false);
   }
   if (target === signer.profile.featuredCollectionsUri) {
-    const processed = await processRemoteCollection(
-      env,
-      identity,
-      signer,
-      received.object,
-      fetchOptions(delivery),
-    );
+    const processed = await processRemoteCollection(env, signer, received.object);
     return processed.map(() => true);
   }
   const collection = await findRemoteCollectionByUri(env.DB, target);
@@ -59,13 +54,7 @@ export const receiveCollectionAdd = async (delivery: RemoteDelivery<"Add">): Han
   if (collection.value === undefined || collection.value.actorUri !== signer.actorUri) {
     return ok(false);
   }
-  const added = await addRemoteCollectionItem(
-    env,
-    identity,
-    collection.value,
-    received.object,
-    fetchOptions(delivery),
-  );
+  const added = await addRemoteCollectionItem(env, collection.value, received.object);
   return added.map(() => true);
 };
 
@@ -96,7 +85,7 @@ export const receiveCollectionRemove = async (delivery: RemoteDelivery<"Remove">
  * host. `false` for any other object.
  */
 export const receiveCollectionUpdate = async (delivery: RemoteDelivery<"Update">): Handled => {
-  const { env, identity, signer, received } = delivery;
+  const { env, signer, received } = delivery;
   const object: unknown = received.object;
   const type: unknown =
     typeof object === "object" && object !== null ? Reflect.get(object, "type") : undefined;
@@ -106,11 +95,7 @@ export const receiveCollectionUpdate = async (delivery: RemoteDelivery<"Update">
   if (Hostname.ofUri(refId(object) ?? "") !== Hostname.ofUri(signer.actorUri)) {
     return ok(true);
   }
-  const processed = await processRemoteCollection(env, identity, signer, object, {
-    allowHosts: delivery.allowHosts,
-    blockedHosts: delivery.blockedHosts,
-    fetchSigner: delivery.fetchSigner,
-  });
+  const processed = await processRemoteCollection(env, signer, object);
   return processed.map(() => true);
 };
 
@@ -167,7 +152,9 @@ const mayBeFeatured = async (
  * local account in a collection of its own, stored or fetched. Allowed, the
  * account is added `accepted`, notified, and its `Accept` names its
  * authorization; refused, its `Reject` goes back. Either is signed by the
- * featured account and sent to the owner's inbox.
+ * featured account and sent to the owner's inbox. A request for an account
+ * the collection holds already, in any state, is not answered: Mastodon's
+ * `create!` raises on its unique index.
  */
 export const receiveFeatureRequest: InboxHandler<RemoteDelivery<"FeatureRequest">> = async (
   delivery,
@@ -206,8 +193,10 @@ export const receiveFeatureRequest: InboxHandler<RemoteDelivery<"FeatureRequest"
       "Reject",
       {
         "@context": "https://www.w3.org/ns/activitystreams",
-        // `RejectFeatureRequestSerializer` on an item never saved: no id after the slash.
-        id: `${featuredUri}#rejects/feature_requests/`,
+        // `RejectFeatureRequestSerializer` names an item never saved, so its
+        // id ends at the slash and is the same for every Reject; an inbox
+        // that drops a repeated id would drop all but the first.
+        id: `${featuredUri}#rejects/feature_requests/${newEntityId()}`,
         type: "Reject",
         actor: featuredUri,
         to: signer.actorUri,
