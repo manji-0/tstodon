@@ -278,22 +278,22 @@ Covered in depth in Doc A. Heavy-scenario note: under mention fan-out or poll at
 
 ## Mitigations matrix
 
-| Technique                                   | Status                        | Where                                                                         |
-| ------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------- |
-| `runD1Batch` / `runD1BatchChunked`          | **In code**                   | mentions, status+media, outbox insert, polls, markers, lists, count preloads  |
-| UPSERT / OR IGNORE / conditional UPDATE     | **In code**                   | markers, favourites, bookmarks, inbox, outbox targets, remote_*, poll votes   |
-| Shared-inbox URI coalesce                   | **In code**                   | `listAcceptedRemoteFollowerInboxes` (`shared_inbox_uri ?? inbox_uri` → `Set`) |
-| `sqlInJsonEach` + `jsonStringArray`         | **In code**                   | account/status/media/count membership; `d1-sql.test.ts` regression            |
-| TypedSQL fixed statements                   | **In code**                   | `prisma/sql` + `queryTyped`/`runTyped`/`d1PrepareTyped`                       |
-| `mastodonStatuses` preload                  | **In code**                   | `local-status-documents.ts`                                                   |
-| Queue + Workflow fan-out                    | **In code**                   | `ExpandFollowers`, `DeliverTarget`, poll cron enqueue                         |
-| StreamHub DO                                | **In code**                   | per-account streaming, not general D1 hot-key locking                         |
-| Batch outbox target inserts                 | **Proposed**                  | Doc A PR3 (this doc does not re-own it)                                       |
-| Delete local-follower expand loop           | **Decided** (Doc B PR3)       | §2 — remote shared-inbox path only                                            |
-| `mastodonStatuses` for poll expiry page     | **Proposed**                  | §4                                                                            |
-| Create saga reorder + enqueue observability | **Proposed**                  | Doc A PR5 (sole owner of `enqueueLocalActivity` fix)                          |
-| Hashtag/FTS index                           | **Proposed (later)**          | §6                                                                            |
-| DO for hot D1 keys                          | **Proposed only if measured** | e.g. single poll row write storms; not default                                |
+| Technique                                   | Status                        | Where                                                                            |
+| ------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| `runD1Batch` / `runD1BatchChunked`          | **In code**                   | mentions, status+media, outbox insert, polls, markers, lists, count preloads     |
+| UPSERT / OR IGNORE / conditional UPDATE     | **In code**                   | markers, favourites, bookmarks, inbox, outbox targets, remote_*, poll votes      |
+| Shared-inbox URI coalesce                   | **In code**                   | `listAcceptedRemoteFollowerInboxes` (`shared_inbox_uri ?? inbox_uri` → `Set`)    |
+| `sqlInJsonEach` + `jsonStringArray`         | **In code**                   | account/status/media/count membership; `d1-sql.test.ts` regression               |
+| TypedSQL fixed statements                   | **In code**                   | `prisma/sql` + `queryTyped`/`runTyped`/`d1PrepareTyped`                          |
+| `mastodonStatuses` preload                  | **In code**                   | `local-status-documents.ts`                                                      |
+| Queue + Workflow fan-out                    | **In code**                   | `ExpandFollowers`, `DeliverTarget`, poll cron enqueue                            |
+| StreamHub DO                                | **In code**                   | per-account streaming, not general D1 hot-key locking                            |
+| Batch outbox target inserts                 | **In code**                   | `ensureOutboxTargets`: up to 500 targets per statement ([Benchmark](#benchmark)) |
+| Delete local-follower expand loop           | **Decided** (Doc B PR3)       | §2 — remote shared-inbox path only                                               |
+| `mastodonStatuses` for poll expiry page     | **Proposed**                  | §4                                                                               |
+| Create saga reorder + enqueue observability | **Proposed**                  | Doc A PR5 (sole owner of `enqueueLocalActivity` fix)                             |
+| Hashtag/FTS index                           | **Proposed (later)**          | §6                                                                               |
+| DO for hot D1 keys                          | **Proposed only if measured** | e.g. single poll row write storms; not default                                   |
 
 ## Durable Objects vs D1 (boundary)
 
@@ -376,6 +376,91 @@ Reading the results:
 - `retry` points that cluster on one `blob1` with growing `double2` suggest D1 contention rather than a bad job.
 - `timeline.*` latency includes authentication and document assembly, not only SQL.
 
+## Benchmark
+
+<!-- derived-from #answering-the-d1-open-questions -->
+
+No production deployment exists yet, so the D1 open questions (D1-1 to D1-5) are answered here, where they can be, from a local benchmark. `pnpm bench` seeds a realistic dataset into the Miniflare D1 the Worker tests use and drives the hot paths through the built Worker (`packages/worker/server/perf.bench.test.ts`, seeding in `packages/worker/test/bench-seed.ts`, runner `scripts/bench.mjs`). It is skipped in CI's run (`BENCH=1` turns it on).
+
+```sh
+pnpm bench                      # build, seed the full dataset, 7 runs per request
+pnpm bench --scale 0.1 --runs 3 # a tenth of the data
+pnpm bench --no-build --plan    # reuse dist/, print the costliest statements' query plans
+pnpm bench --analyze            # run ANALYZE after seeding, as PRAGMA optimize leaves a database
+pnpm bench --only home          # only the requests and jobs whose label contains "home"
+pnpm bench --json out.json      # also write the parsed results
+```
+
+### Dataset
+
+At `--scale 1` the seed takes about 40 s. Every relation is a deterministic function of row numbers, so two runs, or two branches, read the same data.
+
+| Table                             |             Rows | Shape                                                                                                 |
+| --------------------------------- | ---------------: | ----------------------------------------------------------------------------------------------------- |
+| `accounts`                        |            2,000 | Every fifth one has its home stream open                                                              |
+| `remote_actors`                   |           20,001 | 400 domains with shared inboxes, plus one "hot" actor                                                 |
+| `statuses`                        |          200,000 | Over 30 days; 80% public, 10% unlisted, 7% private, 3% direct; every 20th a boost, every 10th a reply |
+| `remote_statuses`                 |          300,000 | Over the same 30 days; 10% with media                                                                 |
+| `follows`                         |          201,799 | Every account follows 100 others and the "celebrity" (account 2)                                      |
+| `remote_follows`                  |           39,990 | Every remote actor follows the celebrity and one other account: 22,000 followers for the celebrity    |
+| `outbound_follows`                |          101,500 | Every account follows 50 remote actors; 1,500 follow the hot actor                                    |
+| `favourites`, `notifications`     | 190,000, 109,950 | The viewer (account 1) has 10,000 notifications, grouped kinds included                               |
+| tags, media, polls, quotes, lists |                  | 75,000 tag rows (5% on one hot tag), 20,000 media, 2,000 polls, 1,990 quotes, 1,000 lists of 20       |
+
+Each request runs once to warm up and then `--runs` times. A row reports the p50 and p95 wall time, the D1 statements and serial rounds made before the response (`(+n)` counts the statements of the work after it), and the rows read and written including that work. Wall time is local Miniflare's (SQLite in process, no D1 round trip), so it ranks requests but does not predict production latency; statements, rounds and rows read are what D1 bills and what grows with data. A job row is one queue invocation.
+
+### Results
+
+Before is `06cd52e5`, after is this change. Both are medians of 5 runs at `--scale 1` on one 4-core container; a job row is one queue invocation. The last column repeats rows read with `--analyze`.
+
+| Request                                    | p50 ms before / after | Statements before / after | Rounds   | Rows read before / after | Rows written    | Rows read, analyzed |
+| ------------------------------------------ | --------------------: | ------------------------: | -------- | -----------------------: | --------------- | ------------------: |
+| verify_credentials                         |               12 / 10 |                     5 / 5 | 2 / 2    |                    9 / 9 | 0 / 0           |               9 / 9 |
+| home                                       |              130 / 81 |                   51 / 51 | 4 / 4    |           84,743 / 4,479 | 0 / 0           |      88,699 / 4,477 |
+| home, `max_id` 15 days back                |               91 / 50 |                   53 / 53 | 5 / 5    |           44,317 / 4,550 | 0 / 0           |      48,274 / 4,549 |
+| home, another account following 100        |              127 / 45 |                   51 / 51 | 4 / 4    |           84,396 / 4,434 | 0 / 0           |      88,352 / 4,432 |
+| home, following one quiet account          |               50 / 41 |                   48 / 49 | 4 / 5    |            3,130 / 2,366 | 0 / 0           |       7,096 / 2,374 |
+| home, following 20 accounts                |               60 / 47 |                   49 / 50 | 4 / 5    |           13,794 / 5,016 | 0 / 0           |      17,748 / 5,012 |
+| public                                     |               35 / 37 |                   45 / 45 | 3 / 3    |            1,481 / 1,481 | 0 / 0           |       5,447 / 1,489 |
+| public local                               |               25 / 22 |                   27 / 27 | 7 / 7    |            1,150 / 1,150 | 0 / 0           |       3,119 / 1,150 |
+| public remote                              |               40 / 22 |                   22 / 22 | 6 / 6    |            1,300 / 1,300 | 0 / 0           |       3,279 / 1,310 |
+| tag (5% of statuses)                       |               48 / 35 |                   49 / 49 | 4 / 4    |            1,542 / 1,542 | 0 / 0           |       5,502 / 1,544 |
+| tag (rare)                                 |                11 / 7 |                     4 / 4 | 3 / 3    |                    4 / 4 | 0 / 0           |               4 / 4 |
+| list                                       |               61 / 44 |                   50 / 50 | 4 / 4    |            5,508 / 5,508 | 0 / 0           |       9,460 / 5,502 |
+| notifications v1                           |               35 / 29 |                   37 / 37 | 7 / 7    |                600 / 600 | 0 / 0           |         2,587 / 600 |
+| notifications v1, mentions                 |               35 / 25 |                   39 / 39 | 8 / 8    |            1,038 / 1,038 | 0 / 0           |       3,022 / 1,038 |
+| notifications v2 (grouped)                 |               36 / 33 |                   36 / 36 | 7 / 7    |            2,627 / 2,551 | 0 / 0           |       4,613 / 2,463 |
+| notifications unread count                 |                 8 / 8 |                     3 / 3 | 3 / 3    |                504 / 504 | 0 / 0           |           504 / 504 |
+| account statuses (celebrity)               |               30 / 28 |                   31 / 31 | 10 / 10  |                844 / 844 | 0 / 0           |         2,813 / 844 |
+| account statuses, `exclude_replies`        |               28 / 27 |                   28 / 28 | 9 / 9    |                833 / 833 | 0 / 0           |         2,802 / 833 |
+| status context, 60-deep leaf               |               57 / 47 |                   46 / 46 | 16 / 16  |            4,147 / 4,147 | 0 / 0           |       8,001 / 4,151 |
+| status context, root of 300                |               87 / 66 |                   50 / 50 | 17 / 17  |          20,596 / 20,596 | 0 / 0           |     23,956 / 20,909 |
+| favourites                                 |               21 / 21 |                   27 / 27 | 6 / 6    |            1,067 / 1,067 | 0 / 0           |       3,036 / 1,067 |
+| search statuses                            |             117 / 104 |                   27 / 27 | 7 / 7    |        193,211 / 193,211 | 0 / 0           |     80,478 / 78,494 |
+| search accounts                            |               20 / 11 |                     8 / 8 | 6 / 6    |                293 / 293 | 0 / 0           |           293 / 293 |
+| `POST /api/v1/statuses` (celebrity)        |               63 / 47 |      47 (+563) / 47 (+87) | 20 / 20  |           10,702 / 5,500 | 23 / 22         |      54,482 / 5,508 |
+| inbox `Create` (actor 1,500 locals follow) |               37 / 32 |      27 (+481) / 27 (+73) | 17 / 17  |            9,768 / 6,929 | 19 / 19         |     235,397 / 6,912 |
+| `ExpandFollowers`, one job                 |             294 / 251 |                   406 / 7 | 10 / 7   |          60,008 / 60,408 | 2,002 / 2,002   |     60,008 / 60,408 |
+| `ExpandFollowers`, five jobs               |             683 / 628 |                2,030 / 35 | 50 / 35  |        300,044 / 302,044 | 10,010 / 10,010 |   300,044 / 302,044 |
+| `FanOutHome`, one page                     |             700 / 229 |                  562 / 86 | 102 / 17 |            7,752 / 2,862 | 0 / 0           |      47,556 / 2,872 |
+| `FanOutHome`, five pages                   |           2,981 / 550 |               2,782 / 430 | 505 / 85 |          42,493 / 14,939 | 0 / 0           |    243,526 / 15,589 |
+
+Wall time on Miniflare is noisy (p95 is up to 1.8 times p50), so read it only where it moves by more than that: the home, fan-out and expansion rows.
+
+### What changed, and why
+
+- **Home timeline.** The query sought every followed author's statuses by index and sorted them all before its `LIMIT`, so a page read every status its followees wrote above the cursor (84,743 rows). `listHomeStatuses` now reads back from the page's top in windows (`HOME_PAGE_WINDOWS_MS`: 6 hours, then 7 days, then the rest), each only for what the page still lacks. `home-page-windows.test.ts` fails on the old query (14,996 more rows after 3,000 older notes). A page with almost no entries pays up to two more statements, and each followed hashtag costs about 17 rows instead of 11 (`d1-budget.test.ts`).
+- **Outbox targets.** `ensureOutboxTargets` made one statement per follower inbox, so `ExpandFollowers` for 400 domains made 406 statements, and five such jobs in one invocation 2,030, past D1's 1,000 per invocation. It now inserts up to 500 targets per statement (`outbox-targets-budget.test.ts`).
+- **Mostly-NULL indexes.** With statistics, SQLite counts an indexed column's NULLs as one value, so it scanned instead of seeking two lookups: the reply count that `remote_statuses_insert_replies_count` keeps on every stored remote status (180,034 rows per inbox `Create`) and the quote lookup every rendered page makes (about 2,000 rows per lookup). Migrations 0015 and 0016 make those indexes partial (`analyzed-plans.test.ts`).
+- **Home fan-out page.** A `FanOutHome` page renders the entry for each follower with a home stream open, about 28 statements each, so a page of 20 made 562 and a batch of five 2,782, past the limit. `HOME_FAN_OUT_PAGE_SIZE` is now 3 (`home-fan-out-budget.test.ts`). The price is more pages: the celebrity's 400 streaming followers take 134 pages, not 20, and each page lists its followers again (about 2,200 of its 2,862 rows), so one post's fan-out reads about 383,000 rows in total, not 155,000 (with statistics, 385,000 instead of 951,000, since each render also scanned the quotes before migration 0016). Listing the followers once per job, or the indexes `follows (target_account_id, follower_account_id)`, `outbound_follows (actor_uri, account_id)` and `followed_tags (tag_name, account_id)` (2,167 to 1,111 rows per page, measured), would win that back.
+
+### What the evidence settles
+
+- **D1-1 (fan-out and expansion chunking): answered for statements.** `ExpandFollowers` needs no secondary chunking: one job for 22,000 remote followers on 400 domains makes 7 statements and reads 60,408 rows (three per follower) in about 250 ms of local wall time, and five such jobs make 35 statements in one invocation. `FanOutHome` did need a cap, now its page size. Rows read still grow with followers; whether 60,000 rows per post is acceptable is a billing question for the operator.
+- **D1-4 (preload `Promise.all` or one `runD1Batch`): still open.** The preload is one serial round already (the home page makes 51 statements in 4 rounds), so a batch would not cut rounds. What it would save is per-statement subrequest overhead on the deployed binding, which Miniflare does not have. Measure on a deployment with `timeline.home`.
+- **D1-5 (hot-key Durable Object): still open, no hot key seen.** A post by the celebrity writes 22 rows and an inbox `Create` 19; the largest write is `ExpandFollowers`' 2,002 rows (400 targets and their index entries). No row is written more than once per request; the per-account and per-status counters the triggers keep are the only shared rows. Miniflare runs one writer, so it cannot show contention.
+- **Not measured here:** status text search reads 193,211 rows per query (78,494 with statistics), the D1-3 item another change owns; status context for a 300-reply thread reads about 20,600 rows, spread over 50 statements with no single offender.
+
 ## Security & Privacy Considerations
 
 - Heavy read paths must still enforce visibility (`visibility-guard` / query filters); preload must not skip authz.
@@ -398,8 +483,8 @@ Rollback for code PRs: revert store/delivery changes; D1 data from `INSERT OR IG
 
 <!-- Leave numeric SLOs / caps / FTS timing unresolved — do not invent values. -->
 
-1. What follower-count / expand-CPU SLO should force **secondary queue chunking or fan-out caps**? (Shared-inbox URI coalesce is already implemented — this question is not about adding coalescing.)
-2. Should timeline preload switch from `Promise.all` reads to a single `runD1Batch` for the five aggregates? **Defer until metrics exist** (Doc B PR5): decide only if traces show fewer D1 round-trips or a unified preload `RepositoryError` is worth the change. Not a bikeshed without a success criterion.
+1. What follower-count / expand-CPU SLO should force **secondary queue chunking or fan-out caps**? (Shared-inbox URI coalesce is already implemented — this question is not about adding coalescing.) **Answered locally for statements** ([Benchmark](#what-the-evidence-settles)): `ExpandFollowers` needs no further chunking; `FanOutHome` pages are capped at 3 followers. A rows-read budget per post is still the operator's call.
+2. Should timeline preload switch from `Promise.all` reads to a single `runD1Batch` for the five aggregates? **Defer until metrics exist** (Doc B PR5): decide only if traces show fewer D1 round-trips or a unified preload `RepositoryError` is worth the change. Not a bikeshed without a success criterion. Local evidence cannot settle it: the preload is already one serial round ([Benchmark](#what-the-evidence-settles)).
 3. Hard API max on list member mutation size?
 4. When to promote hashtag rows from “proposed later” to scheduled work?
 

@@ -57,6 +57,7 @@ pnpm fmt:check
 pnpm dev
 pnpm build
 pnpm e2e:web
+pnpm bench
 pnpm db:migrate:local
 pnpm wrangler:worker <args>
 pnpm run ci
