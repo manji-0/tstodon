@@ -10,6 +10,7 @@ import { remoteActorFromDocument } from "./remote-actor-fetch";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 import { upsertRemoteActor } from "./remote-actor-store";
 import { handleScheduled } from "./scheduled-handler";
+import { withQueueDrained } from "../test/queue-hold";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -379,29 +380,51 @@ describe("a re-fetch whose WebFinger confirmation cannot complete", () => {
     expect(await acctOf(remote.actorUri)).toBe(`dave@wf-${slug}.example`);
   });
 
-  it.each([404, 410])(
-    "leaves the actor as it was when the account domain answers %i",
-    async (status) => {
-      // Mastodon's refresh (`ResolveAccountService`) asks the stored handle
-      // first: a 404 raises and changes nothing. A 410 there deletes the
-      // account (`queue_deletion!`), which tstodon does not (FED-9).
-      const host = `social.wf-gone${status}.example`;
-      const domain = `wf-gone${status}.example`;
-      const remote = await remoteActor("dave", host, { accountDomain: domain, fetchedAt: EPOCH });
-      const before = await displayNameOf(remote.actorUri);
-      serveRemotes([{ remote, username: "dave", name: "Dave, renamed" }], {
-        [host]: { subject: `acct:dave@${domain}`, self: remote.actorUri },
-        [domain]: { status },
-      });
+  it("leaves the actor as it was when the account domain answers 404", async () => {
+    // Mastodon's refresh (`ResolveAccountService`) asks the stored handle
+    // first: a 404 raises and changes nothing.
+    const host = "social.wf-gone404.example";
+    const domain = "wf-gone404.example";
+    const remote = await remoteActor("dave", host, { accountDomain: domain, fetchedAt: EPOCH });
+    const before = await displayNameOf(remote.actorUri);
+    serveRemotes([{ remote, username: "dave", name: "Dave, renamed" }], {
+      [host]: { subject: `acct:dave@${domain}`, self: remote.actorUri },
+      [domain]: { status: 404 },
+    });
 
-      await refreshStaleRemoteActors(env);
+    await withQueueDrained(["PurgeRemoteActor"], () => refreshStaleRemoteActors(env));
 
-      expect({
-        acct: await acctOf(remote.actorUri),
-        name: await displayNameOf(remote.actorUri),
-      }).toEqual({ acct: `dave@${domain}`, name: before });
-    },
-  );
+    expect({
+      acct: await acctOf(remote.actorUri),
+      name: await displayNameOf(remote.actorUri),
+    }).toEqual({ acct: `dave@${domain}`, name: before });
+  });
+
+  it("purges the actor when the account domain answers 410", async () => {
+    // A 410 for the stored handle deletes the account (`queue_deletion!`).
+    const host = "social.wf-gone410.example";
+    const domain = "wf-gone410.example";
+    const remote = await remoteActor("dave", host, { accountDomain: domain, fetchedAt: EPOCH });
+    serveRemotes([{ remote, username: "dave", name: "Dave, renamed" }], {
+      [host]: { subject: `acct:dave@${domain}`, self: remote.actorUri },
+      [domain]: { status: 410 },
+    });
+
+    await withQueueDrained(["PurgeRemoteActor"], () => refreshStaleRemoteActors(env));
+
+    expect(await isCached(remote.actorUri)).toBe(false);
+  });
+
+  it("purges the actor when its own document answers 410", async () => {
+    // Mastodon's `FetchRemoteActorService` deletes an actor whose document answers 410.
+    const host = "social.wf-doc410.example";
+    const remote = await remoteActor("dave", host, { fetchedAt: EPOCH });
+    serveRemotes([], { [host]: { subject: `acct:dave@${host}`, self: remote.actorUri } }, 410);
+
+    await withQueueDrained(["PurgeRemoteActor"], () => refreshStaleRemoteActors(env));
+
+    expect(await isCached(remote.actorUri)).toBe(false);
+  });
 
   it("leaves an actor as it was when its URI host links its own handle to another actor", async () => {
     // Every refetch but an actor's own `Update` runs `check_webfinger!`,
@@ -485,7 +508,9 @@ const isCached = async (actorUri: string): Promise<boolean> =>
 
 /**
  * Mastodon's `check_webfinger!` raises when WebFinger does not answer, and
- * `ProcessAccountService` stores no account. A later request asks again.
+ * `ProcessAccountService` stores no account; the inbox answers 401
+ * (`SignatureVerificationError`), which the sender retries. A later request
+ * asks again.
  */
 describe("a first-seen actor whose WebFinger does not answer", () => {
   it.each([
@@ -493,7 +518,7 @@ describe("a first-seen actor whose WebFinger does not answer", () => {
     ["answers 503", "503", { status: 503 }],
     ["answers 403", "403", { status: 403 }],
   ] as const)(
-    "is not stored when it %s, and its delivery is answered 503 until WebFinger answers",
+    "is not stored when it %s, and its delivery is answered 401 until WebFinger answers",
     async (_, slug, failure) => {
       const host = `social.wf-new-${slug}.example`;
       const remote = await remoteActor("nina", host, { cache: false });
@@ -511,7 +536,7 @@ describe("a first-seen actor whose WebFinger does not answer", () => {
         status: refused.status,
         retryAfter: refused.headers.get("Retry-After"),
         cached: await isCached(remote.actorUri),
-      }).toEqual({ status: 503, retryAfter: "5", cached: false });
+      }).toEqual({ status: 401, retryAfter: null, cached: false });
 
       serveRemote(remote, "nina", {
         [host]: { subject: `acct:nina@${host}`, self: remote.actorUri },
@@ -1219,9 +1244,8 @@ describe("an instance rule on either host of a poll's or a mention's actor", () 
 /**
  * Mastodon's refresh asks the stored handle's WebFinger first and raises on
  * a 404, and `check_webfinger!` raises when a lookup fails: either way the
- * account stays as it was. A lookup of the handle itself, answered 404,
- * still moves it here (see "an actor a handle lookup's 404 moved to its URI
- * host").
+ * account stays as it was, as it does after a lookup of the handle itself
+ * answered 404 (see "a holder a handle lookup's domain disowns").
  */
 describe("a former holder of a handle whose URI host's own WebFinger fails", () => {
   it.each([503, 403, 302])(
@@ -1313,35 +1337,53 @@ describe("a round trip that cannot finish while another actor takes its handle",
   });
 });
 
-describe("an actor a handle lookup's 404 moved to its URI host", () => {
-  it("takes its account domain back when a resolve=true search asks for it", async () => {
+/**
+ * Mastodon's `ResolveAccountService` on a handle due a refresh: a 404 raises
+ * `Webfinger::Error` and leaves the cached holder; a 410 deletes it
+ * (`queue_deletion!`). Either way the handle resolves to nothing.
+ */
+describe("a holder a handle lookup's domain disowns", () => {
+  it("keeps its handle, and is not mentioned, when the domain answers 404", async () => {
     const remote = await remoteActor("alice", "social.wf-n3.example", {
       accountDomain: "wf-n3.example",
       fetchedAt: EPOCH,
     });
-    const confirmed = { subject: "acct:alice@wf-n3.example", self: remote.actorUri };
     serveRemote(remote, "alice", {
-      "social.wf-n3.example": confirmed,
+      "social.wf-n3.example": { subject: "acct:alice@wf-n3.example", self: remote.actorUri },
       "wf-n3.example": { status: 404 },
     });
-    expect(await mentioned("wf-n3-poster@example.com", "hi @alice@wf-n3.example")).toEqual([]);
-    expect(await acctOf(remote.actorUri)).toBe("alice@social.wf-n3.example");
-    serveRemote(remote, "alice", {
-      "social.wf-n3.example": confirmed,
-      "wf-n3.example": confirmed,
-    });
 
-    const searched = await read(
-      z.object({ accounts: z.array(z.object({ acct: z.string() })) }),
-      await call("/api/v2/search?q=@alice@wf-n3.example&resolve=true", {
-        headers: await authHeaders("wf-n3-searcher@example.com"),
-      }),
+    const mentions = await withQueueDrained(["PurgeRemoteActor"], () =>
+      mentioned("wf-n3-poster@example.com", "hi @alice@wf-n3.example"),
     );
 
-    expect({
-      searched: searched.accounts.map((account) => account.acct),
-      acct: await acctOf(remote.actorUri),
-    }).toEqual({ searched: ["alice@wf-n3.example"], acct: "alice@wf-n3.example" });
+    expect({ mentions, acct: await acctOf(remote.actorUri) }).toEqual({
+      mentions: [],
+      acct: "alice@wf-n3.example",
+    });
+  });
+
+  it("is purged, and not mentioned, when the domain answers 410", async () => {
+    const remote = await remoteActor("alice", "social.wf-n3-gone.example", {
+      accountDomain: "wf-n3-gone.example",
+      fetchedAt: EPOCH,
+    });
+    serveRemote(remote, "alice", {
+      "social.wf-n3-gone.example": {
+        subject: "acct:alice@wf-n3-gone.example",
+        self: remote.actorUri,
+      },
+      "wf-n3-gone.example": { status: 410 },
+    });
+
+    const mentions = await withQueueDrained(["PurgeRemoteActor"], () =>
+      mentioned("wf-n3-gone-poster@example.com", "hi @alice@wf-n3-gone.example"),
+    );
+
+    expect({ mentions, cached: await isCached(remote.actorUri) }).toEqual({
+      mentions: [],
+      cached: false,
+    });
   });
 });
 

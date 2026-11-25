@@ -145,31 +145,29 @@ export type RemoteActivityForwardOperations = Readonly<{
 }>;
 
 /**
- * A forward of an inbound activity before its inboxes are listed: the local
- * account whose key signs the requests, and the local accounts whose remote
- * followers receive it.
+ * A forward of an inbound activity before its audience is read: the local
+ * account whose key signs the requests, and the local author the status
+ * replies to, whose followers receive it with the sharers'.
  */
 export type PlannedForward = Readonly<{
   signerAccountId: string;
-  followersOf: ReadonlyArray<string>;
+  repliedToAccountId: string | undefined;
 }>;
 
 /**
- * Who hears an activity about `status` that another server signed, as
+ * Who signs an activity about `status` that another server signed, as
  * Mastodon's `ActivityPub::Forwarder` (and `forward_for_reply`, the same
- * rule for a new reply, which nobody shared yet): the followers of the local
- * accounts that boosted or quoted it and, when it replies to a local status,
- * of that status's author. The replied-to local author signs, else the first
- * sharer; with neither there is nothing to forward. At most `limit`
- * accounts, the replied-to author first. Whether the activity may be
- * forwarded at all (`Forwarder#forwardable?`) is the caller's to ask.
+ * rule for a new reply, which nobody shared yet): the replied-to local
+ * author, else the first local account that boosted or quoted it; with
+ * neither there is nothing to forward. The followers of all of them hear it
+ * (`ForwardAudience`). Whether the activity may be forwarded at all
+ * (`Forwarder#forwardable?`) is the caller's to ask.
  */
 export const remoteActivityForward = async (
   operations: RemoteActivityForwardOperations,
   status: ThreadStatus,
-  limit: number,
 ): Promise<Result<PlannedForward | undefined, RepositoryError>> => {
-  const sharers = await operations.listLocalSharerAccountIds(status, limit);
+  const sharers = await operations.listLocalSharerAccountIds(status, 1);
   if (sharers.isErr()) {
     return err(sharers.error);
   }
@@ -182,10 +180,5 @@ export const remoteActivityForward = async (
   if (signerAccountId === undefined) {
     return ok(undefined);
   }
-  return ok({
-    signerAccountId,
-    followersOf: [
-      ...new Set([...(repliedTo === undefined ? [] : [repliedTo]), ...sharers.value]),
-    ].slice(0, limit),
-  });
+  return ok({ signerAccountId, repliedToAccountId: repliedTo });
 };

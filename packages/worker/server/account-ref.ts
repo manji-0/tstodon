@@ -7,6 +7,7 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { findRemoteActorByHandle, findRemoteActorByUri } from "./remote-actor-store";
 import { federationAllowHosts } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
@@ -119,6 +120,7 @@ export const resolveAccountHandle = async (
     allowHosts: await federationAllowHosts(env),
     blockedHosts: await suspendedDomains(env.DB),
     fetchSigner: instanceActorFetchSigner(env.DB, identity),
+    queueActorPurge: queueRemoteActorPurge(env),
   });
   if (actor.isErr()) {
     return actor.error.kind === "RepositoryError"

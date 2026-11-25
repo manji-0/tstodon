@@ -8,8 +8,11 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { drainJobs, queueCapturingEnv } from "../test/queue-capture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { postInbox } from "./routes/activitypub";
-import { FORWARD_MAX_ACCOUNTS } from "@tstodon/domain";
+import { FORWARD_PAGE_ACCOUNTS } from "@tstodon/domain";
 import { ok } from "neverthrow";
+import { meter, patchD1, resetMeter } from "../test/meter";
+import { QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
+import { generateAccountKeys } from "./keys";
 import { forwardRemoteActivity } from "./activity-forward";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { findRemoteStatusByObjectUri } from "./remote-status-store";
@@ -365,7 +368,7 @@ describe("forwarding once, the replied-to author first", () => {
       .first<{ n: number }>();
     expect(rows?.n).toBe(1);
 
-    // However many local accounts shared it, the replied-to author is kept.
+    // Whoever else shared it, the replied-to author signs.
     const authorId = (await signedInAccount(author)).id;
     const plan = await remoteActivityForward(
       {
@@ -374,13 +377,119 @@ describe("forwarding once, the replied-to author first", () => {
           ok(Array.from({ length: limit }, (_, i) => `sharer-${i}`)),
       },
       { kind: "Remote", status: stored },
-      FORWARD_MAX_ACCOUNTS,
     );
-    const planned = plan._unsafeUnwrap();
-    expect(planned?.signerAccountId).toBe(authorId);
-    expect(planned?.followersOf[0]).toBe(authorId);
-    expect(planned?.followersOf).toHaveLength(FORWARD_MAX_ACCOUNTS);
+    expect(plan._unsafeUnwrap()).toEqual({
+      signerAccountId: authorId,
+      repliedToAccountId: authorId,
+    });
   });
+});
+
+/**
+ * Mastodon's `Forwarder` reaches the followers of every local sharer. The
+ * audience is stored with the forward and read a page per job, so a `Delete`,
+ * which removes the boosts before the jobs run, still reaches them all.
+ */
+describe("forwarding to more sharers than one job reads", () => {
+  it(
+    "reaches the followers of every booster, a bounded page per job",
+    { timeout: 120_000 },
+    async () => {
+      const sharers = 501;
+      const carol = await remoteActor("fwd-many-carol", "fwd-many-c.example");
+      const boosted = note(carol, "many");
+      expect(
+        await carol.send({ id: `${boosted.id}/activity`, type: "Create", object: boosted }),
+      ).toBe(202);
+      const row = await env.DB.prepare("SELECT id FROM remote_statuses WHERE object_uri = ?")
+        .bind(boosted.id)
+        .first<{ id: string }>();
+      const keys = await generateAccountKeys();
+      const series = `WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM series WHERE n < ${sharers})`;
+      await env.DB.batch([
+        env.DB.prepare(
+          `${series} INSERT INTO accounts (id, username, access_email, display_name, locked,
+           default_post_visibility, default_quote_policy, public_key_pem, private_key_jwk,
+           created_at, updated_at, bio_text)
+         SELECT printf('%019d', 8100000000000000000 + n), 'fwd_many_' || n,
+                'fwd_many_' || n || '@example.com', 'fwd_many_' || n, 0, 'public', 'public', ?1, ?2,
+                '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', ''
+         FROM series`,
+        ).bind(keys.publicKeyPem, keys.privateKeyJwk.reveal()),
+        env.DB.prepare(
+          `${series} INSERT INTO statuses (id, account_id, kind, content_text, content_html,
+           visibility, reblog_of_remote_id, created_at, updated_at)
+         SELECT printf('%019d', 8200000000000000000 + n), printf('%019d', 8100000000000000000 + n),
+                'LocalReblog', '', '', 'public', ?1,
+                '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+         FROM series`,
+        ).bind(row?.id),
+        env.DB.prepare(
+          `${series} INSERT INTO remote_actors (actor_uri, username, domain, inbox_uri, fetched_at)
+         SELECT 'https://fwd-many-' || n || '.example/users/f', 'f', 'fwd-many-' || n || '.example',
+                'https://fwd-many-' || n || '.example/inbox', '2026-01-01T00:00:00.000Z'
+         FROM series`,
+        ),
+        env.DB.prepare(
+          `${series} INSERT INTO remote_follows (id, remote_actor_uri, target_account_id,
+           remote_request_kind, follow_kind)
+         SELECT printf('fwdmany%012d', n), 'https://fwd-many-' || n || '.example/users/f',
+                printf('%019d', 8100000000000000000 + n), 'Fulfilled', 'Accepted'
+         FROM series`,
+        ),
+      ]);
+      const sent: OutboxJob[] = [];
+      const inbox = capturingInbox(sent);
+      const remove = {
+        id: `${boosted.id}#delete`,
+        type: "Delete",
+        to: [PUBLIC],
+        object: { id: boosted.id, type: "Tombstone" },
+      };
+      expect(await inbox.post(await carol.forward(await carol.ldSigned(remove)))).toBe(202);
+
+      const [first] = forwardJobs(sent);
+      const started: unknown[] = [];
+      const workflows = { create: async (options: unknown) => started.push(options) };
+      const jobEnv = new Proxy(inbox.testEnv, {
+        get: (target, key) =>
+          key === "OUTBOX_DELIVERY_WORKFLOW" ? workflows : Reflect.get(target, key),
+      });
+      patchD1();
+      const statements: number[] = [];
+      const outcomes = await drainJobs(jobEnv, sent, "ExpandForward", async (run) => {
+        resetMeter();
+        const outcome = await run();
+        statements.push(meter.tally.statements);
+        return outcome;
+      });
+      const { results } = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM outbox_deliveries WHERE activity_id = ? AND inbox_url LIKE 'https://fwd-many-%'",
+      )
+        .bind(first?.activityId)
+        .all<{ n: number }>();
+
+      expect({
+        outcomes,
+        inboxes: results[0]?.n,
+        workflowsStarted: started.length,
+        boostsLeft: await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM statuses WHERE reblog_of_remote_id = ?",
+        )
+          .bind(row?.id)
+          .first<number>("n"),
+      }).toEqual({
+        outcomes: Array.from(
+          { length: Math.floor(sharers / FORWARD_PAGE_ACCOUNTS) + 1 },
+          () => "ok",
+        ),
+        inboxes: sharers,
+        workflowsStarted: 1,
+        boostsLeft: 0,
+      });
+      expect(Math.max(...statements)).toBeLessThan(QUEUE_INVOCATION_BUDGET);
+    },
+  );
 });
 
 describe("forwarding a quote stamp's Delete", () => {

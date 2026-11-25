@@ -1,6 +1,7 @@
 import type { InstanceIdentity, OutboxJob } from "@tstodon/domain";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { refreshRemoteActor } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { claimRemoteActorRefresh, listStaleRemoteActorUris } from "./remote-actor-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
@@ -37,6 +38,7 @@ const fetchOptions = async (env: Env, identity: InstanceIdentity) => ({
   allowHosts: await federationAllowHosts(env),
   blockedHosts: await suspendedDomains(env.DB),
   fetchSigner: instanceActorFetchSigner(env.DB, identity),
+  queueActorPurge: queueRemoteActorPurge(env),
 });
 
 /**

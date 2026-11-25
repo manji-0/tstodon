@@ -3,6 +3,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import type { ApActivityDocumentJSON } from "@tstodon/api/activitypub";
+import { StatusId, StatusTarget } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { deliverTarget } from "../test/delivery-fixture";
 import { envWith } from "../test/env-fixture";
@@ -16,6 +17,12 @@ import { insertForwardedActivity, listOutboundActivities } from "./outbox-store"
 import { deliveredActivity, ldSigningOf } from "./own-activity-signature";
 import { ownActivitySamples } from "./own-activity-samples";
 import { parseInstanceIdentity } from "./runtime-config";
+
+/** A forward stored for these tests, whose audience nobody reads. */
+const noAudience = {
+  target: StatusTarget.remote(StatusId.parse("ld-sign-forwarded")._unsafeUnwrap()),
+  repliedToAccountId: undefined,
+};
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -363,6 +370,7 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
         kind: "Delete",
         payloadJson,
         forwardOf: String(signed["id"]),
+        audience: noAudience,
       })
     )._unsafeUnwrap();
     if (activityId === undefined) {
@@ -400,6 +408,7 @@ describe("an activity stored before its author's key rotation (OPS-8)", () => {
         kind: "Delete",
         payloadJson,
         forwardOf: forged.id,
+        audience: noAudience,
       })
     )._unsafeUnwrap();
     if (activityId === undefined) {

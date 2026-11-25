@@ -244,24 +244,18 @@ const enqueueSignedActivity = async (
 };
 
 /**
- * The last step of an expansion job (`ExpandFollowers`, `ExpandForward`):
- * deliver the activity to `candidateInboxes` but those on this host, on a
- * suspended domain or outside the allow list, each once. The fan-out row is
- * marked expanded; an inbox on a domain marked unavailable gets a `Skipped`
- * target, the rest are stored and the delivery Workflow starts. One
- * `outbox.expand` point (doubles: target count, ms, ok flag, skipped count).
+ * The inboxes of `candidateInboxes` an expansion delivers to: none on this
+ * host, on a suspended domain or outside the allow list, each once.
  */
-export const deliverExpandedActivity = async (
+const admittedExpandedInboxes = async (
   env: Env,
-  activityId: string,
   candidateInboxes: ReadonlyArray<string>,
-  startedAt: number,
-): Promise<void> => {
+): Promise<string[]> => {
   const identity = parseInstanceIdentity(env);
   const sameHost = identity.isOk() ? identity.value.domain : "";
   const suspended = await suspendedDomains(env.DB);
   const allowHosts = await federationAllowHosts(env);
-  const remoteInboxes = [
+  return [
     ...new Set(
       candidateInboxes.filter((inbox) => {
         try {
@@ -277,20 +271,53 @@ export const deliverExpandedActivity = async (
       }),
     ),
   ];
-  await markOutboundExpanded(env.DB, activityId, remoteInboxes.length);
+};
+
+/**
+ * Store a target for each of `remoteInboxes`: `Skipped` on a domain marked
+ * unavailable, `Queued` for the rest. Resolves to how many of each.
+ */
+const storeExpandedTargets = async (
+  env: Env,
+  activityId: string,
+  remoteInboxes: ReadonlyArray<string>,
+): Promise<Result<Readonly<{ deliver: number; skipped: number }>, RepositoryError>> => {
   const { deliver, skipped } = await partitionByDomainAvailability(env.DB, remoteInboxes);
   const skippedTargets = await recordSkippedTargets(env, activityId, skipped, "expand");
   const ensured = skippedTargets.isErr()
     ? skippedTargets
     : await ensureOutboxTargets(env.DB, activityId, deliver);
-  if (ensured.isErr()) {
-    console.error(
-      JSON.stringify({
-        kind: "OutboxExpandTargetsFailed",
-        activityId,
-        message: ensured.error.message,
-      }),
-    );
+  return ensured.map(() => ({ deliver: deliver.length, skipped: skipped.length }));
+};
+
+const logExpandTargetsFailed = (activityId: string, error: RepositoryError): void => {
+  console.error(
+    JSON.stringify({ kind: "OutboxExpandTargetsFailed", activityId, message: error.message }),
+  );
+};
+
+/**
+ * The last step of an expansion job (`ExpandFollowers`, `ExpandForward`):
+ * deliver the activity to the admitted `candidateInboxes`
+ * ({@link admittedExpandedInboxes}). The fan-out row is marked expanded; an
+ * inbox on a domain marked unavailable gets a `Skipped` target, the rest are
+ * stored and the delivery Workflow starts. `earlierTargets` counts the
+ * inboxes earlier pages of the expansion stored ({@link storeExpandedPage}).
+ * One `outbox.expand` point (doubles: target count, ms, ok flag, skipped
+ * count).
+ */
+export const deliverExpandedActivity = async (
+  env: Env,
+  activityId: string,
+  candidateInboxes: ReadonlyArray<string>,
+  startedAt: number,
+  earlierTargets = 0,
+): Promise<void> => {
+  const remoteInboxes = await admittedExpandedInboxes(env, candidateInboxes);
+  await markOutboundExpanded(env.DB, activityId, earlierTargets + remoteInboxes.length);
+  const stored = await storeExpandedTargets(env, activityId, remoteInboxes);
+  if (stored.isErr()) {
+    logExpandTargetsFailed(activityId, stored.error);
     writeMetric(
       env,
       "outbox.expand",
@@ -299,15 +326,36 @@ export const deliverExpandedActivity = async (
     );
     return;
   }
-  if (deliver.length > 0) {
+  if (earlierTargets + stored.value.deliver > 0) {
     await startOutboxDeliveryWorkflow(env, activityId);
   }
   writeMetric(
     env,
     "outbox.expand",
-    [remoteInboxes.length, elapsedMs(startedAt), 1, skipped.length],
+    [remoteInboxes.length, elapsedMs(startedAt), 1, stored.value.skipped],
     ["ok"],
   );
+};
+
+/**
+ * A page of an expansion that spans jobs, before its last: the targets of
+ * the admitted `candidateInboxes`, stored as {@link deliverExpandedActivity}
+ * stores them. The fan-out row stays `Queued` and the Workflow is left for
+ * the last page to start, so it cannot finish before a later page stores
+ * its targets. Resolves to how many inboxes it admitted.
+ */
+export const storeExpandedPage = async (
+  env: Env,
+  activityId: string,
+  candidateInboxes: ReadonlyArray<string>,
+): Promise<Result<number, RepositoryError>> => {
+  const remoteInboxes = await admittedExpandedInboxes(env, candidateInboxes);
+  const stored = await storeExpandedTargets(env, activityId, remoteInboxes);
+  if (stored.isErr()) {
+    logExpandTargetsFailed(activityId, stored.error);
+    return err(stored.error);
+  }
+  return ok(remoteInboxes.length);
 };
 
 /** The id of the activity's delivery Workflow instance. */

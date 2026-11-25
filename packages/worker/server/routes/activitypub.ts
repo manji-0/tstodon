@@ -1124,6 +1124,10 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
       },
     });
     if (keyOwner.isErr()) {
+      if (keyOwner.error.kind === "VerificationUnavailable" && "step" in keyOwner.error) {
+        refuse({ reason: "HandleUnconfirmed", status: 401, actor: actorUri });
+        return c.json({ kind: "InvalidSignature" }, 401);
+      }
       if (keyOwner.error.kind === "VerificationUnavailable") {
         refuse({ reason: "KeyUnavailable", status: 503, actor: actorUri });
         c.header("Retry-After", "5");

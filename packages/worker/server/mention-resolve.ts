@@ -8,6 +8,7 @@ import { listStatusMentions } from "./mention-store";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { mentionUsernames, remoteMentionHandles, type PostMention } from "./html";
 import { resolveRemoteActorByHandle } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { findRemoteActorsByHandles, findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
@@ -43,6 +44,7 @@ const resolveRemoteMentions = async (
   const blockedHosts = await suspendedDomains(env.DB);
   const allowHosts = await federationAllowHosts(env);
   const fetchSigner = instanceActorFetchSigner(env.DB, identity);
+  const queueActorPurge = queueRemoteActorPurge(env);
   let lookUpsLeft = MAX_MENTION_LOOKUPS;
   const mayLookUp = (): boolean => {
     if (lookUpsLeft === 0) {
@@ -60,7 +62,7 @@ const resolveRemoteMentions = async (
       env.DB,
       identity,
       `${handle.username}@${handle.domain}`,
-      { allowHosts, blockedHosts, mayLookUp, fetchSigner },
+      { allowHosts, blockedHosts, mayLookUp, fetchSigner, queueActorPurge },
     );
     const admitted =
       resolved.isOk() &&

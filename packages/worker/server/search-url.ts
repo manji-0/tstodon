@@ -7,7 +7,12 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import type { RepositoryError } from "./d1";
 import { fetchActivityResource, type FederatedFetchOptions } from "./federated-fetch";
 import { type FoundStatus, showsFoundStatus } from "./found-status";
-import { cacheFetchedActor, remoteActorFromDocument } from "./remote-actor-fetch";
+import {
+  type ActorRefreshOptions,
+  cacheFetchedActor,
+  remoteActorFromDocument,
+} from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { findStoredNote, storeNoteDocument } from "./remote-status-persist";
 import { instanceActorFetchSigner } from "./instance-actor";
@@ -21,10 +26,11 @@ import { findStatusById } from "./status-store";
 export const resolveFetchOptions = async (
   env: Env,
   identity: InstanceIdentity,
-): Promise<FederatedFetchOptions> => ({
+): Promise<ActorRefreshOptions> => ({
   allowHosts: await federationAllowHosts(env),
   blockedHosts: await suspendedDomains(env.DB),
   fetchSigner: instanceActorFetchSigner(env.DB, identity),
+  queueActorPurge: queueRemoteActorPurge(env),
 });
 
 /** Whether a search query is a URL, which `resolve=true` looks up instead of searching text. */
