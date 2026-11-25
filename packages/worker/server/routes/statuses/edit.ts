@@ -24,7 +24,8 @@ import { authenticate } from "../../auth";
 import { nowIso } from "../../clock";
 import { deleteLocalStatus } from "../../local-status-delete";
 import { mastodonSourceStatus } from "../../status-source-document";
-import { announceNoteUpdate, notifyAboutUpdate } from "../../local-status-update";
+import { announceNoteUpdate } from "../../local-status-update";
+import { notifyAboutUpdate } from "../../note-booster-updates";
 import { formatPostText } from "../../html";
 import { replaceStatusMentions, replaceStatusRemoteMentions } from "../../mention-store";
 import { mentionLinks, resolveMentions, type ResolvedMentions } from "../../mention-resolve";
@@ -442,7 +443,12 @@ const editNote = async (
   if (!applied.value) {
     return err(ApiRefusal.notFound);
   }
-  const notified = await notifyAboutUpdate(env, existing, updatedAt);
+  const notified = await notifyAboutUpdate(env, {
+    kind: "LocalStatus",
+    statusId: existing.id,
+    accountId: existing.accountId,
+    since: updatedAt,
+  });
   if (notified.isErr()) {
     return err(ApiRefusal.repository(notified.error.message));
   }

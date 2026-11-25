@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -105,6 +107,35 @@ const setup = async (slug: string, options: Readonly<{ cacheQuoted?: false }> = 
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+/** A local account that boosts Bob's note; `updates` lists its `update` notifications. */
+const localBooster = async (email: string, bobNoteUri: string) => {
+  await signedInAccount(email);
+  const headers = await authHeaders(email);
+  const id = await remoteStatusId(bobNoteUri);
+  const boosted = await SELF.fetch(
+    new URL(`/api/v1/statuses/${id}/reblog`, "https://example.com"),
+    { method: "POST", headers },
+  );
+  expect(boosted.status).toBe(200);
+  const updates = async () => {
+    const response = await SELF.fetch(new URL("/api/v1/notifications", "https://example.com"), {
+      headers,
+    });
+    return read(
+      z.array(
+        z.object({
+          id: z.string(),
+          type: z.string(),
+          account: IdSchema,
+          status: IdSchema.nullable(),
+        }),
+      ),
+      await response.json(),
+    ).filter((n) => n.type === "update");
+  };
+  return { id, updates };
+};
 
 describe("a remote note quoting another remote note", () => {
   it("is accepted on a stamp that verifies", async () => {
@@ -258,6 +289,32 @@ describe("a remote note quoting another remote note", () => {
     expect(await remoteStatusId(q.bobNoteUri)).toBeDefined();
   });
 
+  it("tells the local boosters of the quoting note when the stamp is deleted", async () => {
+    const q = await setup("rqq-revoke-boosters");
+    stubFetch({ [q.stampUri]: q.stamp() });
+    expect(await create(q.bob, q.bobNote())).toBe(202);
+    const booster = await localBooster("rqq-revoke-boosters-dave@example.com", q.bobNoteUri);
+
+    expect(
+      await withQueueDrained(["NotifyRemoteNoteBoosters"], () =>
+        q.carol.send({
+          id: `${q.stampUri}#delete`,
+          type: "Delete",
+          object: { id: q.stampUri, type: "QuoteAuthorization" },
+        }),
+      ),
+    ).toBe(202);
+
+    // From the quoting note's author, as Mastodon's `Delete#revoke_quote`
+    // distributes it with `update` and notifications.
+    expect(await booster.updates()).toEqual([
+      expect.objectContaining({
+        account: { id: RemoteAccountId.encode(q.bob.actorUri) },
+        status: { id: booster.id },
+      }),
+    ]);
+  });
+
   it("keeps the quote when someone other than the quoted author deletes the stamp", async () => {
     const q = await setup("rqq-revoke-stranger");
     stubFetch({ [q.stampUri]: q.stamp() });
@@ -326,6 +383,32 @@ describe("an Update of a remote note quoting a remote note", () => {
     expect(await update(q, 1)).toBe(202);
 
     expect((await q.quote())?.state).toBe("accepted");
+  });
+
+  it("tells the local boosters when an Update that edits nothing accepts the quote", async () => {
+    const q = await setup("rqq-update-implicit");
+    stubFetch({ [q.stampUri]: SERVER_ERROR });
+    expect(await create(q.bob, q.bobNote())).toBe(202);
+    expect((await q.quote())?.state).toBe("pending");
+    const booster = await localBooster("rqq-update-implicit-dave@example.com", q.bobNoteUri);
+    vi.restoreAllMocks();
+    stubFetch({ [q.stampUri]: q.stamp() });
+    const resend = (n: number) =>
+      withQueueDrained(["NotifyRemoteNoteBoosters"], () =>
+        q.bob.send({ id: `${q.bobNoteUri}#updates/${n}`, type: "Update", object: q.bobNote() }),
+      );
+
+    expect(await resend(1)).toBe(202);
+
+    expect((await q.quote())?.state).toBe("accepted");
+    // As Mastodon's `handle_implicit_update!`, which distributes the note
+    // when the quote's state changed.
+    const first = await booster.updates();
+    expect(first).toEqual([expect.objectContaining({ status: { id: booster.id } })]);
+
+    // The same document again changes nothing, and tells nobody.
+    expect(await resend(2)).toBe(202);
+    expect(await booster.updates()).toEqual(first);
   });
 
   it("verifies a changed quoted note", async () => {

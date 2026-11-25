@@ -14,7 +14,8 @@ import { forwardInboundActivity } from "../activity-forward";
 import { nowIso } from "../clock";
 import { readableRow, type RepositoryError } from "../d1";
 import { announceRemoteQuoteChange } from "../remote-quote-announce";
-import { announceNoteUpdate, notifyAboutUpdate } from "../local-status-update";
+import { announceNoteUpdate } from "../local-status-update";
+import { notifyAboutUpdate } from "../note-booster-updates";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findDeliveredRemoteStatusById } from "../remote-status-store";
@@ -71,23 +72,25 @@ const signerQuote = async (
 };
 
 /**
- * Store the quote's new state and tell the quoting author's streams and
- * timelines, as Mastodon's `DistributionWorker`. An `Accept` also sends the
- * note's `Update`, which then carries the stamp, and tells the local accounts
- * that boosted or quoted the note, as `accept_quote!` distributes the note as an update
- * with notifications. The `Update` is no edit, as Mastodon's `accept_quote!`
- * sends it with `edited_at` unchanged.
+ * Store the quote's new state. A `Reject` does nothing more, as Mastodon's
+ * `reject_quote!` only calls `Quote#reject!`. An `Accept` and a stamp's
+ * `Delete` also tell the quoting author's streams and timelines, and the
+ * local accounts that boosted or quoted the note, as `accept_quote!` and
+ * `Delete#revoke_quote` run `DistributionWorker` with `update` and
+ * notifications. An `Accept` also sends the note's `Update`, which then
+ * carries the stamp; it is no edit, as `accept_quote!` sends it with
+ * `edited_at` unchanged.
  */
 const settle = async (
   env: Env,
   identity: InstanceIdentity,
   quoting: SignerQuote,
   quote: QuoteValue,
-  answer: "Accept" | "Reject",
+  answer: "Accept" | "Reject" | "Delete",
 ): Promise<Result<void, RepositoryError>> => {
   const saved = await saveQuoteState(env.DB, quote);
-  if (saved.isErr()) {
-    return err(saved.error);
+  if (saved.isErr() || answer === "Reject") {
+    return saved;
   }
   const now = nowIso();
   const announced = await announceNoteUpdate(
@@ -102,7 +105,12 @@ const settle = async (
   if (announced.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteAnswerNotAnnounced", quoteId: quote.id }));
   }
-  return answer === "Accept" ? notifyAboutUpdate(env, quoting.note, now) : ok(undefined);
+  return notifyAboutUpdate(env, {
+    kind: "LocalStatus",
+    statusId: quoting.note.id,
+    accountId: quoting.note.accountId,
+    since: now,
+  });
 };
 
 const httpsHost = (uri: string): string | undefined => {
@@ -149,8 +157,8 @@ const acceptedStamp = (
  * The quoted author answers a local author's `QuoteRequest`, as Mastodon's
  * `accept_quote!` and `reject_quote!`. An `Accept` of a pending quote stores
  * the stamp and federates the note again with `quoteAuthorization`. A
- * `Reject` rejects the quote, or revokes an accepted one, and federates
- * nothing, as Mastodon; a `Reject` that changes nothing is not announced.
+ * `Reject` rejects the quote, or revokes an accepted one, and federates,
+ * streams and notifies nothing, as Mastodon.
  */
 export const receiveQuoteAnswer = async (
   { env, identity, signer, activity, received }: RemoteDelivery<"Accept" | "Reject">,
@@ -179,8 +187,11 @@ export const receiveQuoteAnswer = async (
  * `Delete#revoke_quote`: the first pending or accepted quote (by id) that
  * stamp approved and the signer was quoted in is revoked, whether the quoting
  * status is local or remote, and only that one, as `Quote.find_by` gives one
- * when several name the URI. A local quoting status is announced on its
- * author's streams. `body`, the `Delete` as received, is forwarded once, to
+ * when several name the URI. The quoting status is distributed as an
+ * update with notifications, as `Delete#revoke_quote` runs
+ * `DistributionWorker`: its author's streams for a local one, the local
+ * timelines showing it, and the local accounts that boosted or quoted it.
+ * `body`, the `Delete` as received, is forwarded once, to
  * that quoting status's audience (`forwardInboundActivity`, Mastodon's
  * `ActivityPub::Forwarder`). `false` when `uri` is no stamp the signer gave,
  * so the `Delete` is for something else.
@@ -205,7 +216,7 @@ export const revokeQuoteStamp = async (
       return err(quoting.error);
     }
     if (quoting.value) {
-      const settled = await settle(env, identity, quoting.value, Quote.reject(quote), "Reject");
+      const settled = await settle(env, identity, quoting.value, Quote.reject(quote), "Delete");
       if (settled.isErr()) {
         return err(settled.error);
       }
@@ -240,6 +251,15 @@ export const revokeQuoteStamp = async (
     }
     if (remoteQuoting.value) {
       await announceRemoteQuoteChange(env, remoteQuoting.value);
+      const notified = await notifyAboutUpdate(env, {
+        kind: "RemoteStatus",
+        statusId: remoteQuoting.value.id,
+        actorUri: remoteQuoting.value.actorUri,
+        since: nowIso(),
+      });
+      if (notified.isErr()) {
+        return err(notified.error);
+      }
       await forwardInboundActivity(
         env,
         identity,

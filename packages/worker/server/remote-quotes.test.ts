@@ -260,9 +260,17 @@ describe("quoting a remote status", () => {
     expect((await quoteOf(revoked.email, revoked.quotingId)).state).toBe("revoked");
   });
 
-  it("settles a repeated Reject once", async () => {
+  it("streams and notifies nothing on a Reject, as Mastodon's reject_quote!, and settles it once", async () => {
     const quote = await quoteBob("rq-reject-again");
+    const carolEmail = "rq-reject-again-carol@example.com";
+    await signedInAccount(carolEmail);
     const socket = await openStream({ email: quote.email, query: "?stream=user" });
+    const boosted = await json(`/api/v1/statuses/${quote.quotingId}/reblog`, {
+      method: "POST",
+      headers: await authHeaders(carolEmail),
+    });
+    expect(boosted.status).toBe(200);
+    expect(await socket.next()).toMatchObject({ event: "notification" });
     const reject = (n: number) =>
       quote.bob.send({
         id: `${quote.bob.actorUri}#rejects/${n}`,
@@ -270,9 +278,9 @@ describe("quoting a remote status", () => {
         object: quote.request.body.id,
       });
 
-    expect(await reject(1)).toBe(202);
-    expect(await socket.next()).toMatchObject({ event: "status.update" });
+    expect(await withQueueDrained(["NotifyLocalNoteBoosters"], () => reject(1))).toBe(202);
     expect(await socket.heardNothing()).toBe(true);
+    expect(await notificationsOf(carolEmail)).toEqual([]);
 
     expect(await reject(2)).toBe(202);
     expect(await socket.heardNothing()).toBe(true);
@@ -397,6 +405,29 @@ describe("quoting a remote status", () => {
     return { ...quote, stamp, carol, dan };
   };
 
+  it("tells the quoting note's local boosters of a stamp Delete, as Mastodon's Delete#revoke_quote", async () => {
+    const quote = await boostedQuote("rq-stamp-notify");
+
+    expect(
+      await withQueueDrained(["NotifyLocalNoteBoosters"], () =>
+        quote.bob.send({
+          id: `${quote.stamp}#delete`,
+          type: "Delete",
+          object: { id: quote.stamp, type: "QuoteAuthorization" },
+        }),
+      ),
+    ).toBe(202);
+
+    expect((await quoteOf(quote.email, quote.quotingId)).state).toBe("revoked");
+    expect(
+      (await notificationsOf(`rq-stamp-notify-carol@example.com`)).filter(
+        (n) => n.type === "update",
+      ),
+    ).toEqual([
+      expect.objectContaining({ account: { id: quote.alice.id }, status: { id: quote.quotingId } }),
+    ]);
+  });
+
   it("forwards a signed stamp Delete to the followers of the quoting note's local boosters", async () => {
     const quote = await boostedQuote("rq-stamp-forward");
     const deletion = {
@@ -492,9 +523,10 @@ describe("quoting a remote status", () => {
 
 const NotificationsSchema = z.array(
   z.object({
+    id: z.string(),
     type: z.string(),
     account: z.object({ id: z.string() }),
-    status: z.object({ id: z.string() }).nullable(),
+    status: z.object({ id: z.string() }).nullable().optional(),
   }),
 );
 
@@ -583,5 +615,89 @@ describe("a quote that waits for the quoted author's manual approval", () => {
     });
     expect(await notificationsOf(carolEmail)).toEqual([]);
     expect((await notificationsOf(quote.email)).map((n) => n.type)).toEqual(["quote"]);
+  });
+});
+
+describe("an edit of a remote note a local author quotes", () => {
+  it("tells a local author with an accepted quote of an edited remote note, the latest edit only", async () => {
+    const quote = await quoteBob("rq-quoted-update");
+    expect(
+      await quote.bob.send({
+        id: `${quote.bob.actorUri}#accepts/1`,
+        type: "Accept",
+        object: quote.request.body.id,
+        result: `${quote.bob.actorUri}/stamps/1`,
+      }),
+    ).toBe(202);
+    const edit = (n: number) =>
+      quote.bob.send({
+        id: `${quote.bobNote.uri}#updates/${n}`,
+        type: "Update",
+        object: {
+          id: quote.bobNote.uri,
+          type: "Note",
+          attributedTo: quote.bob.actorUri,
+          content: `<p>edit ${n}</p>`,
+          published: "2026-11-01T00:00:00.000Z",
+          updated: `2026-11-0${n + 1}T00:00:00.000Z`,
+          to: [PUBLIC],
+          cc: [`${quote.bob.actorUri}/followers`],
+          ...canQuotePublic,
+        },
+      });
+    const quotedUpdates = async () =>
+      (await notificationsOf(quote.email)).filter((n) => n.type === "quoted_update");
+
+    expect(await edit(1)).toBe(202);
+    const first = await quotedUpdates();
+    // As Mastodon's `quoted_update`: from the quoted author, about the quoting status.
+    expect(first).toEqual([
+      expect.objectContaining({
+        account: { id: RemoteAccountId.encode(quote.bob.actorUri) },
+        status: { id: quote.quotingId },
+      }),
+    ]);
+
+    expect(await edit(2)).toBe(202);
+    const second = await quotedUpdates();
+    expect(second).toHaveLength(1);
+    expect(second[0]?.id).not.toBe(first[0]?.id);
+  });
+
+  it("tells a local author who muted the quoted author nothing of its edit", async () => {
+    const quote = await quoteBob("rq-quoted-update-muted");
+    expect(
+      await quote.bob.send({
+        id: `${quote.bob.actorUri}#accepts/1`,
+        type: "Accept",
+        object: quote.request.body.id,
+        result: `${quote.bob.actorUri}/stamps/1`,
+      }),
+    ).toBe(202);
+    const muted = await json(
+      `/api/v1/accounts/${RemoteAccountId.encode(quote.bob.actorUri)}/mute`,
+      { method: "POST", headers: await authHeaders(quote.email) },
+    );
+    expect(muted.status).toBe(200);
+
+    expect(
+      await quote.bob.send({
+        id: `${quote.bobNote.uri}#updates/1`,
+        type: "Update",
+        object: {
+          id: quote.bobNote.uri,
+          type: "Note",
+          attributedTo: quote.bob.actorUri,
+          content: "<p>edited</p>",
+          published: "2026-11-01T00:00:00.000Z",
+          updated: "2026-11-02T00:00:00.000Z",
+          to: [PUBLIC],
+          cc: [`${quote.bob.actorUri}/followers`],
+          ...canQuotePublic,
+        },
+      }),
+    ).toBe(202);
+
+    expect((await notificationsOf(quote.email)).map((n) => n.type)).toEqual([]);
   });
 });
