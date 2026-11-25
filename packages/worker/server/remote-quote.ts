@@ -435,6 +435,8 @@ const withdrawDroppedStamp = async (
  * {@link reconcileRemoteQuote}, then {@link withdrawDroppedStamp} when an
  * accepted quote of a local status went away with the edit. A quote of a
  * remote status left to check again is queued for its first refetch.
+ * Resolves to whether the note kept its quote in another state, as
+ * Mastodon's `quote.state_previously_changed?`.
  */
 export const syncRemoteQuote = async (
   env: Env,
@@ -442,7 +444,7 @@ export const syncRemoteQuote = async (
   status: RemoteStatusValue,
   raw: unknown,
   context: RemoteQuoteContext,
-): Promise<Result<void, RepositoryError>> => {
+): Promise<Result<boolean, RepositoryError>> => {
   const quoting = StatusTarget.remote(status.id);
   const before = await findQuoteByQuoting(env.DB, quoting);
   if (before.isErr()) {
@@ -455,13 +457,16 @@ export const syncRemoteQuote = async (
   if (synced.value) {
     await enqueueQuoteRefetch(env, synced.value, 1);
   }
-  const accepted =
-    before.value?.quoted.kind === "LocalStatus" && before.value.state.kind === "Accepted";
-  if (accepted) {
-    const after = await findQuoteByQuoting(env.DB, quoting);
-    if (after.isOk()) {
-      await withdrawDroppedStamp(env, identity, status, before.value, after.value);
-    }
+  const after = await findQuoteByQuoting(env.DB, quoting);
+  if (after.isErr()) {
+    return err(after.error);
   }
-  return ok(undefined);
+  if (before.value?.quoted.kind === "LocalStatus" && before.value.state.kind === "Accepted") {
+    await withdrawDroppedStamp(env, identity, status, before.value, after.value);
+  }
+  return ok(
+    before.value !== undefined &&
+      after.value?.id === before.value.id &&
+      after.value.state.kind !== before.value.state.kind,
+  );
 };

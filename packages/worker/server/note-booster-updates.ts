@@ -4,11 +4,12 @@ import {
   StatusTarget,
   type StatusTargetValue,
 } from "@tstodon/domain";
-import { err, type Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import { measureJobPage } from "./metrics";
 import { notifyAccountOnce, notifyFromRemoteOnce } from "./notify";
 import { deleteNotificationsBefore } from "./notification-store";
+import { listAcceptedQuoteEdges } from "./quote-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { findRemoteStatusesByIds } from "./remote-status-store";
 import { listLocalBoosterAccountIdsPage } from "./status-interaction-store";
@@ -61,21 +62,18 @@ const queueBoosterPage = async (
 };
 
 /**
- * As Mastodon's `FanOutOnWriteService#notify_about_update!`, the local
- * accounts that boosted a changed note hear it changed (`update`). An inbox
- * `Update` that edits a remote note starts this, and for a local note its
- * edit and the quoted author's `Accept` of its quote do (`accept_quote!`
- * distributes the note as an update without `skip_notifications`). A
- * notification is stored once per account since the change, so a
- * redelivered activity or a retried page that queues an account again
- * notifies it once.
+ * A status that changed at `since`, with its author: a local account, or
+ * the remote actor whose activity changed it.
  */
-export const notifyNoteBoosters = async (
+export type StatusChange = Readonly<
+  | { kind: "RemoteStatus"; statusId: StatusIdValue; actorUri: string; since: string }
+  | { kind: "LocalStatus"; statusId: StatusIdValue; accountId: string; since: string }
+>;
+
+/** Queue the first page of the local accounts that boost the changed status. */
+const notifyNoteBoosters = async (
   env: Env,
-  change: Readonly<
-    | { kind: "RemoteStatus"; statusId: StatusIdValue; actorUri: string; since: string }
-    | { kind: "LocalStatus"; statusId: StatusIdValue; since: string }
-  >,
+  change: StatusChange,
 ): Promise<Result<void, RepositoryError>> => {
   const first = { kind: "Page", afterAccountId: "" } as const satisfies Step;
   const job: BoostersJob =
@@ -94,6 +92,56 @@ export const notifyNoteBoosters = async (
           step: first,
         };
   return (await queueBoosterPage(env, job, "")).map(() => undefined);
+};
+
+/**
+ * Tell the local accounts that boosted a changed status, or quote it in an
+ * accepted quote, that it changed, as Mastodon's
+ * `FanOutOnWriteService#notify_about_update!`: `update` to the boosters
+ * (queued, a job per booster) and `quoted_update` to the quoters, about
+ * their own quoting status. Mastodon runs it whenever `DistributionWorker`
+ * distributes a status as an update without `skip_notifications`, local or
+ * remote: an edit, the quoted author's `Accept` of the status's quote, and a
+ * quote's revoke or new state after a check (`RevokeQuoteService`,
+ * `Delete#revoke_quote`, `RefetchAndVerifyQuoteWorker`). Each account keeps
+ * the latest such notification only, as `LocalNotificationWorker` deletes
+ * the older ones, and a retried change notifies it once. The author is not
+ * told of its own status (`deliverNotification`, `from_self?`).
+ */
+export const notifyAboutUpdate = async (
+  env: Env,
+  change: StatusChange,
+): Promise<Result<void, RepositoryError>> => {
+  const boosters = await notifyNoteBoosters(env, change);
+  if (boosters.isErr()) {
+    return boosters;
+  }
+  const edges = await listAcceptedQuoteEdges(
+    env.DB,
+    change.kind === "LocalStatus"
+      ? StatusTarget.local(change.statusId)
+      : StatusTarget.remote(change.statusId),
+  );
+  // Best effort: the change is stored, and a quoter's notification that
+  // cannot be read or written is no reason to fail it.
+  for (const edge of edges.isOk() ? edges.value : []) {
+    const notification = {
+      accountId: edge.accountId,
+      kind: "quoted_update",
+      statusId: edge.statusId,
+    } as const;
+    const cleared = await deleteNotificationsBefore(env.DB, {
+      ...notification,
+      before: change.since,
+    });
+    if (cleared.isErr()) {
+      continue;
+    }
+    await (change.kind === "LocalStatus"
+      ? notifyAccountOnce(env, { ...notification, fromAccountId: change.accountId }, change.since)
+      : notifyFromRemoteOnce(env, { ...notification, actorUri: change.actorUri }, change.since));
+  }
+  return ok(undefined);
 };
 
 /**

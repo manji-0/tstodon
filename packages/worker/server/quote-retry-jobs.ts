@@ -15,6 +15,7 @@ import { nowIso } from "./clock";
 import type { RepositoryError } from "./d1";
 import type { FederatedFetchOptions } from "./federated-fetch";
 import { announceNoteUpdate } from "./local-status-update";
+import { notifyAboutUpdate } from "./note-booster-updates";
 import { findQuoteById, saveQuoteState } from "./quote-store";
 import { enqueueQuoteRefetch } from "./quote-retry-queue";
 import { reverifyRemoteQuote } from "./remote-quote";
@@ -74,8 +75,10 @@ const namesQuoted = async (
  * no longer pending (accepted, rejected or revoked meanwhile, as by the
  * note's `Update`), names another quoted note, or its author is gone,
  * suspended or outside the allow list. A quote that changed is announced on
- * the local timelines showing the note; one still left to check again is
- * queued for the next attempt until {@link QuoteRetry.refetchMaxAttempts}.
+ * the local timelines showing the note, and to the local accounts that
+ * boosted or quoted it, as the worker runs `DistributionWorker` with
+ * `update` and notifications; one still left to check again is queued for
+ * the next attempt until {@link QuoteRetry.refetchMaxAttempts}.
  */
 export const processRefetchAndVerifyQuoteJob = async (
   env: Env,
@@ -122,6 +125,16 @@ export const processRefetchAndVerifyQuoteJob = async (
   }
   if (synced.value.changed) {
     await announceRemoteQuoteChange(env, status.value);
+    const notified = await notifyAboutUpdate(env, {
+      kind: "RemoteStatus",
+      statusId: status.value.id,
+      actorUri: status.value.actorUri,
+      since: nowIso(),
+    });
+    // A retry would find the quote settled and stop, so the failure is logged.
+    if (notified.isErr()) {
+      console.error(JSON.stringify({ kind: "QuoteRefreshNotAnnounced", quoteId: quote.value.id }));
+    }
   }
   const next = QuoteRetry.nextRefetchAttempt(job.attempt);
   if (synced.value.refetch && next !== undefined) {

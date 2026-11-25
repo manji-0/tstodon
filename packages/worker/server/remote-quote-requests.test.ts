@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { withQueueDrained } from "../test/queue-hold";
 import { openStream } from "../test/stream-fixture";
 import { RemoteAccountId } from "./remote-account-id";
 
@@ -578,6 +579,31 @@ describe("remote notes that quote a local status", () => {
     );
     expect(await deliveryInboxes(deletion.id)).toContain(`${quote.bob.actorUri}/inbox`);
     expect((await quoteOf(quote.email, bobNoteId))?.state).toBe("revoked");
+  });
+
+  it("tells the local boosters of the quoting note of the revoke, as Mastodon's RevokeQuoteService", async () => {
+    const quote = await setup("rqr-revoke-boosters");
+    expect(await quote.request()).toBe(202);
+    const bobNoteId = await remoteStatusId(quote.noteUri);
+    const carolEmail = "rqr-revoke-boosters-carol@example.com";
+    await signedInAccount(carolEmail);
+    expect((await send(carolEmail, `/api/v1/statuses/${bobNoteId}/reblog`)).status).toBe(200);
+
+    const revoked = await withQueueDrained(["NotifyRemoteNoteBoosters"], () =>
+      send(quote.email, `/api/v1/statuses/${quote.statusId}/quotes/${bobNoteId}/revoke`),
+    );
+    expect(revoked.status).toBe(200);
+
+    const updates = read(
+      z.array(z.object({ type: z.string(), account: IdSchema, status: IdSchema.nullable() })),
+      (await json("/api/v1/notifications", { headers: await authHeaders(carolEmail) })).body,
+    ).filter((n) => n.type === "update");
+    expect(updates).toEqual([
+      expect.objectContaining({
+        account: { id: RemoteAccountId.encode(quote.bob.actorUri) },
+        status: { id: bobNoteId },
+      }),
+    ]);
   });
 
   it("also withdraws the stamp from the cached remote actors the quoting note mentions, once per inbox", async () => {
