@@ -7,6 +7,7 @@
 //   pnpm bench --scale 0.1 --runs 3     a tenth of the data, quicker
 //   pnpm bench --no-build --plan        reuse dist/, print query plans
 //   pnpm bench --analyze                run ANALYZE after seeding (planner statistics)
+//   pnpm bench --only home              only the requests and jobs whose label has "home"
 //   pnpm bench --json out.json          also write the parsed results
 import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -18,6 +19,7 @@ const { values } = parseArgs({
     runs: { type: "string", default: "7" },
     plan: { type: "boolean", default: false },
     analyze: { type: "boolean", default: false },
+    only: { type: "string", default: "" },
     build: { type: "boolean", default: true },
     json: { type: "string" },
     log: { type: "string" },
@@ -43,6 +45,7 @@ const child = spawn(
       BENCH_RUNS: values.runs,
       BENCH_PLAN: values.plan ? "1" : "",
       BENCH_ANALYZE: values.analyze ? "1" : "",
+      BENCH_ONLY: values.only,
     },
     stdio: ["ignore", "pipe", "inherit"],
   },

@@ -37,6 +37,8 @@ const SCALE = Number(setting("BENCH_SCALE") || "1");
 const RUNS = Number(setting("BENCH_RUNS") || "7");
 /** `BENCH_PLAN=1` prints the query plan of each scenario's costliest statements. */
 const PLANS = setting("BENCH_PLAN") === "1";
+/** `BENCH_ONLY=<text>` runs only the requests and jobs whose label contains it. */
+const ONLY = setting("BENCH_ONLY");
 /** `BENCH_ANALYZE=1` runs `ANALYZE` after seeding, so plans use table statistics. */
 const ANALYZE = setting("BENCH_ANALYZE") === "1";
 
@@ -241,6 +243,19 @@ const holdWorkflows = () => {
   };
 };
 
+/**
+ * Every fifth account's home stream, open again: a hub that holds no socket
+ * drops its subscriptions when a fan-out reaches it, so each post would
+ * otherwise find fewer listeners than the last.
+ */
+const openHomeStreams = async () => {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO stream_subscriptions (hub, stream)
+     SELECT id, 'user' FROM accounts WHERE access_email LIKE 'b%@bench.example'
+       AND CAST(substr(username, 2) AS INTEGER) % 5 = 0`,
+  ).run();
+};
+
 const CountRow = z.object({ n: z.number() });
 const count = async (table: string): Promise<number> =>
   CountRow.parse(await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n;
@@ -289,6 +304,16 @@ describe.runIf(setting("BENCH") === "1")("performance benchmark", () => {
       .bind(sparseId, seed.accountId(3))
       .run();
     const sparse = await accessTokenFor(sparseId);
+    // The second-to-last account follows 20 accounts other than the
+    // celebrity, about one status in a hundred: a page takes hours.
+    const mediumId = seed.accountId(seed.shape.localAccounts - 1);
+    await env.DB.prepare(
+      `DELETE FROM follows WHERE follower_account_id = ? AND target_account_id NOT IN (
+         SELECT target_account_id FROM follows WHERE follower_account_id = ? AND target_account_id <> ? ORDER BY id LIMIT 20)`,
+    )
+      .bind(mediumId, mediumId, seed.accountId(CELEB))
+      .run();
+    const medium = await accessTokenFor(mediumId);
     patchD1();
     patchBindings();
 
@@ -299,6 +324,7 @@ describe.runIf(setting("BENCH") === "1")("performance benchmark", () => {
       ["home max_id (15 days back)", viewer, `/api/v1/timelines/home?limit=20&max_id=${oldest}`],
       ["home (plain account)", plain, "/api/v1/timelines/home?limit=20"],
       ["home (sparse: follows one account)", sparse, "/api/v1/timelines/home?limit=20"],
+      ["home (medium: follows 20 accounts)", medium, "/api/v1/timelines/home?limit=20"],
       ["public", viewer, "/api/v1/timelines/public?limit=20"],
       ["public local", viewer, "/api/v1/timelines/public?local=true&limit=20"],
       ["public remote", viewer, "/api/v1/timelines/public?remote=true&limit=20"],
@@ -333,16 +359,20 @@ describe.runIf(setting("BENCH") === "1")("performance benchmark", () => {
       ["search statuses", viewer, "/api/v2/search?q=status%20123&type=statuses&limit=5"],
       ["search accounts", viewer, "/api/v2/search?q=b12&type=accounts&limit=5"],
     ];
-    for (const [label, token, path] of reads) {
+    for (const [label, token, path] of reads.filter(([label]) => label.includes(ONLY))) {
       await report(label, await repeat(() => get(token, path), RUNS));
     }
 
+    if (ONLY !== "" && !["POST", "inbox", "job"].some((word) => ONLY.includes(word))) {
+      return;
+    }
     const jobs = new Map<string, JobStats>();
     const workflows = holdWorkflows();
     const held = holdQueue();
     try {
       const posts: Sample[] = [];
       for (let run = 0; run < Math.max(3, Math.ceil(RUNS / 2)); run += 1) {
+        await openHomeStreams();
         posts.push(
           await sample(() =>
             SELF.fetch("https://example.com/api/v1/statuses", {
@@ -355,10 +385,31 @@ describe.runIf(setting("BENCH") === "1")("performance benchmark", () => {
         await drainTimed(held, jobs);
       }
       await report("POST status (celebrity)", posts);
+      // Five posts before the queue runs: their jobs share invocations, as
+      // `maxBatchSize` lets them.
+      const batched = new Map<string, JobStats>();
+      await openHomeStreams();
+      for (let run = 0; run < QUEUE_BATCH; run += 1) {
+        await sample(() =>
+          SELF.fetch("https://example.com/api/v1/statuses", {
+            method: "POST",
+            headers: { ...headers(celeb), "Content-Type": "application/json" },
+            body: JSON.stringify({ status: `bench batched post ${run}` }),
+          }),
+        );
+      }
+      await drainTimed(held, batched);
+      for (const [kind, entry] of batched) {
+        await report(
+          `job ${kind}, ${QUEUE_BATCH} posts queued (${entry.messages} msgs)`,
+          entry.invocations,
+        );
+      }
 
       const creates: Sample[] = [];
       for (let run = 0; run < Math.max(3, Math.ceil(RUNS / 2)); run += 1) {
         const id = `${HOT_ACTOR_URI}/statuses/bench-${run}`;
+        await openHomeStreams();
         creates.push(
           await sample(async () =>
             SELF.fetch(

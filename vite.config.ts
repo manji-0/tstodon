@@ -100,6 +100,7 @@ export default defineConfig({
                 BENCH_RUNS: process.env.BENCH_RUNS ?? "",
                 BENCH_PLAN: process.env.BENCH_PLAN ?? "",
                 BENCH_ANALYZE: process.env.BENCH_ANALYZE ?? "",
+                BENCH_ONLY: process.env.BENCH_ONLY ?? "",
               },
             },
           }),
