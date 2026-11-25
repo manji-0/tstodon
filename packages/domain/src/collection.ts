@@ -16,6 +16,8 @@ const CollectionItemSchema = z.object({
   activityUri: z.string().optional(),
   /** A remote account's item: the authorization its `Accept` named. */
   approvalUri: z.string().optional(),
+  /** A remote collection's item: its id, once its owner listed it. */
+  uri: z.string().optional(),
 });
 
 export type CollectionItem = z.infer<typeof CollectionItemSchema>;

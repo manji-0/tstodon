@@ -2,6 +2,7 @@ import { extractHashtags } from "@tstodon/core";
 import { tagUrl } from "./tag-documents";
 import type {
   ApiAccountJSON,
+  ApiCollectionJSON,
   ApiMediaAttachmentJSON,
   ApiOriginalStatusJSON,
   ApiPreviewCardJSON,
@@ -60,6 +61,7 @@ import { documentsById } from "./documents-by-id";
 import { jsonStringArray, runD1, type RepositoryError } from "./d1";
 import { listFollowedAccountIds as listFollowedAccountIdsSql } from "./generated/prisma/sql";
 import { queryTyped } from "./typed-sql";
+import { taggedCollectionDocuments } from "./tagged-collection-documents";
 
 const TargetAccountIdRow = z.object({ target_account_id: z.string() });
 
@@ -112,6 +114,7 @@ const buildLocalNoteDocument = (
   muted: boolean,
   sensitized: boolean,
   card: ApiPreviewCardJSON | null,
+  taggedCollections: ApiCollectionJSON[],
 ): ApiOriginalStatusJSON => {
   const uri = `${InstanceIdentity.actorUrl(identity, account.username)}/statuses/${status.id}`;
   const attachments = mediaAttachmentsJson(identity, status.mediaIds, mediaById);
@@ -152,8 +155,7 @@ const buildLocalNoteDocument = (
     quote: null,
     quotes_count: interactions.quotes,
     quote_approval: { automatic: [], manual: [], current_user: "denied" },
-    // Mastodon 4.7 collections; none are kept here.
-    tagged_collections: [],
+    tagged_collections: taggedCollections,
   };
 };
 
@@ -348,6 +350,7 @@ const renderLocalStatuses = async (
     mutedRoots,
     replyLinks,
     mentionsResult,
+    taggedCollectionsOf,
   ] = await Promise.all([
     findAccountsByIds(env.DB, accountIds),
     statusInteractionCountsByIds(env.DB, noteIds, viewerId),
@@ -366,6 +369,7 @@ const renderLocalStatuses = async (
     viewerId ? listStatusMuteRoots(env.DB, viewerId) : undefined,
     listStatusReplyLinks(env.DB, noteIds),
     listStatusMentions(env.DB, noteIds),
+    taggedCollectionDocuments(env, identity, viewerId, noteTargetsOf(allStatuses)),
   ]);
 
   if (accountsResult.isErr()) {
@@ -459,6 +463,7 @@ const renderLocalStatuses = async (
         root !== undefined && mutedSet.has(root),
         sensitizedIds.has(status.accountId),
         cards.get(status.id) ?? null,
+        taggedCollectionsOf(StatusTarget.local(status.id)),
       ),
     );
   }
@@ -651,6 +656,8 @@ const renderLocalStatuses = async (
       created_at: status.createdAt,
       // The boost's own visibility, which may be narrower than the original's.
       visibility: Visibility.toRest(status.visibility),
+      // A boost tags no collection of its own (`Status#tagged_objects`).
+      tagged_collections: [],
     };
   };
 

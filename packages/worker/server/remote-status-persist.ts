@@ -9,10 +9,12 @@ import {
   NoteThread,
   type OutboxJob,
   StatusNotificationAudience,
+  StatusTarget,
 } from "@tstodon/domain";
 import { schemaResult } from "@tstodon/core";
 import { CreateDocumentSchema, refId } from "./activitypub-wire";
 import { recordNoteEmojis } from "./remote-emoji-record";
+import { syncRemoteTaggedCollections } from "./tagged-collections";
 import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
@@ -878,6 +880,15 @@ const writeLateSteps = async (
   }
   // Preview cards are built off the request path like for local posts.
   startLinkCard(env, "RemoteStatus", status.id, status.contentHtml, noteCardUrl(raw));
+  const tagged = await syncRemoteTaggedCollections(
+    env,
+    identity,
+    StatusTarget.remote(status.id),
+    raw,
+  );
+  if (tagged.isErr()) {
+    return err(tagged.error);
+  }
   if (late.kind === "Updated" && late.edit) {
     const notified = await notifyAboutUpdate(env, {
       kind: "RemoteStatus",

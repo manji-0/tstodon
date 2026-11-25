@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApContext, ApUri, withContext } from "./context";
-import { ApHashtag } from "./note";
+import { ApHashtag } from "./hashtag";
 
 /**
  * A collection's item as FEP-7aa9 names it (`ActivityPub::FeaturedItemSerializer`):

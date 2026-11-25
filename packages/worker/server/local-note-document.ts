@@ -11,6 +11,7 @@ import { findPollsByStatusIds, loadNotePoll } from "./poll-store";
 import { loadNoteQuotePolicies, loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote, noteQuotes } from "./quote-uri";
 import { loadNoteReplies, loadNoteReply } from "./reply-target";
+import { loadNotesTaggedCollections } from "./tagged-collection-documents";
 
 /**
  * A stored local note as it is now, the way its URI serves it: with its
@@ -25,19 +26,23 @@ export const loadLocalNoteDocument = async (
   note: LocalNote,
   extras: Readonly<{ emojis: ReadonlyArray<CustomEmoji>; replies?: ApRepliesJSON | undefined }>,
 ): Promise<Result<ApStatusDocumentJSON, RepositoryError>> => {
-  const [media, quote, mentions, reply, poll, quotePolicy] = await Promise.all([
+  const [media, quote, mentions, reply, poll, quotePolicy, collections] = await Promise.all([
     loadNoteMedia(env.DB, identity, note),
     noteQuote(env, identity, note.id),
     loadNoteMentions(env.DB, identity, note.id),
     loadNoteReply(env.DB, identity, note),
     loadNotePoll(env.DB, note.id),
     loadNoteQuotePolicy(env.DB, author, note),
+    loadNotesTaggedCollections(env.DB, identity, [note.id]),
   ]);
   if (media.isErr()) {
     return err(media.error);
   }
   if (quote.isErr()) {
     return err(quote.error);
+  }
+  if (collections.isErr()) {
+    return err(collections.error);
   }
   return ok(
     noteDocument(identity, author, note, {
@@ -49,6 +54,7 @@ export const loadLocalNoteDocument = async (
       media: media.value,
       quotePolicy,
       emojis: extras.emojis,
+      taggedCollections: collections.value.get(note.id) ?? [],
     }),
   );
 };
@@ -70,18 +76,20 @@ export const loadLocalNoteDocuments = async (
 ): Promise<Result<ReadonlyMap<string, ApStatusDocumentJSON>, RepositoryError>> => {
   const notes = authored.map(({ note }) => note);
   const ids = notes.map((note) => note.id);
-  const [media, quotes, mentions, parents, replies, polls, quotePolicies] = await Promise.all([
-    loadNotesMedia(env.DB, identity, notes),
-    noteQuotes(env, identity, ids),
-    loadNotesMentions(env.DB, identity, ids),
-    loadNoteReplies(env.DB, identity, notes),
-    loadNotesReplies(
-      env.DB,
-      authored.map(({ author, note }) => repliedNote(identity, author, note.id)),
-    ),
-    findPollsByStatusIds(env.DB, ids, undefined),
-    loadNoteQuotePolicies(env.DB, authored),
-  ]);
+  const [media, quotes, mentions, parents, replies, polls, quotePolicies, collections] =
+    await Promise.all([
+      loadNotesMedia(env.DB, identity, notes),
+      noteQuotes(env, identity, ids),
+      loadNotesMentions(env.DB, identity, ids),
+      loadNoteReplies(env.DB, identity, notes),
+      loadNotesReplies(
+        env.DB,
+        authored.map(({ author, note }) => repliedNote(identity, author, note.id)),
+      ),
+      findPollsByStatusIds(env.DB, ids, undefined),
+      loadNoteQuotePolicies(env.DB, authored),
+      loadNotesTaggedCollections(env.DB, identity, ids),
+    ]);
   if (media.isErr()) {
     return err(media.error);
   }
@@ -90,6 +98,9 @@ export const loadLocalNoteDocuments = async (
   }
   if (replies.isErr()) {
     return err(replies.error);
+  }
+  if (collections.isErr()) {
+    return err(collections.error);
   }
   return ok(
     new Map(
@@ -104,6 +115,7 @@ export const loadLocalNoteDocuments = async (
           media: media.value.get(note.id) ?? { attachments: [], authorSensitized: false },
           quotePolicy: quotePolicies.get(note.id) ?? "nobody",
           emojis,
+          taggedCollections: collections.value.get(note.id) ?? [],
         }),
       ]),
     ),
