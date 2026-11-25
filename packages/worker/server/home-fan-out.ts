@@ -30,12 +30,14 @@ type HomeEntryEvent = Pick<FanOutHome, "event" | "entryId">;
 
 /**
  * Followers told per pass, of those with a `user` or `list` stream open. An
- * open `user` stream costs a home timeline query for the entry, and each list
- * stream a follower has open a list timeline query, so a page
- * stays well inside a queue invocation's subrequest budget; a full page
- * queues a `FanOutHome` job for the next.
+ * open `user` stream costs the entry's home timeline render for that
+ * follower, about 28 statements (`pnpm bench`), and each list stream a
+ * follower has open a list timeline query. A queue invocation runs up to
+ * `maxBatchSize` (5) pages and may make 1,000 statements, so a page of 3
+ * keeps a full batch under half of that (`home-fan-out-budget.test.ts`); a
+ * page of 20 made 2,811. A full page queues a `FanOutHome` job for the next.
  */
-export const HOME_FAN_OUT_PAGE_SIZE = 20;
+export const HOME_FAN_OUT_PAGE_SIZE = 3;
 
 /**
  * Tell the author's local followers about a home timeline entry, as
