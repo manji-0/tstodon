@@ -1,8 +1,15 @@
 import type { ApiCollectionJSON, CollectionAccountItem } from "@tstodon/api";
+import {
+  ACTIVITY_STREAMS,
+  type ApContextJSON,
+  type ApCuratedCollectionJSON,
+  type ApFeaturedItemJSON,
+} from "@tstodon/api/activitypub";
 import { Collection, type CollectionItem, type InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { blockedAccountIds, findCollections, findItemCollectionIds } from "./collection-store";
 import type { RepositoryError } from "./d1";
+import { hashtagObject } from "./activitypub";
 import { tagUrl } from "./tag-documents";
 
 const origin = (identity: InstanceIdentity): string => identity.publicOrigin.replace(/\/$/, "");
@@ -124,4 +131,123 @@ export const notificationCollections = async (
     const id = collectionOf(target);
     return id === undefined ? null : (documents.get(id) ?? null);
   });
+};
+
+/** An actor's `featuredCollections` (`ap_account_featured_collections_url`). */
+export const featuredCollectionsUri = (identity: InstanceIdentity, accountId: string): string =>
+  `${origin(identity)}/ap/users/${accountId}/featured_collections`;
+
+/** A collection item's ActivityPub id (`ap_account_collection_item_url`). */
+export const collectionItemUri = (
+  identity: InstanceIdentity,
+  collection: Collection,
+  itemId: string,
+): string => `${origin(identity)}/ap/users/${collection.accountId}/collection_items/${itemId}`;
+
+/** A local featured account's consent (`ap_account_feature_authorization_url`). */
+export const featureAuthorizationUri = (
+  identity: InstanceIdentity,
+  accountId: string,
+  itemId: string,
+): string => `${origin(identity)}/ap/users/${accountId}/feature_authorizations/${itemId}`;
+
+/** Rails' `iso8601`: whole seconds. */
+const apTime = (instant: string): string => instant.replace(/\.\d+Z$/, "Z");
+
+const FEATURED_COLLECTION_TERMS = {
+  FeaturedCollection: "https://w3id.org/fep/7aa9#FeaturedCollection",
+  FeaturedItem: "https://w3id.org/fep/7aa9#FeaturedItem",
+  FeatureRequest: "https://w3id.org/fep/7aa9#FeatureRequest",
+  FeatureAuthorization: "https://w3id.org/fep/7aa9#FeatureAuthorization",
+  topic: { "@id": "https://w3id.org/fep/7aa9#topic", "@type": "@id" },
+  featuredObject: { "@id": "https://w3id.org/fep/7aa9#featuredObject", "@type": "@id" },
+  featureAuthorization: {
+    "@id": "https://w3id.org/fep/7aa9#featureAuthorization",
+    "@type": "@id",
+  },
+} as const;
+
+/**
+ * The context of a document that embeds `FeaturedCollection`s (Mastodon's
+ * `discoverable`, `featured_collections`, `hashtag` and `sensitive` terms).
+ */
+export const featuredCollectionContext = [
+  ACTIVITY_STREAMS,
+  {
+    toot: "http://joinmastodon.org/ns#",
+    discoverable: "toot:discoverable",
+    ...FEATURED_COLLECTION_TERMS,
+    Hashtag: "as:Hashtag",
+    sensitive: "as:sensitive",
+  },
+] as const satisfies ApContextJSON;
+
+/** The context of a document with `FeaturedItem`s alone (`featured_collections`). */
+export const featuredItemContext = [
+  ACTIVITY_STREAMS,
+  FEATURED_COLLECTION_TERMS,
+] as const satisfies ApContextJSON;
+
+/** The context of a `FeatureAuthorization` (`feature_authorizations`). */
+export const featureAuthorizationContext = [
+  ACTIVITY_STREAMS,
+  {
+    gts: "https://gotosocial.org/ns#",
+    FeatureAuthorization: "https://w3id.org/fep/7aa9#FeatureAuthorization",
+    interactingObject: { "@id": "gts:interactingObject", "@type": "@id" },
+    interactionTarget: { "@id": "gts:interactionTarget", "@type": "@id" },
+  },
+] as const satisfies ApContextJSON;
+
+/** The actor URI of an account a collection names; `undefined` when it is gone. */
+export type ActorUriOf = (accountId: string) => string | undefined;
+
+/** `ActivityPub::FeaturedItemSerializer` of a local collection's item. */
+export const featuredItemObject = (
+  identity: InstanceIdentity,
+  collection: Collection,
+  item: CollectionItem,
+  actorUriOf: ActorUriOf,
+): ApFeaturedItemJSON | undefined => {
+  const featuredObject = actorUriOf(item.accountId);
+  return featuredObject === undefined
+    ? undefined
+    : {
+        id: collectionItemUri(identity, collection, item.id),
+        type: "FeaturedItem",
+        featuredObject,
+        featureAuthorization: featureAuthorizationUri(identity, item.accountId, item.id),
+        published: apTime(item.createdAt),
+      };
+};
+
+/**
+ * `ActivityPub::FeaturedCollectionSerializer`: the accepted items only, and
+ * the description as `summaryMap` when the collection has a language.
+ */
+export const curatedCollectionObject = (
+  identity: InstanceIdentity,
+  collection: Collection,
+  actorUriOf: ActorUriOf,
+): ApCuratedCollectionJSON => {
+  const accepted = collection.items.filter((item) => item.state === "accepted");
+  return {
+    id: collectionUri(identity, collection),
+    type: "FeaturedCollection",
+    totalItems: accepted.length,
+    name: collection.name,
+    attributedTo: actorUriOf(collection.accountId) ?? "",
+    url: collectionUrl(identity, collection),
+    sensitive: collection.sensitive,
+    discoverable: collection.discoverable,
+    published: apTime(collection.createdAt),
+    updated: apTime(collection.updatedAt),
+    ...(collection.language
+      ? { summaryMap: { [collection.language]: collection.description } }
+      : { summary: collection.description }),
+    topic: collection.tagName === null ? null : hashtagObject(identity, collection.tagName),
+    orderedItems: accepted.flatMap(
+      (item) => featuredItemObject(identity, collection, item, actorUriOf) ?? [],
+    ),
+  };
 };

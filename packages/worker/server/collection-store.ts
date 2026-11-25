@@ -98,6 +98,40 @@ export const findCollection = async (
     return found;
   });
 
+/** The collection holding the item `itemId`. */
+export const findCollectionOfItem = async (
+  db: D1Database,
+  itemId: string,
+): Promise<Result<Collection | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT ${COLLECTION_COLUMNS} FROM collections c
+         JOIN collection_items i ON i.collection_id = c.id WHERE i.id = ?`,
+      )
+      .bind(itemId)
+      .all();
+    const [found] = await withItems(db, parseRows(CollectionRow, results));
+    return found;
+  });
+
+/** An account's collections in the order they were made, as `featuredCollections` pages them. */
+export const pageCollectionsByAge = async (
+  db: D1Database,
+  accountId: string,
+  page: OffsetPage,
+): Promise<Result<ReadonlyArray<Collection>, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT ${COLLECTION_COLUMNS} FROM collections c WHERE c.account_id = ?
+         ORDER BY c.id LIMIT ? OFFSET ?`,
+      )
+      .bind(accountId, page.limit, page.offset)
+      .all();
+    return withItems(db, parseRows(CollectionRow, results));
+  });
+
 /** Collections by id, in no order; ids that name none are left out. */
 export const findCollections = async (
   db: D1Database,

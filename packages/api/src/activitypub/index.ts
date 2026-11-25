@@ -11,4 +11,5 @@ export * from "./actor";
 export * from "./note";
 export * from "./activity";
 export * from "./collection";
+export * from "./curated-collection";
 export * from "./discovery";
