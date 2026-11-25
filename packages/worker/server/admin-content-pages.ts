@@ -175,6 +175,7 @@ export type EmojiEntry = Readonly<{
   url: string;
   category: string | null;
   visibleInPicker: boolean;
+  disabled: boolean;
 }>;
 
 export type EmojiForm = Readonly<{ shortcode: string; category: string; visibleInPicker: boolean }>;
@@ -183,8 +184,9 @@ const emojiItem = (emoji: EmojiEntry): string => `
         <li>
           <img src="${escapeHtml(emoji.url)}" alt=":${escapeHtml(emoji.shortcode)}:" width="24" height="24" />
           <strong>:${escapeHtml(emoji.shortcode)}:</strong>
-          <span class="muted">${emoji.category === null ? "no category" : escapeHtml(emoji.category)} · ${emoji.visibleInPicker ? "shown in the picker" : "hidden from the picker"}</span>
+          <span class="muted">${emoji.category === null ? "no category" : escapeHtml(emoji.category)} · ${emoji.visibleInPicker ? "shown in the picker" : "hidden from the picker"} · ${emoji.disabled ? "Disabled" : "Enabled"}</span>
           ${postButton("/admin/custom_emojis", emoji.visibleInPicker ? "Hide from the picker" : "Show in the picker", { do: emoji.visibleInPicker ? "hide" : "show", id: emoji.id })}
+          ${postButton("/admin/custom_emojis", emoji.disabled ? "Enable" : "Disable", { do: emoji.disabled ? "enable" : "disable", id: emoji.id })}
           ${postButton("/admin/custom_emojis", "Delete", { do: "delete", id: emoji.id }, "danger")}
         </li>`;
 
@@ -263,7 +265,7 @@ const remoteEmojiItem = (emoji: RemoteEmojiEntry): string => `
           <span class="muted">${escapeHtml(emoji.domain)} · ${emoji.disabled ? "Disabled" : "Enabled"}</span>
         </li>`;
 
-/** The remote emoji with the batch `enable` and `disable` actions, as Mastodon's batch table. */
+/** The remote emoji with the batch `enable`, `disable`, `copy` and `delete` actions, as Mastodon's batch table. */
 const remoteEmojis = (filter: EmojiFilterView, listing: RemoteEmojiListing): string =>
   listing.entries.length === 0
     ? `
@@ -274,6 +276,8 @@ const remoteEmojis = (filter: EmojiFilterView, listing: RemoteEmojiListing): str
       <form method="post" action="/admin/custom_emojis">${hiddenFields(filter, listing.after)}${list(listing.entries.map(remoteEmojiItem))}
         <button type="submit" name="do" value="enable">Enable</button>
         <button type="submit" name="do" value="disable">Disable</button>
+        <button type="submit" name="do" value="copy">Copy</button>
+        <button type="submit" name="do" value="delete" class="danger">Delete</button>
       </form>${
         listing.next === undefined
           ? ""

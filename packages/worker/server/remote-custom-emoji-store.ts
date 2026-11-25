@@ -8,7 +8,7 @@ import { parseRows, runD1, type RepositoryError } from "./d1";
  * Mastodon v4.7.5's `/admin/custom_emojis` lists and changes them:
  * `CustomEmojiFilter` with `remote` or `by_domain` and `shortcode`, in
  * `CustomEmoji.alphabetic` order (domain, then shortcode), and the batch
- * `enable` and `disable` actions (`Form::CustomEmojiBatch`).
+ * `enable`, `disable`, `copy` and `delete` actions (`Form::CustomEmojiBatch`).
  */
 
 /** One remote emoji, named by its account domain and its shortcode as written. */
@@ -30,6 +30,13 @@ const Row = z.object({
   shortcode: z.string(),
   image_url: z.string(),
   disabled: z.number(),
+});
+
+const entryOf = (row: z.infer<typeof Row>): RemoteEmojiEntry => ({
+  domain: row.domain,
+  shortcode: row.shortcode,
+  imageUrl: row.image_url,
+  disabled: row.disabled !== 0,
 });
 
 const COLUMNS = "SELECT domain, shortcode, image_url, disabled FROM remote_custom_emojis";
@@ -78,12 +85,7 @@ export const pageRemoteCustomEmojis = (
               REMOTE_EMOJI_PAGE + 1,
             );
     const rows = parseRows(Row, (await statement.all()).results);
-    const entries = rows.slice(0, REMOTE_EMOJI_PAGE).map((row) => ({
-      domain: row.domain,
-      shortcode: row.shortcode,
-      imageUrl: row.image_url,
-      disabled: row.disabled !== 0,
-    }));
+    const entries = rows.slice(0, REMOTE_EMOJI_PAGE).map(entryOf);
     const last = entries.at(-1);
     return {
       entries,
@@ -93,6 +95,15 @@ export const pageRemoteCustomEmojis = (
           : undefined,
     };
   });
+
+/** The rows `?1` names, a JSON array of `[domain, shortcode]` pairs. */
+const NAMED = `(domain, shortcode) IN (
+  SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?1)
+)`;
+
+/** `keys` as {@link NAMED} binds them, the first {@link MAX_BATCH}. */
+const namedKeys = (keys: ReadonlyArray<RemoteEmojiKey>): string =>
+  JSON.stringify(keys.slice(0, MAX_BATCH).map((key) => [key.domain, key.shortcode]));
 
 /**
  * Disable or enable the remote emoji `keys` names, as `disable!` and
@@ -105,17 +116,34 @@ export const setRemoteCustomEmojisDisabled = (
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
     await db
-      .prepare(
-        `UPDATE remote_custom_emojis SET disabled = ?2
-         WHERE (domain, shortcode) IN (
-           SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?1)
-         )`,
-      )
-      .bind(
-        JSON.stringify(keys.slice(0, MAX_BATCH).map((key) => [key.domain, key.shortcode])),
-        disabled ? 1 : 0,
-      )
+      .prepare(`UPDATE remote_custom_emojis SET disabled = ?2 WHERE ${NAMED}`)
+      .bind(namedKeys(keys), disabled ? 1 : 0)
       .run();
+  });
+
+/** The remote emoji `keys` names that are held, as `Form::CustomEmojiBatch#custom_emojis` finds them. */
+export const findRemoteCustomEmojis = (
+  db: D1Database,
+  keys: ReadonlyArray<RemoteEmojiKey>,
+): Promise<Result<ReadonlyArray<RemoteEmojiEntry>, RepositoryError>> =>
+  runD1(async () =>
+    parseRows(
+      Row,
+      (await db.prepare(`${COLUMNS} WHERE ${NAMED}`).bind(namedKeys(keys)).all()).results,
+    ).map(entryOf),
+  );
+
+/**
+ * Delete the remote emoji `keys` names, as `delete!` destroys them. A post or
+ * profile that writes one shows its shortcode as text, since emoji are read
+ * when they are rendered, until a document that declares it stores it again.
+ */
+export const deleteRemoteCustomEmojis = (
+  db: D1Database,
+  keys: ReadonlyArray<RemoteEmojiKey>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db.prepare(`DELETE FROM remote_custom_emojis WHERE ${NAMED}`).bind(namedKeys(keys)).run();
   });
 
 /**

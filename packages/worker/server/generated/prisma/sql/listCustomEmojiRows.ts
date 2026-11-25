@@ -7,7 +7,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
 /**
  */
 export const listCustomEmojiRows = $runtime.makeTypedQueryFactory(
-  "SELECT id, shortcode, object_key, content_type, visible_in_picker, category, updated_at\nFROM custom_emojis\nORDER BY shortcode ASC",
+  "SELECT id, shortcode, object_key, content_type, visible_in_picker, category, updated_at, disabled\nFROM custom_emojis\nORDER BY shortcode ASC",
 ) as () => $runtime.TypedSql<listCustomEmojiRows.Parameters, listCustomEmojiRows.Result>;
 
 export namespace listCustomEmojiRows {
@@ -20,5 +20,6 @@ export namespace listCustomEmojiRows {
     visible_in_picker: number;
     category: string | null;
     updated_at: string;
+    disabled: number;
   };
 }

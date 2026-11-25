@@ -545,6 +545,7 @@ model custom_emojis {
   created_at        String  @default("CURRENT_TIMESTAMP")
   updated_at        String  @default("CURRENT_TIMESTAMP")
   image_file_size   Int
+  disabled          Int     @default(0)
 
   @@index([shortcode], map: "idx_custom_emojis_shortcode")
 }

@@ -964,6 +964,8 @@ export * from "./sql/setAccountLocked";
 
 export * from "./sql/setAnnouncementPublished";
 
+export * from "./sql/setCustomEmojiDisabled";
+
 export * from "./sql/setRemoteActorMovedTo";
 
 export * from "./sql/setRemoteStatusCard";

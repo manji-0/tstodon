@@ -1,9 +1,11 @@
 import { schemaResult, warmSchemas } from "@tstodon/core";
 import type { Context } from "hono";
-import { ok } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
+import type { InstanceIdentity } from "@tstodon/domain";
 import {
   changeCustomEmoji,
+  copyRemoteCustomEmoji,
   removeCustomEmoji,
   UPLOAD_EMOJI_ERRORS,
   uploadCustomEmoji,
@@ -15,22 +17,31 @@ import {
   emojiListPath,
   emojisPage,
 } from "../../admin-content-pages";
+import { suspendedDomains } from "../../admin-domain-block-store";
 import { confirmPage } from "../../admin-pages";
 import { errorPage } from "../../auth-pages";
-import { customEmojiFromRow, listCustomEmojiRows } from "../../custom-emoji-store";
+import type { RepositoryError } from "../../d1";
+import {
+  customEmojiFromRow,
+  listCustomEmojiRows,
+  setCustomEmojiDisabled,
+} from "../../custom-emoji-store";
 import { pageRedirect } from "../../page-redirect";
 import {
+  deleteRemoteCustomEmojis,
+  findRemoteCustomEmojis,
   pageRemoteCustomEmojis,
   type RemoteEmojiKey,
   setRemoteCustomEmojisDisabled,
 } from "../../remote-custom-emoji-store";
-import { parseInstanceIdentity } from "../../runtime-config";
+import { federationAllowHosts, parseInstanceIdentity } from "../../runtime-config";
 import type { PageMessage } from "../../settings-pages";
 import { instanceName, type SettingsContext } from "../account-settings";
 import {
   adminSession,
   badForm,
   notFound,
+  type NoticeKey,
   noticeOf,
   readParts,
   serverError,
@@ -40,8 +51,10 @@ import {
 
 /**
  * Mastodon's `/admin/custom_emojis` page: list, upload, show or hide in the
- * picker, and delete the local emoji; list the remote ones, and enable or
- * disable them (`Form::CustomEmojiBatch#enable!` / `#disable!`).
+ * picker, enable or disable, and delete the local emoji; list the remote
+ * ones, and enable, disable, copy or delete them (`Form::CustomEmojiBatch`).
+ * A command that names an `id` is for that local emoji; one that does not is
+ * a batch over the remote emoji its `emoji` fields name.
  */
 
 const BLANK_FORM: EmojiForm = { shortcode: "", category: "", visibleInPicker: true };
@@ -54,6 +67,7 @@ const EmojiCommandSchema = z.object({
     z.literal("delete"),
     z.literal("enable"),
     z.literal("disable"),
+    z.literal("copy"),
   ]),
   id: z.string().default(""),
   shortcode: z.string().trim().default(""),
@@ -144,6 +158,7 @@ const renderEmojis = async (
                   url: customEmojiFromRow(row, mediaPublicBaseUrl).url,
                   category: row.category,
                   visibleInPicker: row.visible_in_picker !== 0,
+                  disabled: row.disabled !== 0,
                 })),
         remote: listing,
         form,
@@ -172,7 +187,90 @@ export const getAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
       );
 };
 
-/** Upload, show, hide, or (after a confirmation) delete one emoji. */
+/**
+ * Copy each remote emoji `keys` names, one after another; whether all of
+ * those held were copied. A local copy that failed leaves the rest to go on,
+ * as the next one may come from another server.
+ */
+const copyRemoteEmojis = async (
+  env: Env,
+  identity: InstanceIdentity,
+  keys: ReadonlyArray<RemoteEmojiKey>,
+): Promise<Result<boolean, RepositoryError>> => {
+  const emojis = await findRemoteCustomEmojis(env.DB, keys);
+  if (emojis.isErr()) {
+    return err(emojis.error);
+  }
+  const options = {
+    allowHosts: await federationAllowHosts(env),
+    blockedHosts: await suspendedDomains(env.DB),
+  };
+  let copiedAll = true;
+  for (const emoji of emojis.value) {
+    const copied = await copyRemoteCustomEmoji(env, identity, options, emoji);
+    if (copied.isErr()) {
+      if (copied.error.kind === "RepositoryError") {
+        return err(copied.error);
+      }
+      copiedAll = false;
+    }
+  }
+  return ok(copiedAll);
+};
+
+/**
+ * A batch action over the remote emoji the form's `emoji` fields name, as
+ * `Admin::CustomEmojisController#batch`: back to the list and the page the
+ * form was on, with a notice.
+ */
+const remoteBatch = async (
+  c: SettingsContext,
+  identity: InstanceIdentity,
+  parts: Awaited<ReturnType<typeof readParts>>,
+  action: "enable" | "disable" | "copy" | "delete",
+) => {
+  const filter = emojiFilter({
+    local: textParts(parts, "local")[0],
+    remote: textParts(parts, "remote")[0],
+    by_domain: textParts(parts, "by_domain")[0],
+    shortcode: textParts(parts, "shortcode")[0],
+    after: textParts(parts, "after")[0],
+  });
+  const back = (notice: NoticeKey) =>
+    pageRedirect(
+      c,
+      emojiListPath(filter, [
+        ...(filter.after === undefined ? [] : [["after", keyText(filter.after)] as const]),
+        ["notice", notice],
+      ]),
+      303,
+    );
+  const keys = textParts(parts, "emoji").flatMap((key) => remoteEmojiKey(key) ?? []);
+  if (keys.length === 0) {
+    return back("no_emoji_selected");
+  }
+  switch (action) {
+    case "enable":
+    case "disable": {
+      const changed = await setRemoteCustomEmojisDisabled(c.env.DB, keys, action === "disable");
+      return changed.isErr()
+        ? serverError(c, changed.error)
+        : back(action === "disable" ? "emojis_disabled" : "emojis_enabled");
+    }
+    case "copy": {
+      const copied = await copyRemoteEmojis(c.env, identity, keys);
+      return copied.isErr()
+        ? serverError(c, copied.error)
+        : back(copied.value ? "emojis_copied" : "emoji_copy_failed");
+    }
+    case "delete": {
+      const deleted = await deleteRemoteCustomEmojis(c.env.DB, keys);
+      return deleted.isErr() ? serverError(c, deleted.error) : back("emojis_deleted");
+    }
+  }
+};
+
+/** A command for one local emoji (a delete after a confirmation), or a batch over remote ones. */
 export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
   const admin = await adminSession(c);
   if (admin.kind === "Answered") {
@@ -242,38 +340,30 @@ export const postAdminCustomEmojis = async (c: Context<{ Bindings: Env }>) => {
     }
     case "enable":
     case "disable": {
-      const filter = emojiFilter({
-        local: textParts(parts, "local")[0],
-        remote: textParts(parts, "remote")[0],
-        by_domain: textParts(parts, "by_domain")[0],
-        shortcode: textParts(parts, "shortcode")[0],
-        after: textParts(parts, "after")[0],
-      });
-      // Back to the page the form was on.
-      const page: ReadonlyArray<readonly [string, string]> =
-        filter.after === undefined ? [] : [["after", keyText(filter.after)]];
-      const keys = textParts(parts, "emoji").flatMap((key) => remoteEmojiKey(key) ?? []);
-      if (keys.length === 0) {
-        return pageRedirect(
-          c,
-          emojiListPath(filter, [...page, ["notice", "no_emoji_selected"]]),
-          303,
-        );
+      if (value.id === "") {
+        return remoteBatch(c, identity.value, parts, value.do);
       }
-      const changed = await setRemoteCustomEmojisDisabled(c.env.DB, keys, value.do === "disable");
+      const changed = await setCustomEmojiDisabled(c.env.DB, value.id, value.do === "disable");
       if (changed.isErr()) {
         return serverError(c, changed.error);
       }
-      return pageRedirect(
-        c,
-        emojiListPath(filter, [
-          ...page,
-          ["notice", value.do === "disable" ? "emojis_disabled" : "emojis_enabled"],
-        ]),
-        303,
-      );
+      return changed.value
+        ? pageRedirect(
+            c,
+            withNotice(
+              "/admin/custom_emojis",
+              value.do === "disable" ? "emojis_disabled" : "emojis_enabled",
+            ),
+            303,
+          )
+        : notFound(c, "emoji");
     }
+    case "copy":
+      return remoteBatch(c, identity.value, parts, value.do);
     case "delete": {
+      if (value.id === "") {
+        return remoteBatch(c, identity.value, parts, value.do);
+      }
       if (textParts(parts, "confirmed")[0] !== "1") {
         return c.html(
           confirmPage(instanceName(c.env), {
