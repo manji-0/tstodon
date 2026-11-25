@@ -72,7 +72,7 @@ Caveats, from how this server works:
 Time Travel lives in the same account as the database and covers only its window. The [`D1 backup`](../../.github/workflows/d1-backup.yml) GitHub Actions workflow keeps copies elsewhere: once a day (03:43 UTC; change the `cron` line to suit your quiet hours) and on demand (Actions → D1 backup → Run workflow) it
 
 1. exports the production database with `wrangler d1 export --remote --compatibility sqlite3_cli_only` (the lockfile's wrangler, through a throwaway config that names the database by id): the SQLite CLI's `.dump` format, since D1's own format refuses a database with a virtual table and the status search index is one (FTS5),
-2. checks the dump is not empty and holds `d1_migrations` and `accounts`,
+2. checks the dump is not empty and holds `d1_migrations` and `accounts`, converts it with `scripts/d1-dump-for-import.mjs` (which fails on a schema write it does not recognise) and imports the result into a scratch local D1 database on the runner,
 3. compresses it and encrypts it with [age](https://age-encryption.org) to the public keys in `D1_BACKUP_AGE_RECIPIENTS`, then deletes the plaintext; the plaintext never leaves the runner,
 4. uploads `<prefix><database>-<YYYYMMDDTHHMMSSZ>.sql.gz.age` to an S3-compatible bucket (an R2 bucket in **another** Cloudflare account, or another provider), with its SHA-256 in the object metadata (`sha256`), and checks the stored size,
 5. prunes old backups in that bucket (below), and

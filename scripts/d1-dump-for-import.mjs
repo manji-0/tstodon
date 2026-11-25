@@ -11,9 +11,14 @@
 // virtual table is created with its `CREATE VIRTUAL TABLE` statement, its
 // shadow tables (`<name>_data`, `_idx`, `_content`, `_docsize`, `_config`)
 // are left out, and the index is written again at the end from the tables it
-// indexes (REBUILD below), after the rows those are read from are back. A
-// virtual table this script has no rebuild for fails the conversion.
-import { readFileSync } from "node:fs";
+// indexes (REBUILD below), after the rows those are read from are back.
+//
+// The conversion fails, and the command exits non-zero, on anything in the
+// `writable_schema` part of the dump it does not recognise, on a virtual
+// table it has no rebuild for, and on an empty result: a restore must not
+// start from SQL that silently lost part of the database.
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /** How each virtual table of the schema is filled again (migration 0015). */
 const REBUILD = {
@@ -23,17 +28,34 @@ const REBUILD = {
 
 const SHADOW_SUFFIXES = ["data", "idx", "content", "docsize", "config"];
 
-/** The dump's statements, split at semicolons outside quotes and brackets. */
+/** The dump's statements, split at semicolons outside quotes, brackets and comments. */
 const statements = function* (sql) {
   let start = 0;
   let quote;
-  let inTrigger = false;
+  // A trigger's body, and a CASE anywhere, hold semicolons or an `END` of
+  // their own: a statement ends at a semicolon outside every BEGIN and CASE.
+  let depth = 0;
   for (let index = 0; index < sql.length; index += 1) {
     const char = sql[index];
     if (quote !== undefined) {
       if (char === quote) {
         quote = undefined;
       }
+      continue;
+    }
+    if (/[A-Za-z_]/.test(char) && !/[A-Za-z0-9_$]/.test(sql[index - 1] ?? "")) {
+      const word = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(sql.slice(index, index + 64))[0].toUpperCase();
+      if (word === "CASE") {
+        depth += 1;
+      } else if (word === "END") {
+        depth = Math.max(0, depth - 1);
+      } else if (
+        word === "BEGIN" &&
+        /^CREATE\s+(TEMP\s+|TEMPORARY\s+)?TRIGGER\b/i.test(sql.slice(start, index).trim())
+      ) {
+        depth += 1;
+      }
+      index += word.length - 1;
       continue;
     }
     // A comment in a view's or trigger's SQL may hold a quote of its own.
@@ -47,16 +69,8 @@ const statements = function* (sql) {
       quote = char;
     } else if (char === "[") {
       quote = "]";
-    } else if (char === ";") {
+    } else if (char === ";" && depth === 0) {
       const statement = sql.slice(start, index + 1).trim();
-      // A trigger's body holds semicolons of its own; it ends with `END;`.
-      if (!inTrigger && /^CREATE\s+TRIGGER\b/i.test(statement)) {
-        inTrigger = true;
-      }
-      if (inTrigger && !/\bEND\s*;$/i.test(statement)) {
-        continue;
-      }
-      inTrigger = false;
       if (statement.length > 0) {
         yield statement;
       }
@@ -69,60 +83,186 @@ const statements = function* (sql) {
   }
 };
 
-const VIRTUAL_TABLE =
-  /^INSERT INTO sqlite_schema\s*\(type,name,tbl_name,rootpage,sql\)\s*VALUES\s*\('table','([^']+)','[^']+',0,'(CREATE VIRTUAL TABLE[\s\S]*)'\);$/i;
+/** An identifier as written: bare, or quoted with `"`, `'`, backticks or brackets. */
+const IDENTIFIER = String.raw`(?:"(?:[^"]|"")+"|'(?:[^']|'')+'|\x60(?:[^\x60]|\x60\x60)+\x60|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]*)`;
+
+const unquote = (identifier) => {
+  const first = identifier[0];
+  if (first === "[") {
+    return identifier.slice(1, -1);
+  }
+  if (first === '"' || first === "'" || first === "`") {
+    return identifier.slice(1, -1).replaceAll(`${first}${first}`, first);
+  }
+  return identifier;
+};
+
+/** The SQL literals of a `VALUES (...)` list: quoted strings, numbers and NULL. */
+const literals = (list) => {
+  const values = [];
+  const pattern = /\s*(?:'((?:[^']|'')*)'|(-?\d+(?:\.\d+)?)|(NULL))\s*(,|$)/iy;
+  let match;
+  while (pattern.lastIndex < list.length && (match = pattern.exec(list)) !== null) {
+    values.push(match[1] !== undefined ? match[1].replaceAll("''", "'") : (match[2] ?? null));
+    if (match[4] === "") {
+      return values;
+    }
+  }
+  return pattern.lastIndex === list.length ? values : undefined;
+};
+
+const SCHEMA_INSERT = new RegExp(
+  String.raw`^INSERT\s+INTO\s+(?:main\.)?(${IDENTIFIER})\s*\(([^)]*)\)\s*VALUES\s*\(([\s\S]*)\)\s*;$`,
+  "i",
+);
+
+/**
+ * A `.dump` line that writes the schema table directly: the name and SQL of
+ * the virtual table it restores, or why it is not one.
+ */
+const schemaInsert = (statement) => {
+  const match = SCHEMA_INSERT.exec(statement);
+  if (
+    match === null ||
+    !["sqlite_schema", "sqlite_master"].includes(unquote(match[1]).toLowerCase())
+  ) {
+    return undefined;
+  }
+  const columns = match[2].split(",").map((column) => unquote(column.trim()).toLowerCase());
+  const values = literals(match[3]);
+  if (values === undefined || values.length !== columns.length) {
+    return { error: "its values do not read" };
+  }
+  const row = Object.fromEntries(columns.map((column, index) => [column, values[index]]));
+  const sql = row.sql ?? "";
+  if (
+    row.type !== "table" ||
+    typeof row.name !== "string" ||
+    !/^CREATE\s+VIRTUAL\s+TABLE\b/i.test(sql)
+  ) {
+    return { error: "it is not a virtual table" };
+  }
+  return { name: row.name, sql: `${sql.trim().replace(/;$/, "")};` };
+};
+
+const SHADOW_CREATE = new RegExp(
+  String.raw`^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(${IDENTIFIER})`,
+  "i",
+);
+const SHADOW_INSERT = new RegExp(String.raw`^INSERT\s+INTO\s+(${IDENTIFIER})`, "i");
+
+const IS_SCHEMA_WRITE = /^INSERT\s+INTO\s+(?:main\.)?["'`[]?sqlite_(schema|master)\b/i;
 
 export const convertDump = (sql) => {
-  if (!/^PRAGMA writable_schema\s*=\s*ON;/im.test(sql)) {
+  const all = [...statements(sql)];
+  const cliFormat = all.some(
+    (statement) =>
+      /^PRAGMA\s+writable_schema\b/i.test(statement) || IS_SCHEMA_WRITE.test(statement),
+  );
+  if (!cliFormat) {
     return sql;
   }
-  const all = [...statements(sql)];
-  const virtualTables = all.flatMap((statement) => VIRTUAL_TABLE.exec(statement)?.[1] ?? []);
+  // The virtual tables come first, so a shadow table is known wherever it is.
+  const virtualTables = new Map();
+  for (const statement of all.filter((statement) => IS_SCHEMA_WRITE.test(statement))) {
+    const insert = schemaInsert(statement);
+    if (insert === undefined || "error" in insert) {
+      throw new Error(
+        `unrecognised write to the schema table (${insert?.error ?? "unreadable"}): ${statement.slice(0, 200)}`,
+      );
+    }
+    if (REBUILD[insert.name] === undefined) {
+      throw new Error(`no rebuild for the virtual table ${insert.name}`);
+    }
+    virtualTables.set(insert.name, insert.sql);
+  }
+  if (virtualTables.size === 0) {
+    throw new Error("the dump writes the schema table but restores no virtual table");
+  }
   const shadow = new Set(
-    virtualTables.flatMap((name) => SHADOW_SUFFIXES.map((suffix) => `${name}_${suffix}`)),
+    [...virtualTables.keys()].flatMap((name) =>
+      SHADOW_SUFFIXES.map((suffix) => `${name}_${suffix}`.toLowerCase()),
+    ),
   );
-  const shadowTable = (statement) => {
-    const name =
-      /^CREATE TABLE IF NOT EXISTS '([^']+)'/i.exec(statement)?.[1] ??
-      /^INSERT INTO "?([A-Za-z0-9_]+)"? VALUES/i.exec(statement)?.[1];
-    return name !== undefined && shadow.has(name);
+  const shadowName = (statement) => {
+    const match = SHADOW_CREATE.exec(statement) ?? SHADOW_INSERT.exec(statement);
+    const name = match === null ? undefined : unquote(match[1]).toLowerCase();
+    return name !== undefined && shadow.has(name) ? name : undefined;
   };
   // Every table is created before any row is written: D1 enforces foreign
   // keys during the import (`.dump` turns them off), and a row's parent table
   // may come later in the dump.
   const tables = [];
   const rest = [];
+  let writableSchema = false;
   for (const statement of all) {
+    if (/^PRAGMA\s+writable_schema\s*=\s*(ON|1|TRUE)\s*;$/i.test(statement)) {
+      writableSchema = true;
+      continue;
+    }
+    if (/^PRAGMA\s+writable_schema\s*=\s*(OFF|0|FALSE)\s*;$/i.test(statement)) {
+      writableSchema = false;
+      continue;
+    }
+    if (IS_SCHEMA_WRITE.test(statement)) {
+      tables.push(virtualTables.get(schemaInsert(statement).name));
+      continue;
+    }
+    if (shadowName(statement) !== undefined) {
+      continue;
+    }
+    // `.dump` also writes the AUTOINCREMENT counters and the indexes, views
+    // and triggers while the schema is writable; anything else there is a
+    // shape this script does not know.
     if (
-      /^(BEGIN TRANSACTION|COMMIT|PRAGMA foreign_keys\s*=\s*OFF|PRAGMA writable_schema\s*=\s*(ON|OFF));$/i.test(
+      writableSchema &&
+      !/^(DELETE\s+FROM\s+sqlite_sequence|INSERT\s+INTO\s+["'`]?sqlite_sequence\b|CREATE\s+(UNIQUE\s+)?INDEX\b|CREATE\s+VIEW\b|CREATE\s+(TEMP\s+|TEMPORARY\s+)?TRIGGER\b)/i.test(
+        statement,
+      )
+    ) {
+      throw new Error(
+        `unrecognised statement while the dump writes the schema: ${statement.slice(0, 200)}`,
+      );
+    }
+    if (
+      /^(BEGIN(\s+TRANSACTION)?|COMMIT|PRAGMA\s+foreign_keys\s*=\s*(OFF|0))\s*;$/i.test(
         statement,
       ) ||
-      shadowTable(statement) ||
       // D1's own tables, which an import may not write, and planner statistics.
-      /^(CREATE TABLE( IF NOT EXISTS)?|INSERT INTO)\s+['"`]?(_cf_|sqlite_stat)/i.test(statement) ||
-      /^ANALYZE sqlite_schema;$/i.test(statement)
+      /^(CREATE\s+TABLE(\s+IF\s+NOT\s+EXISTS)?|INSERT\s+INTO)\s+['"`[]?(_cf_|sqlite_stat)/i.test(
+        statement,
+      ) ||
+      /^ANALYZE\s+sqlite_(schema|master)\s*;$/i.test(statement)
     ) {
       continue;
     }
-    const virtual = VIRTUAL_TABLE.exec(statement);
-    if (virtual !== null) {
-      tables.push(`${virtual[2].replaceAll("''", "'")};`);
-    } else if (/^CREATE TABLE\b/i.test(statement)) {
+    if (/^CREATE\s+TABLE\b/i.test(statement)) {
       tables.push(statement);
     } else {
       rest.push(statement);
     }
   }
-  const rebuilds = virtualTables.map((name) => {
-    const rebuild = REBUILD[name];
-    if (rebuild === undefined) {
-      throw new Error(`no rebuild for the virtual table ${name}`);
-    }
-    return rebuild;
-  });
+  const rebuilds = [...virtualTables.keys()].map((name) => REBUILD[name]);
   return `${["PRAGMA defer_foreign_keys=TRUE;", ...tables, ...rest, ...rebuilds].join("\n")}\n`;
 };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  process.stdout.write(convertDump(readFileSync(0, "utf8")));
+/** Whether this module is the command being run, whatever path or symlink names it. */
+const isMain = () => {
+  try {
+    return (
+      process.argv[1] !== undefined &&
+      realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+};
+
+if (isMain()) {
+  const converted = convertDump(readFileSync(0, "utf8"));
+  if (converted.trim().length === 0) {
+    console.error("d1-dump-for-import: the dump is empty");
+    process.exit(1);
+  }
+  process.stdout.write(converted);
 }

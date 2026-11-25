@@ -141,6 +141,22 @@ jobs:
           grep -q '^CREATE TABLE.*d1_migrations' "$work/dump.sql" || { echo "::error::export has no d1_migrations table"; exit 1; }
           grep -q '^CREATE TABLE.*accounts' "$work/dump.sql" || { echo "::error::export has no accounts table"; exit 1; }
           echo "Exported $size bytes"
+          # The dump must convert to SQL D1 imports, and that SQL must load:
+          # a restore runs both steps (`scripts/d1-restore-check.sh`). The
+          # converter fails on a schema write it does not recognise and on an
+          # empty result. The scratch database is local to this runner.
+          node scripts/d1-dump-for-import.mjs < "$work/dump.sql" > "$work/restore.sql" \
+            || { echo "::error::the dump does not convert for import"; exit 1; }
+          [ -s "$work/restore.sql" ] || { echo "::error::the converted dump is empty"; exit 1; }
+          printf '{"name":"tstodon-d1-backup-check","compatibility_date":"2026-09-20","d1_databases":[{"binding":"DB","database_name":"backup-check","database_id":"00000000-0000-0000-0000-000000000000"}]}' \
+            > "$work/check.json"
+          (cd "$work" && CI=1 WRANGLER_SEND_METRICS=false "$GITHUB_WORKSPACE/node_modules/.bin/wrangler" \
+            d1 execute backup-check --local --config "$work/check.json" --persist-to "$work/check-state" \
+            --file "$work/restore.sql" > "$work/check.log" 2>&1) \
+            || { tail -n 20 "$work/check.log" | grep -v INSERT; echo "::error::the converted dump does not import"; exit 1; }
+          shred -u "$work/restore.sql" 2>/dev/null || rm -f "$work/restore.sql"
+          rm -rf "$work/check-state" "$work/check.log"
+          echo "The dump converts and imports into a scratch local database"
 
       # The dump holds actor private keys and session tokens: it is only ever
       # written to disk on this runner, and leaves it encrypted.
