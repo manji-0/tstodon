@@ -30,6 +30,7 @@ export * from "./application";
 export * from "./admin";
 export * from "./misc";
 export * from "./oembed";
+export * from "./annual-report";
 // Server-to-UI documents outside the REST API: the web UI's initial state and streaming events.
 export * from "./initial-state";
 export * from "./streaming";

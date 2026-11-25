@@ -31,6 +31,10 @@ Where tstodon renders more than Mastodon, the schema says so in a comment
   `ApiAdminCustomEmoji`. Their enum-like values (`IP_BLOCK_SEVERITIES`,
   `ADMIN_MEASURE_KEYS`, `ADMIN_DIMENSION_KEYS`,
   `ADMIN_RETENTION_FREQUENCIES`) are in `@tstodon/api/values`.
+  The annual reports (`/api/v1/annual_reports`, `REST::AnnualReportsSerializer`)
+  are `src/annual-report.ts`: `ApiAnnualReports`, `ApiAnnualReport` with its
+  schema 2 `ApiAnnualReportData`, and `ApiAnnualReportState`; their
+  `ANNUAL_REPORT_ARCHETYPES` are in `@tstodon/api/values`.
   Two server-to-UI documents that are not API responses live here too.
   `src/initial-state.ts`: `ApiInitialState`, the web UI's boot document
   (`<script id="initial-state">`, Mastodon's `InitialStateSerializer`),

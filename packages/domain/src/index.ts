@@ -73,6 +73,16 @@ export { DomainBlockPolicy } from "./domain-block-policy";
 export { Hostname, type Hostname as HostnameValue } from "./hostname";
 export { InstanceIdentity } from "./instance-identity";
 export { IsoInstant } from "./iso-instant";
+export {
+  ANNUAL_REPORT_SCHEMA_VERSION,
+  annualReportArchetype,
+  annualReportCampaign,
+  annualReportRefresh,
+  annualReportYearRange,
+  type AnnualReportGeneration,
+  type AnnualReportPostCounts,
+  type AnnualReportRefresh,
+} from "./annual-report";
 export { RealtimeWindow } from "./realtime-window";
 export { ReplyAccount, ReplyLink } from "./reply-account";
 export {

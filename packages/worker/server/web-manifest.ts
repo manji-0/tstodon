@@ -37,6 +37,8 @@ export const WebManifestSchema = z.object({
   embed: EntrySchema,
   /** The standalone composer of `/share`. */
   share: EntrySchema,
+  /** An annual report's public page. */
+  wrapstodon: EntrySchema,
   locales: z.array(z.string()),
 });
 
