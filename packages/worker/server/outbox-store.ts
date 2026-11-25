@@ -461,7 +461,18 @@ export const ensureOutboxTarget = async (
   return outboxDeliveryFromRow(row);
 };
 
-/** Insert many outbox delivery targets in chunked D1 batches (INSERT OR IGNORE). */
+/**
+ * Targets one `insertOutboxTargets` statement inserts: well under D1's 2 MB
+ * bound value at about 100 bytes a target.
+ */
+const OUTBOX_TARGETS_PER_STATEMENT = 500;
+
+/**
+ * Insert many outbox delivery targets (INSERT OR IGNORE), up to
+ * `OUTBOX_TARGETS_PER_STATEMENT` per statement in one batch: D1 counts each
+ * statement of a batch toward an invocation's query limit, so a statement
+ * per inbox would make the expansion's cost grow with the follower domains.
+ */
 export const ensureOutboxTargets = async (
   db: D1Database,
   activityId: string,
@@ -477,18 +488,14 @@ export const ensureOutboxTargets = async (
   }
   const queued = OutboxDelivery.queued();
   const createdAt = nowIso();
-  const statements = unique.map((inboxUrl) =>
-    insertOutboxTargetOrIgnoreSql(
-      newEntityId(),
-      activityId,
-      queued.kind,
-      queued.attemptCount,
-      inboxUrl,
-      createdAt,
-      createdAt,
-    ),
-  );
-  const batched = await runTypedBatchChunked(db, statements);
+  const statements = [];
+  for (let start = 0; start < unique.length; start += OUTBOX_TARGETS_PER_STATEMENT) {
+    const targets = unique
+      .slice(start, start + OUTBOX_TARGETS_PER_STATEMENT)
+      .map((inboxUrl) => [newEntityId(), inboxUrl, queued.kind, null]);
+    statements.push(insertOutboxTargetsSql(activityId, JSON.stringify(targets), createdAt));
+  }
+  const batched = await runTypedBatch(db, statements);
   if (batched.isErr()) {
     return err(batched.error);
   }
