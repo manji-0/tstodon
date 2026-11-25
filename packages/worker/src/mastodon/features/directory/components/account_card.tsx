@@ -1,6 +1,6 @@
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { EmojiHTML } from '@/mastodon/components/emoji/html';
 import { Avatar } from 'mastodon/components/avatar';

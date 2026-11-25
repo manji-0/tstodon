@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { defineMessages, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { removeColumn } from 'mastodon/actions/columns';
 import { deleteList } from 'mastodon/actions/lists';
@@ -34,7 +34,7 @@ export const ConfirmDeleteListModal: React.FC<
 > = ({ listId, columnId, onClose }) => {
   const intl = useIntl();
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const onConfirm = useCallback(() => {
     dispatch(deleteList(listId));
@@ -42,9 +42,9 @@ export const ConfirmDeleteListModal: React.FC<
     if (columnId) {
       dispatch(removeColumn(columnId));
     } else {
-      history.push('/lists');
+      void navigate('/lists');
     }
-  }, [dispatch, history, columnId, listId]);
+  }, [dispatch, navigate, columnId, listId]);
 
   return (
     <ConfirmationModal

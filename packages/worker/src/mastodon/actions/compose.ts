@@ -393,9 +393,12 @@ export function submitCompose(
         if (
           (browserHistory.location.pathname === '/publish' ||
             browserHistory.location.pathname === '/statuses/new') &&
-          window.history.state
+          // An entry the app pushed or replaced: the history marks the one
+          // the page loaded on with no key
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          window.history.state?.key
         ) {
-          browserHistory.goBack();
+          browserHistory.go(-1);
         }
 
         dispatch(insertIntoTagHistory(status.tags, statusText));

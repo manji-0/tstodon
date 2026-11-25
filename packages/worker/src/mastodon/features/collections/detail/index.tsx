@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useHistory, useLocation, useParams } from 'react-router';
-import { Link } from 'react-router-dom';
+import type { Location } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -175,7 +175,7 @@ const CollectionHeader: React.FC<{
   const intl = useIntl();
   const { name, description, tag, account_id, items } = collection;
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const isOwnCollection = account_id === me;
   const currentUserCollectionItem = items.find(
@@ -195,15 +195,15 @@ const CollectionHeader: React.FC<{
     );
   }, [collection, dispatch]);
 
-  const location = useLocation<{ newCollection?: boolean } | undefined>();
+  const location: Location<{ newCollection?: boolean } | null> = useLocation();
   const isNewCollection = location.state?.newCollection;
   useEffect(() => {
     if (isNewCollection) {
       // Replace with current pathname to clear `newCollection` state
-      history.replace(location.pathname);
+      void navigate(location.pathname, { replace: true });
       openShareModal();
     }
-  }, [history, openShareModal, isNewCollection, location.pathname]);
+  }, [navigate, openShareModal, isNewCollection, location.pathname]);
 
   const hasPendingAccounts = items.some((item) => item.state === 'pending');
 

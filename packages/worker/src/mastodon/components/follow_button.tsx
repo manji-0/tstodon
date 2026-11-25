@@ -3,7 +3,7 @@ import { useCallback, useEffect } from 'react';
 import { useIntl, defineMessages } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { useIdentity } from '@/mastodon/identity_context';
 import {

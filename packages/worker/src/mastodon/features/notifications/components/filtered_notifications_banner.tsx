@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 
 import { FormattedMessage, useIntl, defineMessages } from 'react-intl';
 
-import { Link, useHistory } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 import InventoryIcon from '@/material-icons/400-24px/inventory_2.svg?react';
 import { fetchNotificationPolicy } from 'mastodon/actions/notification_policies';
@@ -21,15 +21,15 @@ export const FilteredNotificationsIconButton: React.FC<{
   className?: string;
 }> = ({ className }) => {
   const intl = useIntl();
-  const history = useHistory();
+  const navigate = useNavigate();
   const policy = useAppSelector((state) => state.notificationPolicy);
   const minimizeSetting = useAppSelector(
     selectSettingsNotificationsMinimizeFilteredBanner,
   );
 
   const handleClick = useCallback(() => {
-    history.push('/notifications/requests');
-  }, [history]);
+    void navigate('/notifications/requests');
+  }, [navigate]);
 
   if (policy === null || policy.summary.pending_requests_count <= 0) {
     return null;

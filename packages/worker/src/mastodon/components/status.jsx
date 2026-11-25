@@ -299,10 +299,10 @@ class Status extends ImmutablePureComponent {
       return;
     }
 
-    const { history } = this.props;
+    const { location, navigate } = this.props;
     const status = this._properStatus();
 
-    if (!history) {
+    if (!navigate) {
       return;
     }
 
@@ -311,10 +311,10 @@ class Status extends ImmutablePureComponent {
     if (newTab) {
       window.open(path, '_blank', 'noopener');
     } else {
-      if (history.location.pathname.replace('/deck/', '/') === path) {
-        history.replace(path, {focusTarget: FOCUS_TARGET.POST});
+      if (location.pathname.replace('/deck/', '/') === path) {
+        navigate(path, { replace: true, state: {focusTarget: FOCUS_TARGET.POST} });
       } else {
-        history.push(path, {focusTarget: FOCUS_TARGET.POST});
+        navigate(path, { state: {focusTarget: FOCUS_TARGET.POST} });
       }
     }
   };
@@ -324,14 +324,14 @@ class Status extends ImmutablePureComponent {
   };
 
   _openProfile = (proper = true) => {
-    const { history } = this.props;
+    const { navigate } = this.props;
     const status = proper ? this._properStatus() : this.props.status;
 
-    if (!history) {
+    if (!navigate) {
       return;
     }
 
-    history.push(`/@${status.getIn(['account', 'acct'])}`);
+    navigate(`/@${status.getIn(['account', 'acct'])}`);
   };
 
   handleHotkeyToggleHidden = () => {

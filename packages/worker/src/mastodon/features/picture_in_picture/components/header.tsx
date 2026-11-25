@@ -1,6 +1,6 @@
 import { defineMessages, useIntl } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import CloseIcon from '@/material-icons/400-24px/close.svg?react';
 import { Avatar } from 'mastodon/components/avatar';

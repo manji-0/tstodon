@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { openModal } from '@/mastodon/actions/modal';
 import { Button } from '@/mastodon/components/button';

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { fetchTrendingHashtags } from 'mastodon/actions/trends';
 import { ImmutableHashtag as Hashtag } from 'mastodon/components/hashtag';

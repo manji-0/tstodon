@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react';
 
-import { useLocation, useHistory } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 
 export function useSearchParams() {
   const { search } = useLocation();
@@ -10,7 +10,7 @@ export function useSearchParams() {
 
 export function useSearchParam(name: string, defaultValue?: string) {
   const searchParams = useSearchParams();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const value = searchParams.get(name) ?? defaultValue;
 
@@ -22,9 +22,9 @@ export function useSearchParam(name: string, defaultValue?: string) {
         searchParams.set(name, value);
       }
 
-      history.push({ search: searchParams.toString() });
+      void navigate({ search: searchParams.toString() });
     },
-    [history, name, searchParams],
+    [navigate, name, searchParams],
   );
 
   return [value, setValue] as const;

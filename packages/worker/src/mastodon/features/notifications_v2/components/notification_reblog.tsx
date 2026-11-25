@@ -1,6 +1,6 @@
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import RepeatIcon from '@/material-icons/400-24px/repeat.svg?react';
 import type { NotificationGroupReblog } from 'mastodon/models/notification_group';

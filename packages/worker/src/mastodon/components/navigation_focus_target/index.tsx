@@ -6,7 +6,8 @@ import {
   useCallback,
 } from 'react';
 
-import { useLocation } from 'react-router-dom';
+import type { Location } from 'react-router';
+import { useLocation } from 'react-router';
 
 import { polymorphicForwardRef } from '@/types/polymorphic';
 
@@ -56,9 +57,13 @@ export const FocusTargetProvider: React.FC<{
     | null
   >(null);
 
-  const { pathname, search, state } = useLocation<{
+  const {
+    pathname,
+    search,
+    state,
+  }: Location<{
     focusTarget?: FocusTarget;
-  } | null>();
+  } | null> = useLocation();
 
   const { focusTarget } = state ?? {};
 

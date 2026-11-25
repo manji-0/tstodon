@@ -2,7 +2,6 @@ import PropTypes from 'prop-types';
 
 import { defineMessages } from 'react-intl';
 
-import { withRouter } from 'react-router-dom';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import ImmutablePureComponent from 'react-immutable-pure-component';
@@ -17,7 +16,7 @@ import StarIcon from '@/material-icons/400-24px/star-fill.svg?react';
 import StarBorderIcon from '@/material-icons/400-24px/star.svg?react';
 import { identityContextPropShape, withIdentity } from 'mastodon/identity_context';
 import { PERMISSION_MANAGE_USERS, PERMISSION_MANAGE_FEDERATION } from 'mastodon/permissions';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 import { Dropdown } from 'mastodon/components/dropdown_menu';
 import { me, quickBoosting } from '../../initial_state';
@@ -226,7 +225,7 @@ class StatusActionBar extends ImmutablePureComponent {
   };
 
   handleOpen = () => {
-    this.props.history.push(`/@${this.props.status.getIn(['account', 'acct'])}/${this.props.status.get('id')}`);
+    this.props.navigate(`/@${this.props.status.getIn(['account', 'acct'])}/${this.props.status.get('id')}`);
   };
 
   handleEmbed = () => {

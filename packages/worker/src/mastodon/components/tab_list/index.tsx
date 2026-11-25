@@ -1,8 +1,8 @@
 import type { ComponentPropsWithoutRef, FC } from 'react';
 
 import classNames from 'classnames';
-import type { NavLinkProps } from 'react-router-dom';
-import { NavLink } from 'react-router-dom';
+import type { LinkProps, Location } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 
 import classes from './styles.module.scss';
 
@@ -38,13 +38,42 @@ export const TabList: FC<TabListProps & ComponentPropsWithoutRef<'div'>> = ({
   );
 };
 
-export const TabLink: FC<NavLinkProps> = ({
+interface TabLinkProps extends LinkProps {
+  className?: string;
+  end?: boolean;
+  // Decides when the tab is the current page, instead of matching `to`
+  isActive?: (location: Location) => boolean;
+}
+
+export const TabLink: FC<TabLinkProps> = ({
   className,
+  end,
+  isActive,
   children,
   ...otherProps
 }) => {
+  const location = useLocation();
+
+  if (isActive) {
+    const active = isActive(location);
+
+    return (
+      <Link
+        className={classNames(classes.tab, className, { active })}
+        aria-current={active ? 'page' : undefined}
+        {...otherProps}
+      >
+        {children}
+      </Link>
+    );
+  }
+
   return (
-    <NavLink className={classNames(classes.tab, className)} {...otherProps}>
+    <NavLink
+      className={classNames(classes.tab, className)}
+      end={end}
+      {...otherProps}
+    >
       {children}
     </NavLink>
   );

@@ -1,17 +1,12 @@
 import type { PropsWithChildren } from 'react';
 import type React from 'react';
 
-import type { useLocation } from 'react-router';
-import { Router as OriginalRouter, useHistory } from 'react-router';
-
-import type {
-  LocationDescriptor,
-  LocationDescriptorObject,
-  Path,
-} from 'history';
-import { createBrowserHistory } from 'history';
-
-import { isDevelopment } from 'mastodon/utils/environment';
+import type { HistoryRouterProps, Location, Path, To } from 'react-router';
+import {
+  parsePath,
+  unstable_HistoryRouter as HistoryRouter,
+  UNSAFE_createBrowserHistory as createBrowserHistory,
+} from 'react-router';
 
 import { forceSingleColumn, hasMultiColumnPath } from '../initial_state';
 
@@ -30,38 +25,36 @@ interface MastodonLocationState {
 
 export type LocationState = MastodonLocationState | null | undefined;
 
-export type MastodonLocation = ReturnType<typeof useLocation<LocationState>>;
+export type MastodonLocation = Location<LocationState>;
 
-export type MastodonLocationDescriptor = LocationDescriptor<LocationState>;
+export type MastodonLocationDescriptor = To;
 
-type HistoryPath = Path | LocationDescriptor<LocationState>;
+type History = HistoryRouterProps['history'];
+type HistoryListener = Parameters<History['listen']>[0];
 
-export const browserHistory = createBrowserHistory<LocationState>();
+// `v5Compat` notifies the listener of pushes and replaces, not only of pops,
+// as react-router's own `<BrowserRouter>` needs.
+export const browserHistory = createBrowserHistory({ v5Compat: true });
 const originalPush = browserHistory.push.bind(browserHistory);
 const originalReplace = browserHistory.replace.bind(browserHistory);
 
-export function useAppHistory() {
-  return useHistory<LocationState>();
-}
+// react-router's history takes a single listener; the router, the scroll
+// restoration and the modals each listen.
+const listeners = new Set<HistoryListener>();
+browserHistory.listen((update) => {
+  listeners.forEach((listener) => {
+    listener(update);
+  });
+});
+browserHistory.listen = (listener) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
 
-function normalizePath(
-  path: HistoryPath,
-  state?: LocationState,
-): LocationDescriptorObject<LocationState> {
-  const location = typeof path === 'string' ? { pathname: path } : { ...path };
-
-  if (location.state === undefined && state !== undefined) {
-    location.state = state;
-  } else if (
-    location.state !== undefined &&
-    state !== undefined &&
-    isDevelopment()
-  ) {
-    // eslint-disable-next-line no-console
-    console.log(
-      'You should avoid providing a 2nd state argument to push when the 1st argument is a location-like object that already has state; it is ignored',
-    );
-  }
+function normalizePath(path: To): Partial<Path> {
+  const location = typeof path === 'string' ? parsePath(path) : { ...path };
 
   if (
     !forceSingleColumn &&
@@ -75,28 +68,30 @@ function normalizePath(
   return location;
 }
 
-browserHistory.push = (path: HistoryPath, state?: MastodonLocationState) => {
-  const location = normalizePath(path, state);
+browserHistory.push = (path: To, state?: LocationState) => {
+  const location = normalizePath(path);
 
-  location.state = location.state ?? {};
-  location.state.fromMastodon = true;
-
-  originalPush(location);
+  originalPush(location, { ...state, fromMastodon: true });
 };
 
-browserHistory.replace = (path: HistoryPath, state?: MastodonLocationState) => {
-  const location = normalizePath(path, state);
+browserHistory.replace = (path: To, state?: LocationState) => {
+  const location = normalizePath(path);
 
   if (!location.pathname) return;
 
-  if (browserHistory.location.state?.fromMastodon) {
-    location.state = location.state ?? {};
-    location.state.fromMastodon = true;
-  }
+  const currentState: LocationState = browserHistory.location.state;
 
-  originalReplace(location);
+  originalReplace(
+    location,
+    currentState?.fromMastodon ? { ...state, fromMastodon: true } : state,
+  );
 };
 
 export const Router: React.FC<PropsWithChildren> = ({ children }) => {
-  return <OriginalRouter history={browserHistory}>{children}</OriginalRouter>;
+  // No transitions: a navigation renders right away, as with react-router 5.
+  return (
+    <HistoryRouter history={browserHistory} useTransitions={false}>
+      {children}
+    </HistoryRouter>
+  );
 };

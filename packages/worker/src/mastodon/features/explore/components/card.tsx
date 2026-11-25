@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { FormattedMessage, useIntl, defineMessages } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import CloseIcon from '@/material-icons/400-24px/close.svg?react';
 import { dismissSuggestion } from 'mastodon/actions/suggestions';

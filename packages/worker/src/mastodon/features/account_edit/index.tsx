@@ -3,7 +3,7 @@ import type { FC } from 'react';
 
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import type { ModalType } from '@/mastodon/actions/modal';
 import { openModal } from '@/mastodon/actions/modal';
@@ -173,10 +173,10 @@ export const AccountEdit: FC = () => {
     handleOpenModal('ACCOUNT_EDIT_PROFILE_DISPLAY');
   }, [handleOpenModal]);
 
-  const history = useHistory();
+  const navigate = useNavigate();
   const handleFeaturedTagsEdit = useCallback(() => {
-    history.push('/profile/featured_tags');
-  }, [history]);
+    void navigate('/profile/featured_tags');
+  }, [navigate]);
 
   const handleBotToggle = useCallback(() => {
     void dispatch(patchProfile({ bot: !profile?.bot }));

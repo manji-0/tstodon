@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 
 import { useIntl, defineMessages } from 'react-intl';
 
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import { DropdownMenu } from 'mastodon/components/dropdown_menu';
 import { Popover } from 'mastodon/components/popover';

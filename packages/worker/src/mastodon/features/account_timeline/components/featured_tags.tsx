@@ -4,10 +4,9 @@ import type { FC, MouseEventHandler } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 
 import { fetchFeaturedTags } from '@/mastodon/actions/featured_tags';
-import { useAppHistory } from '@/mastodon/components/router';
 import { Tag } from '@/mastodon/components/tags/tag';
 import { useOverflowButton } from '@/mastodon/hooks/useOverflow';
 import { selectAccountFeaturedTags } from '@/mastodon/selectors/accounts';
@@ -84,7 +83,7 @@ function useTagNavigate() {
   const { acct, tagged } = useParams<{ acct: string; tagged?: string }>();
   const { boosts, replies } = useAccountContext();
 
-  const history = useAppHistory();
+  const navigate = useNavigate();
 
   const handleTagClick: MouseEventHandler<HTMLButtonElement> = useCallback(
     (event) => {
@@ -108,12 +107,12 @@ function useTagNavigate() {
         params.append('replies', '1');
       }
 
-      history.push({
+      void navigate({
         pathname: url,
         search: params.toString(),
       });
     },
-    [acct, tagged, boosts, replies, history],
+    [acct, tagged, boosts, replies, navigate],
   );
 
   return {

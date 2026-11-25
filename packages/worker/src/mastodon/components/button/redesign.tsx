@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { useCallback } from 'react';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
-import type { LinkProps } from 'react-router-dom';
+import { Link } from 'react-router';
+import type { LinkProps } from 'react-router';
 
 import { CircularProgress } from '../circular_progress';
 import type { IconProp } from '../icon';

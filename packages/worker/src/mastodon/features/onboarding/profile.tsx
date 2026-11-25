@@ -3,7 +3,7 @@ import { useState, useMemo, useCallback, createRef } from 'react';
 import { useIntl, defineMessages, FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -70,7 +70,7 @@ export const Profile: React.FC<{
   const headerFileRef = createRef<HTMLInputElement>();
   const dispatch = useAppDispatch();
   const intl = useIntl();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const maxDisplayNameLength = useAppSelector(
     (state) =>
@@ -141,7 +141,7 @@ export const Profile: React.FC<{
       }),
     )
       .then(() => {
-        history.push('/home');
+        void navigate('/home');
         dispatch(closeOnboarding());
         return '';
       })
@@ -156,7 +156,7 @@ export const Profile: React.FC<{
 
         setIsSaving(false);
       });
-  }, [dispatch, displayName, note, avatar, header, discoverable, history]);
+  }, [dispatch, displayName, note, avatar, header, discoverable, navigate]);
 
   return (
     <Column

@@ -7,7 +7,7 @@ import {
   mountCompose,
   unmountCompose,
 } from 'mastodon/actions/compose';
-import { useAppHistory } from 'mastodon/components/router';
+import { browserHistory } from 'mastodon/components/router';
 import ServerBanner from 'mastodon/components/server_banner';
 import { Search } from 'mastodon/features/compose/components/search';
 import ComposeFormContainer from 'mastodon/features/compose/containers/compose_form_container';
@@ -59,17 +59,15 @@ export const ComposePanel: React.FC = () => {
  */
 
 export const RedirectToMobileComposeIfNeeded: React.FC = () => {
-  const history = useAppHistory();
-
   const shouldRedirect = useAppSelector((state) =>
     state.compose.get('should_redirect_to_compose_page'),
   );
 
   useLayoutEffect(() => {
     if (shouldRedirect) {
-      history.push('/publish', { focusTarget: false });
+      browserHistory.push('/publish', { focusTarget: false });
     }
-  }, [history, shouldRedirect]);
+  }, [shouldRedirect]);
 
   return null;
 };

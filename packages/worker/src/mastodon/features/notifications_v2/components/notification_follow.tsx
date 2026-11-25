@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import PersonAddIcon from '@/material-icons/400-24px/person_add-fill.svg?react';
 import { FollowersCounter } from 'mastodon/components/counters';

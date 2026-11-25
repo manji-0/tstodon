@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect } from 'react';
 
 import { defineMessages, useIntl, FormattedMessage } from 'react-intl';
 
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -156,7 +156,8 @@ const ListMembers: React.FC<{
   multiColumn?: boolean;
 }> = ({ multiColumn }) => {
   const dispatch = useAppDispatch();
-  const { id } = useParams<{ id: string }>();
+  // The route always has the list's id
+  const { id } = useParams() as { id: string };
   const intl = useIntl();
 
   const [searching, setSearching] = useState(false);

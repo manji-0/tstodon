@@ -2,14 +2,7 @@ import { useEffect } from 'react';
 
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import {
-  Switch,
-  Route,
-  useParams,
-  useRouteMatch,
-  matchPath,
-  useLocation,
-} from 'react-router-dom';
+import { Routes, Route, useParams, matchPath, useLocation } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -52,17 +45,23 @@ export const messages = defineMessages({
   },
 });
 
+// The editor's route (see `features/ui`)
+const editorPath = (id: string | null) =>
+  id ? '/collections/:id/edit' : '/collections/new';
+
 function usePageTitle(id: string | null) {
-  const { path } = useRouteMatch();
+  const path = editorPath(id);
   const location = useLocation();
 
   if (!id) {
     return messages.newCollection;
   }
 
-  if (matchPath(location.pathname, { path, exact: true })) {
+  if (matchPath({ path, end: true }, location.pathname)) {
     return messages.manageAccounts;
-  } else if (matchPath(location.pathname, { path: `${path}/details` })) {
+  } else if (
+    matchPath({ path: `${path}/details`, end: false }, location.pathname)
+  ) {
     return messages.editDetails;
   } else {
     throw new Error('No page title defined for route');
@@ -78,7 +77,7 @@ export const CollectionEditorPage: React.FC<{
   const dispatch = useAppDispatch();
   const { accountId, signedIn } = useIdentity();
   const { id = null } = useParams<{ id?: string }>();
-  const { path } = useRouteMatch();
+  const path = editorPath(id);
   const collection = useAppSelector((state) =>
     id ? state.collections.collections[id] : undefined,
   );
@@ -133,20 +132,13 @@ export const CollectionEditorPage: React.FC<{
         ) : !signedIn ? (
           <NotSignedInIndicator />
         ) : canCreateMoreCollections ? (
-          <Switch>
+          <Routes>
             <Route
-              exact
               path={path}
-              // eslint-disable-next-line react/jsx-no-bind
-              render={() => <CollectionAccounts collection={collection} />}
+              element={<CollectionAccounts collection={collection} />}
             />
-            <Route
-              exact
-              path={`${path}/details`}
-              // eslint-disable-next-line react/jsx-no-bind
-              render={() => <CollectionDetails />}
-            />
-          </Switch>
+            <Route path={`${path}/details`} element={<CollectionDetails />} />
+          </Routes>
         ) : (
           <MaxCollectionsCallout className={classes.maxCollectionsError} />
         )}

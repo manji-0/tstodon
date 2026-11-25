@@ -3,7 +3,7 @@ import { PureComponent } from 'react';
 
 import { FormattedMessage, defineMessages } from 'react-intl';
 
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 
 import { connect } from 'react-redux';
 

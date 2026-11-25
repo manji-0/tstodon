@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { fetchRelationships } from 'mastodon/actions/accounts';
 import {

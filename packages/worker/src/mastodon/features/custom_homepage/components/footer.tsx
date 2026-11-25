@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { fetchServer } from 'mastodon/actions/server';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';

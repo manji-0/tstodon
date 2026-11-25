@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 import { defineMessages, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import OpenInNewIcon from '@/material-icons/400-24px/open_in_new.svg?react';
 import ReplyIcon from '@/material-icons/400-24px/reply.svg?react';
@@ -49,7 +49,7 @@ export const Footer: React.FC<{
 }> = ({ statusId, withOpenButton, onClose }) => {
   const { signedIn } = useIdentity();
   const intl = useIntl();
-  const history = useHistory();
+  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const getStatus = useMemo(() => makeGetStatus(), []);
   const status = useAppSelector((state) => getStatus(state, { id: statusId }));
@@ -116,9 +116,9 @@ export const Footer: React.FC<{
 
       onClose();
 
-      history.push(`/@${account?.acct}/${status.get('id')}`);
+      void navigate(`/@${account?.acct}/${status.get('id')}`);
     },
-    [history, status, account, onClose],
+    [navigate, status, account, onClose],
   );
 
   if (!status) {
