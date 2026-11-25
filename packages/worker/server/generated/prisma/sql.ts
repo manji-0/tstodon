@@ -746,6 +746,8 @@ export * from "./sql/listRemoteActorModerations";
 
 export * from "./sql/listRemoteActorPinnedStatuses";
 
+export * from "./sql/listRemoteActorsDueCollectionSync";
+
 export * from "./sql/listRemoteActorsDueLinkCheck";
 
 export * from "./sql/listRemoteFeaturedTags";
@@ -823,6 +825,8 @@ export * from "./sql/lockFollowersSynchronization";
 export * from "./sql/markLocalProfileFieldVerified";
 
 export * from "./sql/markPollExpiryNotified";
+
+export * from "./sql/markRemoteActorCollectionsSynced";
 
 export * from "./sql/markRemoteActorLinksChecked";
 

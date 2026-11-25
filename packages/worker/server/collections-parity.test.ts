@@ -9,6 +9,7 @@ import { type HeldQueue, holdQueue } from "../test/queue-hold";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
 import { processOutboxJob } from "./outbox-job";
+import { queueDueRemoteCollectionSyncs } from "./remote-curated-collection";
 
 /**
  * FED-20: what was left of collections against Mastodon v4.7.5.
@@ -277,5 +278,70 @@ describe("a remote collection's update", () => {
     ).toBe(202);
     expect(await notificationsOf(email, "collection_update")).toEqual([]);
     held.release();
+  });
+});
+
+describe("a remote actor's featuredCollections", () => {
+  const queuedSyncs = async (actorUri: string) => {
+    const held = holdQueue();
+    try {
+      await queueDueRemoteCollectionSyncs(env);
+      return held.bodies.filter(
+        (body) =>
+          OutboxJob.parse(body).isOk() &&
+          typeof body === "object" &&
+          body !== null &&
+          Reflect.get(body, "actorUri") === actorUri,
+      );
+    } finally {
+      held.release();
+    }
+  };
+
+  it("is read again each time the actor's document is stored", async () => {
+    const host = "sync-curator.example";
+    const featuredCollections = `https://${host}/users/curator/featured_collections`;
+    const stored = (fetchedAt: string) =>
+      remoteActor("curator", host, { featuredCollectionsUri: featuredCollections, fetchedAt });
+    const curator = await stored("2026-11-01T00:00:00.000Z");
+    const uri = `${curator.actorUri}/collections/1`;
+
+    const [job] = await queuedSyncs(curator.actorUri);
+    expect(job).toEqual({ kind: "SynchronizeRemoteCollections", actorUri: curator.actorUri });
+    const parsed = OutboxJob.parse(job);
+    if (parsed.isErr()) {
+      throw parsed.error;
+    }
+    const held = holdQueue();
+    expect(
+      await serving(
+        [
+          {
+            id: featuredCollections,
+            type: "OrderedCollection",
+            totalItems: 1,
+            orderedItems: [collectionDocument(curator, uri)],
+          },
+        ],
+        () => processOutboxJob(env, parsed.value),
+      ),
+    ).toBe("ok");
+    held.release();
+    const { results } = await env.DB.prepare("SELECT name FROM remote_collections WHERE uri = ?")
+      .bind(uri)
+      .all();
+    expect(results).toEqual([{ name: "Picks" }]);
+
+    // Read for this document already.
+    expect(await queuedSyncs(curator.actorUri)).toEqual([]);
+
+    // A refresh stores a newer document, and its collections are read again.
+    await stored("2026-11-02T00:00:00.000Z");
+    expect(await queuedSyncs(curator.actorUri)).toHaveLength(1);
+  });
+
+  it("is not read for an actor that names none", async () => {
+    const actor = await remoteActor("plain", "sync-plain.example");
+    expect(await queuedSyncs(actor.actorUri)).toEqual([]);
   });
 });

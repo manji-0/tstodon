@@ -9,6 +9,7 @@ import { hasSeveranceNotices } from "./severance-notices";
 import { claimSuspendedActorContentPurge } from "./suspended-actor-content";
 import { hasDueStatusFederations } from "./pending-status-federation";
 import { queueDueProfileLinkChecks } from "./profile-link-verification";
+import { queueDueRemoteCollectionSyncs } from "./remote-curated-collection";
 import { refreshStaleRemoteActors } from "./remote-actor-refresh";
 import { deleteAbandonedOwed } from "./remote-status-owed";
 import { runRemoteStatusRetention } from "./remote-status-retention";
@@ -150,6 +151,8 @@ export const handleScheduled = (
           runRemoteStatusRetention(env),
           // Queue the link checks of the profiles fetched since the last run.
           queueDueProfileLinkChecks(env),
+          // Queue the reads of the `featuredCollections` of the actors fetched since.
+          queueDueRemoteCollectionSyncs(env),
           // Start or restart the delivery Workflows of targets left `Queued`
           // past their next attempt (a failed create, a step that errored).
           sweepStuckDeliveries(env),

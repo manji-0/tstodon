@@ -541,6 +541,16 @@ const VerifyFeaturedItemSchema = z.object({
 });
 
 /**
+ * Read the remote actor `actorUri`'s `featuredCollections`, as Mastodon's
+ * `SynchronizeFeaturedCollectionsCollectionWorker`, which each processing
+ * of the actor queues.
+ */
+const SynchronizeRemoteCollectionsSchema = z.object({
+  kind: z.literal("SynchronizeRemoteCollections"),
+  actorUri: z.string().min(1),
+});
+
+/**
  * Check the links of an account's profile fields, as Mastodon's
  * `VerifyAccountLinksWorker`: each field from `fromIndex` on whose link waits
  * for a check is marked verified when the linked page links back with
@@ -610,6 +620,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   SynchronizeFollowersSchema,
   ProcessFeaturedItemSchema,
   VerifyFeaturedItemSchema,
+  SynchronizeRemoteCollectionsSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

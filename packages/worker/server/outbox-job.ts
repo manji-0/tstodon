@@ -26,7 +26,11 @@ import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { processResolveRemoteThreadJob } from "./remote-thread-resolve-job";
-import { processFeaturedItemJob, verifyFeaturedItemJob } from "./remote-curated-collection";
+import {
+  processFeaturedItemJob,
+  synchronizeRemoteCollectionsJob,
+  verifyFeaturedItemJob,
+} from "./remote-curated-collection";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { vacuumMediaAttachments } from "./media-vacuum";
 import { vacuumActivities } from "./activity-vacuum";
@@ -398,6 +402,8 @@ export const processOutboxJob = async (
       return processFeaturedItemJob(env, job);
     case "VerifyFeaturedItem":
       return verifyFeaturedItemJob(env, job);
+    case "SynchronizeRemoteCollections":
+      return synchronizeRemoteCollectionsJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
