@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiAdminPreviewCardProvider, ApiStatus, ApiTrendsLink } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
+import { PREVIEW_CARD_PROVIDERS_BY_DOMAIN_SQL } from "./preview-card-provider-store";
 import { handleScheduled } from "./scheduled-handler";
 
 /**
@@ -149,5 +150,68 @@ describe("admin trend publishers", () => {
     const empty = await call("GET", `${PUBLISHERS}?max_id=0`);
     expect(await empty.json()).toEqual([]);
     expect(empty.headers.get("Link")).toBeNull();
+  });
+
+  // `PreviewCardProvider.matching_domain`: a link's provider is the row of
+  // the longest of its host and the host's parent domains that has one.
+  it("applies a provider's review to the subdomains that have no row of their own", async () => {
+    await insertProviders(["parent.example", "own.parent.example"]);
+    const parent = (await providers()).find((provider) => provider.domain === "parent.example");
+    await ok(ApiAdminPreviewCardProvider, "POST", `${PUBLISHERS}/${parent?.id}/reject`);
+    const links = [
+      "https://news.parent.example/a",
+      "https://deep.news.parent.example/b",
+      "https://own.parent.example/c",
+      "https://notparent.example/d",
+    ];
+    const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await authHeaders(MEMBER)) },
+      body: JSON.stringify({ status: `links ${links.join(" ")}` }),
+    });
+    const status = expectContract(ApiStatus, await posted.json());
+    await ok(ApiStatus, "POST", `/api/v1/statuses/${status.id}/favourite`);
+
+    const expectParentRejection = async (): Promise<void> => {
+      const trending = (
+        await ok(z.array(ApiTrendsLink), "GET", "/api/v1/trends/links?limit=20")
+      ).map((link) => link.url);
+      const timeline = async (url: string): Promise<number> =>
+        (await call("GET", `/api/v1/timelines/link?url=${encodeURIComponent(url)}`)).status;
+      expect(trending).not.toContain("https://news.parent.example/a");
+      expect(trending).not.toContain("https://deep.news.parent.example/b");
+      expect(trending).toContain("https://own.parent.example/c");
+      expect(trending).toContain("https://notparent.example/d");
+      expect(await timeline("https://news.parent.example/a")).toBe(404);
+      expect(await timeline("https://deep.news.parent.example/b")).toBe(404);
+      expect(await timeline("https://own.parent.example/c")).toBe(200);
+      expect(await timeline("https://notparent.example/d")).toBe(200);
+    };
+    await expectParentRejection();
+
+    // `request_review` writes a row only for a host no provider matches, so
+    // the subdomains stay under the parent's review.
+    await fireSixHourlyCron();
+    const domains = (await providers()).map((provider) => provider.domain);
+    expect(domains).not.toContain("news.parent.example");
+    expect(domains).not.toContain("deep.news.parent.example");
+    expect(domains).toContain("notparent.example");
+    await expectParentRejection();
+  });
+
+  it("seeks each candidate domain on the unique domain index", async () => {
+    const { results } = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN ${PREVIEW_CARD_PROVIDERS_BY_DOMAIN_SQL}`,
+    )
+      .bind(JSON.stringify(["news.parent.example", "parent.example", "example"]))
+      .all();
+    const plan = z
+      .array(z.object({ detail: z.string() }))
+      .parse(results)
+      .map((row) => row.detail);
+    expect(plan).toContainEqual(
+      "SEARCH preview_card_providers USING INDEX sqlite_autoindex_preview_card_providers_1 (domain=?)",
+    );
+    expect(plan.filter((detail) => detail.startsWith("SCAN preview_card_providers"))).toEqual([]);
   });
 });
