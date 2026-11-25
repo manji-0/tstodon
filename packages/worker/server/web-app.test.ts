@@ -30,6 +30,7 @@ const MANIFEST: WebManifest = {
   remoteInteractionHelper: { js: "/packs/remote_interaction_helper.js", css: [], preload: [] },
   embed: { js: "/packs/embed.js", css: [], preload: [] },
   share: { js: "/packs/share.js", css: [], preload: [] },
+  wrapstodon: { js: "/packs/wrapstodon.js", css: [], preload: [] },
   locales: ["en", "ja"],
 };
 

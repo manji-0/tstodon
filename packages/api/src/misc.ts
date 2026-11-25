@@ -5,7 +5,8 @@ export const ApiAsyncRefresh = z.object({
   async_refresh: z.object({
     id: z.string(),
     status: z.literal(["running", "finished"]),
-    result_count: z.number(),
+    /** `null` for a refresh that counts no results, such as an annual report's. */
+    result_count: z.number().nullable(),
   }),
 });
 export type ApiAsyncRefreshJSON = z.infer<typeof ApiAsyncRefresh>;

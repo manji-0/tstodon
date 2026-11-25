@@ -10,6 +10,7 @@ import type {
 import { ApiPeerSearchParamsSchema } from "@tstodon/api";
 import { type Context } from "hono";
 import { InstanceLimits, Languages, toAscii } from "@tstodon/core";
+import { annualReportCampaign } from "@tstodon/domain";
 import { countActiveAccounts } from "../account-activity";
 import { countAccounts } from "../account-store";
 import { ACTIVE_MONTH_DAYS } from "../nodeinfo";
@@ -400,6 +401,7 @@ export const getV2Instance = async (c: Context<{ Bindings: Env }, "/api/v2/insta
     // Mastodon gates features by API version. 8 adds `exclude_direct` on
     // `GET /api/v1/accounts/:id/statuses`.
     api_versions: { mastodon: 8 },
+    wrapstodon: annualReportCampaign(new Date()) ?? null,
   };
   return c.json(document);
 };

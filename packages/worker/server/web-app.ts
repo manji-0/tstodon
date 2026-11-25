@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
+import { ok } from "neverthrow";
 import { z } from "zod";
 import { InstanceLimits, Languages, schemaResult } from "@tstodon/core";
 import {
@@ -8,7 +9,13 @@ import {
   ApiWebSettings,
   type ApiWebSettingsJSON,
 } from "@tstodon/api";
-import { FediRole, type FediRole as FediRoleValue, type LocalAccount } from "@tstodon/domain";
+import type { ApiWrapstodonJSON } from "@tstodon/api";
+import {
+  annualReportCampaign,
+  FediRole,
+  type FediRole as FediRoleValue,
+  type LocalAccount,
+} from "@tstodon/domain";
 import { type Appearance, DEFAULT_APPEARANCE, findAppearance, themeColorMetas } from "./appearance";
 import { accessAssertion, accessConfigured } from "./access-jwt";
 import { browserFacingOrigin, browserSession } from "./browser-session";
@@ -35,6 +42,9 @@ import { findTokenPushSubscription } from "./push-subscription-store";
 import { subscriptionDocument } from "./routes/push";
 import { WEB_APP_ID, webAccessTokenId } from "./web-token";
 import { findEmbeddableStatusOf, oembedDiscoveryUrl } from "./status-embed";
+import { annualReportState, findAnnualReport } from "./annual-report-store";
+import { annualReportsDocument } from "./annual-report-documents";
+import { findAccountByUsername } from "./account-store";
 import { type WebEntry, type WebManifest, webManifest } from "./web-manifest";
 import {
   contentSecurityPolicy,
@@ -244,6 +254,23 @@ const webSettings = async (env: Env, accountId: string): Promise<ApiWebSettingsJ
 };
 
 /**
+ * `meta.wrapstodon`: the campaign's year and the viewer's report state,
+ * `null` outside the campaign or when the state cannot be read.
+ */
+const viewerWrapstodon = async (
+  env: Env,
+  accountId: string,
+  now: Date,
+): Promise<ApiWrapstodonJSON | null> => {
+  const year = annualReportCampaign(now);
+  if (year === undefined) {
+    return null;
+  }
+  const state = await annualReportState(env.DB, accountId, year, now);
+  return state.isOk() ? { year, state: state.value } : null;
+};
+
+/**
  * Mastodon's `InitialStateSerializer`, for this server's settings. Where
  * Mastodon reads a setting tstodon does not have, the value is Mastodon's
  * default; `admin` is the site contact account, which tstodon does not
@@ -307,10 +334,11 @@ export const initialState = async (
     return state;
   }
   const me = viewer.account.id;
-  const [account, settings, push] = await Promise.all([
+  const [account, settings, push, wrapstodon] = await Promise.all([
     credentialAccountDocument(env, identity.value, viewer.account, viewer.role),
     webSettings(env, me),
     findTokenPushSubscription(env.DB, viewer.tokenId),
+    viewerWrapstodon(env, me, new Date()),
   ]);
   const moved = account.moved ?? undefined;
   return {
@@ -329,6 +357,7 @@ export const initialState = async (
       use_pending_items: false,
       show_trends: true,
       emoji_style: "auto",
+      wrapstodon,
       ...(moved ? { moved_to_account_id: moved.id } : {}),
     },
     compose: {
@@ -521,6 +550,105 @@ export const getShare = async (c: Context<{ Bindings: Env }, "/share">) => {
   );
 };
 
+/**
+ * Mastodon's `wrapstodon/show`: an annual report's public page, booting the
+ * `wrapstodon` pack from the report's document (`#wrapstodon-data`, as
+ * `WrapstodonHelper#render_wrapstodon_share_data`), always dark.
+ */
+const annualReportPage = (
+  manifest: WebManifest,
+  options: Readonly<{
+    locale: string;
+    title: string;
+    siteName: string;
+    data: unknown;
+    styleNonce: string;
+  }>,
+): string => `<!doctype html>
+<html lang="${attribute(options.locale)}" data-contrast="auto" data-color-scheme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, noarchive">
+    ${manifest.dev ? devTags(manifest) : ""}
+    <script${manifest.dev ? ' type="module"' : ""} src="${attribute(manifest.themeSelection)}"></script>
+    ${themeColorMetas("dark")}
+    <meta name="style-nonce" content="${attribute(options.styleNonce)}">
+    <title>${attribute(options.title)}</title>
+    <meta property="og:site_name" content="${attribute(options.siteName)}">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="${attribute(options.title)}">
+    <link rel="icon" type="image/png" sizes="32x32" href="${attribute(manifest.favicon)}">
+    <link rel="stylesheet" href="${attribute(manifest.theme)}" media="all" crossorigin="anonymous">
+    ${manifest.polyfills ? `<script type="module" src="${attribute(manifest.polyfills)}" crossorigin="anonymous"></script>` : ""}
+    ${entryTags(manifest.common)}
+    ${entryTags(manifest.wrapstodon)}
+  </head>
+  <body>
+    <div id="wrapstodon"></div>
+    <script type="application/json" id="wrapstodon-data">${scriptJson(options.data)}</script>
+  </body>
+</html>`;
+
+/** `/@alice/wrapstodon/2025/0123456789abcdef`: an annual report's public page. */
+const ANNUAL_REPORT_PATH = /^\/@([^/@]+)\/wrapstodon\/(\d+)\/([^/]+)\/?$/;
+
+/**
+ * `WrapstodonController#show`: the report of the account and year whose
+ * share key the path names, for anyone with the link. Rendered for no
+ * viewer (`scope: nil`), naming the signed-in account as `me`; a visitor's
+ * page is cached for ten minutes.
+ */
+export const annualReportSharePage = async (
+  c: Context<{ Bindings: Env }>,
+  username: string,
+  year: number,
+  shareKey: string,
+): Promise<Response> => {
+  const identity = parseInstanceIdentity(c.env);
+  const owner = await findAccountByUsername(c.env.DB, username);
+  if (identity.isErr() || owner.isErr()) {
+    return c.text("Internal Server Error", 500);
+  }
+  const report = owner.value
+    ? await findAnnualReport(c.env.DB, owner.value.id, year)
+    : ok(undefined);
+  if (report.isErr()) {
+    return c.text("Internal Server Error", 500);
+  }
+  if (!owner.value || report.value?.shareKey === undefined || report.value.shareKey !== shareKey) {
+    return c.text("Not Found", 404);
+  }
+  const [document, viewer] = await Promise.all([
+    annualReportsDocument(c.env, identity.value, owner.value, [report.value], undefined),
+    browserSession(c.req.raw, c.env),
+  ]);
+  if (document.isErr()) {
+    return c.text("Internal Server Error", 500);
+  }
+  const name = owner.value.displayName.trim() || owner.value.username;
+  c.header(
+    "Cache-Control",
+    viewer.kind === "Account" ? "private, no-store" : "public, max-age=600",
+  );
+  c.header("Vary", "Accept, Accept-Language, Cookie");
+  const styleNonce = newStyleNonce();
+  c.header("Content-Security-Policy", contentSecurityPolicy({ ...policyOptions(c), styleNonce }));
+  return c.html(
+    annualReportPage(webManifest, {
+      styleNonce,
+      locale: pickLocale(c.req.header("Accept-Language"), webManifest.locales),
+      title: `Wrapstodon ${year} for ${name}`,
+      siteName: identity.value.name,
+      data: {
+        ...document.value,
+        ...(viewer.kind === "Account" ? { me: viewer.account.id } : {}),
+        domain: identity.value.domain,
+      },
+    }),
+  );
+};
+
 /** `/@alice/123/embed`: a status's embed page. */
 const EMBED_PATH = /^\/@([^/@]+)\/(\d+)\/embed\/?$/;
 
@@ -597,6 +725,10 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   const embed = EMBED_PATH.exec(path);
   if (embed?.[1] && embed[2]) {
     return statusEmbedPage(c, embed[1], embed[2]);
+  }
+  const annualReport = ANNUAL_REPORT_PATH.exec(path);
+  if (annualReport?.[1] && annualReport[2] && annualReport[3]) {
+    return annualReportSharePage(c, annualReport[1], Number(annualReport[2]), annualReport[3]);
   }
   if (path.startsWith("/@") && prefersJson(accept)) {
     const target = activityPubTarget(path);

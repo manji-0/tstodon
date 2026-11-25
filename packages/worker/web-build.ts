@@ -480,6 +480,8 @@ const builtManifest = async (clientOutDir: string): Promise<unknown> => {
     embed: entry("src/entrypoints/embed.tsx"),
     // The standalone composer (/share).
     share: entry("src/entrypoints/share.tsx"),
+    // An annual report's public page (/@user/wrapstodon/:year/:share_key).
+    wrapstodon: entry("src/entrypoints/wrapstodon.tsx"),
     locales: locales(),
   };
 };
@@ -502,6 +504,7 @@ const devManifest = async (): Promise<unknown> => {
     remoteInteractionHelper: entry("entrypoints/remote_interaction_helper.ts"),
     embed: entry("entrypoints/embed.tsx"),
     share: entry("entrypoints/share.tsx"),
+    wrapstodon: entry("entrypoints/wrapstodon.tsx"),
     locales: locales(),
   };
 };

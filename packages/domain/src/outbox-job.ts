@@ -604,6 +604,16 @@ const FederatePendingStatusesSchema = z.object({
   kind: z.literal("FederatePendingStatuses"),
 });
 
+/**
+ * Generate an account's annual report for `year`, as Mastodon's
+ * `GenerateAnnualReportWorker`, and mark its generation finished.
+ */
+const GenerateAnnualReportSchema = z.object({
+  kind: z.literal("GenerateAnnualReport"),
+  accountId: AccountId.schema,
+  year: z.number().int(),
+});
+
 export const OutboxJobSchema = z.discriminatedUnion("kind", [
   ExpandFollowersSchema,
   ExpandForwardSchema,
@@ -654,6 +664,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   VerifyFeaturedItemSchema,
   SynchronizeRemoteCollectionsSchema,
   ResolveTaggedCollectionSchema,
+  GenerateAnnualReportSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;
