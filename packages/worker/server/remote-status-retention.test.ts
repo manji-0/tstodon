@@ -351,8 +351,9 @@ describe("remote status retention", () => {
     expect(scans(statuses)).toEqual([]);
     // The delete's own range and 17 probes, then one seek per table its
     // foreign keys cascade to.
-    expect(statuses.filter((line) => line.startsWith("SEARCH"))).toHaveLength(31);
+    expect(statuses.filter((line) => line.startsWith("SEARCH"))).toHaveLength(32);
     for (const child of [
+      "status_search_documents",
       "remote_status_tags",
       "remote_status_edits",
       "remote_status_mentions",
@@ -432,8 +433,10 @@ describe("remote status retention", () => {
         `second_read=${second.rowsRead} second_written=${second.rowsWritten}`,
     );
     // Bounded by the slice, whatever the table holds: the slice's ids, then
-    // the delete's range, its probes and cascades (about 1000 + 5000 here).
-    expect(first.rowsRead).toBeLessThan(slice * 7);
+    // the delete's range, its probes and cascades (about 1000 + 5000 here),
+    // and the status search triggers' probes of each deleted status's and
+    // tag's search document (about 1500).
+    expect(first.rowsRead).toBeLessThan(slice * 8);
     expect(second.rowsRead).toBe(first.rowsRead);
     expect(first.rowsWritten).toBeLessThanOrEqual(slice + 1);
   });

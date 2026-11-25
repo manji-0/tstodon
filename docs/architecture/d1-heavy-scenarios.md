@@ -27,7 +27,7 @@ D1 gives tstodon a familiar relational model, but several Mastodon shapes amplif
 - Timeline pages need N statuses × accounts × counts × media × polls × reblog chains.
 - Outbox delivery expands one activity into many **remote** inbox targets.
 - Inbox and remote hydrate paths couple HTTP fetch with idempotent inserts.
-- Status text search still uses `LIKE '%…%'` scans; local tag matching reads the `local_status_tags` index.
+- Status text search reads an FTS5 index ([status search](./status-search.md)); local tag matching reads the `local_status_tags` index.
 - Cron poll expiry walks a batch of rows and publishes stream events.
 - Status Create is a multi-helper saga with partial-failure modes ([Doc A](./d1-write-strategy.md#status-publish-composition-route-level-gap)).
 
@@ -249,26 +249,28 @@ sequenceDiagram
 
 **Gaps:** low for A6; watch total request CPU if clients send thousands of ids in one call — consider API max members per request.
 
-### 6. Search / tag scans (`LIKE`)
+### 6. Search and tag reads
 
 **Shape:**
 
-- `searchStatuses`: `content_text LIKE ?` with `%query%`, `ORDER BY id DESC LIMIT ?`.
+- `searchStatusIds` (`server/status-search-store.ts`): one statement over the `status_search` FTS5 table, read newest first by rowid (the status id), with the viewer's scope (`p`, `v<viewer>`) inside the match expression. See [status search](./status-search.md).
 - `listTagStatuses`: `EXISTS` on `local_status_tags`, written from `extractHashtags` when a note is published or edited.
 - Account search via TypedSQL `searchAccounts` (separate path).
 - Search route default limit **5** via `queryLimit(..., 5)`; other list endpoints use `queryLimit` default **20** / max **40** (A2).
 
 **In code mitigations:**
 
-- Strict SQL `LIMIT`.
-- Architecture defers Vectorize / Workers AI until local cost is acceptable.
+- Strict SQL `LIMIT`; the index serves the rowid order, so a page sorts nothing and stops at `offset + limit` results.
+- `indexable` and the viewer's library are tokens of the index, so the rows read per page are the viewer's candidates, not every note that holds the words.
+- Triggers keep the index in step with every table its rows are read from (migration `0015_status_search.sql`).
 
 **Gaps:**
 
-| Severity             | Risk                                                  | Mitigation now                 | Proposed next                                            |
-| -------------------- | ----------------------------------------------------- | ------------------------------ | -------------------------------------------------------- |
-| High (as data grows) | Leading-wildcard `LIKE` cannot use normal B-tree well | LIMIT + small instance (A1/A8) | Hashtag table / FTS5 / Vectorize when A1 no longer holds |
-| Med                  | Tag extraction for trending scans content             | Existing helpers               | Materialized tag rows at write time                      |
+| Severity | Risk                                                                                   | Mitigation now                                         | Proposed next                                   |
+| -------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
+| Low      | A page whose matches are mostly by blocked, muted or moderated authors reads more rows | The per-row checks seek by key                         | Measure `search` p95 (`double1`) before acting  |
+| Low      | A note's index row is written once per attachment, tag and interaction                 | Each write seeks by key; ASCII text skips the CJK pass | Batch the writes of one publish if CPU shows it |
+| Med      | Tag extraction for trending scans content                                              | Existing helpers                                       | Materialized tag rows at write time             |
 
 ### 7. Status Create saga (composition)
 
@@ -366,7 +368,6 @@ Run these against the Analytics Engine SQL API (`POST /client/v4/accounts/<id>/a
 | ---- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D1-1 | Does fan-out or expand CPU need chunking or caps?                        | `outbox.expand`, `outbox.job.page` (`FanOutHome`, `FanOutPublic`), `stream.render` | `SELECT quantileWeighted(0.95, double2, _sample_interval) AS p95_ms, quantileWeighted(0.95, double1, _sample_interval) AS p95_targets FROM tstodon_metrics WHERE index1 = 'outbox.expand' AND timestamp > NOW() - INTERVAL '7' DAY`; the same over `index1 = 'outbox.job.page' AND blob1 = 'FanOutHome'` with `double2` (ms) and `double1` (followers per pass); `SUM(double3 * _sample_interval) / SUM(_sample_interval)` is the share of passes that chained |
 | D1-2 | Is a hard cap on list member mutation size needed?                       | Not measured by these indexes                                                      | List member mutations write no metric. The nearest signal is `ProcessCsvImport` passes with `blob3 = 'Rows'` (rows per pass and `double2`) when an import adds list members; a cap needs a product decision, not a latency number.                                                                                                                                                                                                                             |
-| D1-3 | Should hashtag rows or FTS replace `LIKE`?                               | `timeline.tag`, `search`                                                           | `SELECT quantileWeighted(0.95, double1, _sample_interval) AS p95_ms, SUM(_sample_interval) AS requests FROM tstodon_metrics WHERE index1 = 'timeline.tag' AND blob1 = 'ok' AND timestamp > NOW() - INTERVAL '7' DAY`; for `search`, `double1` is the latency and `double3` the status hits                                                                                                                                                                     |
 | D1-4 | Does collapsing the preload `Promise.all` into one `runD1Batch` pay off? | `timeline.home`, `timeline.list`, `timeline.public`, `timeline.tag`                | `SELECT index1, quantileWeighted(0.5, double1, _sample_interval) AS p50_ms, quantileWeighted(0.95, double1, _sample_interval) AS p95_ms FROM tstodon_metrics WHERE index1 LIKE 'timeline.%' AND blob1 = 'ok' GROUP BY index1`. All four share the `mastodonStatuses` preload, so a high p95 on rows near `limit` points at it; compare before and after a trial change.                                                                                        |
 | D1-5 | Is there a hot-key write that D1 primary cannot absorb?                  | `outbox.job.page`, `outbox.job` `failed`, `outbox.enqueue`                         | `SELECT blob1, blob2, SUM(_sample_interval) AS passes, quantileWeighted(0.95, double2, _sample_interval) AS p95_ms FROM tstodon_metrics WHERE index1 = 'outbox.job.page' GROUP BY blob1, blob2` shows which job spends its time and whether `retry` clusters on one; a Durable Object needs a named row that serializes writes, which these metrics can only suggest.                                                                                          |
 

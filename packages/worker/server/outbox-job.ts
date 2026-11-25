@@ -1,3 +1,4 @@
+import { backfillRemoteSearchDocuments, reindexStaleAuthors } from "./status-search-documents";
 import { assertNever } from "@tstodon/core";
 import type { OutboxJob as OutboxJobValue } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
@@ -273,6 +274,23 @@ export const processOutboxJob = async (
         }
         if (page.value.chained) {
           await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillRemoteTags" });
+        }
+        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
+      });
+    case "BackfillStatusSearch":
+      return measureJobPage(env, job.kind, async () => {
+        // An author whose `indexable` changed first, then the remote notes
+        // cached before the index; one page of either a run.
+        const stale = await reindexStaleAuthors(env.DB);
+        const page =
+          stale.isOk() && stale.value.scanned === 0
+            ? await backfillRemoteSearchDocuments(env.DB)
+            : stale;
+        if (page.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        if (page.value.chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillStatusSearch" });
         }
         return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
       });

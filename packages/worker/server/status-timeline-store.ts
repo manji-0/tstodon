@@ -2,7 +2,7 @@ import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
-import { containsFolded, parseRows, type RepositoryError, runD1 } from "./d1";
+import { parseRows, type RepositoryError, runD1 } from "./d1";
 import { SUPPRESSED_ACCOUNT_IDS_SQL } from "./block-mute-store";
 import {
   EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL,
@@ -270,7 +270,7 @@ export const listAccountStatusesFiltered = async (
  * row seeks its author's moderation, and a silenced one the follow, by key.
  * Bind order: (viewerId, viewerId), `''` when anonymous.
  */
-const SILENCED_UNFOLLOWED_OR_SUSPENDED_SQL = `AND NOT EXISTS (
+export const SILENCED_UNFOLLOWED_OR_SUSPENDED_SQL = `AND NOT EXISTS (
   SELECT 1 FROM account_moderation AS m
   WHERE m.account_id = statuses.account_id
     AND (
@@ -285,51 +285,3 @@ const SILENCED_UNFOLLOWED_OR_SUSPENDED_SQL = `AND NOT EXISTS (
       )
     )
 )`;
-
-/**
- * Local notes whose text contains `query`, newest first, kept in SQL to the
- * ones `viewerId` may see (as `canViewStatus`, without its direct reply
- * chains) and that Mastodon's `StatusFilter` keeps (blocks, mutes, and
- * moderated authors), so that `offset` skips only visible results.
- */
-export const searchStatuses = async (
-  db: D1Database,
-  viewerId: string | undefined,
-  query: string,
-  limit: number,
-  offset: number,
-): Promise<Result<LocalStatusValue[], RepositoryError>> =>
-  runD1(async () => {
-    const viewer = viewerId ?? "";
-    const { results } = await db
-      .prepare(
-        `SELECT ${statusSelect} FROM statuses
-         WHERE kind = 'LocalNote' ${SILENCED_UNFOLLOWED_OR_SUSPENDED_SQL}
-           AND ${containsFolded("content_text")}
-           AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-           AND (
-             visibility IN ('public', 'unlisted')
-             OR account_id = ?
-             OR (visibility = 'private' AND account_id IN (
-               SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-             ))
-             OR (visibility IN ('direct', 'limited') AND id IN (
-               SELECT status_id FROM status_mentions WHERE account_id = ?
-             ))
-           )
-         ORDER BY id DESC LIMIT ? OFFSET ?`,
-      )
-      .bind(
-        viewer,
-        viewer,
-        query,
-        ...suppressedBinds(viewerId),
-        viewer,
-        viewer,
-        viewer,
-        limit,
-        offset,
-      )
-      .all();
-    return hydrateStatusRows(db, results ?? []);
-  });

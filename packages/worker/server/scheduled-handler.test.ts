@@ -30,7 +30,12 @@ const kindsOf = (jobs: ReadonlyArray<CronJob>, kind?: CronJob["kind"]): string[]
   jobs.filter((cronJob) => kind === undefined || cronJob.kind === kind).map(({ job }) => job.kind);
 
 /** Jobs that queue their next page when a page is full. */
-const PAGED = new Set(["BackfillRemoteTags", "VacuumMediaAttachments", "VacuumActivities"]);
+const PAGED = new Set([
+  "BackfillRemoteTags",
+  "BackfillStatusSearch",
+  "VacuumMediaAttachments",
+  "VacuumActivities",
+]);
 
 afterEach(() => {
   vi.restoreAllMocks();

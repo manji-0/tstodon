@@ -1,10 +1,14 @@
 import { loadFeatureViewer } from "../feature-approval";
-import type { ApiAccountJSON, ApiHashtagJSON, ApiSearchResultsJSON } from "@tstodon/api";
+import type {
+  ApiAccountJSON,
+  ApiHashtagJSON,
+  ApiSearchResultsJSON,
+  ApiStatusJSON,
+} from "@tstodon/api";
 import { ApiSearchParamsSchema } from "@tstodon/api";
-import { ok } from "neverthrow";
-import type { InstanceIdentity, RemoteActor } from "@tstodon/domain";
+import { err, ok, type Result } from "neverthrow";
+import { type InstanceIdentity, type RemoteActor, StatusSearchQuery } from "@tstodon/domain";
 import { searchAccountsPage } from "../account-search";
-import type { LocalStatus as LocalStatusValue } from "@tstodon/domain";
 import { authenticate } from "../auth";
 import { filteredAttribute, loadViewerFilters, matchFilters } from "../filter-match";
 import { readQueryParams } from "../request-params";
@@ -37,7 +41,10 @@ import { type ActorRefreshOptions, resolveRemoteActorByHandle } from "../remote-
 import { findAccountByUsername } from "../account-store";
 import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
 import { parseInstanceIdentity } from "../runtime-config";
-import { searchStatuses } from "../status-timeline-store";
+import { searchStatusIds } from "../status-search-store";
+import { statusDocumentsByIds } from "../status-documents";
+import { htmlToText } from "../html";
+import type { RepositoryError } from "../d1";
 import { listFeaturedTags, listFollowedTags, searchTags, tagDailyHistories } from "../tag-store";
 import type { Context } from "hono";
 
@@ -190,30 +197,42 @@ const search = async (c: Context<{ Bindings: Env }>) => {
       }
     }
   }
-  const statusesById = new Map<string, LocalStatusValue>();
   const rendered =
     type === "accounts" || type === "hashtags"
       ? ok([])
-      : await (async () => {
+      : await (async (): Promise<Result<ApiStatusJSON[], RepositoryError>> => {
           if (urlLookup) {
             const found = named?.kind === "Status" ? named.status : undefined;
             if (!found) {
               return ok([]);
             }
-            if (found.kind === "RemoteStatus") {
-              return mastodonRemoteStatuses(c.env, identity.value, [found.status], viewerId);
-            }
-            statusesById.set(found.status.id, found.status);
-            return mastodonStatuses(c.env, identity.value, [found.status], viewerId);
+            return found.kind === "RemoteStatus"
+              ? mastodonRemoteStatuses(c.env, identity.value, [found.status], viewerId)
+              : mastodonStatuses(c.env, identity.value, [found.status], viewerId);
           }
-          const statuses = await searchStatuses(c.env.DB, viewerId, query, limit, offset);
-          if (statuses.isErr()) {
-            return statuses;
+          // As Mastodon's `status_searchable?`: statuses are searched for a
+          // signed-in viewer only.
+          if (viewerId === undefined) {
+            return ok([]);
           }
-          for (const status of statuses.value) {
-            statusesById.set(status.id, status);
+          // A query Mastodon's parser refuses finds no status.
+          const parsed = StatusSearchQuery.parse(query);
+          if (parsed.isErr()) {
+            return ok([]);
           }
-          return mastodonStatuses(c.env, identity.value, statuses.value, viewerId);
+          const ids = await searchStatusIds(
+            c.env.DB,
+            identity.value,
+            viewerId,
+            parsed.value,
+            limit,
+            offset,
+          );
+          if (ids.isErr()) {
+            return err(ids.error);
+          }
+          const documents = await statusDocumentsByIds(c.env, identity.value, ids.value, viewerId);
+          return documents.map((byId) => ids.value.flatMap((id) => byId.get(id) ?? []));
         })();
   if (rendered.isErr()) {
     return jsonRepositoryError(c, rendered.error.message);
@@ -225,9 +244,12 @@ const search = async (c: Context<{ Bindings: Env }>) => {
     if (filters.isOk() && filters.value.length > 0) {
       for (const document of statusDocs) {
         const id = document.id;
-        const status = statusesById.get(id);
-        const text = status && status.kind === "LocalNote" ? status.text : document.content;
-        const matches = matchFilters(filters.value, "public", text, id.length > 0 ? id : null);
+        const matches = matchFilters(
+          filters.value,
+          "public",
+          htmlToText(document.content),
+          id.length > 0 ? id : null,
+        );
         if (matches.length > 0) {
           document.filtered = filteredAttribute(matches);
         }
