@@ -86,6 +86,9 @@ export const HOURLY_JOBS: ReadonlyArray<CronJob> = [
   // Index the tags of remote statuses left to the backfill
   // (`tags_indexed = 0`); one empty read once none is left.
   { kind: "Inline", job: { kind: "BackfillRemoteTags" } },
+  // Index for status search the remote statuses cached before its index
+  // existed, 100 a page; one read of the cursor once the walk has ended.
+  { kind: "Inline", job: { kind: "BackfillStatusSearch" } },
   // Queue one cleanup run per account with automated post deletion on.
   { kind: "Inline", job: { kind: "CleanUpStatuses" } },
   // Restart the severance of up to 5 suspended actors whose pages stalled;

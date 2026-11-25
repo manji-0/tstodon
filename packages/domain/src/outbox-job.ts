@@ -57,6 +57,8 @@ const AwaitPollEndSchema = z.object({
 const RefreshLinkCardsSchema = unitKind("RefreshLinkCards");
 /** Index the tags of the remote statuses stored with `tags_indexed = 0` (cron). */
 const BackfillRemoteTagsSchema = unitKind("BackfillRemoteTags");
+/** Index the remote statuses cached before status search had an index (cron). */
+const BackfillStatusSearchSchema = unitKind("BackfillStatusSearch");
 /**
  * Where recording a block's limits resumes: the last actor recorded, by its
  * account domain's key and its row id.
@@ -622,6 +624,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   AwaitPollEndSchema,
   RefreshLinkCardsSchema,
   BackfillRemoteTagsSchema,
+  BackfillStatusSearchSchema,
   RecordDomainBlockLimitsSchema,
   ResumeLiftedDomainBlockLimitsSchema,
   PurgeSuspendedActorContentSchema,

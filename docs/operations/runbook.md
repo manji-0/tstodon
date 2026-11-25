@@ -71,7 +71,7 @@ Caveats, from how this server works:
 
 Time Travel lives in the same account as the database and covers only its window. The [`D1 backup`](../../.github/workflows/d1-backup.yml) GitHub Actions workflow keeps copies elsewhere: once a day (03:43 UTC; change the `cron` line to suit your quiet hours) and on demand (Actions → D1 backup → Run workflow) it
 
-1. exports the production database with `wrangler d1 export --remote` (the lockfile's wrangler, through a throwaway config that names the database by id),
+1. exports the production database with `wrangler d1 export --remote --compatibility sqlite3_cli_only` (the lockfile's wrangler, through a throwaway config that names the database by id): the SQLite CLI's `.dump` format, since D1's own format refuses a database with a virtual table and the status search index is one (FTS5),
 2. checks the dump is not empty and holds `d1_migrations` and `accounts`,
 3. compresses it and encrypts it with [age](https://age-encryption.org) to the public keys in `D1_BACKUP_AGE_RECIPIENTS`, then deletes the plaintext; the plaintext never leaves the runner,
 4. uploads `<prefix><database>-<YYYYMMDDTHHMMSSZ>.sql.gz.age` to an S3-compatible bucket (an R2 bucket in **another** Cloudflare account, or another provider), with its SHA-256 in the object metadata (`sha256`), and checks the stored size,
@@ -117,13 +117,15 @@ Settings (repository Settings → Secrets and variables → Actions; an `environ
 - To rotate: add the new public key to `D1_BACKUP_AGE_RECIPIENTS`, run the workflow, check a restore with the new key, then remove the old public key. Keep the old identity until every backup encrypted to it has been pruned (`D1_BACKUP_KEEP_MONTHS` months).
 - If an identity leaks, treat every backup encrypted to it as leaked: see [Key compromise](#key-compromise-and-secret-rotation).
 
-**Cost of an export.** D1 documents that an export blocks other queries to the database while it runs **(verify)**, so a large export is a short outage of the API; schedule it when traffic is lowest. Export does not support databases with virtual tables; tstodon's migrations create none (no FTS).
+**Cost of an export.** D1 documents that an export blocks other queries to the database while it runs **(verify)**, so a large export is a short outage of the API; schedule it when traffic is lowest.
+
+**Format.** D1's own export format (the default) fails on a database with a virtual table, and migration `0015_status_search.sql` creates one, the FTS5 status search index. So every export uses `--compatibility sqlite3_cli_only`, which D1 cannot import as is: `node scripts/d1-dump-for-import.mjs < dump.sql > restore.sql` turns it into SQL D1 imports (every table first, then the rows, then indexes, views and triggers, then the search index rebuilt from its tables), and passes a D1-format dump through unchanged. The conversion was checked locally against an SQLite CLI 3.45 `.dump` of a migrated database **(verify against a real remote export)**.
 
 **Manual export** (the same thing from a trusted machine, for example before a risky migration):
 
 ```sh
 f=tstodon-$(date -u +%Y%m%dT%H%M%SZ).sql
-wrangler d1 export tstodon --remote --output "$f"
+wrangler d1 export tstodon --remote --compatibility sqlite3_cli_only --output "$f"
 gzip -9 -c "$f" | age --encrypt -r <recipient-public-key> -o "$f.gz.age" && rm "$f"
 aws s3api put-object --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket <bucket> --key "d1/$f.gz.age" --body "$f.gz.age"
 ```
@@ -140,10 +142,11 @@ Name it as the workflow does (`d1/tstodon-<stamp>.sql.gz.age`, second precision)
    aws s3api get-object --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket <bucket> \
      --key d1/tstodon-<stamp>.sql.gz.age tstodon-<stamp>.sql.gz.age
    # or download the workflow run's artifact (a zip holding the .age and .sha256)
-   age --decrypt -i tstodon-d1-backup.key tstodon-<stamp>.sql.gz.age | gunzip > restore.sql
+   age --decrypt -i tstodon-d1-backup.key tstodon-<stamp>.sql.gz.age | gunzip \
+     | node scripts/d1-dump-for-import.mjs > restore.sql
    ```
 
-2. Rehearse it locally first: `scripts/d1-restore-check.sh tstodon-<stamp>.sql.gz.age tstodon-d1-backup.key` decrypts the backup (checking a `.sha256` next to it when there is one), loads it into a scratch local D1 database, prints the account, status and instance-key counts and the newest migration, and lists migrations the repository has that the backup lacks. Nothing touches Cloudflare. Tested with a local export → encrypt → decrypt → import round trip: the re-export of the restored database was byte-identical to the original, including multi-line PEMs, quotes and non-ASCII JSON.
+2. Rehearse it locally first: `scripts/d1-restore-check.sh tstodon-<stamp>.sql.gz.age tstodon-d1-backup.key` decrypts the backup (checking a `.sha256` next to it when there is one), converts an SQLite CLI dump with `scripts/d1-dump-for-import.mjs`, loads it into a scratch local D1 database, prints the account, status and instance-key counts and the newest migration, and lists migrations the repository has that the backup lacks. Nothing touches Cloudflare. Tested with a local export → encrypt → decrypt → import round trip: the re-export of the restored database was byte-identical to the original, including multi-line PEMs, quotes and non-ASCII JSON.
 3. Load it into a new database and point the Worker at it:
 
    ```sh

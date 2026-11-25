@@ -26,6 +26,7 @@ import {
   sqlInJsonEach,
   type StoredRowInvalid,
 } from "./d1";
+import { remoteSearchDocumentStatements } from "./status-search-documents";
 import { removedBoostsFromRows } from "./removed-boost";
 import { parseJsonColumn, parseJsonText } from "./json-column";
 import { htmlHashtags, recordTagNames, searchableTagNames } from "./hashtags";
@@ -740,6 +741,7 @@ export const upsertRemoteStatus = async (
           ...unreplaced,
           ...alongside,
           remoteStatusRowStatement(db, persisted, inReplyTo, existing.value ? "Replace" : "Insert"),
+          ...remoteSearchDocumentStatements(db, persisted),
           ...remoteStatusTagStatements(db, persisted.id, persisted.visibility, tags),
           ...settled,
           ...after.map((statement) => statement(persisted.id)),
@@ -814,6 +816,7 @@ export const overwriteRemoteStatus = async (
       .prepare("UPDATE remote_statuses SET edited_at = NULL WHERE id = ? AND actor_uri = ?")
       .bind(status.id, status.actorUri),
     remoteStatusRowStatement(db, status, undefined, "Replace"),
+    ...remoteSearchDocumentStatements(db, status),
     ...remoteStatusTagStatements(db, status.id, status.visibility, tags),
     ...(before.pollFilled && status.poll.kind !== "NoPoll"
       ? [settleRemotePollVotesStatement(db, status.id)]

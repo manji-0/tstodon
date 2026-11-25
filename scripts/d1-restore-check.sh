@@ -39,7 +39,10 @@ if [ -f "$backup.sha256" ]; then
   echo "sha256 matches"
 fi
 
-age --decrypt -i "$identity" "$backup" | gunzip > "$work/restore.sql"
+# A dump in the SQLite CLI's format (the scheduled backups since the status
+# search index) is turned into SQL D1 imports; a D1-format one passes as is.
+age --decrypt -i "$identity" "$backup" | gunzip \
+  | node "$repo/scripts/d1-dump-for-import.mjs" > "$work/restore.sql"
 echo "decrypted: $(wc -c < "$work/restore.sql") bytes"
 
 printf '{"name":"tstodon-restore-check","compatibility_date":"2026-09-20","d1_databases":[{"binding":"DB","database_name":"tstodon-restore-check","database_id":"00000000-0000-0000-0000-000000000000","migrations_dir":"%s"}]}' \

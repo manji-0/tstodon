@@ -129,8 +129,12 @@ jobs:
           key="$(node scripts/d1-backup.mjs key --prefix "$S3_PREFIX" --database "$DATABASE_NAME")"
           echo "key=$key" >> "$GITHUB_OUTPUT"
           echo "file=$work/$(basename "$key")" >> "$GITHUB_OUTPUT"
+          # The status search index is an FTS5 virtual table, which D1's own
+          # dump format refuses: this one is the SQLite CLI's `.dump`, which
+          # `scripts/d1-dump-for-import.mjs` turns into SQL D1 imports.
           (cd "$work" && "$GITHUB_WORKSPACE/node_modules/.bin/wrangler" d1 export "$DATABASE_NAME" \
-            --remote --skip-confirmation --config "$work/wrangler.json" --output "$work/dump.sql")
+            --remote --skip-confirmation --config "$work/wrangler.json" \
+            --compatibility sqlite3_cli_only --output "$work/dump.sql")
           # A dump that cannot restore a working server is a failed backup.
           size="$(stat -c %s "$work/dump.sql")"
           [ "$size" -gt 0 ] || { echo "::error::empty export"; exit 1; }

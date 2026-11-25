@@ -436,3 +436,12 @@ export {
   type FeaturePolicy,
   FeaturePolicySchema,
 } from "./collection";
+export {
+  StatusSearchQuery,
+  type InstantRange,
+  type StatusSearchAuthor,
+  type StatusSearchClause,
+  type StatusSearchQueryError,
+  type StatusSearchScope,
+  type TextOccurrence,
+} from "./status-search-query";

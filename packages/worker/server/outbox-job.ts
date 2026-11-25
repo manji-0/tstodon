@@ -1,3 +1,4 @@
+import { backfillRemoteSearchDocuments } from "./status-search-documents";
 import { assertNever } from "@tstodon/core";
 import type { OutboxJob as OutboxJobValue } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
@@ -273,6 +274,17 @@ export const processOutboxJob = async (
         }
         if (page.value.chained) {
           await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillRemoteTags" });
+        }
+        return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
+      });
+    case "BackfillStatusSearch":
+      return measureJobPage(env, job.kind, async () => {
+        const page = await backfillRemoteSearchDocuments(env.DB);
+        if (page.isErr()) {
+          return { outcome: "retry", size: 0, chained: false };
+        }
+        if (page.value.chained) {
+          await env.OUTBOX_PROCESS_QUEUE.send({ kind: "BackfillStatusSearch" });
         }
         return { outcome: "ok", size: page.value.scanned, chained: page.value.chained };
       });
