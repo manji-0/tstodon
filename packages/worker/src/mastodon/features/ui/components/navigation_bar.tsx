@@ -3,7 +3,7 @@ import { useCallback, useEffect } from 'react';
 import { useIntl, defineMessages, FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { NavLink, useRouteMatch } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router';
 
 import AddIcon from '@/material-icons/400-24px/add.svg?react';
 import HomeActiveIcon from '@/material-icons/400-24px/home-fill.svg?react';
@@ -17,11 +17,15 @@ import { toggleNavigation } from 'mastodon/actions/navigation';
 import { fetchServer } from 'mastodon/actions/server';
 import { Icon } from 'mastodon/components/icon';
 import { IconWithBadge } from 'mastodon/components/icon_with_badge';
-import type { MastodonLocationDescriptor } from 'mastodon/components/router';
+import type {
+  LocationState,
+  MastodonLocationDescriptor,
+} from 'mastodon/components/router';
 import { useIdentity } from 'mastodon/identity_context';
 import { registrationsOpen, sso_redirect } from 'mastodon/initial_state';
 import { selectUnreadNotificationGroupsCount } from 'mastodon/selectors/notifications';
 import { useAppDispatch, useAppSelector } from 'mastodon/store';
+import { matchRoute } from 'mastodon/utils/react_router';
 
 export const messages = defineMessages({
   home: { id: 'tabs_bar.home', defaultMessage: 'Home' },
@@ -40,19 +44,21 @@ export const messages = defineMessages({
 
 const IconLabelButton: React.FC<{
   to: MastodonLocationDescriptor;
+  state?: LocationState;
   icon?: React.ReactNode;
   activeIcon?: React.ReactNode;
   title: string;
-}> = ({ to, icon, activeIcon, title }) => {
-  const match = useRouteMatch(
-    typeof to === 'string' ? to : (to.pathname ?? ''),
-  );
+}> = ({ to, state, icon, activeIcon, title }) => {
+  const location = useLocation();
+  const match = matchRoute(location.pathname, {
+    path: typeof to === 'string' ? to : (to.pathname ?? ''),
+  });
 
   return (
     <NavLink
       className='ui__navigation-bar__item'
-      activeClassName='active'
       to={to}
+      state={state}
       aria-label={title}
     >
       {match && activeIcon ? activeIcon : icon}
@@ -192,7 +198,8 @@ export const NavigationBar: React.FC = () => {
             />
             <IconLabelButton
               title={intl.formatMessage(messages.publish)}
-              to={{ pathname: '/publish', state: { focusTarget: false } }}
+              to='/publish'
+              state={{ focusTarget: false }}
               icon={<Icon id='' icon={AddIcon} />}
             />
             <NotificationsButton />

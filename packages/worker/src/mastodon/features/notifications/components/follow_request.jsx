@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 
 import { defineMessages } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import ImmutablePureComponent from 'react-immutable-pure-component';

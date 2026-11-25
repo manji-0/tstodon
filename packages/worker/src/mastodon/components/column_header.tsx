@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { FormattedMessage, defineMessages, useIntl } from 'react-intl';
 
 import classNames from 'classnames';
+import { useLocation, useNavigate } from 'react-router';
 
 import AddIcon from '@/material-icons/400-24px/add.svg?react';
 import ArrowBackIcon from '@/material-icons/400-24px/arrow_back.svg?react';
@@ -20,7 +21,7 @@ import { useColumnIndexContext } from '../features/ui/components/columns_area';
 import { getColumnSkipLinkId } from '../features/ui/components/skip_links';
 
 import { NavigationFocusTarget } from './navigation_focus_target';
-import { useAppHistory } from './router';
+import type { MastodonLocation } from './router';
 
 export const messages = defineMessages({
   show: { id: 'column_header.show_settings', defaultMessage: 'Show settings' },
@@ -39,17 +40,18 @@ export const messages = defineMessages({
 const BackButton: React.FC<{
   hasTitle: boolean;
 }> = ({ hasTitle }) => {
-  const history = useAppHistory();
+  const navigate = useNavigate();
+  const location: MastodonLocation = useLocation();
   const intl = useIntl();
   const columnIndex = useColumnIndexContext();
 
   const handleBackClick = useCallback(() => {
-    if (history.location.state?.fromMastodon) {
-      history.goBack();
+    if (location.state?.fromMastodon) {
+      void navigate(-1);
     } else {
-      history.push('/');
+      void navigate('/');
     }
-  }, [history]);
+  }, [navigate, location]);
 
   return (
     <button
@@ -112,7 +114,8 @@ export const ColumnHeader: React.FC<Props> = ({
 }) => {
   const intl = useIntl();
   const { signedIn } = useIdentity();
-  const history = useAppHistory();
+  const navigate = useNavigate();
+  const location: MastodonLocation = useLocation();
   const [collapsed, setCollapsed] = useState(true);
   const [animating, setAnimating] = useState(false);
 
@@ -143,11 +146,11 @@ export const ColumnHeader: React.FC<Props> = ({
 
   const handlePin = useCallback(() => {
     if (!pinned) {
-      history.replace('/');
+      void navigate('/', { replace: true });
     }
 
     onPin?.();
-  }, [history, pinned, onPin]);
+  }, [navigate, pinned, onPin]);
 
   const wrapperClassName = classNames('column-header__wrapper', className, {
     active,
@@ -225,7 +228,7 @@ export const ColumnHeader: React.FC<Props> = ({
 
   if (
     !pinned &&
-    ((multiColumn && history.location.state?.fromMastodon) || showBackButton)
+    ((multiColumn && location.state?.fromMastodon) || showBackButton)
   ) {
     backButton = <BackButton hasTitle={!!title} />;
   }

@@ -3,7 +3,7 @@ import { useEffect, useCallback, useState } from 'react';
 
 import { FormattedMessage, FormattedList } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { fetchFeaturedTags } from '@/mastodon/actions/featured_tags';
 import { Callout } from '@/mastodon/components/callout';

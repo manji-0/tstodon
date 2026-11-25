@@ -1,5 +1,5 @@
 import classNames from 'classnames';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 
 import type { MastodonLocationDescriptor } from 'mastodon/components/router';
 
@@ -34,7 +34,7 @@ export const NumberFieldsItem: React.FC<ItemProps> = ({
     >
       {label}
       {link ? (
-        <NavLink exact to={link}>
+        <NavLink end to={link}>
           {children}
         </NavLink>
       ) : (

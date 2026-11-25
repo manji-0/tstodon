@@ -3,7 +3,7 @@ import type { FC, ReactElement, ReactNode } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import {
   authorizeFollowRequest,

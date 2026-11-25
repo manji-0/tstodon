@@ -4,8 +4,9 @@ import { PureComponent } from 'react';
 import 'wicg-inert';
 
 import { multiply } from 'color-blend';
-import { createBrowserHistory } from 'history';
+import { UNSAFE_createBrowserHistory as createBrowserHistory } from 'react-router';
 
+import { browserHistory } from 'mastodon/components/router';
 import { WithOptionalRouterPropTypes, withOptionalRouter } from 'mastodon/utils/react_router';
 import { IGNORE_FOCUS_ON_OPEN } from '../reducers/modal';
 
@@ -62,7 +63,7 @@ class ModalRoot extends PureComponent {
   componentDidMount () {
     window.addEventListener('keyup', this.handleKeyUp, false);
     window.addEventListener('keydown', this.handleKeyDown, false);
-    this.history = this.props.history || createBrowserHistory();
+    this.history = this.props.location ? browserHistory : createBrowserHistory({ v5Compat: true });
   }
 
   componentDidUpdate (prevProps) {
@@ -102,7 +103,7 @@ class ModalRoot extends PureComponent {
 
   _handleModalOpen () {
     this._modalHistoryKey = Date.now();
-    this.unlistenHistory = this.history.listen((_, action) => {
+    this.unlistenHistory = this.history.listen(({ action }) => {
       if (action === 'POP') {
         this.props.onClose();
       }
@@ -115,7 +116,7 @@ class ModalRoot extends PureComponent {
     }
     const { state } = this.history.location;
     if (state && state.mastodonModalKey === this._modalHistoryKey) {
-      this.history.goBack();
+      this.history.go(-1);
     }
   }
 

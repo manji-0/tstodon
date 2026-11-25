@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { useHistory } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { List as ImmutableList } from 'immutable';
 
@@ -45,12 +45,12 @@ const AccountFeatured: React.FC<{ multiColumn: boolean }> = ({
 
   const dispatch = useAppDispatch();
 
-  const history = useHistory();
+  const navigate = useNavigate();
   useEffect(() => {
     if (account && !account.show_featured) {
-      history.push(`/@${account.acct}`);
+      void navigate(`/@${account.acct}`);
     }
-  }, [account, history]);
+  }, [account, navigate]);
 
   useEffect(() => {
     if (accountId) {

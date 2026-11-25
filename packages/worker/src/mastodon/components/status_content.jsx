@@ -4,7 +4,6 @@ import { PureComponent } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import classnames from 'classnames';
-import { withRouter } from 'react-router-dom';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import { connect } from 'react-redux';
@@ -14,6 +13,7 @@ import { Icon }  from 'mastodon/components/icon';
 import { Poll } from 'mastodon/components/poll';
 import { identityContextPropShape, withIdentity } from 'mastodon/identity_context';
 import { languages as preloadedLanguages } from 'mastodon/initial_state';
+import { withRouter } from 'mastodon/utils/react_router';
 
 import { EmojiHTML } from './emoji/html';
 import { injectIntl } from './intl';
@@ -84,9 +84,8 @@ class StatusContent extends PureComponent {
     languages: ImmutablePropTypes.map,
     intl: PropTypes.object,
     // from react-router
-    match: PropTypes.object.isRequired,
     location: PropTypes.object.isRequired,
-    history: PropTypes.object.isRequired
+    navigate: PropTypes.func.isRequired
   };
 
   _updateStatusLinks () {
@@ -193,7 +192,7 @@ class StatusContent extends PureComponent {
     const content = statusContent ?? getStatusContent(status);
     const language = status.getIn(['translation', 'language']) || status.get('language');
     const classNames = classnames('status__content', {
-      'status__content--with-action': this.props.onClick && this.props.history,
+      'status__content--with-action': this.props.onClick && this.props.navigate,
       'status__content--collapsed': renderReadMore,
     });
 

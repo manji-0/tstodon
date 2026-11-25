@@ -3,7 +3,7 @@ import { useCallback, useId, useMemo, useState } from 'react';
 
 import { FormattedMessage, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import type { Map as ImmutableMap } from 'immutable';
 
@@ -182,7 +182,7 @@ export const CollectionAccounts: React.FC<{
 }> = ({ collection }) => {
   const intl = useIntl();
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const { id, items: collectionItems } = collection ?? {};
   const isEditMode = !!id;
@@ -345,10 +345,10 @@ export const CollectionAccounts: React.FC<{
       e.preventDefault();
 
       if (!id) {
-        history.push('/collections/new/details');
+        void navigate('/collections/new/details');
       }
     },
-    [id, history],
+    [id, navigate],
   );
 
   const inputId = useId();

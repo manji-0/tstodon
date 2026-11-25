@@ -2,7 +2,7 @@ import { useEffect, useMemo, useCallback } from 'react';
 
 import { defineMessages, useIntl, FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 

@@ -9,7 +9,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import AlternateEmailIcon from '@/material-icons/400-24px/alternate_email.svg?react';
 import { AnimatedNumber } from 'mastodon/components/animated_number';

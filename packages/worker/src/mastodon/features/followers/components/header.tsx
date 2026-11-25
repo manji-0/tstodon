@@ -3,7 +3,7 @@ import type { FC } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { MessageDescriptor } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { Callout } from '@/mastodon/components/callout';
 import { DisplayNameSimple } from '@/mastodon/components/display_name/simple';

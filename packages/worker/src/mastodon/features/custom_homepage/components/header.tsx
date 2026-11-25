@@ -1,6 +1,6 @@
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { domain, sso_redirect } from 'mastodon/initial_state';
 

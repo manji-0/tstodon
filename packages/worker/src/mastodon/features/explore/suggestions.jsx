@@ -3,13 +3,12 @@ import { PureComponent } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { withRouter } from 'react-router-dom';
 
 import { connect } from 'react-redux';
 
 import { fetchSuggestions } from 'mastodon/actions/suggestions';
 import { LoadingIndicator } from 'mastodon/components/loading_indicator';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 import { Card } from './components/card';
 
@@ -28,10 +27,10 @@ class Suggestions extends PureComponent {
   };
 
   componentDidMount () {
-    const { dispatch, suggestions, history } = this.props;
+    const { dispatch, suggestions, navigationType } = this.props;
 
     // If we're navigating back to the screen, do not trigger a reload
-    if (history.action === 'POP' && suggestions.length > 0) {
+    if (navigationType === 'POP' && suggestions.length > 0) {
       return;
     }
 

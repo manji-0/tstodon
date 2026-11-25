@@ -4,7 +4,7 @@ import { PureComponent } from 'react';
 import { defineMessages } from 'react-intl';
 
 import classNames from 'classnames';
-import { Redirect, Route, withRouter } from 'react-router-dom';
+import { Route } from 'react-router';
 
 import { connect } from 'react-redux';
 
@@ -22,7 +22,7 @@ import { HoverCardController } from 'mastodon/components/hover_card_controller';
 import { PictureInPicture } from 'mastodon/features/picture_in_picture';
 import { identityContextPropShape, withIdentity } from 'mastodon/identity_context';
 import { layoutFromWindow, transientSingleColumn } from 'mastodon/is_mobile';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 import { checkAnnualReport } from '@/mastodon/reducers/slices/annual_report';
 
 import { uploadCompose, resetCompose, changeComposeSpoilerness } from '../../actions/compose';
@@ -87,7 +87,7 @@ import {
 } from './util/async-components';
 import { ColumnsContextProvider } from './util/columns_context';
 import { focusColumn, getFocusedItemIndex, focusItemSibling, focusFirstItem, getFocusedColumnIndex } from './util/focusUtils';
-import { WrappedSwitch, WrappedRoute } from './util/react_router_helpers';
+import { WrappedSwitch, WrappedRoute, Redirect } from './util/react_router_helpers';
 import { CustomHomepage } from 'mastodon/features/custom_homepage';
 
 // Dummy import, to make sure that <Status /> ends up in the application bundle.
@@ -188,10 +188,10 @@ class SwitchingColumnsArea extends PureComponent {
       <ColumnsContextProvider multiColumn={!singleColumn}>
         <ColumnsArea ref={this.setRef} singleColumn={singleColumn} domain={domain} minimalShell={minimalShell}>
           <WrappedSwitch>
-            <Redirect from='/' to={{pathname: rootRedirect, state: {...this.props.location.state, focusTarget: false}}} exact />
+            <Redirect from='/' to={rootRedirect} state={{...this.props.location.state, focusTarget: false}} exact />
 
             {forceSingleColumn || transientSingleColumn ? <Redirect from='/deck' to='/home' exact /> : null}
-            {(forceSingleColumn || transientSingleColumn) && pathName.startsWith('/deck/') ? <Redirect from={pathName} to={{...this.props.location, pathname: pathName.slice(5)}} /> : null}
+            {(forceSingleColumn || transientSingleColumn) && pathName.startsWith('/deck/') ? <Redirect from={pathName} to={{ pathname: pathName.slice(5), search: this.props.location.search, hash: this.props.location.hash }} state={this.props.location.state} /> : null}
             {/* Redirect old bookmarks (without /deck) with home-like routes to the advanced interface */}
             {!singleColumn && pathName === '/home' ? <Redirect from='/home' to='/deck/getting-started' exact /> : null}
             {pathName === '/getting-started' ? <Redirect from='/getting-started' to={singleColumn ? '/home' : '/deck/getting-started'} exact /> : null}
@@ -262,8 +262,8 @@ class SwitchingColumnsArea extends PureComponent {
             <WrappedRoute path='/mutes' component={Mutes} content={children} />
             <WrappedRoute path='/lists' component={Lists} content={children} />
 
-            <Route path='/overview' component={CustomHomepage} />
-            <Route component={BundleColumnError} />
+            <Route path='/overview' element={<CustomHomepage />} />
+            <Route element={<BundleColumnError />} />
           </WrappedSwitch>
         </ColumnsArea>
       </ColumnsContextProvider>
@@ -391,7 +391,7 @@ class UI extends PureComponent {
 
   handleServiceWorkerPostMessage = ({ data }) => {
     if (data.type === 'navigate') {
-      this.props.history.push(data.path);
+      this.props.navigate(data.path);
     } else {
       console.warn('Unknown message type:', data.type);
     }
@@ -525,49 +525,49 @@ class UI extends PureComponent {
   handleHotkeyBack = e => {
     e.preventDefault();
 
-    const { history } = this.props;
+    const { location, navigate } = this.props;
 
-    if (history.location?.state?.fromMastodon) {
-      history.goBack();
+    if (location.state?.fromMastodon) {
+      navigate(-1);
     } else {
-      history.push('/');
+      navigate('/');
     }
   };
 
   handleHotkeyToggleHelp = () => {
     if (this.props.location.pathname === '/keyboard-shortcuts') {
-      this.props.history.goBack();
+      this.props.navigate(-1);
     } else {
-      this.props.history.push('/keyboard-shortcuts');
+      this.props.navigate('/keyboard-shortcuts');
     }
   };
 
   handleHotkeyGoToHome = () => {
-    this.props.history.push('/home');
+    this.props.navigate('/home');
   };
 
   handleHotkeyGoToExplore = () => {
-    this.props.history.push('/explore');
+    this.props.navigate('/explore');
   };
 
   handleHotkeyGoToNotifications = () => {
-    this.props.history.push('/notifications');
+    this.props.navigate('/notifications');
   };
 
   handleHotkeyGoToLocal = () => {
-    this.props.history.push('/public/local');
+    this.props.navigate('/public/local');
   };
 
   handleHotkeyGoToFederated = () => {
-    this.props.history.push('/public');
+    this.props.navigate('/public');
   };
 
   handleHotkeyGoToDirect = () => {
-    this.props.history.push('/conversations');
+    this.props.navigate('/conversations');
   };
 
   handleHotkeyGoToStart = () => {
-    this.props.history.push('/getting-started');
+    this.props.navigate('/getting-started');
     // Set focus to the navigation after a timeout
     // to allow for it to be displayed first
     setTimeout(() => {
@@ -579,27 +579,27 @@ class UI extends PureComponent {
   };
 
   handleHotkeyGoToFavourites = () => {
-    this.props.history.push('/favourites');
+    this.props.navigate('/favourites');
   };
 
   handleHotkeyGoToPinned = () => {
-    this.props.history.push('/pinned');
+    this.props.navigate('/pinned');
   };
 
   handleHotkeyGoToProfile = () => {
-    this.props.history.push(`/@${this.props.username}`);
+    this.props.navigate(`/@${this.props.username}`);
   };
 
   handleHotkeyGoToBlocked = () => {
-    this.props.history.push('/blocks');
+    this.props.navigate('/blocks');
   };
 
   handleHotkeyGoToMuted = () => {
-    this.props.history.push('/mutes');
+    this.props.navigate('/mutes');
   };
 
   handleHotkeyGoToRequests = () => {
-    this.props.history.push('/follow_requests');
+    this.props.navigate('/follow_requests');
   };
 
   render () {

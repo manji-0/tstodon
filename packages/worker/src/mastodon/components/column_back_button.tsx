@@ -9,22 +9,25 @@ import { ButtonInTabsBar } from 'mastodon/features/ui/util/columns_context';
 
 import { useColumnIndexContext } from '../features/ui/components/columns_area';
 
-import { useAppHistory } from './router';
+import { useLocation, useNavigate } from 'react-router';
+
+import type { MastodonLocation } from './router';
 
 type OnClickCallback = () => void;
 
 function useHandleClick(onClick?: OnClickCallback) {
-  const history = useAppHistory();
+  const navigate = useNavigate();
+  const location: MastodonLocation = useLocation();
 
   return useCallback(() => {
     if (onClick) {
       onClick();
-    } else if (history.location.state?.fromMastodon) {
-      history.goBack();
+    } else if (location.state?.fromMastodon) {
+      void navigate(-1);
     } else {
-      history.push('/');
+      void navigate('/');
     }
-  }, [history, onClick]);
+  }, [navigate, location, onClick]);
 }
 
 export const ColumnBackButton: React.FC<{ onClick?: OnClickCallback }> = ({

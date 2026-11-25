@@ -7,7 +7,7 @@ import {
   defineMessages,
 } from 'react-intl';
 
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -31,7 +31,7 @@ const TermsOfService: React.FC<{
   multiColumn: boolean;
 }> = ({ multiColumn }) => {
   const intl = useIntl();
-  const { date } = useParams<Params>();
+  const { date } = useParams<keyof Params>();
   const [response, setResponse] = useState<ApiTermsOfServiceJSON>();
   const [loading, setLoading] = useState(true);
 

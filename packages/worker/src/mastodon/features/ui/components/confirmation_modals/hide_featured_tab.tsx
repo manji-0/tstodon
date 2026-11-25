@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { defineMessages, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { useAccount } from '@/mastodon/hooks/useAccount';
 import { useCurrentAccountId } from '@/mastodon/hooks/useAccountId';
@@ -39,14 +39,14 @@ export const ConfirmHideFeaturedTabModal: React.FC<
 > = ({ onClose }) => {
   const intl = useIntl();
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
   const currentAccountId = useCurrentAccountId();
   const { acct: currentUserName } = useAccount(currentAccountId) ?? {};
 
   const onConfirm = useCallback(() => {
     void dispatch(patchProfile({ show_featured: false }));
-    history.push(`/@${currentUserName}`);
-  }, [currentUserName, dispatch, history]);
+    void navigate(`/@${currentUserName}`);
+  }, [currentUserName, dispatch, navigate]);
 
   return (
     <ConfirmationModal

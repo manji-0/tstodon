@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { ComponentProps, FC } from 'react';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import type { ApiMentionJSON } from '@/mastodon/api_types/statuses';
 import { getCollectionPath } from '@/mastodon/features/collections/utils';

@@ -34,7 +34,7 @@ if (!yarnLock || !upstreamPackageJson) {
 }
 
 /** Packages upstream uses without declaring them (Yarn hoists them); tstodon declares them. */
-const HOISTED = ["browserslist", "tesseract.js-core", "@types/history", "jsdom", "redux"];
+const HOISTED = ["browserslist", "tesseract.js-core", "jsdom", "redux"];
 /** The workspace's own: Vite+ core and Vitest from the catalog. */
 const WORKSPACE_OWNED = ["vite", "vitest"];
 

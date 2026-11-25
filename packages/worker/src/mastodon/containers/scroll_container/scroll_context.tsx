@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useLocation, useHistory } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import type { LocationBase } from 'scroll-behavior';
 import ScrollBehavior from 'scroll-behavior';
 
-import type {
-  LocationState,
-  MastodonLocation,
-} from 'mastodon/components/router';
+import { browserHistory } from 'mastodon/components/router';
+import type { MastodonLocation } from 'mastodon/components/router';
 import { usePrevious } from 'mastodon/hooks/usePrevious';
 
 import { defaultShouldUpdateScroll } from './default_should_update_scroll';
@@ -56,8 +54,7 @@ export const ScrollContext: React.FC<ScrollContextProps> = ({
   children,
   shouldUpdateScroll = defaultShouldUpdateScroll,
 }) => {
-  const location = useLocation<LocationState>();
-  const history = useHistory<LocationState>();
+  const location: MastodonLocation = useLocation();
 
   /**
    * Keep the current location in a mutable ref so that ScrollBehavior's
@@ -77,7 +74,13 @@ export const ScrollContext: React.FC<ScrollContextProps> = ({
     // eslint-disable-next-line react-hooks/refs
     (): ScrollBehaviorInstance =>
       new ScrollBehavior({
-        addNavigationListener: history.listen.bind(history),
+        // With the location alone, as history 4 called its listeners:
+        // scroll-behavior then saves the window's position on every
+        // navigation, back and forward included.
+        addNavigationListener: (listener: (location: unknown) => void) =>
+          browserHistory.listen(({ location }) => {
+            listener(location);
+          }),
         stateStorage: new SessionStorage(),
         getCurrentLocation: () =>
           currentLocationRef.current as unknown as LocationBase,

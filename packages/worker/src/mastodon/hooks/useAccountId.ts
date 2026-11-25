@@ -35,7 +35,7 @@ const selectNormalizedId = createAppSelector(
 export type AccountId = string | null | undefined;
 
 export function useAccountId() {
-  const { acct, id } = useParams<Params>();
+  const { acct, id } = useParams<keyof Params>();
   const dispatch = useAppDispatch();
   const accountId = useAppSelector((state) =>
     selectNormalizedId(state, acct, id),

@@ -1,7 +1,6 @@
 import { PureComponent } from 'react';
 
 import { Helmet } from '@unhead/react/helmet';
-import { Route } from 'react-router-dom';
 
 import { Provider as ReduxProvider } from 'react-redux';
 
@@ -51,7 +50,7 @@ export default class Mastodon extends PureComponent {
               <Router>
                 <ScrollContext>
                   <FocusTargetProvider>
-                    <Route path='/' component={UI} />
+                    <UI />
                   </FocusTargetProvider>
                 </ScrollContext>
                 <BodyScrollLock />

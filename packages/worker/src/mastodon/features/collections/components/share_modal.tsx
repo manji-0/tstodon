@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import type { Location } from 'react-router';
 import { useLocation } from 'react-router';
 
 import { NavigationFocusTarget } from '@/mastodon/components/navigation_focus_target';
@@ -41,7 +42,8 @@ export const CollectionShareModal: React.FC<{
 }> = ({ collection, onClose }) => {
   const intl = useIntl();
   const dispatch = useAppDispatch();
-  const location = useLocation<{ newCollection?: boolean } | undefined>();
+  const location: Location<{ newCollection?: boolean } | null> =
+    useLocation();
   const isNew = !!location.state?.newCollection;
   const isOwnCollection = collection.account_id === me;
 

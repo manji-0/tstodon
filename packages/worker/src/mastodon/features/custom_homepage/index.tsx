@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Route, Switch, useRouteMatch } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -19,7 +19,7 @@ import classes from './styles.module.scss';
 export const CustomHomepage: React.FC = () => {
   const dispatch = useAppDispatch();
   const server = useAppSelector((state) => state.server.server);
-  const { path } = useRouteMatch();
+  const path = '/overview';
 
   useEffect(() => {
     void dispatch(fetchServer());
@@ -48,22 +48,22 @@ export const CustomHomepage: React.FC = () => {
       </div>
 
       <TabList>
-        <TabLink to={path} exact>
+        <TabLink to={path} end>
           <FormattedMessage
             id='custom_homepage.latest_activity'
             defaultMessage='Latest activity'
           />
         </TabLink>
 
-        <TabLink to={`${path}/about`} exact>
+        <TabLink to={`${path}/about`} end>
           <FormattedMessage id='custom_homepage.about' defaultMessage='About' />
         </TabLink>
       </TabList>
 
-      <Switch>
-        <Route path={path} exact component={LatestActivity} />
-        <Route path={`${path}/about`} exact component={About} />
-      </Switch>
+      <Routes>
+        <Route path={path} element={<LatestActivity />} />
+        <Route path={`${path}/about`} element={<About />} />
+      </Routes>
 
       <Helmet>
         <title>{server.item?.domain}</title>

@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import AddIcon from '@/material-icons/400-24px/add.svg?react';
 import { DisplayName } from 'mastodon/components/display_name';

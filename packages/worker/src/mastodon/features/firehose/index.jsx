@@ -4,7 +4,7 @@ import { useRef, useCallback, useEffect } from 'react';
 import { useIntl, defineMessages, FormattedMessage } from 'react-intl';
 
 import { Helmet } from '@unhead/react/helmet';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 
 import { useIdentity } from '@/mastodon/identity_context';
 import PublicIcon from '@/material-icons/400-24px/public.svg?react';
@@ -195,15 +195,15 @@ const Firehose = ({ feedType, multiColumn }) => {
 
       {(canViewFeed(signedIn, permissions, localLiveFeedAccess) && canViewFeed(signedIn, permissions, remoteLiveFeedAccess)) && (
         <div className='account__section-headline'>
-          <NavLink exact to='/public/local'>
+          <NavLink end to='/public/local'>
             <FormattedMessage tagName='div' id='firehose.local' defaultMessage='This server' />
           </NavLink>
 
-          <NavLink exact to='/public/remote'>
+          <NavLink end to='/public/remote'>
             <FormattedMessage tagName='div' id='firehose.remote' defaultMessage='Other servers' />
           </NavLink>
 
-          <NavLink exact to='/public'>
+          <NavLink end to='/public'>
             <FormattedMessage tagName='div' id='firehose.all' defaultMessage='All' />
           </NavLink>
         </div>

@@ -1,6 +1,6 @@
 import { defineMessages, useIntl } from 'react-intl';
 
-import { Route, Switch, useRouteMatch } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -12,6 +12,7 @@ import { Scrollable } from 'mastodon/components/scrollable_list/components';
 import { TabLink, TabList } from 'mastodon/components/tab_list';
 import { useAccount } from 'mastodon/hooks/useAccount';
 import { useAccountId, useCurrentAccountId } from 'mastodon/hooks/useAccountId';
+import { matchRoute } from 'mastodon/utils/react_router';
 
 import { CollectionsCreatedByAccount } from './overview/created_by_account';
 import { CollectionsFeaturingYou } from './overview/featuring_you';
@@ -47,7 +48,8 @@ export const Collections: React.FC<{
   const me = useCurrentAccountId();
   const accountId = useAccountId();
   const account = useAccount(accountId);
-  const { path } = useRouteMatch();
+  const location = useLocation();
+  const path = '/@:acct/collections';
 
   const isOwnCollectionsPage = accountId === me;
 
@@ -76,14 +78,14 @@ export const Collections: React.FC<{
             {pageTitleHtml}
           </NavigationFocusTarget>
           <TabList plain>
-            <TabLink exact to={`/@${account?.acct}/collections`}>
+            <TabLink end to={`/@${account?.acct}/collections`}>
               {intl.formatMessage(createdByTabMessage, {
                 name: <DisplayNameSimple account={account} />,
               })}
             </TabLink>
             {isOwnCollectionsPage && (
               <TabLink
-                exact
+                end
                 to={`/@${account?.acct}/collections/featuring-you`}
               >
                 {intl.formatMessage(messages.featuringYou)}
@@ -91,14 +93,13 @@ export const Collections: React.FC<{
             )}
           </TabList>
         </header>
-        <Switch>
-          <Route exact path={path} component={CollectionsCreatedByAccount} />
-          <Route
-            exact
-            path={`${path}/featuring-you`}
-            component={CollectionsFeaturingYou}
-          />
-        </Switch>
+        {matchRoute(location.pathname, { path, exact: true }) && (
+          <CollectionsCreatedByAccount />
+        )}
+        {matchRoute(location.pathname, {
+          path: `${path}/featuring-you`,
+          exact: true,
+        }) && <CollectionsFeaturingYou />}
       </Scrollable>
 
       <Helmet>

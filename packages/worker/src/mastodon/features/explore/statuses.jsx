@@ -3,7 +3,6 @@ import { PureComponent } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { withRouter } from 'react-router-dom';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import { connect } from 'react-redux';
@@ -15,7 +14,7 @@ import { fetchTrendingStatuses, expandTrendingStatuses } from 'mastodon/actions/
 import { DismissableBanner } from 'mastodon/components/dismissable_banner';
 import StatusList from 'mastodon/components/status_list';
 import { getStatusList } from 'mastodon/selectors';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 const mapStateToProps = state => ({
   statusIds: getStatusList(state, 'trending'),
@@ -35,10 +34,10 @@ class Statuses extends PureComponent {
   };
 
   componentDidMount () {
-    const { dispatch, statusIds, history } = this.props;
+    const { dispatch, statusIds, navigationType } = this.props;
 
     // If we're navigating back to the screen, do not trigger a reload
-    if (history.action === 'POP' && statusIds.size > 0) {
+    if (navigationType === 'POP' && statusIds.size > 0) {
       return;
     }
 

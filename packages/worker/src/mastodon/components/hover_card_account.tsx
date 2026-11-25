@@ -3,7 +3,7 @@ import { useEffect, forwardRef } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { useFetchFamiliarFollowers } from '@/mastodon/components/familiar_followers/use_fetch_familiar_followers';
 import { fetchAccount } from 'mastodon/actions/accounts';

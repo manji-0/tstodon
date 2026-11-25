@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { FormattedMessage, defineMessages } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link, withRouter } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import ImmutablePureComponent from 'react-immutable-pure-component';
@@ -24,7 +24,7 @@ import { injectIntl } from '@/mastodon/components/intl';
 import { Hotkeys } from 'mastodon/components/hotkeys';
 import { StatusQuoteManager } from 'mastodon/components/status_quoted';
 import { me } from 'mastodon/initial_state';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 import FollowRequestContainer from '../containers/follow_request_container';
 
@@ -78,7 +78,7 @@ class Notification extends ImmutablePureComponent {
     const { notification } = this.props;
 
     if (notification.get('status')) {
-      this.props.history.push(`/@${notification.getIn(['status', 'account', 'acct'])}/${notification.get('status')}`);
+      this.props.navigate(`/@${notification.getIn(['status', 'account', 'acct'])}/${notification.get('status')}`);
     } else {
       this.handleOpenProfile();
     }
@@ -86,7 +86,7 @@ class Notification extends ImmutablePureComponent {
 
   handleOpenProfile = () => {
     const { notification } = this.props;
-    this.props.history.push(`/@${notification.getIn(['account', 'acct'])}`);
+    this.props.navigate(`/@${notification.getIn(['account', 'acct'])}`);
   };
 
   handleMention = e => {

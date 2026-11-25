@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { defineMessages, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { useAccount } from '@/mastodon/hooks/useAccount';
 import { me } from '@/mastodon/initial_state';
@@ -35,13 +35,13 @@ export const ConfirmDeleteCollectionModal: React.FC<
 > = ({ id, name, onClose }) => {
   const intl = useIntl();
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
   const { acct: currentUserName } = useAccount(me) ?? {};
 
   const onConfirm = useCallback(async () => {
     await dispatch(deleteCollection({ collectionId: id }));
-    history.push(`/@${currentUserName}/collections`);
-  }, [dispatch, history, id, currentUserName]);
+    void navigate(`/@${currentUserName}/collections`);
+  }, [dispatch, navigate, id, currentUserName]);
 
   return (
     <ConfirmationModal

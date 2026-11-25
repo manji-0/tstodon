@@ -101,6 +101,9 @@ test.describe("routing in the web UI", () => {
     await expect(page).toHaveURL(new RegExp(`/@${me}/media$`));
     await expect(page.locator(`a[href="/@${me}/media"]`)).toHaveClass(/\bactive\b/);
     await expect(page.locator(`a[href="/@${me}"][aria-current="page"]`)).toHaveCount(0);
+    // The Activity tab stays current on a featured hashtag's posts.
+    await page.goto(`/@${me}/tagged/routing`);
+    await expect(page.locator(`a[href="/@${me}"][aria-current="page"]`)).toHaveClass(/\bactive\b/);
 
     await page.goto(`/@${me}`);
     await status(page, "routing target post").locator(".status__content").click();

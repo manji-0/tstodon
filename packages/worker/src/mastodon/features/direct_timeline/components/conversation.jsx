@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { defineMessages, useIntl, FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link, useHistory } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 import { createSelector } from '@reduxjs/toolkit';
 import ImmutablePropTypes from 'react-immutable-proptypes';
@@ -53,7 +53,7 @@ export const Conversation = ({ conversation, scrollKey }) => {
   const accountIds = conversation.get('accounts');
   const intl = useIntl();
   const dispatch = useDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
   const lastStatus = useSelector(state => getStatus(state, { id: lastStatusId }));
   const accounts = useSelector(state => getAccounts(state, accountIds));
 
@@ -62,8 +62,8 @@ export const Conversation = ({ conversation, scrollKey }) => {
       dispatch(markConversationRead(id));
     }
 
-    history.push(`/@${lastStatus.getIn(['account', 'acct'])}/${lastStatus.get('id')}`);
-  }, [dispatch, history, unread, id, lastStatus]);
+    navigate(`/@${lastStatus.getIn(['account', 'acct'])}/${lastStatus.get('id')}`);
+  }, [dispatch, navigate, unread, id, lastStatus]);
 
   const handleMarkAsRead = useCallback(() => {
     dispatch(markConversationRead(id));

@@ -4,7 +4,7 @@ import { PureComponent } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import { Helmet } from '@unhead/react/helmet';
-import { Link, withRouter } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import { connect } from 'react-redux';
@@ -23,7 +23,7 @@ import { Icon }  from 'mastodon/components/icon';
 import { LoadingIndicator } from 'mastodon/components/loading_indicator';
 import BundleColumnError from 'mastodon/features/ui/components/bundle_column_error';
 import StatusListContainer from 'mastodon/features/ui/containers/status_list_container';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 const mapStateToProps = (state, props) => ({
   list: state.getIn(['lists', props.params.id]),
@@ -50,7 +50,7 @@ class ListTimeline extends PureComponent {
       dispatch(removeColumn(columnId));
     } else {
       dispatch(addColumn('LIST', { id: this.props.params.id }));
-      this.props.history.push('/');
+      this.props.navigate('/');
     }
   };
 

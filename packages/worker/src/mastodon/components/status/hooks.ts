@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 import { defineMessages, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 
 import { mentionComposeById } from '@/mastodon/actions/compose';
 import type { StatusInteractionIntent } from '@/mastodon/actions/interactions_typed';
@@ -89,7 +89,8 @@ export function useStatusHandlers({
   }, [dispatch, accountId]);
 
   // Navigation handlers
-  const history = useHistory();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const onOpen = useCallback(
     (newTab = false) => {
@@ -102,13 +103,16 @@ export function useStatusHandlers({
 
       if (newTab) {
         window.open(path, '_blank', 'noopener');
-      } else if (history.location.pathname.replace('/deck/', '/') === path) {
-        history.replace(path, { focusTarget: FOCUS_TARGET.POST });
+      } else if (location.pathname.replace('/deck/', '/') === path) {
+        void navigate(path, {
+          replace: true,
+          state: { focusTarget: FOCUS_TARGET.POST },
+        });
       } else {
-        history.push(path, { focusTarget: FOCUS_TARGET.POST });
+        void navigate(path, { state: { focusTarget: FOCUS_TARGET.POST } });
       }
     },
-    [history, onClick, status],
+    [navigate, location, onClick, status],
   );
 
   const onOpenClick: React.MouseEventHandler = useCallback(
@@ -142,9 +146,9 @@ export function useStatusHandlers({
   const acct = status?.account.acct;
   const onOpenProfile = useCallback(() => {
     if (acct) {
-      history.push(`/@${acct}`);
+      void navigate(`/@${acct}`);
     }
-  }, [history, acct]);
+  }, [navigate, acct]);
 
   const onOpenMedia = useCallback(() => {
     const attachment = status?.media_attachments[0];

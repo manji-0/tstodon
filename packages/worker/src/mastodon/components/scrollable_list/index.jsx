@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types';
 import { Children, cloneElement, PureComponent } from 'react';
 
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import { List as ImmutableList } from 'immutable';
 import { connect } from 'react-redux';
