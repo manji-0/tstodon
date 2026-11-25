@@ -15,6 +15,7 @@ import {
 import { ACTIVITY_JSON } from "../test/activity-json";
 import { expectContract } from "../test/api-contract";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
+import { withFeatureRequestActor } from "./activitypub-wire";
 import { outboundAudience } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
@@ -243,6 +244,112 @@ describe("featuring a remote account", () => {
       object: `${ORIGIN}/ap/users/${owner.id}/collection_items/${acceptedItem.id}`,
     });
     expect(rejectedItem.state).toBe("pending");
+  });
+});
+
+describe("a remote account's collections", () => {
+  it("are stored from its Add, Update and Remove, and a FeatureRequest is answered", async () => {
+    const host = "curator.example";
+    const curatorUri = `https://${host}/users/curator`;
+    const featuredCollections = `${curatorUri}/featured_collections`;
+    const curator = await remoteActor("curator", host, {
+      featuredCollectionsUri: featuredCollections,
+    });
+    const featuredEmail = "fed-coll-asked@example.com";
+    const featured = await signedInAccount(featuredEmail);
+    const featuredUri = `${ORIGIN}/users/${featured.username}`;
+    const uri = `${curatorUri}/collections/7`;
+    const document = (name: string) => ({
+      id: uri,
+      type: "FeaturedCollection",
+      totalItems: 0,
+      name,
+      attributedTo: curatorUri,
+      url: `https://${host}/@curator/collections/7`,
+      sensitive: false,
+      discoverable: true,
+      published: "2026-11-20T00:00:00Z",
+      updated: "2026-11-20T00:00:00Z",
+      summaryMap: { en: "<p>Curated <script>x</script>people</p>" },
+      topic: { type: "Hashtag", name: "#People", href: `https://${host}/tags/people` },
+      orderedItems: [],
+    });
+
+    expect(
+      await curator.send({ type: "Add", target: featuredCollections, object: document("Picks") }),
+    ).toBe(202);
+    const listed = async () =>
+      expectContract(
+        z.object({ collections: z.array(ApiCollection) }),
+        await (
+          await SELF.fetch(
+            `${ORIGIN}/api/v1/accounts/${RemoteAccountId.encode(curatorUri)}/collections`,
+          )
+        ).json(),
+      ).collections;
+    const [stored] = await listed();
+    expect(stored).toMatchObject({
+      uri,
+      url: `https://${host}/@curator/collections/7`,
+      local: false,
+      name: "Picks",
+      language: "en",
+      account_id: RemoteAccountId.encode(curatorUri),
+      tag: { name: "people" },
+    });
+    expect(stored?.description).not.toContain("<script>");
+
+    const requestId = `${curatorUri}/feature_requests/1`;
+    expect(
+      await curator.send({
+        id: requestId,
+        type: "FeatureRequest",
+        object: featuredUri,
+        instrument: uri,
+      }),
+    ).toBe(202);
+    const accepts = (await queued(featured.id)).filter((activity) => activity.type === "Accept");
+    expect(accepts).toHaveLength(1);
+    const accept = accepts[0];
+    expect(accept).toMatchObject({ actor: featuredUri, to: curatorUri, object: requestId });
+    const result = accept && "result" in accept ? (accept.result ?? "") : "";
+    expect(result).toMatch(
+      new RegExp(`^${ORIGIN}/ap/users/${featured.id}/feature_authorizations/`),
+    );
+    const authorization = await fetchDocument(ApFeatureAuthorizationDocument, result);
+    expect(authorization).toMatchObject({ interactingObject: uri, interactionTarget: featuredUri });
+
+    const inCollections = expectContract(
+      z.object({ collections: z.array(ApiCollection) }),
+      await (
+        await SELF.fetch(`${ORIGIN}/api/v1/accounts/${featured.id}/in_collections`, {
+          headers: await authHeaders(featuredEmail),
+        })
+      ).json(),
+    ).collections;
+    expect(inCollections.map((collection) => collection.uri)).toEqual([uri]);
+    expect(inCollections[0]?.items).toEqual([
+      expect.objectContaining({ state: "accepted", account_id: featured.id }),
+    ]);
+
+    expect(
+      await curator.send({ id: `${uri}#updates/1`, type: "Update", object: document("Renamed") }),
+    ).toBe(202);
+    expect((await listed())[0]?.name).toBe("Renamed");
+
+    expect(await curator.send({ type: "Remove", target: featuredCollections, object: uri })).toBe(
+      202,
+    );
+    expect(await listed()).toEqual([]);
+  });
+
+  it("names the signer as a FeatureRequest's actor, as Mastodon sends none", () => {
+    expect(
+      withFeatureRequestActor(
+        { id: "https://r.example/f/1", type: "FeatureRequest" },
+        "https://r.example/users/a#main-key",
+      ),
+    ).toMatchObject({ actor: "https://r.example/users/a" });
   });
 });
 

@@ -80,6 +80,8 @@ export const remoteActor = async (
     headerUrl?: string;
     /** Its `interactionPolicy.canFeature`, as `Collection.parseFeaturePolicy` reads it. */
     featurePolicy?: FeaturePolicy | undefined;
+    /** Its `featuredCollections` (FEP-7aa9). */
+    featuredCollectionsUri?: string;
   }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}${options.path ?? `/users/${username}`}`;
@@ -109,6 +111,9 @@ export const remoteActor = async (
       profileUrl: options.profileUrl ?? null,
       fields: [...(options.fields ?? [])],
       ...(options.featurePolicy ? { featurePolicy: options.featurePolicy } : {}),
+      ...(options.featuredCollectionsUri
+        ? { featuredCollectionsUri: options.featuredCollectionsUri }
+        : {}),
     },
     fetchedAt: fetchedAt.value,
     webfingeredAt:

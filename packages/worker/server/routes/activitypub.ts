@@ -96,7 +96,11 @@ import {
   quoteAuthorizationDocument,
   localQuoteAuthorization,
 } from "../quote-authorization-document";
-import { ActivityJsonSchema, nameCollectionActivity } from "../activitypub-wire";
+import {
+  ActivityJsonSchema,
+  nameCollectionActivity,
+  withFeatureRequestActor,
+} from "../activitypub-wire";
 import { parseJsonText } from "../json-column";
 import { assertNever, schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
@@ -963,7 +967,14 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
     return c.json({ kind: "ValidationError" }, 400);
   }
   const activityJson = parseActivityJson(
-    nameCollectionActivity(json.value, c.req.header("Date"), c.req.header("Digest")),
+    nameCollectionActivity(
+      withFeatureRequestActor(
+        json.value,
+        parsedSignature.map((signature) => signature.keyId).unwrapOr(undefined),
+      ),
+      c.req.header("Date"),
+      c.req.header("Digest"),
+    ),
   );
   if (activityJson.isErr()) {
     refuse({ reason: "UnparseableBody", status: 400 });

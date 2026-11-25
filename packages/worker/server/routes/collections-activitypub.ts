@@ -27,6 +27,7 @@ import {
   pageCollectionsByAge,
 } from "../collection-store";
 import { jsonRepositoryError } from "../http";
+import { findRemoteCollectionOfItem } from "../remote-curated-collection-store";
 import { parseInstanceIdentity } from "../runtime-config";
 import { blocksFetcher, documentOwner, jsonLd } from "./activitypub";
 
@@ -221,11 +222,18 @@ export const getApUsersByIdFeatureAuthorizationsByItemId = async (
     return served;
   }
   const itemId = c.req.param("item_id");
-  const found = await findCollectionOfItem(c.env.DB, itemId);
-  if (found.isErr()) {
-    return jsonRepositoryError(c, found.error.message);
+  // `@account.collection_items`: an item in a local collection, or in a remote one.
+  const [local, remote] = await Promise.all([
+    findCollectionOfItem(c.env.DB, itemId),
+    findRemoteCollectionOfItem(c.env.DB, itemId),
+  ]);
+  if (local.isErr()) {
+    return jsonRepositoryError(c, local.error.message);
   }
-  const collection = found.value;
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
+  }
+  const collection = local.value ?? remote.value;
   const item = collection?.items.find((candidate) => candidate.id === itemId);
   if (!collection || !item || item.accountId !== served.account.id || item.state !== "accepted") {
     return notFound(c);
@@ -234,7 +242,10 @@ export const getApUsersByIdFeatureAuthorizationsByItemId = async (
     "@context": featureAuthorizationContext,
     id: featureAuthorizationUri(served.identity, item.accountId, item.id),
     type: "FeatureAuthorization",
-    interactingObject: collectionUri(served.identity, collection),
+    interactingObject:
+      collection.kind === "LocalCollection"
+        ? collectionUri(served.identity, collection)
+        : collection.uri,
     interactionTarget: InstanceIdentity.actorUrl(served.identity, served.account.username),
   };
   return c.json(document, 200, jsonLd);

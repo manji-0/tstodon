@@ -121,8 +121,11 @@ export const ApAccept = z.object({
   id: ApUri,
   type: z.literal("Accept"),
   actor: ApUri,
+  /** A feature request's answer is addressed to the collection's owner. */
+  to: ApUri.optional(),
   result: ApUri.optional(),
-  object: z.union([ApFollow, ApQuoteRequestRef]),
+  /** A `FeatureRequest` is named by its id (`AcceptFeatureRequestSerializer`). */
+  object: z.union([ApFollow, ApQuoteRequestRef, ApUri]),
 });
 export type ApAcceptJSON = z.infer<typeof ApAccept>;
 
@@ -131,7 +134,8 @@ export const ApReject = z.object({
   id: ApUri,
   type: z.literal("Reject"),
   actor: ApUri,
-  object: z.union([ApFollow, ApQuoteRequestRef]),
+  to: ApUri.optional(),
+  object: z.union([ApFollow, ApQuoteRequestRef, ApUri]),
 });
 export type ApRejectJSON = z.infer<typeof ApReject>;
 

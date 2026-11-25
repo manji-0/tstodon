@@ -8,6 +8,7 @@ import { receiveLocalAnnounce, receiveRemoteAnnounce } from "./announce";
 import { receiveAnswer } from "./answer";
 import { receiveRemoteBlock } from "./block";
 import { receiveRemoteCreate } from "./create";
+import { receiveCollectionUpdate, receiveFeatureRequest } from "./curated-collection";
 import { receiveRemoteDelete } from "./delete";
 import { receiveRemoteAdd, receiveRemoteRemove } from "./featured";
 import { receiveLocalFollow, receiveRemoteFollow } from "./follow";
@@ -43,7 +44,11 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
   switch (activity.kind) {
     case "Create":
       return receiveRemoteCreate({ ...delivery, activity });
-    case "Update":
+    case "Update": {
+      const collection = await receiveCollectionUpdate({ ...delivery, activity });
+      if (collection.isErr() || collection.value) {
+        return collection.map(() => undefined);
+      }
       // A forwarded actor `Update` is not taken as it came: the actor's own
       // document is fetched instead.
       return applyRemoteUpdate(env, identity, signer, updatedObject(receipt, signer), {
@@ -52,6 +57,7 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
         fetchSigner: receipt.fetchSigner,
         forward: { kind: "Update", body: receipt.body },
       });
+    }
     case "Delete":
       return receiveRemoteDelete({ ...delivery, activity });
     case "Follow":
@@ -77,6 +83,8 @@ const dispatchRemote = async (receipt: InboxReceipt, signer: RemoteActor): Dispa
       return receiveRemoteFlag(env, identity, signer, receipt.body);
     case "QuoteRequest":
       return receiveQuoteRequest({ ...delivery, activity });
+    case "FeatureRequest":
+      return receiveFeatureRequest({ ...delivery, activity });
     case "Add":
       return receiveRemoteAdd({ ...delivery, activity });
     case "Remove":
@@ -108,6 +116,7 @@ const dispatchLocal = async (receipt: InboxReceipt, signer: LocalAccount): Dispa
     case "Move":
     case "Flag":
     case "QuoteRequest":
+    case "FeatureRequest":
     case "Add":
     case "Remove":
       return ok(undefined);

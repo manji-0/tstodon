@@ -307,6 +307,8 @@ export const remoteActorFromDocument = (
   }
   const followersUri = ownCollectionUri(document.value.followers, parsedUri);
   const followingUri = ownCollectionUri(document.value.following, parsedUri);
+  // `ProcessAccountService#valid_collection_uri`: on the actor's own host.
+  const featuredCollectionsUri = ownCollectionUri(document.value.featuredCollections, parsedUri);
   const canFeature: unknown =
     typeof document.value.interactionPolicy === "object" &&
     document.value.interactionPolicy !== null
@@ -326,6 +328,7 @@ export const remoteActorFromDocument = (
     profile: {
       ...actorProfile(document.value.id, document.value),
       ...(featurePolicy ? { featurePolicy } : {}),
+      ...(featuredCollectionsUri ? { featuredCollectionsUri } : {}),
     },
     fetchedAt: fetchedAt.value,
     ...(document.value.endpoints?.sharedInbox

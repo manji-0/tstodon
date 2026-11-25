@@ -415,6 +415,7 @@ export {
 } from "./followers-synchronization";
 export {
   Collection,
+  RemoteCollection,
   CollectionItem,
   COLLECTION_ITEM_STATES,
   type CollectionFields,

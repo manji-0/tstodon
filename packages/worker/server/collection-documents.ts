@@ -5,11 +5,21 @@ import {
   type ApCuratedCollectionJSON,
   type ApFeaturedItemJSON,
 } from "@tstodon/api/activitypub";
-import { Collection, type CollectionItem, type InstanceIdentity } from "@tstodon/domain";
+import {
+  Collection,
+  type CollectionItem,
+  type InstanceIdentity,
+  type RemoteCollection,
+} from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { blockedAccountIds, findCollections, findItemCollectionIds } from "./collection-store";
 import type { RepositoryError } from "./d1";
 import { RemoteAccountId } from "./remote-account-id";
+import {
+  findRemoteCollections,
+  findRemoteItemCollectionIds,
+} from "./remote-curated-collection-store";
+import { sanitizeRemoteHtml } from "./sanitize-html";
 import { hashtagObject } from "./activitypub";
 import { tagUrl } from "./tag-documents";
 
@@ -45,21 +55,23 @@ const mastodonCollectionItem = (item: CollectionItem): CollectionAccountItem => 
  */
 export const mastodonCollection = (
   identity: InstanceIdentity,
-  collection: Collection,
+  collection: Collection | RemoteCollection,
   viewer: CollectionViewer,
 ): ApiCollectionJSON => {
   const items = Collection.itemsFor(collection, viewer.id, viewer.blocking);
+  const local = collection.kind === "LocalCollection";
   return {
     id: collection.id,
-    uri: collectionUri(identity, collection),
+    uri: local ? collectionUri(identity, collection) : collection.uri,
     name: collection.name,
-    description: collection.description,
+    // A remote collection's summary is its HTML, sanitized (`MASTODON_STRICT`).
+    description: local ? collection.description : sanitizeRemoteHtml(collection.descriptionHtml),
     language: collection.language,
     account_id: collection.accountId,
-    local: true,
+    local,
     sensitive: collection.sensitive,
     discoverable: collection.discoverable,
-    url: collectionUrl(identity, collection),
+    url: local ? collectionUrl(identity, collection) : collection.url,
     item_count: items.length,
     created_at: collection.createdAt,
     updated_at: collection.updatedAt,
@@ -75,7 +87,7 @@ export const mastodonCollection = (
 export const collectionViewer = async (
   db: D1Database,
   viewerId: string | undefined,
-  collections: ReadonlyArray<Collection>,
+  collections: ReadonlyArray<Collection | RemoteCollection>,
 ): Promise<Result<CollectionViewer, RepositoryError>> =>
   viewerId === undefined
     ? ok(ANONYMOUS_VIEWER)
@@ -106,18 +118,32 @@ export const notificationCollections = async (
   const itemIds = targets.flatMap((target) =>
     target.collectionItemId === null ? [] : [target.collectionItemId],
   );
-  const owners = await findItemCollectionIds(env.DB, itemIds);
-  if (owners.isErr()) {
-    return err(owners.error);
+  const [localOwners, remoteOwners] = await Promise.all([
+    findItemCollectionIds(env.DB, itemIds),
+    findRemoteItemCollectionIds(env.DB, itemIds),
+  ]);
+  if (localOwners.isErr()) {
+    return err(localOwners.error);
   }
+  if (remoteOwners.isErr()) {
+    return err(remoteOwners.error);
+  }
+  const owners = { value: new Map([...localOwners.value, ...remoteOwners.value]) };
   const collectionOf = (target: CollectionTarget): string | undefined =>
     target.collectionId ??
     (target.collectionItemId === null ? undefined : owners.value.get(target.collectionItemId));
   const ids = [...new Set(targets.flatMap((target) => collectionOf(target) ?? []))];
-  const collections = await findCollections(env.DB, ids);
-  if (collections.isErr()) {
-    return err(collections.error);
+  const [local, remote] = await Promise.all([
+    findCollections(env.DB, ids),
+    findRemoteCollections(env.DB, ids),
+  ]);
+  if (local.isErr()) {
+    return err(local.error);
   }
+  if (remote.isErr()) {
+    return err(remote.error);
+  }
+  const collections = { value: [...local.value, ...remote.value] };
   const viewer = await collectionViewer(env.DB, viewerId, collections.value);
   if (viewer.isErr()) {
     return err(viewer.error);

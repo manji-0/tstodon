@@ -43,6 +43,42 @@ const LocalCollectionSchema = z.object({
 export const CollectionSchema = z.discriminatedUnion("kind", [LocalCollectionSchema]);
 export type Collection = z.infer<typeof CollectionSchema>;
 
+/**
+ * A remote account's collection (Mastodon 4.7 `Collection` with
+ * `local: false`), as `ProcessFeaturedCollectionService` stores it.
+ * `accountId` is the owner's `r_…` id; `items` are those whose account is
+ * known (a local account, or a remote one its authorization verified).
+ */
+export const RemoteCollectionSchema = z.object({
+  kind: z.literal("RemoteCollection"),
+  id: z.string().min(1),
+  accountId: AccountId.schema,
+  actorUri: z.string().min(1),
+  uri: z.string().min(1),
+  url: z.string().min(1),
+  name: z.string(),
+  descriptionHtml: z.string(),
+  language: z.string().nullable(),
+  sensitive: z.boolean(),
+  discoverable: z.boolean(),
+  originalNumberOfItems: z.number().int().nonnegative(),
+  tagName: z.string().nullable(),
+  createdAt: IsoInstant.schema,
+  updatedAt: IsoInstant.schema,
+  items: z.array(CollectionItemSchema).readonly(),
+});
+export type RemoteCollection = z.infer<typeof RemoteCollectionSchema>;
+
+export const RemoteCollection = {
+  schema: RemoteCollectionSchema,
+  parse: schemaResult(RemoteCollectionSchema),
+  /** `ProcessFeaturedCollectionService::ITEMS_LIMIT`. */
+  itemsLimit: 150,
+  /** `Collection::NAME_LENGTH_HARD_LIMIT` and `DESCRIPTION_LENGTH_HARD_LIMIT`. */
+  nameLimit: 256,
+  descriptionLimit: 2048,
+} as const;
+
 /** The fields a client sets, as Rails casts them: `null` where the param was blank or absent. */
 export type CollectionFields = Readonly<{
   name: string | null;
@@ -191,7 +227,7 @@ const live = (item: CollectionItem): boolean =>
  * accounts it blocks.
  */
 const itemsFor = (
-  collection: Collection,
+  collection: Collection | RemoteCollection,
   viewerId: string | undefined,
   blockedByViewer: ReadonlySet<string>,
 ): ReadonlyArray<CollectionItem> =>

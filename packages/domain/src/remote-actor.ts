@@ -27,6 +27,8 @@ const RemoteActorProfileSchema = z.object({
    * is the actor's HTML as sent: sanitise it before it is rendered.
    */
   fields: z.array(ProfileFieldSchema),
+  /** Its `featuredCollections` (FEP-7aa9), on its own host. */
+  featuredCollectionsUri: z.string().optional(),
   /** Its `interactionPolicy.canFeature`; none when it federates none (`:missing`). */
   featurePolicy: FeaturePolicySchema.optional(),
 });
