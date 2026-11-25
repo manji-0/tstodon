@@ -16,6 +16,10 @@ export type NewNotification = Readonly<{
   reportId?: string;
   /** The account's severance event a `severed_relationships` notification reports. */
   severanceEventId?: string;
+  /** The collection a `collection_update` notification is about. */
+  collectionId?: string;
+  /** The collection item an `added_to_collection` notification is about. */
+  collectionItemId?: string;
 }>;
 
 /**

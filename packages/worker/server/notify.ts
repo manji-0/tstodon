@@ -49,7 +49,7 @@ import { publishToAccount } from "./stream-publish";
 
 /**
  * Notification kinds that bypass the recipient's notification policy: the
- * types Mastodon 4.5 marks `filterable: false` in `Notification::PROPERTIES`.
+ * types Mastodon 4.7.5 marks `filterable: false` in `Notification::PROPERTIES`.
  * A silenced sender still drops them (`deliverNotification`).
  */
 const POLICY_EXEMPT_KINDS: ReadonlyArray<string> = [
@@ -62,6 +62,7 @@ const POLICY_EXEMPT_KINDS: ReadonlyArray<string> = [
   "annual_report",
   "admin.sign_up",
   "admin.report",
+  "collection_update",
 ];
 
 /**

@@ -9,6 +9,7 @@ export * from "./pagination";
 export * from "./accounts";
 export * from "./tags";
 export * from "./lists";
+export * from "./collections";
 export * from "./media";
 export * from "./statuses";
 export * from "./notifications";

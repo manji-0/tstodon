@@ -413,3 +413,12 @@ export {
   type CollectionSynchronizationParseError,
   type ListedFollowAction,
 } from "./followers-synchronization";
+export {
+  Collection,
+  CollectionItem,
+  COLLECTION_ITEM_STATES,
+  type CollectionFields,
+  type CollectionItemState,
+  type CollectionValidationError,
+  type FeatureCandidate,
+} from "./collection";

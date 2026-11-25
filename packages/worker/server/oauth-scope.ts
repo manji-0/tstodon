@@ -90,6 +90,7 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/accounts/:id/(?:endorse|unendorse|pin|unpin|note)", NONE, "write:accounts"),
   rule("/api/v1/accounts/:id/statuses", "read:statuses", NONE),
   rule("/api/v1/accounts/:id/lists", "read:lists", NONE),
+  rule("/api/v1(?:_alpha)?/accounts/:id/(?:collections|in_collections)", "read:collections", NONE),
   rule("/api/v1/accounts(?:/.*)?", "read:accounts", NONE),
 
   ...adminRules("accounts", true),
@@ -112,6 +113,7 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   rule("/api/v1/announcements(?:/.*)?", "read", "write:accounts"),
   rule("/api/v1/blocks", "read:blocks", NONE),
   rule("/api/v1/bookmarks", "read:bookmarks", NONE),
+  rule("/api/v1(?:_alpha)?/collections(?:/.*)?", "read:collections", "write:collections"),
   rule("/api/v1/conversations(?:/.*)?", "read:statuses", "write:conversations"),
   rule("/api/v1/directory", "read:accounts", NONE),
   // Mastodon reads the preview under the write scopes: it comes before a block.

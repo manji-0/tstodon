@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import {
   type ApiAccountRelationshipSeveranceEventJSON,
+  type ApiCollectionJSON,
   type ApiFilterResultJSON,
   type ApiNotificationGroupJSON,
   type ApiNotificationGroupsResultJSON,
@@ -41,6 +42,7 @@ import { getMarkers } from "../marker-store";
 import { accountDocumentsByIds } from "../account-documents";
 import { availableAccountIds } from "../account-presentation";
 import { mastodonNotification, mastodonNotifications } from "../notification-documents";
+import { notificationCollections } from "../collection-documents";
 import { reportDocumentsByIds } from "../report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "../severed-relationship-store";
 import { statusDocumentsByIds } from "../status-documents";
@@ -363,6 +365,7 @@ const notificationGroupDocument = (
   withPageIds: boolean,
   report: ApiReportJSON | undefined,
   event: ApiAccountRelationshipSeveranceEventJSON | undefined,
+  collection: ApiCollectionJSON | null,
 ): ApiNotificationGroupJSON | undefined => {
   const type = group.type;
   if (!isNotificationType(type)) {
@@ -394,10 +397,11 @@ const notificationGroupDocument = (
       return report && { ...base, type, report };
     case "severed_relationships":
       return event && { ...base, type, event };
-    case "moderation_warning":
-    case "annual_report":
     case "added_to_collection":
     case "collection_update":
+      return { ...base, type, collection };
+    case "moderation_warning":
+    case "annual_report":
       return undefined;
     default:
       return assertNever(type);
@@ -416,19 +420,21 @@ const groupEnvelope = async (
   if (identity.isErr()) {
     return ok({ accounts: [], statuses: [], notification_groups: [] });
   }
-  const [resolvedAccounts, statusDocuments, resolvedReports, severance] = await Promise.all([
-    accountDocumentsByIds(c.env, identity.value, accountIds),
-    statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
-    reportDocumentsByIds(
-      c.env,
-      identity.value,
-      groups.flatMap((group) => (group.reportId ? [group.reportId] : [])),
-    ),
-    findAccountSeveranceEvents(
-      c.env.DB,
-      groups.flatMap((group) => (group.severanceEventId ? [group.severanceEventId] : [])),
-    ),
-  ]);
+  const [resolvedAccounts, statusDocuments, resolvedReports, severance, collections] =
+    await Promise.all([
+      accountDocumentsByIds(c.env, identity.value, accountIds),
+      statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
+      reportDocumentsByIds(
+        c.env,
+        identity.value,
+        groups.flatMap((group) => (group.reportId ? [group.reportId] : [])),
+      ),
+      findAccountSeveranceEvents(
+        c.env.DB,
+        groups.flatMap((group) => (group.severanceEventId ? [group.severanceEventId] : [])),
+      ),
+      notificationCollections(c.env, identity.value, accountId, groups),
+    ]);
   if (resolvedAccounts.isErr()) {
     return err(resolvedAccounts.error);
   }
@@ -437,6 +443,9 @@ const groupEnvelope = async (
   }
   if (statusDocuments.isErr()) {
     return err(statusDocuments.error);
+  }
+  if (collections.isErr()) {
+    return err(collections.error);
   }
   const accountDocuments = resolvedAccounts.value;
   const reportDocuments = resolvedReports.value;
@@ -455,6 +464,7 @@ const groupEnvelope = async (
         withPageIds,
         group.reportId ? reportDocuments.get(group.reportId) : undefined,
         event && severanceEventDocument(event),
+        collections.value(group),
       );
       return document ? [document] : [];
     }),
