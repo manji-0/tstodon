@@ -77,6 +77,16 @@ export const RemoteCollection = {
   /** `Collection::NAME_LENGTH_HARD_LIMIT` and `DESCRIPTION_LENGTH_HARD_LIMIT`. */
   nameLimit: 256,
   descriptionLimit: 2048,
+  /**
+   * `NotifyOfCollectionUpdateService#significantly_changed?` after
+   * `ProcessFeaturedCollectionService`: the name, the summary, the
+   * sensitivity or the topic.
+   */
+  significantlyChanged: (before: RemoteCollection, after: RemoteCollection): boolean =>
+    before.name !== after.name ||
+    before.descriptionHtml !== after.descriptionHtml ||
+    before.sensitive !== after.sensitive ||
+    before.tagName !== after.tagName,
 } as const;
 
 /** The fields a client sets, as Rails casts them: `null` where the param was blank or absent. */

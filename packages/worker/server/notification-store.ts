@@ -146,6 +146,7 @@ export const insertNotification = async (
         groupKey ?? null,
         input.collectionId ?? null,
         input.collectionItemId ?? null,
+        input.remoteCollectionId ?? null,
       ),
     );
   });

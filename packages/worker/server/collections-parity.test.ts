@@ -2,7 +2,9 @@ import { env, SELF } from "cloudflare:test";
 import { OutboxJob } from "@tstodon/domain";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
-import { authHeaders } from "../test/auth-fixture";
+import { ApiNotification } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { type HeldQueue, holdQueue } from "../test/queue-hold";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
@@ -120,7 +122,7 @@ const curatedCollection = async (name: string) => {
       object: collectionDocument(curator, uri),
     }),
   ).toBe(202);
-  return { curator, uri };
+  return { curator, uri, featuredCollections };
 };
 
 describe("a remote item's authorization fetch", () => {
@@ -218,5 +220,62 @@ describe("a collection's page", () => {
       headers: { accept: "application/activity+json" },
     });
     expect(missing.status).toBe(404);
+  });
+});
+
+const notificationsOf = async (email: string, type: string) => {
+  const response = await SELF.fetch(`${ORIGIN}/api/v1/notifications`, {
+    headers: await authHeaders(email),
+  });
+  expect(response.status).toBe(200);
+  return expectContract(z.array(ApiNotification), await response.json()).filter(
+    (notification) => notification.type === type,
+  );
+};
+
+describe("a remote collection's update", () => {
+  it("notifies the local accounts it features, once per collection", async () => {
+    const { curator, uri, featuredCollections } = await curatedCollection("remote-update");
+    const email = "remote-update-member@example.com";
+    const member = await signedInAccount(email);
+    expect(
+      await curator.send({
+        id: `${curator.actorUri}/feature_requests/1`,
+        type: "FeatureRequest",
+        object: `${ORIGIN}/users/${member.username}`,
+        instrument: uri,
+      }),
+    ).toBe(202);
+    const update = (n: number, name: string) =>
+      curator.send({
+        id: `${uri}#updates/${n}`,
+        type: "Update",
+        // A string item leaves the member's accepted request, which has no uri.
+        object: collectionDocument(curator, uri, [`${uri}/items/0`], name),
+      });
+
+    const held = holdQueue();
+    // The name is the same: nothing significant changed.
+    expect(await update(1, "Picks")).toBe(202);
+    expect(await notificationsOf(email, "collection_update")).toEqual([]);
+
+    expect(await update(2, "Better picks")).toBe(202);
+    expect(await update(3, "Best picks")).toBe(202);
+    const updates = await notificationsOf(email, "collection_update");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      account: { id: expect.stringMatching(/^r_/) },
+      collection: { uri, name: "Best picks", local: false },
+    });
+
+    expect(
+      await curator.send({
+        type: "Remove",
+        target: featuredCollections,
+        object: uri,
+      }),
+    ).toBe(202);
+    expect(await notificationsOf(email, "collection_update")).toEqual([]);
+    held.release();
   });
 });

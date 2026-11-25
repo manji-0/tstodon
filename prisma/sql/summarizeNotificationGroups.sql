@@ -92,7 +92,7 @@ senders AS (
   FROM members GROUP BY group_key, from_account_id
 )
 SELECT c.group_key, n.id, n.kind, n.from_account_id, n.status_id, n.report_id,
-  n.severance_event_id, n.collection_id, n.collection_item_id, n.created_at, n.group_key AS stored_group_key, c.notifications_count,
+  n.severance_event_id, COALESCE(n.collection_id, n.remote_collection_id) AS collection_id, n.collection_item_id, n.created_at, n.group_key AS stored_group_key, c.notifications_count,
   COALESCE(c.page_min_id, n.id) AS page_min_id,
   (SELECT from_account_id FROM senders s WHERE s.group_key = c.group_key AND s.position = 1) AS sample_1,
   (SELECT from_account_id FROM senders s WHERE s.group_key = c.group_key AND s.position = 2) AS sample_2,

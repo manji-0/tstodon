@@ -13,6 +13,7 @@ import { refId } from "./activitypub-wire";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { featureAuthorizationDocument } from "./collection-documents";
+import { notifyCollectionUpdate } from "./collection-notify";
 import { type RepositoryError, toRepositoryError } from "./d1";
 import {
   fetchActivityJson,
@@ -534,7 +535,19 @@ export const processRemoteCollection = async (
   if (queued.isErr()) {
     return err(queued.error);
   }
-  return findRemoteCollection(env.DB, stored.value.id);
+  const collection = await findRemoteCollection(env.DB, stored.value.id);
+  if (collection.isErr() || collection.value === undefined) {
+    return collection;
+  }
+  // `notify_about_update!`: not for a collection this processing created.
+  const { before } = stored.value;
+  if (before !== undefined && RemoteCollection.significantlyChanged(before, collection.value)) {
+    const notified = await notifyCollectionUpdate(env, collection.value);
+    if (notified.isErr()) {
+      return err(notified.error);
+    }
+  }
+  return collection;
 };
 
 /**
