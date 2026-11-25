@@ -42,6 +42,11 @@ export type InboxRefusalReason =
   | "UnverifiedForward"
   /** 401: the key could not be used: its document was refused, gone, or not an actor's key. */
   | "KeyRejected"
+  /**
+   * 401, as Mastodon: the key's actor was fetched, but the WebFinger lookup
+   * of its handle did not answer, so nothing was stored. The sender retries.
+   */
+  | "HandleUnconfirmed"
   /** 401: the signature does not verify with the signer's key. */
   | "SignatureMismatch"
   /**

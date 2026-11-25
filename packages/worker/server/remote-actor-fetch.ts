@@ -32,6 +32,7 @@ import { actorFields } from "./remote-actor-fields";
 import { profileEmojiTexts } from "./emoji";
 import { declaredEmojis } from "./remote-emoji-document";
 import { recordProfileEmojis } from "./remote-emoji-record";
+import type { QueueRemoteActorPurge } from "./remote-actor-purge";
 import {
   claimRemoteActorKeyRefetch,
   claimRemoteActorRefresh,
@@ -45,9 +46,20 @@ import {
   upsertRemoteActorKeepingHandle,
 } from "./remote-actor-store";
 
+/**
+ * The WebFinger round trip of an actor read from its own document did not
+ * answer, so nothing was written; a later request asks again. A caller that
+ * retries treats it as any `VerificationUnavailable`. The inbox answers it
+ * 401, as Mastodon's `check_webfinger!` raises a `SignatureVerificationError`
+ * there, which its senders retry.
+ */
+export type UnansweredWebfinger = Readonly<{ kind: "VerificationUnavailable"; step: "Webfinger" }>;
+
+/** `status` is a 4xx the actor's server answered, as a `FederatedFetchError` carries it. */
 export type RemoteActorResolveError =
-  | Readonly<{ kind: "InvalidSignature" }>
+  | Readonly<{ kind: "InvalidSignature"; status?: number }>
   | Readonly<{ kind: "VerificationUnavailable" }>
+  | UnansweredWebfinger
   | WebfingerRefusal
   | RepositoryError;
 
@@ -366,7 +378,8 @@ const domainHandle = (raw: string | undefined): AccountHandle | undefined => {
 
 /**
  * A WebFinger lookup: the account its `subject` names and its `self` link;
- * `Disowned` when the server answered 404 or 410; `Failed` when nothing is
+ * `Disowned` when the server answered 404 or 410 (`gone`, Mastodon's
+ * `Webfinger::GoneError`); `Failed` when nothing is
  * known (a timeout, a 5xx, a redirect it does not follow, any other 4xx, an
  * unreadable answer, no `self` link). `supportedUsername` is false when the
  * subject's username, the part before its first `@` as Mastodon's
@@ -379,7 +392,7 @@ type WebfingerLookup =
       self: string;
       supportedUsername: boolean;
     }>
-  | Readonly<{ kind: "Disowned" }>
+  | Readonly<{ kind: "Disowned"; gone: boolean }>
   | Readonly<{ kind: "Failed"; error: FederatedFetchError }>;
 
 const subjectUsernameSupported = (subject: string | undefined): boolean =>
@@ -394,7 +407,7 @@ const lookUp = async (
   const answer = await fetchWebfinger(identity, `${handle.username}@${handle.domain}`, options);
   if (answer.isErr()) {
     return answer.error.kind === "NoSuchAccount"
-      ? { kind: "Disowned" }
+      ? { kind: "Disowned", gone: answer.error.gone }
       : { kind: "Failed", error: answer.error };
   }
   return {
@@ -505,7 +518,11 @@ export type HandleCheck =
   | Readonly<{ kind: "RoundTrip"; answered?: AccountHandle }>
   | Readonly<{ kind: "KeepStored" }>;
 
-export type CacheFetchedActorError = RepositoryError | WebfingerRefusal | FederatedFetchError;
+export type CacheFetchedActorError =
+  | RepositoryError
+  | WebfingerRefusal
+  | FederatedFetchError
+  | UnansweredWebfinger;
 
 /**
  * Cache an actor read from its own document, and the keys it publishes
@@ -581,11 +598,9 @@ const writeFetchedActor = async (
   );
   const write = WebfingerConfirmation.handleWrite(confirmation, now.value);
   if (write.isErr()) {
-    // A lookup that did not answer is a server that did not answer: the
-    // inbox answers 503 and the sender delivers again.
     return err(
       write.error.kind === "WebfingerUnavailable"
-        ? { kind: "VerificationUnavailable" }
+        ? { kind: "VerificationUnavailable", step: "Webfinger" }
         : write.error,
     );
   }
@@ -890,20 +905,28 @@ const readCachedActorDocument = async (
  * Settle who may hold `handle` from what its own domain's WebFinger said, as
  * Mastodon's `ResolveAccountService` asks the handle side: every confirmed
  * row cached under it but the actor that answer links (none, when the answer
- * names another account or the domain answered 404 or 410) falls back to its
- * URI's authority. A lookup that failed settles nothing. Only the handle's
- * own domain is asked, so no third party can take a handle from anyone.
+ * names another account) falls back to its URI's authority. A 410 queues the
+ * purge of `holderUri`, the actor cached under the handle, as Mastodon's
+ * `queue_deletion!`. A 404 or a lookup that failed settles nothing, as
+ * Mastodon's `Webfinger::Error` leaves the account as it is. Only the
+ * handle's own domain is asked, so no third party can take a handle from
+ * anyone.
  */
 const settleHandleHolder = async (
   db: D1Database,
   handle: AccountHandle,
+  holderUri: string,
   lookup: WebfingerLookup,
+  options: ActorRefreshOptions,
 ): Promise<Result<void, RepositoryError>> => {
   switch (lookup.kind) {
     case "Failed":
       return ok(undefined);
     case "Disowned":
-      return releaseRemoteActorHandle(db, handle, undefined);
+      if (lookup.gone) {
+        await options.queueActorPurge(holderUri);
+      }
+      return ok(undefined);
     case "Answered":
       return releaseRemoteActorHandle(
         db,
@@ -918,7 +941,11 @@ const settleHandleHolder = async (
  * `false` answer settles it from the cache alone: the cached holder, even
  * one due a refresh, or `VerificationUnavailable` when none is cached.
  */
-export type HandleResolveOptions = FederatedFetchOptions & Readonly<{ mayLookUp?: () => boolean }>;
+export type HandleResolveOptions = ActorRefreshOptions & Readonly<{ mayLookUp?: () => boolean }>;
+
+/** `queueActorPurge` is given a cached actor whose server answered 410 for it. */
+export type ActorRefreshOptions = FederatedFetchOptions &
+  Readonly<{ queueActorPurge: QueueRemoteActorPurge }>;
 
 /**
  * The actor a `user@domain` handle names, as Mastodon's
@@ -968,7 +995,7 @@ export const resolveRemoteActorByHandle = async (
     return holder ? ok(holder) : err(lookup.error);
   }
   if (holder) {
-    const settled = await settleHandleHolder(db, asked, lookup);
+    const settled = await settleHandleHolder(db, asked, holder.actorUri, lookup, options);
     if (settled.isErr()) {
       return err(settled.error);
     }
@@ -1004,14 +1031,16 @@ export const resolveRemoteActorByHandle = async (
  * written, and the handle's own WebFinger decides whether it keeps it, as
  * Mastodon's refresh resolves the stored handle (`ResolveAccountService`):
  * an answer that names another account or links another actor takes it away
- * (Mastodon's `invalidate_username!` on the former holder), and a 404, a 410
- * or no answer leaves it.
+ * (Mastodon's `invalidate_username!` on the former holder), a 410 queues the
+ * actor's purge (`queue_deletion!`), and a 404 or no answer leaves it. A 410
+ * for the actor's own document queues its purge too, as Mastodon's
+ * `FetchRemoteActorService` does.
  */
 export const refreshRemoteActor = async (
   db: D1Database,
   identity: InstanceIdentity,
   actorUri: string,
-  options: FederatedFetchOptions,
+  options: ActorRefreshOptions,
 ): Promise<Result<void, RepositoryError>> => {
   const fetched = await refetchRemoteActor(db, identity, actorUri, options);
   if (fetched.isOk()) {
@@ -1019,6 +1048,10 @@ export const refreshRemoteActor = async (
   }
   if (fetched.error.kind === "RepositoryError") {
     return err(fetched.error);
+  }
+  if (fetched.error.kind === "InvalidSignature" && fetched.error.status === 410) {
+    await options.queueActorPurge(actorUri);
+    return ok(undefined);
   }
   const stored = await findRemoteActorByUri(db, actorUri);
   if (stored.isErr()) {
@@ -1028,6 +1061,5 @@ export const refreshRemoteActor = async (
     return ok(undefined);
   }
   const handle = { username: stored.value.username, domain: stored.value.domain };
-  const lookup = await lookUp(identity, handle, options);
-  return lookup.kind === "Answered" ? settleHandleHolder(db, handle, lookup) : ok(undefined);
+  return settleHandleHolder(db, handle, actorUri, await lookUp(identity, handle, options), options);
 };

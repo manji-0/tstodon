@@ -49,12 +49,13 @@ export const statusReachOperations = (
     ),
   findThreadParent: (status) => findThreadParent(env.DB, identity, status),
   listLocalBoosterFollowerInboxes: (status) =>
-    listLocalBoosterFollowerInboxes(env.DB, targetOf(status)),
+    listLocalBoosterFollowerInboxes(env.DB, statusTargetOf(status)),
   listLocalSharerAccountIds: (status, limit) =>
-    listLocalSharerAccountIds(env.DB, targetOf(status), limit),
+    listLocalSharerAccountIds(env.DB, statusTargetOf(status), limit),
 });
 
-const targetOf = (status: ThreadStatus) =>
+/** The `StatusTarget` naming a local or a remote thread status. */
+export const statusTargetOf = (status: ThreadStatus) =>
   status.kind === "Local"
     ? StatusTarget.local(status.status.id)
     : StatusTarget.remote(status.status.id);

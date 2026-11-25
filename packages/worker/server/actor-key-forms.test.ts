@@ -14,6 +14,7 @@ import { forgetInboxRefusalWindows } from "./inbox-refusal";
 import { generateAccountKeys } from "./keys";
 import { parseInstanceIdentity } from "./runtime-config";
 import { refreshRemoteActor } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { multibaseKey } from "./multibase";
 import { findRemoteActorByUri, findRemoteActorKey } from "./remote-actor-store";
 import { postInbox } from "./routes/activitypub";
@@ -273,6 +274,7 @@ describe("actor key forms (FED-8)", () => {
           allowHosts: new Set(),
           blockedHosts: CoveredHosts.none,
           fetchSigner: unsignedFetch,
+          queueActorPurge: queueRemoteActorPurge(env),
         })
       ).isOk(),
     ).toBe(true);
@@ -420,6 +422,7 @@ const options = () => ({
   allowHosts: new Set<string>(),
   blockedHosts: CoveredHosts.none,
   fetchSigner: unsignedFetch,
+  queueActorPurge: queueRemoteActorPurge(env),
 });
 
 describe("keys an actor's document names by id (FED-8)", () => {

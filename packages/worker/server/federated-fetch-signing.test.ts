@@ -15,6 +15,7 @@ import { parseRequestSignature, parseSignatureHeader, verifySignedFetch } from "
 import { instanceActorFetchSigner, instanceActorKeyId, instanceActorKeys } from "./instance-actor";
 import { firstCollectionPage } from "./remote-collection";
 import { resolveKeyOwner, resolveRemoteActorByHandle } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { findRemoteActorByUri } from "./remote-actor-store";
 import { fetchStamp } from "./remote-quote-verify";
 import { persistRemoteObject } from "./remote-status-persist";
@@ -198,12 +199,10 @@ describe("signed ActivityPub GETs", () => {
       { subject: `acct:secure-alice@${HOST}`, self: remote.actorUri },
     );
 
-    const actor = await resolveRemoteActorByHandle(
-      env.DB,
-      identity(),
-      `secure-alice@${HOST}`,
-      signed(),
-    );
+    const actor = await resolveRemoteActorByHandle(env.DB, identity(), `secure-alice@${HOST}`, {
+      ...signed(),
+      queueActorPurge: queueRemoteActorPurge(env),
+    });
 
     expect(actor.isOk() && actor.value.actorUri).toBe(remote.actorUri);
     const webfinger = seen.filter((entry) => entry.url.includes("/.well-known/webfinger"));

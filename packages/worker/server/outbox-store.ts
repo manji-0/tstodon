@@ -8,6 +8,7 @@ import {
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { nowIso } from "./clock";
+import { type ForwardAudience, insertForwardAudienceStatement } from "./forward-audience-store";
 import { parseRows, type RepositoryError, runD1, runD1Batch } from "./d1";
 import { newEntityId } from "./ids";
 import { toRepositoryError } from "./d1";
@@ -235,14 +236,21 @@ const ForwardRow = z.object({ id: z.string(), fanout: z.string().nullable() });
 /**
  * Store an inbound activity that `accountId` forwards (`payloadJson`, as
  * received), keyed by the inbound activity's id `forwardOf`, with its
- * fan-out row `Queued` for an `ExpandForward` job. A retried delivery finds
- * the row already there and stores nothing. Answers the stored forward's id
- * while its fan-out is still `Queued` (its expansion may never have been
- * queued), and `undefined` once it was expanded.
+ * fan-out row `Queued` for an `ExpandForward` job and its `audience` as it
+ * stands now. A retried delivery finds the row already there and stores
+ * nothing. Answers the stored forward's id while its fan-out is still
+ * `Queued` (its expansion may never have been queued, or may not have
+ * finished), and `undefined` once it was expanded.
  */
 export const insertForwardedActivity = async (
   db: D1Database,
-  input: Readonly<{ accountId: string; kind: string; payloadJson: string; forwardOf: string }>,
+  input: Readonly<{
+    accountId: string;
+    kind: string;
+    payloadJson: string;
+    forwardOf: string;
+    audience: ForwardAudience;
+  }>,
 ): Promise<Result<string | undefined, RepositoryError>> => {
   const id = newEntityId();
   const createdAt = nowIso();
@@ -261,6 +269,7 @@ export const insertForwardedActivity = async (
          SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM outbound_activities WHERE id = ?)`,
       )
       .bind(newEntityId(), id, fanout.kind, fanout.attemptCount, createdAt, createdAt, id),
+    insertForwardAudienceStatement(db, id, input.audience),
     db
       .prepare(
         `SELECT a.id, d.kind AS fanout FROM outbound_activities a
@@ -272,7 +281,7 @@ export const insertForwardedActivity = async (
   if (batched.isErr()) {
     return err(batched.error);
   }
-  const [stored] = parseRows(ForwardRow, batched.value[2]?.results ?? []);
+  const [stored] = parseRows(ForwardRow, batched.value[3]?.results ?? []);
   return ok(stored?.fanout === "Queued" ? stored.id : undefined);
 };
 

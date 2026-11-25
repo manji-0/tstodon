@@ -19,8 +19,14 @@ export type FederatedFetchError =
   | Readonly<{ kind: "InvalidSignature"; status?: number }>
   | Readonly<{ kind: "VerificationUnavailable"; status?: number }>;
 
-/** A WebFinger lookup's failure; `NoSuchAccount` is a 404 or 410, the server's definite "no". */
-export type WebfingerFetchError = FederatedFetchError | Readonly<{ kind: "NoSuchAccount" }>;
+/**
+ * A WebFinger lookup's failure; `NoSuchAccount` is a 404 or 410, the
+ * server's definite "no", and `gone` tells a 410 (Mastodon's
+ * `Webfinger::GoneError`).
+ */
+export type WebfingerFetchError =
+  | FederatedFetchError
+  | Readonly<{ kind: "NoSuchAccount"; gone: boolean }>;
 
 const parseWebfinger = schemaResult(RemoteWebfingerSchema);
 
@@ -591,7 +597,7 @@ export const fetchWebfinger = async (
       return err({ kind: "VerificationUnavailable" });
     }
     if (response.status === 404 || response.status === 410) {
-      return err({ kind: "NoSuchAccount" });
+      return err({ kind: "NoSuchAccount", gone: response.status === 410 });
     }
     if (!response.ok) {
       return err({ kind: "InvalidSignature" });

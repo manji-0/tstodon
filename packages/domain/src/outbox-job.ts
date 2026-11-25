@@ -11,17 +11,21 @@ const ExpandFollowersSchema = z.object({
   kind: z.literal("ExpandFollowers"),
   activityId: ActivityId.schema,
 });
-/** The most local accounts whose followers one forward reaches (see `ExpandForward`). */
-export const FORWARD_MAX_ACCOUNTS = 500;
+/** The local accounts of a forward's audience one `ExpandForward` job reads the followers of. */
+export const FORWARD_PAGE_ACCOUNTS = 100;
 /**
  * Deliver an inbound activity another server signed, as received (a forward,
- * Mastodon's `ActivityPub::Forwarder`), to the remote followers of
- * `followersOf`, leaving out `exceptInboxes`, its actor's own.
+ * Mastodon's `ActivityPub::Forwarder`), to the remote followers of the local
+ * accounts stored as its audience, leaving out `exceptInboxes`, its actor's
+ * own. A job reads a page of `FORWARD_PAGE_ACCOUNTS` accounts, by id after
+ * `afterAccountId` (empty for the first), and queues the next page.
+ * `targets` counts the inboxes the pages before stored.
  */
 const ExpandForwardSchema = z.object({
   kind: z.literal("ExpandForward"),
   activityId: ActivityId.schema,
-  followersOf: z.array(AccountId.schema).min(1).max(FORWARD_MAX_ACCOUNTS),
+  afterAccountId: z.string(),
+  targets: z.number().int().min(0),
   exceptInboxes: z.array(z.string()),
 });
 const DeliverTargetSchema = z.object({
@@ -333,6 +337,17 @@ const RefreshRemoteActorSchema = z.object({
 });
 
 /**
+ * Forget a cached remote actor whose server answered 410 for its handle's
+ * WebFinger, or for its document on a refresh, as Mastodon's
+ * `queue_deletion!` runs an `AccountDeletionWorker`; the same purge as the
+ * actor's own `Delete`.
+ */
+const PurgeRemoteActorSchema = z.object({
+  kind: z.literal("PurgeRemoteActor"),
+  actorUri: z.url(),
+});
+
+/**
  * Queue a fresh `SeverSuspendedActorFollows` for each actor suspended over an
  * hour ago that still has follows with local accounts (hourly cron).
  */
@@ -628,6 +643,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   SeverSuspendedActorFollowsSchema,
   ResumeSuspendedActorSeverancesSchema,
   RefreshRemoteActorSchema,
+  PurgeRemoteActorSchema,
   SendSeveranceNoticesSchema,
   RefetchAndVerifyQuoteSchema,
   RefreshQuoteSchema,
