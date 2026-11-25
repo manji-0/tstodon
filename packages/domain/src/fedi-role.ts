@@ -1,5 +1,6 @@
 import { assertNever, schemaResult, unitKind } from "@tstodon/core";
 import { z } from "zod";
+import { Collection } from "./collection";
 
 const AdminSchema = unitKind("Admin");
 const UserSchema = unitKind("User");
@@ -59,6 +60,8 @@ export const FediRole = {
     permissions: "0" | typeof ALL_PERMISSIONS;
     color: "";
     highlighted: boolean;
+    /** `UserRole#collection_limit`, Mastodon's default for every role. */
+    collection_limit: number;
   }> => {
     switch (role.kind) {
       case "Admin":
@@ -68,6 +71,7 @@ export const FediRole = {
           permissions: ALL_PERMISSIONS,
           color: "",
           highlighted: true,
+          collection_limit: Collection.limit,
         };
       case "User":
         return {
@@ -76,6 +80,7 @@ export const FediRole = {
           permissions: "0",
           color: "",
           highlighted: false,
+          collection_limit: Collection.limit,
         };
       default:
         return assertNever(role);

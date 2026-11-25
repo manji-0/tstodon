@@ -8,7 +8,7 @@
 -- @param {String} $8:maxId
 -- @param {Int} $9:includeFiltered
 -- @param {String} $10:groupKey
-SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.created_at, n.group_key,
+SELECT n.id, n.account_id, n.from_account_id, n.kind, n.status_id, n.target_account_id, n.report_id, n.severance_event_id, n.collection_id, n.collection_item_id, n.created_at, n.group_key,
   n.id IN (SELECT notification_id FROM notification_requests WHERE account_id = $1) AS held
 FROM notifications n
 WHERE n.account_id = $1

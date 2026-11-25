@@ -121,6 +121,8 @@ export const ApiRole = z.object({
   permissions: z.string(),
   color: z.string(),
   highlighted: z.boolean(),
+  /** How many collections the role may create (Mastodon 4.7). */
+  collection_limit: z.number(),
 });
 export type ApiRoleJSON = z.infer<typeof ApiRole>;
 

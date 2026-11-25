@@ -39,6 +39,7 @@ describe('meta reducer', () => {
           color: '',
           permissions: '1',
           highlighted: true,
+          collection_limit: 10,
         },
       }),
     );

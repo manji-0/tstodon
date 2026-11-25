@@ -105,14 +105,8 @@ export const ApiInitialStateCompose = z.object({
 });
 export type ApiInitialStateComposeJSON = z.infer<typeof ApiInitialStateCompose>;
 
-/**
- * `role` (`REST::RoleSerializer`), signed in only. Mastodon 4.6 adds the
- * role's `collection_limit` (how many collections the viewer may create);
- * tstodon has no collections and leaves it out, which the UI reads as 0.
- */
-export const ApiInitialStateRole = ApiRole.extend({
-  collection_limit: z.number().optional(),
-});
+/** `role` (`REST::RoleSerializer`), signed in only. */
+export const ApiInitialStateRole = ApiRole;
 export type ApiInitialStateRoleJSON = z.infer<typeof ApiInitialStateRole>;
 
 /** `push_subscription` (`REST::WebPushSubscriptionSerializer`): the session's Web Push subscription. */

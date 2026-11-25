@@ -16,6 +16,8 @@ const entry = (
   statusId,
   reportId: null,
   severanceEventId: null,
+  collectionId: null,
+  collectionItemId: null,
   createdAt: `2026-11-04T00:00:${id.padStart(2, "0")}.000Z`,
   groupKey,
 });
@@ -211,6 +213,8 @@ describe("NotificationGroup.summarized", () => {
       statusId: "s1",
       reportId: null,
       severanceEventId: null,
+      collectionId: null,
+      collectionItemId: null,
     });
   });
 });

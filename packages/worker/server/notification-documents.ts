@@ -1,6 +1,7 @@
 import {
   type ApiAccountJSON,
   type ApiAccountRelationshipSeveranceEventJSON,
+  type ApiCollectionJSON,
   type ApiNotificationJSON,
   type ApiReportJSON,
   type ApiStatusJSON,
@@ -13,6 +14,7 @@ import { AccountPresentation, type InstanceIdentity, NotificationGroup } from "@
 import { err, ok, type Result } from "neverthrow";
 import { presentedAccountsByIds } from "./account-documents";
 import type { RepositoryError } from "./d1";
+import { notificationCollections } from "./collection-documents";
 import { reportDocumentsByIds } from "./report-documents";
 import { findAccountSeveranceEvents, severanceEventDocument } from "./severed-relationship-store";
 import { groupedEntry, type NotificationRow } from "./notification-store";
@@ -30,7 +32,7 @@ export const mastodonNotifications = async (
   rows: ReadonlyArray<NotificationRow>,
   viewerId: string,
 ): Promise<Result<ReadonlyMap<string, ApiNotificationJSON>, RepositoryError>> => {
-  const [presented, statuses, reported, severance] = await Promise.all([
+  const [presented, statuses, reported, severance, collections] = await Promise.all([
     presentedAccountsByIds(
       env,
       identity,
@@ -55,6 +57,15 @@ export const mastodonNotifications = async (
       env.DB,
       rows.flatMap((row) => (row.severance_event_id ? [row.severance_event_id] : [])),
     ),
+    notificationCollections(
+      env,
+      identity,
+      viewerId,
+      rows.map((row) => ({
+        collectionId: row.collection_id,
+        collectionItemId: row.collection_item_id,
+      })),
+    ),
   ]);
   if (presented.isErr()) {
     return err(presented.error);
@@ -64,6 +75,9 @@ export const mastodonNotifications = async (
   }
   if (statuses.isErr()) {
     return err(statuses.error);
+  }
+  if (collections.isErr()) {
+    return err(collections.error);
   }
   const accounts = presented.value;
   const reports = reported.value;
@@ -98,6 +112,10 @@ export const mastodonNotifications = async (
       target,
       report,
       event: event && severanceEventDocument(event),
+      collection: collections.value({
+        collectionId: row.collection_id,
+        collectionItemId: row.collection_item_id,
+      }),
     });
     if (document) {
       documents.set(row.id, document);
@@ -122,6 +140,7 @@ const notificationDocument = (
     target: ApiAccountJSON | undefined;
     report: ApiReportJSON | undefined;
     event: ApiAccountRelationshipSeveranceEventJSON | undefined;
+    collection: ApiCollectionJSON | null;
   }>,
 ): ApiNotificationJSON | undefined => {
   if (isNotificationWithStatusType(type)) {
@@ -138,10 +157,11 @@ const notificationDocument = (
       return payload.event && { ...base, type, event: payload.event };
     case "move":
       return payload.target && { ...base, type, target: payload.target };
-    case "moderation_warning":
-    case "annual_report":
     case "added_to_collection":
     case "collection_update":
+      return { ...base, type, collection: payload.collection };
+    case "moderation_warning":
+    case "annual_report":
       return undefined;
     default:
       return assertNever(type);

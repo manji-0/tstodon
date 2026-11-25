@@ -6,6 +6,8 @@ export type GroupedNotificationEntry = Readonly<{
   statusId: string | null;
   reportId: string | null;
   severanceEventId: string | null;
+  collectionId: string | null;
+  collectionItemId: string | null;
   createdAt: string;
   /**
    * The key stored when it was recorded: `{typePrefix}-{hourBucket}` for a
@@ -30,6 +32,9 @@ export type NotificationGroup = Readonly<{
   reportId: string | null;
   /** The account's severance event a `severed_relationships` group reports. */
   severanceEventId: string | null;
+  /** The collection (or its item) an `added_to_collection` or `collection_update` group is about. */
+  collectionId: string | null;
+  collectionItemId: string | null;
 }>;
 
 /**
@@ -180,6 +185,8 @@ const summarized = (groupKey: string, summary: NotificationGroupSummary): Notifi
   statusId: statusOf(summary.newest),
   reportId: summary.newest.reportId,
   severanceEventId: summary.newest.severanceEventId,
+  collectionId: summary.newest.collectionId,
+  collectionItemId: summary.newest.collectionItemId,
 });
 
 /**
