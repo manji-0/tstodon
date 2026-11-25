@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { A, signUp, type E2eUser } from "../lib.js";
 import {
+  Account,
   bothWays,
   call,
   type Cast,
@@ -9,8 +10,11 @@ import {
   follow,
   mastodonRails,
   resolveAccount,
+  step,
   StepFailure,
 } from "./sweep.js";
+
+const Discoverable = Account.extend({ discoverable: z.boolean().nullish() });
 
 const Item = z.looseObject({
   id: z.string(),
@@ -48,6 +52,25 @@ export const collectionScenarios = async ({ stamp, mona }: Cast): Promise<void> 
     await follow(from, to);
   });
 
+  // Unless an account is discoverable, Mastodon's `canFeature` lists only the
+  // account itself (`ActorSerializer#interaction_policy`), so no one else may
+  // feature it. A tstodon account is discoverable from sign up; a provisioned
+  // Mastodon one is not.
+  await step("the Mastodon account opts in to discovery", async () => {
+    const form = new FormData();
+    form.set("discoverable", "true");
+    await call(mona, "/api/v1/accounts/update_credentials", Discoverable, {
+      method: "PATCH",
+      form,
+    });
+    const { id } = await resolveAccount(alice, mona);
+    await eventually("tstodon holds the account as discoverable", async () =>
+      (await call(alice, `/api/v1/accounts/${id}`, Discoverable)).discoverable === true
+        ? true
+        : undefined,
+    );
+  });
+
   await bothWays(
     "a collection featuring the other server's account is accepted there",
     alice,
@@ -59,11 +82,20 @@ export const collectionScenarios = async ({ stamp, mona }: Cast): Promise<void> 
       if (pending?.state !== "pending") {
         throw new StepFailure(`the item is ${JSON.stringify(pending)}, not pending`);
       }
-      // The featured server answered the FeatureRequest with an Accept.
-      await eventually("the owner sees the item accepted", async () => {
-        const shown = await call(owner, `/api/v1/collections/${made.id}`, Wrapped);
-        return shown.collection.items[0]?.state === "accepted" ? true : undefined;
-      });
+      // The featured server answered the FeatureRequest with an Accept. The
+      // owner's server sends the collection's Add with it, as Mastodon's
+      // CreateCollectionService does, and Mastodon may take them in parallel:
+      // the FeatureRequest's fetch of the collection then loses the race to
+      // insert it (`index_collections_on_uri`), and Sidekiq retries the job
+      // 15 to 25 s later.
+      await eventually(
+        "the owner sees the item accepted",
+        async () => {
+          const shown = await call(owner, `/api/v1/collections/${made.id}`, Wrapped);
+          return shown.collection.items[0]?.state === "accepted" ? true : undefined;
+        },
+        60_000,
+      );
       // The featured account's server stored the collection (its Add) and its item.
       await eventually("the featured account lists the collection it is in", async () => {
         const self = await resolveAccount(featured, featured);
