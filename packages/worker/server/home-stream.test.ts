@@ -6,7 +6,7 @@ import { OutboxJob } from "@tstodon/domain";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
 import { type Heard, openStream as openSocket } from "../test/stream-fixture";
-import { fanOutHomePage, HOME_FAN_OUT_PAGE_SIZE } from "./home-fan-out";
+import { fanOutHomeStep, HOME_FAN_OUT_PAGE_SIZE } from "./home-fan-out";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { parseInstanceIdentity } from "./runtime-config";
@@ -157,7 +157,7 @@ describe("home streams of local followers", () => {
       event: "update",
       entryId: id,
       author: { kind: "LocalAccount", accountId: (await signedInAccount(author)).id },
-      afterAccountId: "",
+      step: { kind: "List", afterAccountId: "" },
     });
     if (job.isErr()) {
       throw new Error("fan-out fixture rejected");
@@ -201,7 +201,7 @@ describe("home streams of local followers", () => {
       event: "update",
       entryId: id,
       author: { kind: "LocalAccount", accountId: (await signedInAccount(author)).id },
-      afterAccountId: "",
+      step: { kind: "List", afterAccountId: "" },
     });
     if (identity.isErr() || job.isErr() || job.value.kind !== "FanOutHome") {
       throw new Error("fan-out fixture rejected");
@@ -209,7 +209,7 @@ describe("home streams of local followers", () => {
     const monthly = new Proxy(env, {
       get: (target, key) => (key === "USER_ACTIVE_DAYS" ? "30" : Reflect.get(target, key)),
     });
-    const page = await fanOutHomePage(monthly, identity.value, job.value);
+    const page = await fanOutHomeStep(monthly, identity.value, job.value);
     expect(page.isOk() && page.value.recipients).toBe(2);
     expect(statusOf(await away.next()).id).toBe(id);
     away.close();
@@ -238,27 +238,39 @@ describe("home streams of local followers", () => {
       event: "update",
       entryId: id,
       author: { kind: "LocalAccount", accountId: (await signedInAccount(author)).id },
-      afterAccountId: "",
+      step: { kind: "List", afterAccountId: "" },
     });
     if (!first || !second || identity.isErr() || job.isErr() || job.value.kind !== "FanOutHome") {
       throw new Error("fan-out fixture rejected");
     }
     expect(HOME_FAN_OUT_PAGE_SIZE).toBeGreaterThan(2);
     const fanOut = job.value;
-    const page = (afterAccountId: string) =>
-      fanOutHomePage(env, identity.value, { ...fanOut, afterAccountId }, 1);
+    const list = (afterAccountId: string) =>
+      fanOutHomeStep(env, identity.value, { ...fanOut, step: { kind: "List", afterAccountId } }, 1);
 
-    const firstPage = await page("");
-    expect(firstPage.isOk() && firstPage.value.next).toBe(first.account.id);
+    // A full listing tells its first page and hands on a `List` after its last follower.
+    const firstList = await list("");
+    expect(firstList.isOk() && firstList.value.next.map((next) => next.step)).toEqual([
+      { kind: "List", afterAccountId: first.account.id },
+    ]);
     expect(statusOf(await first.next()).id).toBe(id);
     expect(await second.heardNothing()).toBe(true);
-
-    // A full page always hands on a cursor; the page after the last follower is empty.
-    const secondPage = await page(first.account.id);
-    expect(secondPage.isOk() && secondPage.value.next).toBe(second.account.id);
+    const secondList = await list(first.account.id);
+    expect(secondList.isOk() && secondList.value.next.map((next) => next.step)).toEqual([
+      { kind: "List", afterAccountId: second.account.id },
+    ]);
     expect(statusOf(await second.next()).id).toBe(id);
-    const lastPage = await page(second.account.id);
-    expect(lastPage.isOk() && lastPage.value.next).toBe(undefined);
+    const lastList = await list(second.account.id);
+    expect(lastList.isOk() && lastList.value).toEqual({ recipients: 0, next: [] });
+
+    // An `Accounts` page tells the accounts it names and lists no one.
+    const named = await fanOutHomeStep(env, identity.value, {
+      ...fanOut,
+      step: { kind: "Accounts", accountIds: [second.account.id] },
+    });
+    expect(named.isOk() && named.value).toEqual({ recipients: 1, next: [] });
+    expect(statusOf(await second.next()).id).toBe(id);
+    expect(await first.heardNothing()).toBe(true);
 
     // The queued pass reports how many followers it told and what its renders cost.
     const written = vi.spyOn(env.METRICS, "writeDataPoint");
@@ -274,7 +286,7 @@ describe("home streams of local followers", () => {
       {
         indexes: ["outbox.job.page"],
         doubles: [2, expect.any(Number), 0],
-        blobs: ["FanOutHome", "ok", ""],
+        blobs: ["FanOutHome", "ok", "List"],
       },
     ]);
     for (const stream of opened) {

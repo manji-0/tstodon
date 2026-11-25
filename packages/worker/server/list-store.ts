@@ -20,7 +20,7 @@ import {
   feedLocalRepliesSql,
   type ListFeed,
 } from "./followed-feed";
-import { type IdCursor, type MaxIdCursor, idCursorFragment } from "./id-cursor";
+import { type IdCursor, type MaxIdCursor, idCursorFragment, readPageInWindows } from "./id-cursor";
 import {
   createList as createListSql,
   deleteList as deleteListSql,
@@ -345,34 +345,53 @@ export const listListTimelineStatuses = async (
   }>,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    // The reply policy's SQL depends on the list, so this stays on D1 prepare.
-    const replies = feedLocalRepliesSql(input.feed, input.ownerAccountId);
     const now = nowIso();
-    const reblogs = feedLocalReblogsSql(input.ownerAccountId, now);
-    const mentions = feedLocalMentionsSql(input.ownerAccountId, now);
-    const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
-    const binds = [
-      input.ownerAccountId,
-      input.ownerAccountId,
-      input.ownerAccountId,
-      input.ownerAccountId,
-      input.ownerAccountId,
-      now,
-      ...reblogs.binds,
-      ...mentions.binds,
-      input.ownerAccountId,
-      ...replies.binds,
-      ...cursorBinds,
-      input.limit,
-      input.feed.listId,
-      input.limit,
-    ];
-    // Each member's statuses are searched on their own, newest first, and stop
-    // at `limit`: the page is the first `limit` of those, so a page reads at
-    // most `limit` statuses per member instead of every status they wrote.
-    const { results } = await db
-      .prepare(
-        `SELECT ${STATUS_SELECT} FROM statuses WHERE id IN (
+    // Each member gives up to the page's size, so a page read in one step
+    // reads that many from every member, however few of them it shows.
+    const rows = await readPageInWindows(input.cursor, input.limit, (limit, cursor) =>
+      listTimelineRows(db, { ...input, limit, cursor }, now),
+    );
+    return hydrateStatusRows(db, rows);
+  });
+
+/** The rows of a list's page within its cursor. */
+const listTimelineRows = async (
+  db: D1Database,
+  input: Readonly<{
+    feed: ListFeed;
+    ownerAccountId: string;
+    limit: number;
+    cursor: IdCursor;
+  }>,
+  now: string,
+): Promise<unknown[]> => {
+  // The reply policy's SQL depends on the list, so this stays on D1 prepare.
+  const replies = feedLocalRepliesSql(input.feed, input.ownerAccountId);
+  const reblogs = feedLocalReblogsSql(input.ownerAccountId, now);
+  const mentions = feedLocalMentionsSql(input.ownerAccountId, now);
+  const { where, order, binds: cursorBinds } = idCursorFragment(input.cursor);
+  const binds = [
+    input.ownerAccountId,
+    input.ownerAccountId,
+    input.ownerAccountId,
+    input.ownerAccountId,
+    input.ownerAccountId,
+    now,
+    ...reblogs.binds,
+    ...mentions.binds,
+    input.ownerAccountId,
+    ...replies.binds,
+    ...cursorBinds,
+    input.limit,
+    input.feed.listId,
+    input.limit,
+  ];
+  // Each member's statuses are searched on their own, newest first, and stop
+  // at `limit`: the page is the first `limit` of those, so a page reads at
+  // most `limit` statuses per member instead of every status they wrote.
+  const { results } = await db
+    .prepare(
+      `SELECT ${STATUS_SELECT} FROM statuses WHERE id IN (
            SELECT page.id FROM account_list_members member
            JOIN statuses page ON page.id IN (
              SELECT id FROM statuses
@@ -394,11 +413,11 @@ export const listListTimelineStatuses = async (
            WHERE member.list_id = ?
          )
          ${order} LIMIT ?`,
-      )
-      .bind(...binds)
-      .all();
-    return hydrateStatusRows(db, results ?? []);
-  });
+    )
+    .bind(...binds)
+    .all();
+  return results ?? [];
+};
 
 /**
  * Put `to` on `lists` of `ownerId` in place of `from`, as Mastodon moves list

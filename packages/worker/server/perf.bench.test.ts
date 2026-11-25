@@ -173,6 +173,18 @@ const repeat = async (send: () => () => Promise<Response>, runs: number): Promis
 
 type JobStats = { invocations: Sample[]; messages: number; retries: number };
 
+/** The invocations' sums, as one sample: a job's whole run across its pages. */
+const total = (samples: ReadonlyArray<Sample>): Sample => ({
+  status: 0,
+  ms: samples.reduce((sum, s) => sum + s.ms, 0),
+  statements: samples.reduce((sum, s) => sum + s.statements, 0),
+  rounds: samples.reduce((sum, s) => sum + s.rounds, 0),
+  rowsRead: samples.reduce((sum, s) => sum + s.rowsRead, 0),
+  rowsWritten: samples.reduce((sum, s) => sum + s.rowsWritten, 0),
+  deferred: 0,
+  rows: samples.flatMap((s) => s.rows),
+});
+
 /** Run the held jobs as the queue would, `QUEUE_BATCH` per invocation, until none is left; timed per job kind. */
 const drainTimed = async (held: Readonly<{ bodies: unknown[] }>, stats: Map<string, JobStats>) => {
   for (;;) {
@@ -371,6 +383,7 @@ describe.runIf(setting("BENCH") === "1")("performance benchmark", () => {
     const held = holdQueue();
     try {
       const posts: Sample[] = [];
+      const wholePost = new Map<string, Sample[]>();
       for (let run = 0; run < Math.max(3, Math.ceil(RUNS / 2)); run += 1) {
         await openHomeStreams();
         posts.push(
@@ -382,9 +395,21 @@ describe.runIf(setting("BENCH") === "1")("performance benchmark", () => {
             }),
           ),
         );
-        await drainTimed(held, jobs);
+        const perPost = new Map<string, JobStats>();
+        await drainTimed(held, perPost);
+        for (const [kind, entry] of perPost) {
+          const merged = jobs.get(kind) ?? { invocations: [], messages: 0, retries: 0 };
+          merged.invocations.push(...entry.invocations);
+          merged.messages += entry.messages;
+          merged.retries += entry.retries;
+          jobs.set(kind, merged);
+          wholePost.set(kind, [...(wholePost.get(kind) ?? []), total(entry.invocations)]);
+        }
       }
       await report("POST status (celebrity)", posts);
+      for (const [kind, totals] of wholePost) {
+        await report(`job ${kind}, whole run for one celebrity post`, totals);
+      }
       // Five posts before the queue runs: their jobs share invocations, as
       // `maxBatchSize` lets them.
       const batched = new Map<string, JobStats>();

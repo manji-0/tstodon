@@ -4,10 +4,10 @@ import { z } from "zod";
 import { accessTokenFor, signedInAccount } from "../test/auth-fixture";
 import { meter, patchD1, requestsSettled, resetMeter } from "../test/meter";
 import { entityIdAt } from "./ids";
-import { HOME_PAGE_WINDOWS_MS } from "./status-timeline-store";
+import { FEED_PAGE_WINDOWS_MS } from "./id-cursor";
 
 /**
- * A home page reads back from its top in windows (`HOME_PAGE_WINDOWS_MS`). Its
+ * A home page reads back from its top in windows (`FEED_PAGE_WINDOWS_MS`). Its
  * rows read may not grow with how much the followed authors wrote before the
  * page (`pnpm bench`: 81,671 rows for a page of 20 before the windows), and a
  * page the first windows do not fill is answered whole, in order, from below
@@ -16,7 +16,7 @@ import { HOME_PAGE_WINDOWS_MS } from "./status-timeline-store";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const FIRST_WINDOW = HOME_PAGE_WINDOWS_MS[0] ?? 0;
+const FIRST_WINDOW = FEED_PAGE_WINDOWS_MS[0] ?? 0;
 const Ids = z.array(z.object({ id: z.string() }));
 
 /** `count` public notes by `accountId`, one a minute up to `endMs`; their ids, newest first. */

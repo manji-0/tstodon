@@ -285,7 +285,7 @@ describe("D1 rows read do not grow with unrelated rows", () => {
       // Each followed hashtag costs a row of the follows and an index seek or
       // two in each of the page's hashtag queries: the horizon, the remote
       // statuses, and the local statuses once per window a page this empty
-      // reads (`HOME_PAGE_WINDOWS_MS`, three), about 17 rows.
+      // reads (`FEED_PAGE_WINDOWS_MS`, three), about 17 rows.
       const perTag = ((await get(manyToken, path)) - (await get(fewToken, path))) / added;
       expect(perTag, `home read ${perTag} more rows per followed hashtag`).toBeLessThan(18);
 
