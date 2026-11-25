@@ -245,6 +245,56 @@ describe("featuring a remote account", () => {
     });
     expect(rejectedItem.state).toBe("pending");
   });
+
+  // `ActorSerializer#interaction_policy`: a Mastodon account that is not
+  // discoverable lists only itself, which `feature_policy_for_account` reads
+  // as `:denied`; once discoverable it lists the public.
+  it("follows the canFeature of the actor's latest Update, as Mastodon derives it from discoverable", async () => {
+    const ownerEmail = "fed-coll-discovery@example.com";
+    await signedInAccount(ownerEmail);
+    const remote = await remoteActor("feat-discovery");
+    const announce = async (automaticApproval: string, discoverable: boolean) =>
+      expect(
+        await remote.send({
+          id: `${remote.actorUri}#updates/${crypto.randomUUID()}`,
+          type: "Update",
+          object: {
+            id: remote.actorUri,
+            type: "Person",
+            preferredUsername: "feat-discovery",
+            inbox: `${remote.actorUri}/inbox`,
+            discoverable,
+            interactionPolicy: { canFeature: { automaticApproval: [automaticApproval] } },
+            publicKey: {
+              id: `${remote.actorUri}#main-key`,
+              owner: remote.actorUri,
+              publicKeyPem: remote.publicKeyPem,
+            },
+          },
+        }),
+      ).toBe(202);
+    const feature = async (name: string) =>
+      SELF.fetch(`${ORIGIN}/api/v1/collections`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(await authHeaders(ownerEmail)) },
+        body: JSON.stringify({
+          name,
+          sensitive: false,
+          discoverable: true,
+          account_ids: [RemoteAccountId.encode(remote.actorUri)],
+        }),
+      });
+
+    await announce(remote.actorUri, false);
+    expect((await feature("Undiscoverable")).status).toBe(403);
+
+    await announce(PUBLIC, true);
+    const made = await feature("Discoverable");
+    expect(made.status).toBe(200);
+    expect(
+      expectContract(z.object({ collection: ApiCollection }), await made.json()).collection.items,
+    ).toEqual([expect.objectContaining({ state: "pending" })]);
+  });
 });
 
 describe("a remote account's collections", () => {
