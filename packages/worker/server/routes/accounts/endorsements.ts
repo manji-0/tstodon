@@ -1,3 +1,4 @@
+import { requestViewerId } from "../../auth";
 import { AccountPresentation, InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
 import { ApiSetAccountNoteParamsSchema } from "@tstodon/api";
@@ -128,7 +129,12 @@ const endorsementDocuments = async (
     return jsonRepositoryError(c, rows.error.message);
   }
   const ids = rows.value.map((row) => row.accountId ?? RemoteAccountId.encode(row.actorUri));
-  const resolved = await availableAccountDocumentsByIds(c.env, identity, ids);
+  const resolved = await availableAccountDocumentsByIds(
+    c.env,
+    identity,
+    await requestViewerId(c.req.raw, c.env),
+    ids,
+  );
   if (resolved.isErr()) {
     return jsonRepositoryError(c, resolved.error.message);
   }

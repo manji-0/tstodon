@@ -329,7 +329,7 @@ const renderRemoteStatuses = async <Q>(
   // One read per page for the mentioned accounts, as for the tags and cards.
   const mentioned = mentions.isOk() ? [...mentions.value.values()] : [];
   const [presented, mentionedAccounts, mentionedActors, emojis] = await Promise.all([
-    presentedAccounts(env, identity, [], [...actors.value.values()]),
+    presentedAccounts(env, identity, viewerId, [], [...actors.value.values()]),
     findAccountsByIds(
       env.DB,
       mentioned.flatMap((entry) => entry.accountIds),

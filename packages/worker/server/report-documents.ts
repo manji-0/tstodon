@@ -58,6 +58,7 @@ export const reportedStatuses = async (
 export const reportDocumentsByIds = async (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   ids: ReadonlyArray<string>,
 ): Promise<Result<ReadonlyMap<string, ApiReportJSON>, RepositoryError>> => {
   const rows: ReportRow[] = [];
@@ -74,6 +75,7 @@ export const reportDocumentsByIds = async (
   const resolved = await embeddedAccountDocumentsByIds(
     env,
     identity,
+    viewerId,
     rows.map((row) => ReportParty.accountId(row.target)),
   );
   if (resolved.isErr()) {

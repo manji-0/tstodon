@@ -4,7 +4,7 @@ import { AccountPresentation } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountByIdOrUsername } from "../../account-store";
 import { findAccountProfile } from "../../account-profile-store";
-import { authenticate } from "../../auth";
+import { authenticate, requestViewerId } from "../../auth";
 import { attachFilteredToStatuses } from "../../filter-match";
 import {
   jsonAuthError,
@@ -43,7 +43,12 @@ export const getV1AccountsById = async (c: Context<{ Bindings: Env }, "/api/v1/a
   if (identity.isErr()) {
     return c.json(identity.error, 500);
   }
-  const found = await lookupAccountDocument(c.env, identity.value, c.req.param("id") ?? "");
+  const found = await lookupAccountDocument(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    c.req.param("id") ?? "",
+  );
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
@@ -256,6 +261,7 @@ const accountList = async (c: Context<{ Bindings: Env }>, kind: "followers" | "f
   const byId = await accountDocumentsByIds(
     c.env,
     identity.value,
+    await requestViewerId(c.req.raw, c.env),
     edges.value.map((edge) => edge.accountId),
   );
   if (byId.isErr()) {

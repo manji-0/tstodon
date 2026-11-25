@@ -390,6 +390,66 @@ const featureApproval = (candidate: FeatureCandidate): FeatureApproval => {
   }
 };
 
+/** `InteractionPolicy::POLICY_FLAGS`, in their bit order, as `SubPolicy#as_keys` names them. */
+export type FeaturePolicyKey =
+  | "unsupported_policy"
+  | "public"
+  | "followers"
+  | "following"
+  | "disabled";
+
+/** `SubPolicy#as_keys`: the flags set, in bit order. */
+const policyKeys = (flags: PolicyFlags): FeaturePolicyKey[] => [
+  ...(flags.unsupported ? (["unsupported_policy"] as const) : []),
+  ...(flags.public ? (["public"] as const) : []),
+  ...(flags.followers ? (["followers"] as const) : []),
+  ...(flags.following ? (["following"] as const) : []),
+  ...(flags.disabled ? (["disabled"] as const) : []),
+];
+
+export type FeaturePolicyKeys = Readonly<{
+  automatic: ReadonlyArray<FeaturePolicyKey>;
+  manual: ReadonlyArray<FeaturePolicyKey>;
+}>;
+
+/**
+ * `Account#feature_policy_as_keys`: a local account's from its flags
+ * (`local_feature_policy`: none unless discoverable, then its followers when
+ * locked and anyone when not, never manual), a remote one's as federated.
+ */
+const featurePolicyKeys = (
+  account:
+    | Readonly<{ kind: "Local"; discoverable: boolean; locked: boolean }>
+    | Readonly<{ kind: "Remote"; policy: FeaturePolicy | undefined }>,
+): FeaturePolicyKeys => {
+  switch (account.kind) {
+    case "Local":
+      return {
+        automatic: account.discoverable ? [account.locked ? "followers" : "public"] : [],
+        manual: [],
+      };
+    case "Remote":
+      return account.policy === undefined
+        ? { automatic: [], manual: [] }
+        : {
+            automatic: policyKeys(account.policy.automatic),
+            manual: policyKeys(account.policy.manual),
+          };
+    default:
+      return account satisfies never;
+  }
+};
+
+/**
+ * Whether `feature_policy_for_account` of a remote account reads how the
+ * viewer and it follow each other: its policy names followers or following
+ * and does not let anyone feature it without asking.
+ */
+const featureApprovalReadsFollows = (policy: FeaturePolicy | undefined): boolean =>
+  policy !== undefined &&
+  !policy.automatic.public &&
+  [policy.automatic, policy.manual].some((flags) => flags.followers || flags.following);
+
 /**
  * `AccountPolicy#feature?`: `Account#featureable_by?` (an automatic or a
  * manual approval) and no block either way.
@@ -420,6 +480,8 @@ export const Collection = {
   live,
   featureable,
   featureApproval,
+  featureApprovalReadsFollows,
+  featurePolicyKeys,
   parseFeaturePolicy,
   significantlyChanged,
 } as const;

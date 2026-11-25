@@ -21,6 +21,7 @@ export const conversationDocuments = async (
     accountDocumentsByIds(
       env,
       identity,
+      viewerId,
       conversations.flatMap((conversation) => conversation.accountIds),
     ),
     statusDocumentsByIds(

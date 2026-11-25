@@ -1,3 +1,4 @@
+import { requestViewerId } from "../auth";
 import type { Context } from "hono";
 import {
   type ApiAccountRelationshipSeveranceEventJSON,
@@ -422,11 +423,12 @@ const groupEnvelope = async (
   }
   const [resolvedAccounts, statusDocuments, resolvedReports, severance, collections] =
     await Promise.all([
-      accountDocumentsByIds(c.env, identity.value, accountIds),
+      accountDocumentsByIds(c.env, identity.value, accountId, accountIds),
       statusDocumentsByIds(c.env, identity.value, statusIds, accountId),
       reportDocumentsByIds(
         c.env,
         identity.value,
+        accountId,
         groups.flatMap((group) => (group.reportId ? [group.reportId] : [])),
       ),
       findAccountSeveranceEvents(
@@ -606,7 +608,12 @@ export const getV2NotificationsByGroupKeyAccounts = async (
     return jsonRepositoryError(c, available.error.message);
   }
   const shown = senderIds.filter((id) => available.value.has(id));
-  const documents = await accountDocumentsByIds(c.env, identity.value, shown);
+  const documents = await accountDocumentsByIds(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    shown,
+  );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }

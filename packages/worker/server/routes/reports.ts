@@ -188,7 +188,9 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   });
   // The report as Mastodon's `REST::ReportSerializer` renders it, its target
   // account in full.
-  const rendered = await reportDocumentsByIds(c.env, identity.value, [report.value.id]);
+  const rendered = await reportDocumentsByIds(c.env, identity.value, user.value.id, [
+    report.value.id,
+  ]);
   if (rendered.isErr()) {
     return jsonRepositoryError(c, rendered.error.message);
   }

@@ -38,6 +38,12 @@ import { formatFieldValue, type PostMention, shortenedLink, textToHtml } from ".
 import { knownFieldMentions } from "./mention-resolve";
 import { mediaUrl } from "./media-document";
 import { quotePolicyName } from "./quote-policy-name";
+import {
+  type FeatureViewer,
+  loadFeatureViewer,
+  localFeatureApproval,
+  remoteFeatureApproval,
+} from "./feature-approval";
 
 /**
  * A rendered account another record names, with the presentation it rendered
@@ -59,6 +65,8 @@ type PresentedAccounts = Result<ReadonlyMap<string, PresentedAccount>, Repositor
 export const presentedAccountsByIds = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The viewing account, whose `feature_approval.current_user` renders; none when anonymous. */
+  viewerId: string | undefined,
   ids: ReadonlyArray<string>,
 ): Promise<PresentedAccounts> => {
   const remote = new Map<string, string>();
@@ -81,7 +89,13 @@ export const presentedAccountsByIds = async (
   if (actors.isErr()) {
     return err(actors.error);
   }
-  return presentedAccounts(env, identity, [...locals.value.values()], [...actors.value.values()]);
+  return presentedAccounts(
+    env,
+    identity,
+    viewerId,
+    [...locals.value.values()],
+    [...actors.value.values()],
+  );
 };
 
 /**
@@ -92,14 +106,16 @@ export const presentedAccountsByIds = async (
 export const presentedAccounts = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The viewing account, whose `feature_approval.current_user` renders; none when anonymous. */
+  viewerId: string | undefined,
   localAccounts: ReadonlyArray<LocalAccount>,
   remoteActors: ReadonlyArray<RemoteActor>,
   /** The instance's custom emojis, when the caller already loaded them. */
   customEmojis?: ReadonlyArray<CustomEmoji>,
 ): Promise<PresentedAccounts> => {
-  const [localDocuments, localPresentations, remotePresentations, moved, remoteEmojis] =
+  const [localDocuments, localPresentations, remotePresentations, moved, remoteEmojis, viewer] =
     await Promise.all([
-      mastodonAccountDocuments(env, identity, localAccounts, true, customEmojis),
+      mastodonAccountDocuments(env, identity, viewerId, localAccounts, true, customEmojis),
       localAccountPresentations(
         env.DB,
         localAccounts.map((account) => account.id),
@@ -108,9 +124,11 @@ export const presentedAccounts = async (
       movedToDocuments(
         env,
         identity,
+        viewerId,
         remoteActors.flatMap((actor) => (actor.movedTo ? [actor.movedTo] : [])),
       ),
       loadProfileEmojis(env.DB, remoteActors),
+      loadFeatureViewer(env.DB, viewerId, [], remoteActors),
     ]);
   if (localPresentations.isErr()) {
     return err(localPresentations.error);
@@ -147,7 +165,7 @@ export const presentedAccounts = async (
           remotePresentations.value.get(actor.actorUri),
           {
             ...(target ? { moved: target } : {}),
-            ...mastodonRemoteAccount(identity, actor, remoteEmojis),
+            ...mastodonRemoteAccount(identity, viewer, actor, remoteEmojis),
           },
         );
       }),
@@ -178,8 +196,9 @@ const notHidden = (presentation: AccountPresentation): boolean => presentation.k
 export const accountDocumentsByIds = (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   ids: ReadonlyArray<string>,
-) => documentsWhere(presentedAccountsByIds(env, identity, ids), notHidden);
+) => documentsWhere(presentedAccountsByIds(env, identity, viewerId, ids), notHidden);
 
 /**
  * Account documents keyed by account id for a list of accounts, as Mastodon's
@@ -188,8 +207,13 @@ export const accountDocumentsByIds = (
 export const availableAccountDocumentsByIds = (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   ids: ReadonlyArray<string>,
-) => documentsWhere(presentedAccountsByIds(env, identity, ids), AccountPresentation.available);
+) =>
+  documentsWhere(
+    presentedAccountsByIds(env, identity, viewerId, ids),
+    AccountPresentation.available,
+  );
 
 /**
  * Account documents keyed by account id for the account a record is about
@@ -199,20 +223,22 @@ export const availableAccountDocumentsByIds = (
 export const embeddedAccountDocumentsByIds = (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   ids: ReadonlyArray<string>,
-) => documentsWhere(presentedAccountsByIds(env, identity, ids), () => true);
+) => documentsWhere(presentedAccountsByIds(env, identity, viewerId, ids), () => true);
 
 /** `documents`, keyed by local account id, with `moved` for the accounts that moved away. */
 const withLocalMoves = async (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   documents: ReadonlyMap<string, ApiAccountJSON>,
 ): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   const targets = await listAccountMoveTargets(env.DB, [...documents.keys()]);
   if (targets.isErr() || targets.value.size === 0) {
     return documents;
   }
-  const moved = await movedToDocuments(env, identity, [...targets.value.values()]);
+  const moved = await movedToDocuments(env, identity, viewerId, [...targets.value.values()]);
   const movedTo = (id: string) => {
     const targetUri = targets.value.get(id);
     return targetUri === undefined ? undefined : moved.get(targetUri);
@@ -235,6 +261,7 @@ const withLocalMoves = async (
 const movedToDocuments = async (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   actorUris: ReadonlyArray<string>,
 ): Promise<ReadonlyMap<string, ApiAccountJSON>> => {
   if (actorUris.length === 0) {
@@ -253,17 +280,17 @@ const movedToDocuments = async (
   ]);
   const localAccounts = locals.isOk() ? locals.value : [];
   const remoteActors = actors.isOk() ? [...actors.value.values()] : [];
-  const [localDocuments, localPresentations, remotePresentations, remoteEmojis] = await Promise.all(
-    [
-      mastodonAccountDocuments(env, identity, localAccounts, false),
+  const [localDocuments, localPresentations, remotePresentations, remoteEmojis, viewer] =
+    await Promise.all([
+      mastodonAccountDocuments(env, identity, viewerId, localAccounts, false),
       localAccountPresentations(
         env.DB,
         localAccounts.map((account) => account.id),
       ),
       remoteAccountPresentations(env, remoteActors),
       loadProfileEmojis(env.DB, remoteActors),
-    ],
-  );
+      loadFeatureViewer(env.DB, viewerId, [], remoteActors),
+    ]);
   const presented = (
     uri: string,
     presentation: AccountPresentation | undefined,
@@ -285,7 +312,7 @@ const movedToDocuments = async (
       presented(
         actor.actorUri,
         remotePresentations.isOk() ? remotePresentations.value.get(actor.actorUri) : undefined,
-        mastodonRemoteAccount(identity, actor, remoteEmojis),
+        mastodonRemoteAccount(identity, viewer, actor, remoteEmojis),
       ),
     ),
   ]);
@@ -293,6 +320,8 @@ const movedToDocuments = async (
 
 export const mastodonAccount = (
   identity: InstanceIdentity,
+  /** Who `feature_approval.current_user` is for ({@link loadFeatureViewer}). */
+  viewer: FeatureViewer,
   account: LocalAccount,
   counts: { followers: number; following: number; statuses: number },
   /** The instance's custom emojis; the account's are those its profile writes. */
@@ -331,14 +360,16 @@ export const mastodonAccount = (
     header_static: profile.headerObjectKey
       ? mediaUrl(identity, profile.headerObjectKey)
       : identity.thumbnailUrl,
-    // Mastodon 4.6+ fields: alt text for the images, profile tab visibility,
-    // and featuring policy (featuring accounts is not offered here).
+    // Mastodon 4.6+ fields: alt text for the images and profile tab visibility.
     avatar_description: "",
     header_description: "",
     show_media: true,
     show_media_replies: true,
     show_featured: true,
-    feature_approval: { automatic: [], manual: [], current_user: "denied" },
+    feature_approval: localFeatureApproval(viewer, {
+      account,
+      discoverable: profile.discoverable,
+    }),
     followers_count: counts.followers,
     following_count: counts.following,
     statuses_count: counts.statuses,
@@ -393,6 +424,8 @@ export const documentsInOrder = <T>(
 export const mastodonAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The viewing account, whose `feature_approval.current_user` renders; none when anonymous. */
+  viewerId: string | undefined,
   account: LocalAccount,
   profileRead: Promise<Result<AccountProfile, RepositoryError>> = findAccountProfile(
     env.DB,
@@ -405,17 +438,23 @@ export const mastodonAccountDocument = async (
     loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
   const profile = profileResult.isOk() ? profileResult.value : EMPTY_ACCOUNT_PROFILE;
+  const [fieldMentions, viewer] = await Promise.all([
+    knownFieldMentions(env.DB, identity, fieldValues([profile])),
+    loadFeatureViewer(env.DB, viewerId, [{ account, discoverable: profile.discoverable }], []),
+  ]);
   const document = mastodonAccount(
     identity,
+    viewer,
     account,
     counts.isOk() ? counts.value : { followers: 0, following: 0, statuses: 0 },
     emojis,
     profile,
-    await knownFieldMentions(env.DB, identity, fieldValues([profile])),
+    fieldMentions,
   );
   return (
-    (await withLocalMoves(env, identity, new Map([[account.id, document]]))).get(account.id) ??
-    document
+    (await withLocalMoves(env, identity, viewerId, new Map([[account.id, document]]))).get(
+      account.id,
+    ) ?? document
   );
 };
 
@@ -430,6 +469,8 @@ const fieldValues = (profiles: ReadonlyArray<AccountProfile>): ReadonlyArray<str
 export const mastodonAccountDocuments = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The viewing account, whose `feature_approval.current_user` renders; none when anonymous. */
+  viewerId: string | undefined,
   accounts: ReadonlyArray<LocalAccount>,
   includeMoved = true,
   /** The instance's custom emojis, when the caller already loaded them. */
@@ -444,19 +485,29 @@ export const mastodonAccountDocuments = async (
     listAccountProfiles(env.DB, accountIds),
     customEmojis ?? loadCustomEmojis(env, identity.mediaPublicBaseUrl),
   ]);
-  const fieldMentions = await knownFieldMentions(
-    env.DB,
-    identity,
-    fieldValues(profiles.isOk() ? [...profiles.value.values()] : []),
-  );
+  const profileOf = (account: LocalAccount): AccountProfile =>
+    (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE;
+  const [fieldMentions, viewer] = await Promise.all([
+    knownFieldMentions(
+      env.DB,
+      identity,
+      fieldValues(profiles.isOk() ? [...profiles.value.values()] : []),
+    ),
+    loadFeatureViewer(
+      env.DB,
+      viewerId,
+      accounts.map((account) => ({ account, discoverable: profileOf(account).discoverable })),
+      [],
+    ),
+  ]);
   const documents = new Map(
     accounts.map((account) => {
-      const profile =
-        (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE;
+      const profile = profileOf(account);
       return [
         account.id,
         mastodonAccount(
           identity,
+          viewer,
           account,
           (counts.isOk() ? counts.value.get(account.id) : undefined) ?? {
             followers: 0,
@@ -470,7 +521,7 @@ export const mastodonAccountDocuments = async (
       ];
     }),
   );
-  return includeMoved ? withLocalMoves(env, identity, documents) : documents;
+  return includeMoved ? withLocalMoves(env, identity, viewerId, documents) : documents;
 };
 
 /** The texts of a remote profile `Account#emojis` scans (`emojifiable_text`). */
@@ -494,6 +545,8 @@ export const loadProfileEmojis = (
  */
 export const mastodonRemoteAccount = (
   identity: InstanceIdentity,
+  /** Who `feature_approval.current_user` is for ({@link loadFeatureViewer}). */
+  viewer: FeatureViewer,
   actor: RemoteActor,
   emojis: RemoteEmojiCatalog,
 ): ApiAccountJSON => {
@@ -518,14 +571,13 @@ export const mastodonRemoteAccount = (
     avatar_static: profile.avatarUrl ?? identity.thumbnailUrl,
     header: profile.headerUrl ?? identity.thumbnailUrl,
     header_static: profile.headerUrl ?? identity.thumbnailUrl,
-    // Mastodon 4.6+ fields: alt text for the images, profile tab visibility,
-    // and featuring policy (featuring accounts is not offered here).
+    // Mastodon 4.6+ fields: alt text for the images and profile tab visibility.
     avatar_description: "",
     header_description: "",
     show_media: true,
     show_media_replies: true,
     show_featured: true,
-    feature_approval: { automatic: [], manual: [], current_user: "denied" },
+    feature_approval: remoteFeatureApproval(viewer, actor),
     followers_count: 0,
     following_count: 0,
     statuses_count: 0,
@@ -555,12 +607,13 @@ const remoteFieldValue = (field: ProfileField): string => {
 export const accountRefDocument = async (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   ref: AccountRef,
 ): Promise<Result<ApiAccountJSON | undefined, RepositoryError>> => {
   const id = refAccountId(ref);
   const presented =
     ref.kind === "LocalAccount"
-      ? presentedAccounts(env, identity, [ref.account], [])
-      : presentedAccounts(env, identity, [], [ref.actor]);
+      ? presentedAccounts(env, identity, viewerId, [ref.account], [])
+      : presentedAccounts(env, identity, viewerId, [], [ref.actor]);
   return (await documentsWhere(presented, notHidden)).map((documents) => documents.get(id));
 };

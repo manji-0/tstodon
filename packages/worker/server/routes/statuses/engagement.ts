@@ -68,7 +68,7 @@ const statusEngagementAccounts = async (
   const ids = engaged.value.map((booster) =>
     booster.kind === "Local" ? booster.accountId : RemoteAccountId.encode(booster.actorUri),
   );
-  const resolved = await availableAccountDocumentsByIds(c.env, identity.value, ids);
+  const resolved = await availableAccountDocumentsByIds(c.env, identity.value, viewerId, ids);
   if (resolved.isErr()) {
     return jsonRepositoryError(c, resolved.error.message);
   }

@@ -68,7 +68,12 @@ export const getV1FollowRequests = async (
     return jsonRepositoryError(c, requests.error.message);
   }
   const accountIds = requests.value.map((request) => request.accountId);
-  const documents = await availableAccountDocumentsByIds(c.env, identity.value, accountIds);
+  const documents = await availableAccountDocumentsByIds(
+    c.env,
+    identity.value,
+    user.value.id,
+    accountIds,
+  );
   if (documents.isErr()) {
     return jsonRepositoryError(c, documents.error.message);
   }

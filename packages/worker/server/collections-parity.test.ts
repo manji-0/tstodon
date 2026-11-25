@@ -2,13 +2,15 @@ import { env, SELF } from "cloudflare:test";
 import { OutboxJob } from "@tstodon/domain";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
-import { ApiNotification } from "@tstodon/api";
+import { ApiAccount, ApiNotification } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { type HeldQueue, holdQueue } from "../test/queue-hold";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
+import { setAccountLocked } from "./account-store";
 import { parseRows } from "./d1";
 import { processOutboxJob } from "./outbox-job";
+import { RemoteAccountId } from "./remote-account-id";
 import { queueDueRemoteCollectionSyncs } from "./remote-curated-collection";
 
 /**
@@ -65,7 +67,7 @@ const heldKinds = (held: HeldQueue) =>
  * names for a URL, while `body` runs; any other URL is a 404.
  */
 const serving = async <T>(
-  documents: ReadonlyArray<Readonly<{ id: string }>>,
+  documents: ReadonlyArray<Readonly<{ id: string } & Record<string, unknown>>>,
   body: () => Promise<T>,
   statuses: Readonly<Record<string, number>> = {},
 ): Promise<T> => {
@@ -343,5 +345,86 @@ describe("a remote actor's featuredCollections", () => {
   it("is not read for an actor that names none", async () => {
     const actor = await remoteActor("plain", "sync-plain.example");
     expect(await queuedSyncs(actor.actorUri)).toEqual([]);
+  });
+});
+
+const NO_FLAGS = {
+  public: false,
+  followers: false,
+  following: false,
+  unsupported: false,
+  disabled: false,
+} as const;
+
+const featureApproval = async (email: string | undefined, accountId: string) => {
+  const response = await SELF.fetch(`${ORIGIN}/api/v1/accounts/${accountId}`, {
+    headers: email === undefined ? {} : await authHeaders(email),
+  });
+  expect(response.status).toBe(200);
+  return expectContract(ApiAccount, await response.json()).feature_approval;
+};
+
+describe("an account's feature_approval", () => {
+  it("renders a remote account's federated policy for the viewer", async () => {
+    const email = "fa-viewer@example.com";
+    const viewer = await signedInAccount(email);
+    const open = await remoteActor("open", "fa-open.example", {
+      featurePolicy: { automatic: { ...NO_FLAGS, public: true }, manual: NO_FLAGS },
+    });
+    const followers = await remoteActor("followers", "fa-followers.example", {
+      featurePolicy: {
+        automatic: { ...NO_FLAGS, followers: true },
+        manual: { ...NO_FLAGS, public: true, unsupported: true },
+      },
+    });
+    const silent = await remoteActor("silent", "fa-silent.example");
+    const id = (remote: Remote) => RemoteAccountId.encode(remote.actorUri);
+
+    expect(await featureApproval(email, id(open))).toEqual({
+      automatic: ["public"],
+      manual: [],
+      current_user: "automatic",
+    });
+    expect(await featureApproval(email, id(followers))).toEqual({
+      automatic: ["followers"],
+      manual: ["unsupported_policy", "public"],
+      current_user: "manual",
+    });
+    await env.DB.prepare(
+      `INSERT INTO outbound_follows (id, account_id, actor_uri, follow_activity_id, state)
+       VALUES ('fa-follow', ?, ?, 'https://example.com/follows/fa', 'Accepted')`,
+    )
+      .bind(viewer.id, followers.actorUri)
+      .run();
+    expect((await featureApproval(email, id(followers))).current_user).toBe("automatic");
+    expect(await featureApproval(email, id(silent))).toEqual({
+      automatic: [],
+      manual: [],
+      current_user: "missing",
+    });
+    // `feature_policy_for_account(nil)` is `:denied`.
+    expect((await featureApproval(undefined, id(open))).current_user).toBe("denied");
+  });
+
+  it("renders a local account's from its discoverable and locked flags", async () => {
+    const email = "fa-local-viewer@example.com";
+    await signedInAccount(email);
+    const target = await signedInAccount("fa-local-target@example.com");
+
+    expect(await featureApproval(email, target.id)).toEqual({
+      automatic: ["public"],
+      manual: [],
+      current_user: "automatic",
+    });
+    expect((await setAccountLocked(env.DB, target.id, true)).isOk()).toBe(true);
+    expect(await featureApproval(email, target.id)).toEqual({
+      automatic: ["followers"],
+      manual: [],
+      current_user: "denied",
+    });
+    // The account itself may feature itself.
+    expect((await featureApproval("fa-local-target@example.com", target.id)).current_user).toBe(
+      "automatic",
+    );
   });
 });

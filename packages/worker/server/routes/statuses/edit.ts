@@ -1,3 +1,4 @@
+import { requestViewerId } from "../../auth";
 import {
   ApiDeleteStatusParamsSchema,
   ApiUpdateStatusParamsSchema,
@@ -551,7 +552,12 @@ const remoteHistory = async (
   remote: RemoteStatusValue,
 ) => {
   const authorId = RemoteAccountId.encode(remote.actorUri);
-  const authors = await availableAccountDocumentsByIds(c.env, identity, [authorId]);
+  const authors = await availableAccountDocumentsByIds(
+    c.env,
+    identity,
+    await requestViewerId(c.req.raw, c.env),
+    [authorId],
+  );
   if (authors.isErr()) {
     return jsonRepositoryError(c, authors.error.message);
   }

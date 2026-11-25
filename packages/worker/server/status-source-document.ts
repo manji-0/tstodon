@@ -226,7 +226,7 @@ const unrenderedSource = async (
     edited_at: note?.editedAt ?? null,
     text: note?.text ?? "",
     reblog: null,
-    account: await mastodonAccountDocument(env, identity, author),
+    account: await mastodonAccountDocument(env, identity, author.id, author),
     media_attachments: [],
     mentions: [],
     tags: [],

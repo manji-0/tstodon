@@ -1,3 +1,5 @@
+import { requestViewerId } from "../../auth";
+import { loadFeatureViewer } from "../../feature-approval";
 import type { ApiAccountJSON, ApiFamiliarFollowersJSON } from "@tstodon/api";
 import {
   ApiGetAccountsParamsSchema,
@@ -88,7 +90,12 @@ export const getV1AccountsLookup = async (
       return c.json({ error: "Record not found", kind: "NotFound" }, 404);
     }
   }
-  const document = await accountRefDocument(c.env, identity.value, ref.value);
+  const document = await accountRefDocument(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    ref.value,
+  );
   if (document.isErr()) {
     return jsonRepositoryError(c, document.error.message);
   }
@@ -203,7 +210,7 @@ export const getV1AccountsSearch = async (
         return jsonRepositoryError(c, shown.error.message);
       }
       for (const account of shown.value.filter((found) => followed(found.id))) {
-        push(await mastodonAccountDocument(c.env, identity.value, account));
+        push(await mastodonAccountDocument(c.env, identity.value, user.value.id, account));
       }
     } else if (following === undefined) {
       const resolved = resolve
@@ -227,9 +234,12 @@ export const getV1AccountsSearch = async (
       if (shown.isErr()) {
         return jsonRepositoryError(c, shown.error.message);
       }
-      const emojis = await loadProfileEmojis(c.env.DB, shown.value);
+      const [emojis, viewer] = await Promise.all([
+        loadProfileEmojis(c.env.DB, shown.value),
+        loadFeatureViewer(c.env.DB, user.value.id, [], shown.value),
+      ]);
       for (const actor of shown.value) {
-        push(mastodonRemoteAccount(identity.value, actor, emojis));
+        push(mastodonRemoteAccount(identity.value, viewer, actor, emojis));
       }
     }
   }
@@ -256,9 +266,10 @@ export const getV1AccountsSearch = async (
   if (page.isErr()) {
     return jsonRepositoryError(c, page.error.message);
   }
-  const [rendered, emojis] = await Promise.all([
-    mastodonAccountDocuments(c.env, identity.value, page.value.local),
+  const [rendered, emojis, viewer] = await Promise.all([
+    mastodonAccountDocuments(c.env, identity.value, user.value.id, page.value.local),
     loadProfileEmojis(c.env.DB, page.value.remote),
+    loadFeatureViewer(c.env.DB, user.value.id, [], page.value.remote),
   ]);
   for (const document of documentsInOrder(
     page.value.local.map((account) => account.id),
@@ -267,7 +278,7 @@ export const getV1AccountsSearch = async (
     push(document);
   }
   for (const actor of page.value.remote) {
-    push(mastodonRemoteAccount(identity.value, actor, emojis));
+    push(mastodonRemoteAccount(identity.value, viewer, actor, emojis));
   }
   return c.json(documents.slice(0, limit));
 };
@@ -355,7 +366,7 @@ const familiarFollowerDocuments = async (
   if (followerIds.isErr()) {
     return err(followerIds.error);
   }
-  const documents = await accountDocumentsByIds(env, identity, [
+  const documents = await accountDocumentsByIds(env, identity, viewerId, [
     ...new Set([...followerIds.value.values()].flat()),
   ]);
   if (documents.isErr()) {
@@ -378,6 +389,7 @@ const familiarFollowerDocuments = async (
 export const lookupAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   id: string,
 ): Promise<Result<ApiAccountJSON | undefined, RepositoryError>> => {
   const account = await findAccountByIdOrUsername(env.DB, id);
@@ -385,7 +397,7 @@ export const lookupAccountDocument = async (
     return err(account.error);
   }
   if (account.value) {
-    return accountRefDocument(env, identity, localRef(identity, account.value));
+    return accountRefDocument(env, identity, viewerId, localRef(identity, account.value));
   }
   const actorUri = RemoteAccountId.decode(id);
   if (actorUri.isErr()) {
@@ -395,7 +407,9 @@ export const lookupAccountDocument = async (
   if (actor.isErr()) {
     return err(actor.error);
   }
-  return actor.value ? accountRefDocument(env, identity, remoteRef(actor.value)) : ok(undefined);
+  return actor.value
+    ? accountRefDocument(env, identity, viewerId, remoteRef(actor.value))
+    : ok(undefined);
 };
 
 /** Mastodon caps `GET /api/v1/accounts?id[]=` at 40 ids. */
@@ -436,10 +450,12 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
   if (remotes.isErr()) {
     return jsonRepositoryError(c, remotes.error.message);
   }
-  const [remotePresentations, localDocuments, emojis] = await Promise.all([
+  const viewerId = await requestViewerId(c.req.raw, c.env);
+  const [remotePresentations, localDocuments, emojis, viewer] = await Promise.all([
     remoteAccountPresentations(c.env, [...remotes.value.values()]),
-    mastodonAccountDocuments(c.env, identity.value, [...locals.value.values()]),
+    mastodonAccountDocuments(c.env, identity.value, viewerId, [...locals.value.values()]),
     loadProfileEmojis(c.env.DB, [...remotes.value.values()]),
+    loadFeatureViewer(c.env.DB, viewerId, [], [...remotes.value.values()]),
   ]);
   if (remotePresentations.isErr()) {
     return jsonRepositoryError(c, remotePresentations.error.message);
@@ -462,7 +478,7 @@ export const getV1Accounts = async (c: Context<{ Bindings: Env }, "/api/v1/accou
       const document = presentedAccountDocument(
         identity.value,
         remotePresentation,
-        mastodonRemoteAccount(identity.value, actor, emojis),
+        mastodonRemoteAccount(identity.value, viewer, actor, emojis),
       );
       return document ? [document] : [];
     }),

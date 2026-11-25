@@ -148,7 +148,6 @@ const salvageable = (error: FederatedFetchError): boolean =>
       ? error.status !== 501
       : TEMPORARY_STATUSES.has(error.status);
 
-
 /**
  * `fetch_resource(approval_uri, raise_on_error: :temporary)`: this server's
  * own authorization as it serves it, another server's fetched. A document

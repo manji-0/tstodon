@@ -534,7 +534,7 @@ const showCollection = async (c: AnyContext, id: string): Promise<Response> => {
       (item) => item.accountId,
     ),
   ];
-  const accounts = await accountDocumentsByIds(c.env, identity.value, accountIds);
+  const accounts = await accountDocumentsByIds(c.env, identity.value, viewer.id, accountIds);
   if (accounts.isErr()) {
     return jsonRepositoryError(c, accounts.error.message);
   }
