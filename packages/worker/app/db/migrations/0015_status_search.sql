@@ -486,50 +486,44 @@ BEGIN
     WHERE id IN (SELECT id FROM status_search_documents WHERE remote_status_id = OLD.status_id);
 END;
 
--- An author's `indexable` puts its public notes in or out of `PublicStatusesIndex`.
+-- An author's `indexable` puts its public notes in or out of
+-- `PublicStatusesIndex`. An author may have many notes, more than one
+-- statement should write: the trigger only marks the author, and the
+-- `BackfillStatusSearch` job writes its public notes' rows again a page at a
+-- time, from `after_id` (`reindexStaleAuthors`). A new change restarts the
+-- walk (`generation`). Until the walk has passed a note, search checks the
+-- author's flag as it is now (`searchStatusIds`), so a note never shows
+-- through a stale `p`.
+CREATE TABLE status_search_stale_authors (
+  kind TEXT NOT NULL CHECK (kind IN ('Local', 'Remote')),
+  -- A local account id, or a remote actor URI.
+  author TEXT NOT NULL,
+  after_id TEXT NOT NULL DEFAULT '',
+  generation INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (kind, author)
+) WITHOUT ROWID;
+
 CREATE TRIGGER status_search_local_indexable_set AFTER INSERT ON account_profiles
 WHEN NEW.indexable = 0
 BEGIN
-  DELETE FROM status_search WHERE rowid IN (
-    SELECT id FROM status_search_documents WHERE status_id IN (
-      SELECT id FROM statuses WHERE account_id = NEW.account_id AND visibility = 'public'
-    )
-  );
-  INSERT INTO status_search (rowid, text, tags, scope)
-    SELECT id, text, tags, scope FROM status_search_rows
-    WHERE id IN (SELECT id FROM status_search_documents WHERE status_id IN (
-      SELECT id FROM statuses WHERE account_id = NEW.account_id AND visibility = 'public'
-    ));
+  INSERT INTO status_search_stale_authors (kind, author) VALUES ('Local', NEW.account_id)
+    ON CONFLICT (kind, author) DO UPDATE SET after_id = '', generation = generation + 1
+      WHERE status_search_stale_authors.author = excluded.author;
 END;
 
 CREATE TRIGGER status_search_local_indexable_changed AFTER UPDATE OF indexable ON account_profiles
 WHEN OLD.indexable IS NOT NEW.indexable
 BEGIN
-  DELETE FROM status_search WHERE rowid IN (
-    SELECT id FROM status_search_documents WHERE status_id IN (
-      SELECT id FROM statuses WHERE account_id = NEW.account_id AND visibility = 'public'
-    )
-  );
-  INSERT INTO status_search (rowid, text, tags, scope)
-    SELECT id, text, tags, scope FROM status_search_rows
-    WHERE id IN (SELECT id FROM status_search_documents WHERE status_id IN (
-      SELECT id FROM statuses WHERE account_id = NEW.account_id AND visibility = 'public'
-    ));
+  INSERT INTO status_search_stale_authors (kind, author) VALUES ('Local', NEW.account_id)
+    ON CONFLICT (kind, author) DO UPDATE SET after_id = '', generation = generation + 1
+      WHERE status_search_stale_authors.author = excluded.author;
 END;
 
 CREATE TRIGGER status_search_remote_indexable_changed AFTER UPDATE OF profile_json ON remote_actors
 WHEN (CASE WHEN json_valid(OLD.profile_json) THEN json_extract(OLD.profile_json, '$.indexable') END)
   IS NOT (CASE WHEN json_valid(NEW.profile_json) THEN json_extract(NEW.profile_json, '$.indexable') END)
 BEGIN
-  DELETE FROM status_search WHERE rowid IN (
-    SELECT id FROM status_search_documents WHERE remote_status_id IN (
-      SELECT id FROM remote_statuses WHERE actor_uri = NEW.actor_uri AND visibility = 'public'
-    )
-  );
-  INSERT INTO status_search (rowid, text, tags, scope)
-    SELECT id, text, tags, scope FROM status_search_rows
-    WHERE id IN (SELECT id FROM status_search_documents WHERE remote_status_id IN (
-      SELECT id FROM remote_statuses WHERE actor_uri = NEW.actor_uri AND visibility = 'public'
-    ));
+  INSERT INTO status_search_stale_authors (kind, author) VALUES ('Remote', NEW.actor_uri)
+    ON CONFLICT (kind, author) DO UPDATE SET after_id = '', generation = generation + 1
+      WHERE status_search_stale_authors.author = excluded.author;
 END;
-

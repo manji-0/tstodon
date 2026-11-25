@@ -86,3 +86,74 @@ export const backfillRemoteSearchDocuments = async (
     ]);
     return { scanned: rows.length, chained };
   });
+
+const StaleAuthorRow = z.object({
+  kind: z.literal(["Local", "Remote"]),
+  author: z.string(),
+  after_id: z.string(),
+  generation: z.number(),
+});
+
+/**
+ * Write again a page of the index rows of an author whose `indexable`
+ * changed (`status_search_stale_authors`, migration 0015): its public notes
+ * from the author's cursor, by id. A full page moves the cursor; a short one
+ * ends the author's walk. Either write is dropped when the flag changed again
+ * meanwhile, which restarted the walk. `scanned` is 0 when no author waits;
+ * `chained` when one did, as another may wait too.
+ */
+export const reindexStaleAuthors = async (
+  db: D1Database,
+  pageSize: number = STATUS_SEARCH_BACKFILL_PAGE,
+): Promise<Result<Readonly<{ scanned: number; chained: boolean }>, RepositoryError>> =>
+  runD1(async () => {
+    const stale = StaleAuthorRow.safeParse(
+      await db
+        .prepare(
+          "SELECT kind, author, after_id, generation FROM status_search_stale_authors LIMIT 1",
+        )
+        .first(),
+    );
+    if (!stale.success) {
+      return { scanned: 0, chained: false };
+    }
+    const { kind, author, after_id: after, generation } = stale.data;
+    const { results } = await db
+      .prepare(
+        kind === "Local"
+          ? `SELECT id FROM statuses
+             WHERE account_id = ? AND visibility = 'public' AND id > ? ORDER BY id LIMIT ?`
+          : `SELECT id FROM remote_statuses
+             WHERE actor_uri = ? AND visibility = 'public' AND id > ? ORDER BY id LIMIT ?`,
+      )
+      .bind(author, after, pageSize)
+      .all();
+    const ids = parseRows(z.object({ id: z.string() }), results).map((row) => row.id);
+    const documents = `SELECT id FROM status_search_documents
+      WHERE ${kind === "Local" ? "status_id" : "remote_status_id"} IN (SELECT value FROM json_each(?))`;
+    const idsJson = JSON.stringify(ids);
+    const last = ids.at(-1);
+    await db.batch([
+      db.prepare(`DELETE FROM status_search WHERE rowid IN (${documents})`).bind(idsJson),
+      db
+        .prepare(
+          `INSERT INTO status_search (rowid, text, tags, scope)
+           SELECT id, text, tags, scope FROM status_search_rows WHERE id IN (${documents})`,
+        )
+        .bind(idsJson),
+      ids.length === pageSize && last !== undefined
+        ? db
+            .prepare(
+              `UPDATE status_search_stale_authors SET after_id = ?
+               WHERE kind = ? AND author = ? AND generation = ?`,
+            )
+            .bind(last, kind, author, generation)
+        : db
+            .prepare(
+              `DELETE FROM status_search_stale_authors
+               WHERE kind = ? AND author = ? AND generation = ?`,
+            )
+            .bind(kind, author, generation),
+    ]);
+    return { scanned: Math.max(ids.length, 1), chained: true };
+  });

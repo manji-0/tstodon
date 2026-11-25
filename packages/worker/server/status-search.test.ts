@@ -8,6 +8,7 @@ import { remoteActor } from "../test/remote-actor-fixture";
 import { entityIdAt } from "./ids";
 import { processOutboxJob } from "./outbox-job";
 import { upsertRemoteStatus } from "./remote-status-store";
+import { reindexStaleAuthors } from "./status-search-documents";
 
 const json = async (
   path: string,
@@ -92,6 +93,20 @@ const setRemoteIndexable = async (actorUri: string, indexable: boolean): Promise
     .run();
 };
 
+/** Run the search index's job until no author whose `indexable` changed waits. */
+const reindex = async (): Promise<void> => {
+  for (let page = 0; page < 50; page += 1) {
+    expect(await processOutboxJob(env, { kind: "BackfillStatusSearch" })).toBe("ok");
+    const waiting = await env.DB.prepare(
+      "SELECT count(*) AS n FROM status_search_stale_authors",
+    ).first("n");
+    if (waiting === 0) {
+      return;
+    }
+  }
+  throw new Error("the stale authors were not reindexed");
+};
+
 describe("status search", () => {
   it("pages statuses with offset, counting only the ones the viewer may see", async () => {
     const viewer = "status-search-pager@example.com";
@@ -173,8 +188,66 @@ describe("status search", () => {
     expect(await found(author, q("unindexedstatusq"))).toEqual([later, faved, kept]);
     expect(await found(fan, q("unindexedstatusq"))).toEqual([faved]);
 
+    // The flag is read as it stands now: the notes indexed as public before
+    // it changed show again at once, and the job indexes the later one.
     await send(author, "PATCH", "/api/v1/accounts/update_credentials", { indexable: true });
+    expect(await found(reader, q("unindexedstatusq"))).toEqual([faved, kept]);
+    await reindex();
     expect(await found(reader, q("unindexedstatusq"))).toEqual([later, faved, kept]);
+    await send(author, "PATCH", "/api/v1/accounts/update_credentials", { indexable: false });
+    await reindex();
+    expect(await found(reader, q("unindexedstatusq in:public"))).toEqual([]);
+    expect(await found(fan, q("unindexedstatusq in:library"))).toEqual([faved]);
+  });
+
+  // An author's flag is written to its notes' index rows by a job, a page at
+  // a time; until then the query reads the flag itself.
+  it("reindexes an author's notes in pages after its flag changes", async () => {
+    const author = "status-search-pages@example.com";
+    const reader = "status-search-pages-reader@example.com";
+    const account = await accountOf(author);
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      ids.push(await post(author, `pagedreindexq ${index}`));
+    }
+    await send(author, "PATCH", "/api/v1/accounts/update_credentials", { indexable: false });
+    expect(await found(reader, q("pagedreindexq"))).toEqual([]);
+    const pages = [];
+    for (;;) {
+      const page = await reindexStaleAuthors(env.DB, 2);
+      expect(page.isOk()).toBe(true);
+      if (page._unsafeUnwrap().scanned === 0) {
+        break;
+      }
+      pages.push(page._unsafeUnwrap().scanned);
+    }
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    const stale = await env.DB.prepare(
+      "SELECT count(*) AS n FROM status_search_stale_authors WHERE author = ?",
+    )
+      .bind(account.id)
+      .first("n");
+    expect(stale).toBe(0);
+    await send(author, "PATCH", "/api/v1/accounts/update_credentials", { indexable: true });
+    await reindex();
+    expect(await found(reader, q("pagedreindexq"))).toEqual(ids.toReversed());
+  });
+
+  // Inputs Mastodon answers with no status rather than an error.
+  it("answers odd queries and pages with no status, not an error", async () => {
+    const reader = "status-search-odd-reader@example.com";
+    const id = await post("status-search-odd@example.com", "oddq note");
+    for (const property of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(await found(reader, q(`oddq has:${property}`)), property).toEqual([]);
+      expect(await found(reader, q(`oddq -has:${property}`)), property).toEqual([id]);
+    }
+    expect(await found(reader, q(`oddq after:${"9".repeat(310)}`))).toEqual([]);
+    expect(await found(reader, q(`oddq before:${"9".repeat(17)}`))).toEqual([]);
+    expect(await found(reader, `${q("oddq")}&limit=20&offset=9990`)).toEqual([]);
+    expect(await found(reader, `${q("oddq")}&limit=20&offset=9979`)).toEqual([]);
+    const many = Array.from({ length: 90 }, (_, index) => `from:nobody${index}`).join(" ");
+    expect(await found(reader, q(`oddq ${many}`))).toEqual([]);
+    expect(await found(reader, q(`oddq ${"language:en ".repeat(90)}`))).toEqual([]);
   });
 
   it("matches words and their stems, accents folded, not parts of words", async () => {
@@ -289,6 +362,9 @@ describe("status search", () => {
 
     await setRemoteIndexable(open.actorUri, false);
     await setRemoteIndexable(closed.actorUri, true);
+    // The actor that is no longer indexable is left out at once.
+    expect(await found(reader, q("remoteq"))).toEqual([]);
+    await reindex();
     expect(await found(reader, q("remoteq"))).toEqual([hidden.id]);
 
     const edited = { ...hidden, contentHtml: "<p>remoteq rewritten</p>" };

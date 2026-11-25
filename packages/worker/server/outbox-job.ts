@@ -1,4 +1,4 @@
-import { backfillRemoteSearchDocuments } from "./status-search-documents";
+import { backfillRemoteSearchDocuments, reindexStaleAuthors } from "./status-search-documents";
 import { assertNever } from "@tstodon/core";
 import type { OutboxJob as OutboxJobValue } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
@@ -279,7 +279,13 @@ export const processOutboxJob = async (
       });
     case "BackfillStatusSearch":
       return measureJobPage(env, job.kind, async () => {
-        const page = await backfillRemoteSearchDocuments(env.DB);
+        // An author whose `indexable` changed first, then the remote notes
+        // cached before the index; one page of either a run.
+        const stale = await reindexStaleAuthors(env.DB);
+        const page =
+          stale.isOk() && stale.value.scanned === 0
+            ? await backfillRemoteSearchDocuments(env.DB)
+            : stale;
         if (page.isErr()) {
           return { outcome: "retry", size: 0, chained: false };
         }

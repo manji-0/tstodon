@@ -94,6 +94,14 @@ describe("the status filter's plans", () => {
     expect(details).toContainEqual(
       expect.stringMatching(/^SEARCH r USING INDEX \S+ \(id=\?\)( LEFT-JOIN)?$/),
     );
+    // The checks of the author's flag and the viewer's library seek by key;
+    // `remote_actor_domain_rules` is the instance rules' view, read once.
+    expect(
+      details.filter(
+        (detail) =>
+          detail.startsWith("SCAN ") && !/VIRTUAL TABLE|remote_actor_domain_rules/.test(detail),
+      ),
+    ).toEqual([]);
     const unordered = await planOf("status_search", run, (sql) =>
       sql.replace("ORDER BY status_search.rowid DESC", ""),
     );
