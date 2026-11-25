@@ -128,6 +128,8 @@ export const ApiInstance = z.object({
     url: z.string().nullable(),
   }),
   api_versions: z.object({ mastodon: z.number() }),
+  /** The year whose annual reports are offered now, `null` outside the campaign. */
+  wrapstodon: z.number().nullable(),
   contact: z.object({
     email: z.string().nullable(),
     account: ApiAccount.nullable(),

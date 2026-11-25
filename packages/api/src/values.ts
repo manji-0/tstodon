@@ -293,6 +293,16 @@ export type EmojiStyle = (typeof EMOJI_STYLES)[number];
 export const ANNUAL_REPORT_STATES = ["available", "generating", "eligible", "ineligible"] as const;
 export type AnnualReportState = (typeof ANNUAL_REPORT_STATES)[number];
 
+/** `AnnualReport::Archetype`: what a year's posting looked like. */
+export const ANNUAL_REPORT_ARCHETYPES = [
+  "lurker",
+  "booster",
+  "pollster",
+  "replier",
+  "oracle",
+] as const;
+export type AnnualReportArchetype = (typeof ANNUAL_REPORT_ARCHETYPES)[number];
+
 /**
  * The events of Mastodon's streaming API (`streaming/index.js`, the
  * `event` of a WebSocket message or an SSE frame). tstodon sends `update`,

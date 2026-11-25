@@ -64,6 +64,7 @@ import { processPurgeRemoteActorJob } from "./remote-actor-purge";
 import { processFederatePendingStatusesJob } from "./pending-status-federation";
 import { processVerifyProfileLinksJob } from "./profile-link-verification";
 import { processSynchronizeFollowersJob } from "./remote-followers-synchronization";
+import { processGenerateAnnualReportJob } from "./annual-report-generation";
 
 const PUBLIC_COLLECTION = "https://www.w3.org/ns/activitystreams#Public";
 
@@ -410,6 +411,8 @@ export const processOutboxJob = async (
       return synchronizeRemoteCollectionsJob(env, job);
     case "ResolveTaggedCollection":
       return processResolveTaggedCollectionJob(env, job);
+    case "GenerateAnnualReport":
+      return processGenerateAnnualReportJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);

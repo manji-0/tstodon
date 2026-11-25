@@ -133,16 +133,20 @@ test.describe("routing in the web UI", () => {
     await expect(status(page, "scroll-01")).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 900));
     await expect.poll(() => scrollY(page)).toBe(900);
-    // The post in the middle of the window.
-    const label = await page.evaluate(() => {
-      const middle = window.innerHeight / 2;
-      const content = [...document.querySelectorAll(".status__content")].find((element) => {
-        const { top, bottom } = element.getBoundingClientRect();
-        return top < middle && bottom > 0 && top > 0;
+    // The post in the middle of the window. The timeline renders an item that
+    // scrolls into view only once its intersection observer fires, so wait
+    // for one to be drawn there rather than reading the window at once.
+    const middlePost = () =>
+      page.evaluate(() => {
+        const middle = window.innerHeight / 2;
+        const content = [...document.querySelectorAll(".status__content")].find((element) => {
+          const { top, bottom } = element.getBoundingClientRect();
+          return top < middle && bottom > 0 && top > 0;
+        });
+        return content?.textContent?.match(/scroll-\d+/)?.[0] ?? "";
       });
-      return content?.textContent?.match(/scroll-\d+/)?.[0] ?? "";
-    });
-    expect(label).not.toBe("");
+    await expect.poll(middlePost).not.toBe("");
+    const label = await middlePost();
     const target = status(page, label);
     const before = await scrollY(page);
 

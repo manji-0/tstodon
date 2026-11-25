@@ -109,6 +109,7 @@ const SCOPE_RULES: ReadonlyArray<ScopeRule> = [
   // The dashboard's metrics are read with a POST, under `admin:read`.
   rule("/api/v1/admin/(?:measures|dimensions|retention)", "admin:read", "admin:read"),
 
+  rule("/api/v1/annual_reports(?:/.*)?", "read:accounts", "write:accounts"),
   rule("/api/v1/announcements/:id/reactions/:name", NONE, "write:favourites"),
   rule("/api/v1/announcements(?:/.*)?", "read", "write:accounts"),
   rule("/api/v1/blocks", "read:blocks", NONE),
