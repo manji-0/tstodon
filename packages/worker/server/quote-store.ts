@@ -210,6 +210,14 @@ export const deleteQuoteByQuoting = async (
       .run();
   });
 
+/**
+ * The quotes of a page's local and remote statuses. With table statistics,
+ * it seeks the partial indexes on the quoting columns, not the mostly-NULL
+ * unique ones (migration 0016, `quote-plans.test.ts`).
+ */
+export const QUOTES_BY_QUOTING_SQL = `SELECT ${SELECT} FROM status_quotes
+  WHERE status_id ${sqlInJsonEach()} OR remote_status_id ${sqlInJsonEach()}`;
+
 /** The quotes made by several quoting statuses, keyed by quoting status id. */
 export const findQuotesByQuoting = async (
   db: D1Database,
@@ -220,10 +228,7 @@ export const findQuotesByQuoting = async (
       return new Map<string, QuoteValue>();
     }
     const { results } = await db
-      .prepare(
-        `SELECT ${SELECT} FROM status_quotes
-         WHERE status_id ${sqlInJsonEach()} OR remote_status_id ${sqlInJsonEach()}`,
-      )
+      .prepare(QUOTES_BY_QUOTING_SQL)
       .bind(...targetIdBinds(targets))
       .all();
     return new Map(
