@@ -35,12 +35,26 @@ export const fallbackLinkCard = (url: string): ApiPreviewCardJSON | undefined =>
 export const linkPublisher = (url: string): string | undefined =>
   URL.canParse(url) ? new URL(url).hostname.toLowerCase() || undefined : undefined;
 
-const publisherExcluded = (url: string, hosts: ReadonlySet<string> | undefined): boolean => {
-  if (!hosts || hosts.size === 0) {
-    return false;
+/** The hosts among `hosts` whose provider a moderator rejected. */
+export type RejectedPublishers = (
+  hosts: ReadonlyArray<string>,
+) => Promise<Result<ReadonlySet<string>, RepositoryError>>;
+
+/** `urls` without the links of a rejected publisher, in their order. */
+const withoutRejectedPublishers = async (
+  urls: ReadonlyArray<string>,
+  rejectedPublishers: RejectedPublishers | undefined,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> => {
+  if (rejectedPublishers === undefined || urls.length === 0) {
+    return ok(urls);
   }
-  const host = linkPublisher(url);
-  return host !== undefined && hosts.has(host);
+  const rejected = await rejectedPublishers(urls.flatMap((url) => linkPublisher(url) ?? []));
+  return rejected.map((hosts) =>
+    urls.filter((url) => {
+      const host = linkPublisher(url);
+      return host === undefined || !hosts.has(host);
+    }),
+  );
 };
 
 export type TrendingLink = Readonly<{
@@ -108,7 +122,7 @@ export const findTrendingLinkUrl = async (
   db: D1Database,
   url: string,
   excluded: ReadonlySet<string>,
-  excludedPublishers?: ReadonlySet<string>,
+  rejectedPublishers: RejectedPublishers,
 ): Promise<Result<string | undefined, RepositoryError>> => {
   const wanted = normalizeLinkUrl(url);
   if (!wanted) {
@@ -118,13 +132,11 @@ export const findTrendingLinkUrl = async (
   if (counts.isErr()) {
     return err(counts.error);
   }
-  const trending = [...counts.value.keys()].some(
-    (link) =>
-      !excluded.has(link) &&
-      !publisherExcluded(link, excludedPublishers) &&
-      normalizeLinkUrl(link) === wanted,
+  const candidates = [...counts.value.keys()].filter(
+    (link) => !excluded.has(link) && normalizeLinkUrl(link) === wanted,
   );
-  return ok(trending ? wanted : undefined);
+  const trending = await withoutRejectedPublishers(candidates, rejectedPublishers);
+  return trending.map((links) => (links.length > 0 ? wanted : undefined));
 };
 
 /**
@@ -137,19 +149,25 @@ export const listTrendingLinks = async (
     limit: number;
     offset?: number;
     excluded?: ReadonlySet<string>;
-    /** Publishers (hosts) a moderator rejected: none of their links trend. */
-    excludedPublishers?: ReadonlySet<string>;
+    /** None of the links of a rejected publisher trend. */
+    rejectedPublishers?: RejectedPublishers;
   }>,
 ): Promise<Result<ReadonlyArray<TrendingLink>, RepositoryError>> => {
   const counts = await trendingLinkUses(db);
   if (counts.isErr()) {
     return err(counts.error);
   }
+  const allowed = await withoutRejectedPublishers(
+    [...counts.value.keys()].filter((url) => !options.excluded?.has(url)),
+    options.rejectedPublishers,
+  );
+  if (allowed.isErr()) {
+    return err(allowed.error);
+  }
   const offset = options.offset ?? 0;
+  const trending = new Set(allowed.value);
   const ranked = [...counts.value.entries()]
-    .filter(
-      ([url]) => !options.excluded?.has(url) && !publisherExcluded(url, options.excludedPublishers),
-    )
+    .filter(([url]) => trending.has(url))
     .toSorted((left, right) => right[1].uses - left[1].uses || left[0].localeCompare(right[0]))
     .slice(offset, offset + options.limit);
   // Prefer the unfurled card when the link has been previewed, so trends
