@@ -16,6 +16,7 @@ import { attemptInboxDelivery } from "./delivery";
 import { processOutboxJob } from "./outbox-job";
 import { requestQuoteRefresh } from "./quote-retry-queue";
 import { findRemoteActorByUri } from "./remote-actor-store";
+import { RemoteAccountId } from "./remote-account-id";
 import { persistRemoteObject } from "./remote-status-persist";
 import { parseInstanceIdentity } from "./runtime-config";
 import { unsignedFetch } from "./federated-fetch";
@@ -246,6 +247,45 @@ describe("RefetchAndVerifyQuote (Mastodon's RefetchAndVerifyQuoteWorker)", () =>
     );
     expect(jobsOf(running, "RefetchAndVerifyQuote")).toEqual([]);
     await announcedUpdate(after.remote_status_id);
+  });
+
+  it("tells the local boosters of the quoting note when a later run accepts the quote", async () => {
+    const q = await setup("qr-stamp-boosters");
+    stubFetch({ [q.carolNote.id]: q.carolNote, [q.stampUri]: SERVER_ERROR });
+    const storing = recordingEnv();
+    await q.store(storing);
+    const message = queuedRefetch(storing, 1);
+    const bobNoteId = (await q.quoteRow()).remote_status_id;
+    const daveEmail = "qr-stamp-boosters-dave@example.com";
+    const dave = await signedInAccount(daveEmail);
+    const boosted = await SELF.fetch(`https://example.com/api/v1/statuses/${bobNoteId}/reblog`, {
+      method: "POST",
+      headers: await authHeaders(daveEmail),
+    });
+    expect(boosted.status).toBe(200);
+
+    stubFetch({ [q.stampUri]: q.stamp });
+    const running = recordingEnv();
+    expect(await runJob(running, message)).toBe("ok");
+    // The booster jobs the run queued, run as the queue would.
+    let jobs = jobsOf(running, "NotifyRemoteNoteBoosters").map((entry) => entry.message);
+    while (jobs.length > 0) {
+      const next = recordingEnv();
+      for (const job of jobs) {
+        expect(await runJob(next, job)).toBe("ok");
+      }
+      jobs = jobsOf(next, "NotifyRemoteNoteBoosters").map((entry) => entry.message);
+    }
+
+    // As the worker distributes the note with `update` and notifications.
+    const { results } = await env.DB.prepare(
+      "SELECT account_id, from_account_id FROM notifications WHERE status_id = ? AND kind = 'update'",
+    )
+      .bind(bobNoteId)
+      .all();
+    expect(results).toEqual([
+      { account_id: dave.id, from_account_id: RemoteAccountId.encode(q.bob.actorUri) },
+    ]);
   });
 
   it("queues a refetch when the quoted note does not resolve; a later run resolves it", async () => {

@@ -17,7 +17,7 @@ import { z } from "zod";
 import { err, ok, type Result } from "neverthrow";
 import { forwardRemoteActivity, type ReceivedActivity } from "./activity-forward";
 import { signedInRecentlySince } from "./account-activity";
-import { nowInstant } from "./clock";
+import { nowInstant, nowIso } from "./clock";
 import { readableRow, type RepositoryError } from "./d1";
 import { parseInstanceIdentity } from "./runtime-config";
 import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
@@ -71,11 +71,12 @@ import {
   recordRemoteStatusMentions,
 } from "./mention-store";
 import { measureJobPage } from "./metrics";
-import { notifyNoteBoosters } from "./note-booster-updates";
+import { notifyAboutUpdate } from "./note-booster-updates";
 import { isNotifyingRemoteFollower, notifyingRemoteFollowersPage } from "./outbound-follow-store";
 import { queueOutboxJobs } from "./queue-jobs";
 import { stringList } from "./form-values";
 import { type EmbeddedQuoted, type RemoteQuoteContext, syncRemoteQuote } from "./remote-quote";
+import { announceRemoteQuoteChange } from "./remote-quote-announce";
 
 const MentionTagsSchema = z.object({
   tag: z
@@ -878,14 +879,30 @@ const writeLateSteps = async (
   // Preview cards are built off the request path like for local posts.
   startLinkCard(env, "RemoteStatus", status.id, status.contentHtml, noteCardUrl(raw));
   if (late.kind === "Updated" && late.edit) {
-    const boosters = await notifyNoteBoosters(env, {
+    const notified = await notifyAboutUpdate(env, {
       kind: "RemoteStatus",
       statusId: status.id,
       actorUri: actor.actorUri,
       since: late.edit.createdAt,
     });
-    if (boosters.isErr()) {
-      return err(boosters.error);
+    if (notified.isErr()) {
+      return err(notified.error);
+    }
+  }
+  // An `Update` that edits nothing but changes its quote's state is
+  // distributed as an update, as Mastodon's `handle_implicit_update!` runs
+  // `DistributionWorker` then. A redelivery finds the state already changed
+  // and announces nothing again.
+  if (late.kind === "Updated" && !late.edit && quote.value) {
+    await announceRemoteQuoteChange(env, status);
+    const notified = await notifyAboutUpdate(env, {
+      kind: "RemoteStatus",
+      statusId: status.id,
+      actorUri: actor.actorUri,
+      since: nowIso(),
+    });
+    if (notified.isErr()) {
+      return err(notified.error);
     }
   }
   return ok(undefined);
@@ -1574,13 +1591,15 @@ const resumeCreated = async (
   }
   if (held.value === undefined) {
     return options.delivery === "QuoteRequest"
-      ? syncRemoteQuote(
-          env,
-          identity,
-          status,
-          raw,
-          remoteQuoteContext(env, identity, actor, options),
-        )
+      ? (
+          await syncRemoteQuote(
+            env,
+            identity,
+            status,
+            raw,
+            remoteQuoteContext(env, identity, actor, options),
+          )
+        ).map(() => undefined)
       : ok(undefined);
   }
   const note = parseNoteDocument(raw);

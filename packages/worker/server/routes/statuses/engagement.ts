@@ -32,9 +32,9 @@ import { findQuoteByQuoting, listQuotePage, saveQuoteState } from "../../quote-s
 import { federateStampDeletion } from "../../quote-stamp-revoke";
 import { findAccountById } from "../../account-store";
 import { nowIso } from "../../clock";
-import { startHomeFanOut } from "../../home-fan-out";
-import { announceNoteUpdate, notifyAboutUpdate } from "../../local-status-update";
-import { startPublicFanOut } from "../../public-fan-out";
+import { announceNoteUpdate } from "../../local-status-update";
+import { notifyAboutUpdate } from "../../note-booster-updates";
+import { announceRemoteQuoteChange } from "../../remote-quote-announce";
 
 const statusEngagementAccounts = async (
   c: Context<{ Bindings: Env }>,
@@ -192,16 +192,17 @@ export const getV1StatusesByIdQuotes = async (
 };
 
 /**
- * Tell local streams the quoting status changed, as Mastodon's
- * `DistributionWorker` with `update: true`, and for a local one the local
- * accounts that boosted or quoted it (`notify_about_update!`). The stamp `Delete` is what
- * reaches other servers.
+ * Tell local streams the quoting status changed, and the local accounts that
+ * boosted or quoted it, local or remote, as Mastodon's `RevokeQuoteService`
+ * runs `DistributionWorker` with `update: true` (`notify_about_update!`).
+ * The stamp `Delete` is what reaches other servers.
  */
 const publishQuoteRevoke = async (
   env: Env,
   identity: InstanceIdentity,
   quoting: FoundStatus,
 ): Promise<void> => {
+  const now = nowIso();
   if (quoting.kind === "LocalStatus") {
     if (quoting.status.kind !== "LocalNote") {
       return;
@@ -210,7 +211,6 @@ const publishQuoteRevoke = async (
     if (author.isErr() || !author.value) {
       return;
     }
-    const now = nowIso();
     const announced = await announceNoteUpdate(
       env,
       identity,
@@ -221,7 +221,12 @@ const publishQuoteRevoke = async (
       // A revoked quote is no edit of the note quoting it.
       "Unedited",
     );
-    const notified = await notifyAboutUpdate(env, quoting.status, now);
+    const notified = await notifyAboutUpdate(env, {
+      kind: "LocalStatus",
+      statusId: quoting.status.id,
+      accountId: quoting.status.accountId,
+      since: now,
+    });
     if (announced.isErr() || notified.isErr()) {
       console.error(
         JSON.stringify({ kind: "QuoteRevokeNotAnnounced", statusId: quoting.status.id }),
@@ -229,13 +234,15 @@ const publishQuoteRevoke = async (
     }
     return;
   }
-  await startHomeFanOut(env, {
-    event: "status.update",
-    entryId: quoting.status.id,
-    author: { kind: "RemoteActor", actorUri: quoting.status.actorUri },
+  await announceRemoteQuoteChange(env, quoting.status);
+  const notified = await notifyAboutUpdate(env, {
+    kind: "RemoteStatus",
+    statusId: quoting.status.id,
+    actorUri: quoting.status.actorUri,
+    since: now,
   });
-  if (quoting.status.visibility.kind === "Public") {
-    await startPublicFanOut(env, { event: "status.update", entryId: quoting.status.id });
+  if (notified.isErr()) {
+    console.error(JSON.stringify({ kind: "QuoteRevokeNotAnnounced", statusId: quoting.status.id }));
   }
 };
 

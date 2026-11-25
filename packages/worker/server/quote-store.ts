@@ -333,19 +333,20 @@ export const listQuotePage = async (
     });
   });
 
-/** The local authors and statuses of the accepted quotes of one local status. */
+/** The local authors and statuses of the accepted quotes of one local or remote status. */
 export const listAcceptedQuoteEdges = async (
   db: D1Database,
-  quotedStatusId: string,
+  quoted: StatusTargetValue,
 ): Promise<Result<ReadonlyArray<{ statusId: string; accountId: string }>, RepositoryError>> =>
   runD1(async () => {
     const { results } = await db
       .prepare(
         `SELECT q.status_id AS status_id, s.account_id AS account_id
          FROM status_quotes q JOIN statuses s ON s.id = q.status_id
-         WHERE q.quoted_status_id = ? AND q.state = 'accepted'`,
+         WHERE q.${quoted.kind === "LocalStatus" ? "quoted_status_id" : "quoted_remote_status_id"} = ?
+           AND q.state = 'accepted'`,
       )
-      .bind(quotedStatusId)
+      .bind(quoted.statusId)
       .all();
     return parseRows(QuoteEdgeRow, results).map((row) => ({
       statusId: row.status_id,
