@@ -13,6 +13,8 @@ export type ForwardedReport = Readonly<{
   targetUri: string;
   comment: string;
   statusUris: ReadonlyArray<string>;
+  /** The reported collections' URIs (`FlagSerializer#collection_uris`). */
+  collectionUris: ReadonlyArray<string>;
 }>;
 
 /**
@@ -36,7 +38,7 @@ const sendFlag = (
       type: "Flag",
       actor,
       content: report.comment,
-      object: [report.targetUri, ...report.statusUris],
+      object: [report.targetUri, ...report.statusUris, ...report.collectionUris],
     },
     inboxUrl,
   );

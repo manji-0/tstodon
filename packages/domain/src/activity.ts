@@ -96,6 +96,17 @@ const QuoteRequestSchema = z.object({
 });
 
 /**
+ * FEP-7aa9: the actor asks to feature `object` (an account) in the
+ * collection its `instrument` names, read from the raw activity.
+ */
+const FeatureRequestSchema = z.object({
+  kind: z.literal("FeatureRequest"),
+  id: ActivityId.schema,
+  actor: z.string().min(1),
+  object: z.string().min(1),
+});
+
+/**
  * The actor adds `object` to a collection of its own, named by the `target`
  * read from the raw activity: a note to its `featured` collection is a pin.
  */
@@ -132,6 +143,7 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
   AnnounceSchema,
   FlagSchema,
   QuoteRequestSchema,
+  FeatureRequestSchema,
   AddSchema,
   RemoveSchema,
 ]);

@@ -6,8 +6,8 @@ import { z } from "zod";
  * string here. `rule_ids` are the instance's rule ids, kept for `violation`
  * reports only. `forward` sends a report on a remote account to its server;
  * `forward_to_domains` names the servers of the accounts the reported posts
- * reply to that should get it too. Reports keep no collections
- * yet: `collection_ids` (Mastodon 4.6) is read and ignored (FED-20).
+ * reply to that should get it too. `collection_ids` are the reported
+ * account's collections (Mastodon 4.7).
  */
 export const ApiCreateReportParamsSchema = z.object({
   account_id: z.string().min(1),

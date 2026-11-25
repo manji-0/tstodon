@@ -223,7 +223,7 @@ const REPORT = /^\/api\/v1\/reports\/?$/;
 const APP_REGISTRATION = /^\/api\/v1\/apps\/?$/;
 const USER_INBOX = /^\/users\/[^/]+\/inbox\/?$/;
 const FEDERATION_FETCH =
-  /^\/(?:\.well-known\/[^/]+|nodeinfo(?:\/.*)?|users\/.+|emojis\/[^/]+|actor)\/?$/;
+  /^\/(?:\.well-known\/[^/]+|nodeinfo(?:\/.*)?|users\/.+|ap\/users\/.+|emojis\/[^/]+|actor)\/?$/;
 
 const isInboxPath = (path: string): boolean =>
   path === "/inbox" || path === "/actor/inbox" || USER_INBOX.test(path);

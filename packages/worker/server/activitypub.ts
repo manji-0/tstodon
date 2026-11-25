@@ -1,4 +1,5 @@
 import { extractHashtags } from "@tstodon/core";
+import { featuredCollectionsUri } from "./collection-documents";
 import { tagUrl } from "./tag-documents";
 import {
   InstanceIdentity,
@@ -75,6 +76,12 @@ const ACTOR_CONTEXT_TERMS = {
   suspended: "toot:suspended",
   indexable: "toot:indexable",
   Emoji: "toot:Emoji",
+  gts: "https://gotosocial.org/ns#",
+  interactionPolicy: { "@id": "gts:interactionPolicy", "@type": "@id" },
+  canFeature: { "@id": "https://w3id.org/fep/7aa9#canFeature", "@type": "@id" },
+  canQuote: { "@id": "gts:canQuote", "@type": "@id" },
+  automaticApproval: { "@id": "gts:automaticApproval", "@type": "@id" },
+  manualApproval: { "@id": "gts:manualApproval", "@type": "@id" },
 } as const;
 
 /**
@@ -182,6 +189,16 @@ export const actorDocument = (
     following: `${id}/following`,
     featured: featuredCollectionUri(id),
     featuredTags: featuredTagsCollectionUri(id),
+    featuredCollections: featuredCollectionsUri(identity, account.id),
+    // `ActorSerializer#interaction_policy`: anyone may feature a discoverable,
+    // unlocked account; a locked one its followers; any other only itself.
+    interactionPolicy: {
+      canFeature: {
+        automaticApproval: [
+          !profile?.discoverable ? id : account.locked ? `${id}/followers` : PUBLIC_COLLECTION,
+        ],
+      },
+    },
     endpoints: {
       sharedInbox: InstanceIdentity.sharedInboxUrl(identity),
     },

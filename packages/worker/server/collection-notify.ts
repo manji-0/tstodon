@@ -1,4 +1,4 @@
-import type { Collection } from "@tstodon/domain";
+import type { Collection, RemoteCollection } from "@tstodon/domain";
 import { ok, type Result } from "neverthrow";
 import { type RepositoryError, runD1 } from "./d1";
 import { notifyAccount } from "./notify";
@@ -9,13 +9,14 @@ import { notifyAccount } from "./notify";
  */
 export const notifyAddedToCollection = (
   env: Env,
-  collection: Collection,
+  collection: Collection | RemoteCollection,
   itemId: string,
   accountId: string,
 ): Promise<Result<void, RepositoryError>> =>
   notifyAccount(env, {
     accountId,
     fromAccountId: collection.accountId,
+    ...(collection.kind === "RemoteCollection" ? { fromActorUri: collection.actorUri } : {}),
     kind: "added_to_collection",
     collectionItemId: itemId,
   });

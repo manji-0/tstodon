@@ -7,9 +7,13 @@ import {
 import { isHashtagName, Languages, warmSchemas } from "@tstodon/core";
 import {
   Collection,
+  CollectionItem,
   type CollectionFields,
   type CollectionValidationError,
-  type InstanceIdentity,
+  InstanceIdentity,
+  type LocalAccount,
+  type RemoteActor,
+  type RemoteCollection,
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
@@ -18,7 +22,23 @@ import { findAccountProfile } from "../account-profile-store";
 import { authenticate } from "../auth";
 import { findBlock } from "../block-mute-store";
 import { nowIso } from "../clock";
-import { collectionViewer, mastodonCollection } from "../collection-documents";
+import {
+  collectionViewer,
+  featureAuthorizationContext,
+  featureAuthorizationUri,
+  mastodonCollection,
+} from "../collection-documents";
+import { enqueueTargetedActivity } from "../delivery";
+import { deliveredActivity } from "../own-activity-signature";
+import { findRemoteBlock } from "../remote-block-store";
+import {
+  countRemoteCollectionsOf,
+  findRemoteCollection,
+  listRemoteCollectionsFeaturing,
+  listRemoteCollectionsOf,
+  setRemoteItemState,
+} from "../remote-curated-collection-store";
+import { federateCollection } from "../collection-federation";
 import { notifyAddedToCollection, notifyCollectionUpdate } from "../collection-notify";
 import {
   countAccountCollections,
@@ -26,6 +46,7 @@ import {
   deleteCollection,
   deleteCollectionItem,
   findCollection,
+  findRemoteStanding,
   findTag,
   insertCollection,
   insertCollectionItem,
@@ -120,7 +141,7 @@ const optionalViewer = async (
  */
 type FoundAccount =
   | Readonly<{ kind: "Local"; id: string; discoverable: boolean; locked: boolean }>
-  | Readonly<{ kind: "Remote"; id: string }>;
+  | Readonly<{ kind: "Remote"; id: string; actor: RemoteActor }>;
 
 const findAccount = async (
   c: AnyContext,
@@ -150,13 +171,12 @@ const findAccount = async (
   if (remote.isErr()) {
     return jsonRepositoryError(c, remote.error.message);
   }
-  return remote.value ? { kind: "Remote", id } : undefined;
+  return remote.value ? { kind: "Remote", id, actor: remote.value } : undefined;
 };
 
 /**
- * `AccountPolicy#feature?` of `target` by `ownerId`. A remote account is
- * featureable only under a `canFeature` policy it federated; tstodon keeps
- * none, which Mastodon reads as `:missing`, so it is refused.
+ * `AccountPolicy#feature?` of `target` by `ownerId`: a local account's
+ * flags, or the `canFeature` policy a remote account federated.
  */
 const mayFeature = async (
   c: AnyContext,
@@ -164,7 +184,15 @@ const mayFeature = async (
   target: FoundAccount,
 ): Promise<boolean | Response> => {
   if (target.kind === "Remote") {
-    return false;
+    const standing = await findRemoteStanding(c.env.DB, ownerId, target.actor.actorUri);
+    if (standing.isErr()) {
+      return jsonRepositoryError(c, standing.error.message);
+    }
+    return Collection.featureable({
+      kind: "Remote",
+      policy: target.actor.profile.featurePolicy,
+      ...standing.value,
+    });
   }
   const [follow, blocking, blockedBy] = await Promise.all([
     findFollowKind(c.env.DB, ownerId, target.id),
@@ -181,6 +209,7 @@ const mayFeature = async (
     return jsonRepositoryError(c, blockedBy.error.message);
   }
   return Collection.featureable({
+    kind: "Local",
     ownerId,
     targetId: target.id,
     targetDiscoverable: target.discoverable,
@@ -310,8 +339,27 @@ const accountCollections = async (c: AnyContext, accountId: string): Promise<Res
   const limit = limitParam(rackQueryParam(c.req.url, "limit"), COLLECTIONS_PAGE);
   const path = `/api/v1/accounts/${encodeURIComponent(accountId)}/collections`;
   if (account.kind === "Remote") {
-    setCollectionLinks(c, path, { offset, shown: 0, total: 0 });
-    return c.json({ collections: [] });
+    const [remote, remoteTotal] = await Promise.all([
+      listRemoteCollectionsOf(
+        c.env.DB,
+        account.actor.actorUri,
+        { offset: Math.max(offset, 0), limit },
+        false,
+      ),
+      countRemoteCollectionsOf(c.env.DB, account.actor.actorUri),
+    ]);
+    if (remote.isErr()) {
+      return jsonRepositoryError(c, remote.error.message);
+    }
+    if (remoteTotal.isErr()) {
+      return jsonRepositoryError(c, remoteTotal.error.message);
+    }
+    setCollectionLinks(c, path, {
+      offset,
+      shown: remote.value.length,
+      total: remoteTotal.value,
+    });
+    return renderCollections(c, identity.value, remote.value, viewer.id);
   }
   const [collections, total, blocked] = await Promise.all([
     listAccountCollections(
@@ -343,7 +391,7 @@ const accountCollections = async (c: AnyContext, accountId: string): Promise<Res
 const renderCollections = async (
   c: AnyContext,
   identity: InstanceIdentity,
-  collections: ReadonlyArray<Collection>,
+  collections: ReadonlyArray<Collection | RemoteCollection>,
   viewerId: string | undefined,
 ): Promise<Response> => {
   const viewer = await collectionViewer(c.env.DB, viewerId, collections);
@@ -390,26 +438,37 @@ const featuredInCollections = async (c: AnyContext, accountId: string): Promise<
   }
   const offset = queryOffsetParam(c);
   const limit = limitParam(rackQueryParam(c.req.url, "limit"), LINK_PAGE);
-  const [collections, total] = await Promise.all([
-    listFeaturedInCollections(c.env.DB, account.id, { offset: Math.max(offset, 0), limit }),
+  const start = Math.max(offset, 0);
+  const [local, localTotal, remote] = await Promise.all([
+    listFeaturedInCollections(c.env.DB, account.id, { offset: start, limit }),
     countFeaturedInCollections(c.env.DB, account.id),
+    listRemoteCollectionsFeaturing(c.env.DB, account.id),
   ]);
-  if (collections.isErr()) {
-    return jsonRepositoryError(c, collections.error.message);
+  if (local.isErr()) {
+    return jsonRepositoryError(c, local.error.message);
   }
-  if (total.isErr()) {
-    return jsonRepositoryError(c, total.error.message);
+  if (localTotal.isErr()) {
+    return jsonRepositoryError(c, localTotal.error.message);
+  }
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
   }
   // `index_featured_in_collections?` refuses before the `Link` is set.
   if (account.id !== viewer.id) {
     return notAllowed(c);
   }
+  // The local collections, then the remote ones, as one list paged by `offset`.
+  const remoteStart = Math.max(start - localTotal.value, 0);
+  const collections = [
+    ...local.value,
+    ...remote.value.slice(remoteStart, remoteStart + limit - local.value.length),
+  ];
   setCollectionLinks(c, `/api/v1/accounts/${encodeURIComponent(accountId)}/in_collections`, {
     offset,
-    shown: collections.value.length,
-    total: total.value,
+    shown: collections.length,
+    total: localTotal.value + remote.value.length,
   });
-  return renderCollections(c, identity.value, collections.value, viewer.id);
+  return renderCollections(c, identity.value, collections, viewer.id);
 };
 
 export const getV1AccountsByIdInCollections = (
@@ -419,6 +478,22 @@ export const getV1AccountsByIdInCollections = (
 export const getV1AlphaAccountsByIdInCollections = (
   c: Context<{ Bindings: Env }, "/api/v1_alpha/accounts/:id/in_collections">,
 ) => featuredInCollections(c, c.req.param("id"));
+
+/** A local collection by id, or else a remote one. */
+const findAnyCollection = async (
+  c: AnyContext,
+  id: string,
+): Promise<Collection | RemoteCollection | undefined | Response> => {
+  const local = await findCollection(c.env.DB, id);
+  if (local.isErr()) {
+    return jsonRepositoryError(c, local.error.message);
+  }
+  if (local.value) {
+    return local.value;
+  }
+  const remote = await findRemoteCollection(c.env.DB, id);
+  return remote.isErr() ? jsonRepositoryError(c, remote.error.message) : remote.value;
+};
 
 /** `GET /api/v1/collections/:id`: the collection and its accounts, the owner first. */
 const showCollection = async (c: AnyContext, id: string): Promise<Response> => {
@@ -430,16 +505,20 @@ const showCollection = async (c: AnyContext, id: string): Promise<Response> => {
   if (viewer instanceof Response) {
     return viewer;
   }
-  const found = await findCollection(c.env.DB, id);
-  if (found.isErr()) {
-    return jsonRepositoryError(c, found.error.message);
+  const found = await findAnyCollection(c, id);
+  if (found instanceof Response) {
+    return found;
   }
-  if (!found.value) {
+  if (!found) {
     return notFound(c);
   }
-  const collection = found.value;
+  const collection = found;
   if (viewer.id !== undefined) {
-    const blocked = await findBlock(c.env.DB, collection.accountId, viewer.id);
+    // `CollectionPolicy#show?`: the owner, local or remote, blocks the viewer.
+    const blocked =
+      collection.kind === "LocalCollection"
+        ? await findBlock(c.env.DB, collection.accountId, viewer.id)
+        : await findRemoteBlock(c.env.DB, collection.actorUri, viewer.id);
     if (blocked.isErr()) {
       return jsonRepositoryError(c, blocked.error.message);
     }
@@ -547,8 +626,8 @@ const createCollection = async (c: AnyContext): Promise<Response> => {
       id: newEntityId(),
       accountId: target.id,
       position: index + 1,
-      state: "accepted",
       createdAt: now,
+      ...itemStart(identity.value, owner, target),
     })),
   });
   if (parsed.isErr()) {
@@ -560,10 +639,14 @@ const createCollection = async (c: AnyContext): Promise<Response> => {
     return jsonRepositoryError(c, stored.error.message);
   }
   await Promise.all(
-    collection.items.map((item) =>
-      notifyAddedToCollection(c.env, collection, item.id, item.accountId),
-    ),
+    collection.items
+      .filter((item) => item.state === "accepted")
+      .map((item) => notifyAddedToCollection(c.env, collection, item.id, item.accountId)),
   );
+  await federateCollection(c.env, owner, { kind: "Created", collection });
+  for (const item of collection.items.filter((candidate) => candidate.activityUri)) {
+    await federateCollection(c.env, owner, { kind: "FeatureRequested", collection, item });
+  }
   return renderCollection(c, identity.value, collection, owner.id);
 };
 
@@ -657,6 +740,7 @@ const changeCollection = async (c: AnyContext, id: string): Promise<Response> =>
   if (Collection.significantlyChanged(before, after.value)) {
     await notifyCollectionUpdate(c.env, after.value);
   }
+  await federateCollection(c.env, user.value, { kind: "Updated", collection: after.value });
   return renderCollection(c, identity.value, after.value, user.value.id);
 };
 
@@ -674,6 +758,7 @@ const destroyCollection = async (c: AnyContext, id: string): Promise<Response> =
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
   }
+  await federateCollection(c.env, user.value, { kind: "Deleted", collection });
   return c.body(null, 200);
 };
 
@@ -683,6 +768,23 @@ export const putV1CollectionsById = (c: Context<{ Bindings: Env }, "/api/v1/coll
   changeCollection(c, c.req.param("id"));
 export const deleteV1CollectionsById = (c: Context<{ Bindings: Env }, "/api/v1/collections/:id">) =>
   destroyCollection(c, c.req.param("id"));
+
+/**
+ * A new item's state: a local account is `accepted` at once, a remote one
+ * `pending` on the `FeatureRequest` sent for it, whose id
+ * `CollectionItem#set_activity_uri` makes under the owner's actor.
+ */
+const itemStart = (
+  identity: InstanceIdentity,
+  owner: LocalAccount,
+  target: FoundAccount,
+): Readonly<{ state: "accepted" }> | Readonly<{ state: "pending"; activityUri: string }> =>
+  target.kind === "Local"
+    ? { state: "accepted" }
+    : {
+        state: "pending",
+        activityUri: `${InstanceIdentity.actorUrl(identity, owner.username)}/feature_requests/${crypto.randomUUID()}`,
+      };
 
 /** `POST /api/v1/collections/:id/items`: feature one more account. */
 const addItem = async (c: AnyContext, collectionId: string): Promise<Response> => {
@@ -724,14 +826,33 @@ const addItem = async (c: AnyContext, collectionId: string): Promise<Response> =
     return notAllowed(c);
   }
   const createdAt = nowIso();
-  const item = { id: newEntityId(), accountId: target.id, state: "accepted", createdAt } as const;
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const item = {
+    id: newEntityId(),
+    accountId: target.id,
+    createdAt,
+    ...itemStart(identity.value, user.value, target),
+  };
   const inserted = await insertCollectionItem(c.env.DB, collection.id, item);
   if (inserted.isErr()) {
     return inserted.error.kind === "AlreadyFeatured"
       ? c.json({ error: "Validation failed: Account has already been taken" }, 422)
       : jsonRepositoryError(c, inserted.error.message);
   }
-  await notifyAddedToCollection(c.env, collection, item.id, item.accountId);
+  const added = CollectionItem.parse({ ...item, position: inserted.value });
+  if (target.kind === "Local") {
+    await notifyAddedToCollection(c.env, collection, item.id, item.accountId);
+  }
+  if (added.isOk()) {
+    await federateCollection(c.env, user.value, {
+      kind: target.kind === "Local" ? "ItemAdded" : "FeatureRequested",
+      collection,
+      item: added.value,
+    });
+  }
   return c.json({
     collection_item: {
       id: item.id,
@@ -773,6 +894,55 @@ const removeItem = async (c: AnyContext, collectionId: string, itemId: string) =
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
   }
+  await federateCollection(c.env, user.value, { kind: "ItemRemoved", ...found });
+  return c.body(null, 200);
+};
+
+/**
+ * `RevokeCollectionItemService` of a local account's item in a remote
+ * collection: revoked, and the `Delete` of its authorization, signed by the
+ * account, sent to the owner's inbox.
+ */
+const revokeRemoteItem = async (
+  c: AnyContext,
+  collection: RemoteCollection,
+  itemId: string,
+  featured: LocalAccount,
+): Promise<Response> => {
+  const item = collection.items.find((candidate) => candidate.id === itemId);
+  if (!item) {
+    return notFound(c);
+  }
+  if (item.accountId !== featured.id) {
+    return notAllowed(c);
+  }
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const revoked = await setRemoteItemState(c.env.DB, item.id, "revoked", nowIso());
+  if (revoked.isErr()) {
+    return jsonRepositoryError(c, revoked.error.message);
+  }
+  const owner = await findRemoteActorByUri(c.env.DB, collection.actorUri);
+  if (owner.isOk() && owner.value) {
+    const actor = InstanceIdentity.actorUrl(identity.value, featured.username);
+    const authorization = featureAuthorizationUri(identity.value, featured.id, item.id);
+    const activity = await deliveredActivity(c.env, featured, {
+      "@context": featureAuthorizationContext,
+      id: `${authorization}#delete`,
+      type: "Delete",
+      actor,
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+      object: {
+        id: authorization,
+        type: "FeatureAuthorization",
+        interactingObject: collection.uri,
+        interactionTarget: actor,
+      },
+    });
+    await enqueueTargetedActivity(c.env, featured, "Delete", activity, owner.value.inboxUri);
+  }
   return c.body(null, 200);
 };
 
@@ -781,6 +951,13 @@ const revokeItem = async (c: AnyContext, collectionId: string, itemId: string) =
   const user = await requireFunctionalUser(c);
   if (user.isErr()) {
     return user.error;
+  }
+  const remote = await findRemoteCollection(c.env.DB, collectionId);
+  if (remote.isErr()) {
+    return jsonRepositoryError(c, remote.error.message);
+  }
+  if (remote.value) {
+    return revokeRemoteItem(c, remote.value, itemId, user.value);
   }
   const found = await findItem(c, collectionId, itemId);
   if (found instanceof Response) {
@@ -792,6 +969,14 @@ const revokeItem = async (c: AnyContext, collectionId: string, itemId: string) =
   const revoked = await setCollectionItemState(c.env.DB, found.item.id, "revoked", nowIso());
   if (revoked.isErr()) {
     return jsonRepositoryError(c, revoked.error.message);
+  }
+  const owner = await findAccountById(c.env.DB, found.collection.accountId);
+  if (owner.isOk() && owner.value) {
+    await federateCollection(c.env, owner.value, {
+      kind: "ItemRevoked",
+      ...found,
+      featured: user.value,
+    });
   }
   return c.body(null, 200);
 };

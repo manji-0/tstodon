@@ -415,10 +415,14 @@ export {
 } from "./followers-synchronization";
 export {
   Collection,
+  RemoteCollection,
   CollectionItem,
   COLLECTION_ITEM_STATES,
   type CollectionFields,
   type CollectionItemState,
   type CollectionValidationError,
+  type FeatureApproval,
   type FeatureCandidate,
+  type FeaturePolicy,
+  FeaturePolicySchema,
 } from "./collection";

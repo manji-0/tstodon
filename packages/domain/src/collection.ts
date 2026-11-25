@@ -12,6 +12,10 @@ const CollectionItemSchema = z.object({
   position: z.number().int().positive(),
   state: z.literal(COLLECTION_ITEM_STATES),
   createdAt: IsoInstant.schema,
+  /** A remote account's item: the `FeatureRequest` sent for it. */
+  activityUri: z.string().optional(),
+  /** A remote account's item: the authorization its `Accept` named. */
+  approvalUri: z.string().optional(),
 });
 
 export type CollectionItem = z.infer<typeof CollectionItemSchema>;
@@ -38,6 +42,42 @@ const LocalCollectionSchema = z.object({
 
 export const CollectionSchema = z.discriminatedUnion("kind", [LocalCollectionSchema]);
 export type Collection = z.infer<typeof CollectionSchema>;
+
+/**
+ * A remote account's collection (Mastodon 4.7 `Collection` with
+ * `local: false`), as `ProcessFeaturedCollectionService` stores it.
+ * `accountId` is the owner's `r_…` id; `items` are those whose account is
+ * known (a local account, or a remote one its authorization verified).
+ */
+export const RemoteCollectionSchema = z.object({
+  kind: z.literal("RemoteCollection"),
+  id: z.string().min(1),
+  accountId: AccountId.schema,
+  actorUri: z.string().min(1),
+  uri: z.string().min(1),
+  url: z.string().min(1),
+  name: z.string(),
+  descriptionHtml: z.string(),
+  language: z.string().nullable(),
+  sensitive: z.boolean(),
+  discoverable: z.boolean(),
+  originalNumberOfItems: z.number().int().nonnegative(),
+  tagName: z.string().nullable(),
+  createdAt: IsoInstant.schema,
+  updatedAt: IsoInstant.schema,
+  items: z.array(CollectionItemSchema).readonly(),
+});
+export type RemoteCollection = z.infer<typeof RemoteCollectionSchema>;
+
+export const RemoteCollection = {
+  schema: RemoteCollectionSchema,
+  parse: schemaResult(RemoteCollectionSchema),
+  /** `ProcessFeaturedCollectionService::ITEMS_LIMIT`. */
+  itemsLimit: 150,
+  /** `Collection::NAME_LENGTH_HARD_LIMIT` and `DESCRIPTION_LENGTH_HARD_LIMIT`. */
+  nameLimit: 256,
+  descriptionLimit: 2048,
+} as const;
 
 /** The fields a client sets, as Rails casts them: `null` where the param was blank or absent. */
 export type CollectionFields = Readonly<{
@@ -187,7 +227,7 @@ const live = (item: CollectionItem): boolean =>
  * accounts it blocks.
  */
 const itemsFor = (
-  collection: Collection,
+  collection: Collection | RemoteCollection,
   viewerId: string | undefined,
   blockedByViewer: ReadonlySet<string>,
 ): ReadonlyArray<CollectionItem> =>
@@ -197,30 +237,157 @@ const itemsFor = (
       !blockedByViewer.has(item.accountId),
   );
 
-/**
- * What `AccountPolicy#feature?` reads when a local account is to be featured
- * in `owner`'s collection.
- */
-export type FeatureCandidate = Readonly<{
-  ownerId: string;
-  targetId: string;
-  targetDiscoverable: boolean;
-  targetLocked: boolean;
-  ownerFollowsTarget: boolean;
-  blockedEitherWay: boolean;
-}>;
+const PolicyFlagsSchema = z.object({
+  public: z.boolean(),
+  followers: z.boolean(),
+  following: z.boolean(),
+  unsupported: z.boolean(),
+  disabled: z.boolean(),
+});
+type PolicyFlags = z.infer<typeof PolicyFlagsSchema>;
 
 /**
- * `AccountPolicy#feature?` for a local target: `Account#featureable_by?`
- * (discoverable, and unlocked, followed by the owner, or the owner itself)
- * and no block either way.
+ * A remote account's `interactionPolicy.canFeature`, as Mastodon's
+ * `InteractionPolicyParser` reads it into `feature_approval_policy`: who
+ * may feature it without asking (`automatic`) and who may ask (`manual`).
  */
-const featureable = (candidate: FeatureCandidate): boolean =>
-  candidate.targetDiscoverable &&
-  (!candidate.targetLocked ||
-    candidate.ownerFollowsTarget ||
-    candidate.ownerId === candidate.targetId) &&
-  !candidate.blockedEitherWay;
+export const FeaturePolicySchema = z.object({
+  automatic: PolicyFlagsSchema,
+  manual: PolicyFlagsSchema,
+});
+export type FeaturePolicy = z.infer<typeof FeaturePolicySchema>;
+
+const PUBLIC_NAMES: ReadonlySet<string> = new Set([
+  "as:Public",
+  "Public",
+  "https://www.w3.org/ns/activitystreams#Public",
+]);
+
+/** `InteractionPolicyParser#subpolicy`: the flags of one approval list. */
+const subpolicy = (
+  value: unknown,
+  actor: Readonly<{ actorUri: string; followersUri?: string; followingUri?: string }>,
+): PolicyFlags => {
+  const listed = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
+  const left = new Set<unknown>(listed);
+  const take = (match: (entry: unknown) => boolean): boolean => {
+    let found = false;
+    for (const entry of [...left]) {
+      if (match(entry)) {
+        left.delete(entry);
+        found = true;
+      }
+    }
+    return found;
+  };
+  const flags = {
+    public: take((entry) => typeof entry === "string" && PUBLIC_NAMES.has(entry)),
+    followers: actor.followersUri !== undefined && take((entry) => entry === actor.followersUri),
+    following: actor.followingUri !== undefined && take((entry) => entry === actor.followingUri),
+  };
+  const includesTarget = take((entry) => entry === actor.actorUri);
+  const unsupported = left.size > 0;
+  const none = !flags.public && !flags.followers && !flags.following && !unsupported;
+  return { ...flags, unsupported, disabled: none && includesTarget };
+};
+
+const anyFlag = (flags: PolicyFlags): boolean =>
+  flags.public || flags.followers || flags.following || flags.unsupported || flags.disabled;
+
+/**
+ * `InteractionPolicyParser#bitmap` of an actor's `canFeature`; `undefined`
+ * for the empty bitmap, which Mastodon reads as `:missing`.
+ */
+const parseFeaturePolicy = (
+  canFeature: unknown,
+  actor: Readonly<{ actorUri: string; followersUri?: string; followingUri?: string }>,
+): FeaturePolicy | undefined => {
+  if (typeof canFeature !== "object" || canFeature === null) {
+    return undefined;
+  }
+  const policy = {
+    automatic: subpolicy(Reflect.get(canFeature, "automaticApproval"), actor),
+    manual: subpolicy(Reflect.get(canFeature, "manualApproval"), actor),
+  };
+  return anyFlag(policy.automatic) || anyFlag(policy.manual) ? policy : undefined;
+};
+
+/**
+ * What `AccountPolicy#feature?` reads when an account is to be featured in
+ * `ownerId`'s collection: a local account's flags, or a remote account's
+ * federated policy. The follows are the owner's of the target and the
+ * target's of the owner.
+ */
+export type FeatureCandidate =
+  | Readonly<{
+      kind: "Local";
+      ownerId: string;
+      targetId: string;
+      targetDiscoverable: boolean;
+      targetLocked: boolean;
+      ownerFollowsTarget: boolean;
+      blockedEitherWay: boolean;
+    }>
+  | Readonly<{
+      kind: "Remote";
+      policy: FeaturePolicy | undefined;
+      ownerFollowsTarget: boolean;
+      targetFollowsOwner: boolean;
+      blockedEitherWay: boolean;
+    }>;
+
+export type FeatureApproval = "automatic" | "manual" | "unknown" | "missing" | "denied";
+
+const allows = (
+  flags: PolicyFlags,
+  candidate: Readonly<{ ownerFollowsTarget: boolean; targetFollowsOwner: boolean }>,
+): boolean =>
+  flags.public ||
+  (flags.followers && candidate.ownerFollowsTarget) ||
+  (flags.following && candidate.targetFollowsOwner);
+
+/** `Account#feature_policy_for_account`. */
+const featureApproval = (candidate: FeatureCandidate): FeatureApproval => {
+  switch (candidate.kind) {
+    case "Local":
+      if (!candidate.targetDiscoverable) {
+        return "denied";
+      }
+      return candidate.targetLocked &&
+        !candidate.ownerFollowsTarget &&
+        candidate.ownerId !== candidate.targetId
+        ? "denied"
+        : "automatic";
+    case "Remote": {
+      const { policy } = candidate;
+      if (policy === undefined) {
+        return "missing";
+      }
+      if (allows(policy.automatic, candidate)) {
+        return "automatic";
+      }
+      if (allows(policy.manual, candidate)) {
+        return "manual";
+      }
+      return policy.automatic.unsupported || policy.manual.unsupported ? "unknown" : "denied";
+    }
+    default:
+      return candidate satisfies never;
+  }
+};
+
+/**
+ * `AccountPolicy#feature?`: `Account#featureable_by?` (an automatic or a
+ * manual approval) and no block either way.
+ */
+const featureable = (candidate: FeatureCandidate): boolean => {
+  const approval = featureApproval(candidate);
+  return (approval === "automatic" || approval === "manual") && !candidate.blockedEitherWay;
+};
 
 /**
  * `NotifyOfCollectionUpdateService#significantly_changed?`: a change of the
@@ -242,6 +409,8 @@ export const Collection = {
   itemsFor,
   live,
   featureable,
+  featureApproval,
+  parseFeaturePolicy,
   significantlyChanged,
 } as const;
 

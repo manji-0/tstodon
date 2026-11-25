@@ -99,6 +99,20 @@ export const nameCollectionActivity = (
 };
 
 /**
+ * Mastodon sends a `FeatureRequest` without an `actor`
+ * (`FeatureRequestSerializer`): it is the account whose key signs it, here
+ * the `keyId` without its fragment, which the signature check then holds it to.
+ */
+export const withFeatureRequestActor = (json: unknown, keyId: string | undefined): unknown =>
+  typeof json === "object" &&
+  json !== null &&
+  Reflect.get(json, "type") === "FeatureRequest" &&
+  Reflect.get(json, "actor") === undefined &&
+  keyId !== undefined
+    ? { ...json, actor: keyId.split("#")[0] }
+    : json;
+
+/**
  * The activity an `Undo` embeds: its `id`, and its `type` and `object` when
  * given. Mastodon reads one without a `type` as named by its `id` only.
  */
@@ -116,6 +130,9 @@ export const ActorDocumentSchema = z
     outbox: z.string().min(1).optional(),
     featured: z.string().min(1).optional(),
     featuredTags: z.string().min(1).optional(),
+    /** Who may feature it in a collection (`canFeature`, FEP-7aa9), and its collections. */
+    interactionPolicy: z.unknown().optional(),
+    featuredCollections: z.unknown().optional(),
     /** Its `followers` / `following` collections: a URI, an object with an id, or a list of them. */
     followers: z.unknown().optional(),
     following: z.unknown().optional(),

@@ -96,7 +96,11 @@ import {
   quoteAuthorizationDocument,
   localQuoteAuthorization,
 } from "../quote-authorization-document";
-import { ActivityJsonSchema, nameCollectionActivity } from "../activitypub-wire";
+import {
+  ActivityJsonSchema,
+  nameCollectionActivity,
+  withFeatureRequestActor,
+} from "../activitypub-wire";
 import { parseJsonText } from "../json-column";
 import { assertNever, schemaResult } from "@tstodon/core";
 import { listFollowers, listFollowing } from "../follow-store";
@@ -127,7 +131,7 @@ const parseRepliesQuery = schemaResult(RepliesQuerySchema);
  * Whether `account` blocks the remote actor that signed a fetch, or its
  * domain: Mastodon then shows that fetcher nothing of the account's.
  */
-const blocksFetcher = async (
+export const blocksFetcher = async (
   db: D1Database,
   account: LocalAccount,
   fetcherUri: string,
@@ -145,14 +149,14 @@ const blocksFetcher = async (
   return ok(blocked.value || domainBlocked.value);
 };
 
-const jsonLd = {
+export const jsonLd = {
   "content-type": "application/activity+json",
 };
 
 /** Mastodon's `forbidden` body. */
 const NOT_ALLOWED = { error: "This action is not allowed", kind: "Forbidden" } as const;
 
-type DocumentOwner =
+export type DocumentOwner =
   | Readonly<{ kind: "Served"; account: LocalAccount }>
   | Readonly<{ kind: "Refused"; response: Response }>;
 
@@ -163,7 +167,7 @@ type DocumentOwner =
  * for a suspended one (`check_account_suspension`). In secure mode the
  * refusal stays `private`, as every answer there does.
  */
-const documentOwner = async (
+export const documentOwner = async (
   c: Context<{ Bindings: Env }>,
   access: FetchAccess,
   username: string,
@@ -963,7 +967,14 @@ const handleInbox = async (c: Context<{ Bindings: Env }>, inbox: InboxTarget) =>
     return c.json({ kind: "ValidationError" }, 400);
   }
   const activityJson = parseActivityJson(
-    nameCollectionActivity(json.value, c.req.header("Date"), c.req.header("Digest")),
+    nameCollectionActivity(
+      withFeatureRequestActor(
+        json.value,
+        parsedSignature.map((signature) => signature.keyId).unwrapOr(undefined),
+      ),
+      c.req.header("Date"),
+      c.req.header("Digest"),
+    ),
   );
   if (activityJson.isErr()) {
     refuse({ reason: "UnparseableBody", status: 400 });
