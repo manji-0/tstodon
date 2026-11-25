@@ -162,6 +162,48 @@ const interleaving = (between: () => Promise<unknown>, at: number = 1): Env => {
   });
 };
 
+/**
+ * `env` whose first insert into `status_quotes` waits for `between` to run
+ * first, as another request would after this one read the quote.
+ */
+const beforeQuoteInsert = (between: () => Promise<unknown>): Env => {
+  let waited = false;
+  const held = (statement: D1PreparedStatement): D1PreparedStatement =>
+    new Proxy(statement, {
+      get: (target, key) => {
+        if (key === "bind") {
+          return (...values: unknown[]) => held(target.bind(...values));
+        }
+        if (key === "run" && !waited) {
+          waited = true;
+          return async () => {
+            await between();
+            return target.run();
+          };
+        }
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  const db = new Proxy(env.DB, {
+    get: (target, key) => {
+      if (key === "prepare") {
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          return sql.trimStart().startsWith("INSERT INTO status_quotes")
+            ? held(statement)
+            : statement;
+        };
+      }
+      const value: unknown = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return new Proxy(env, {
+    get: (target, key) => (key === "DB" ? db : Reflect.get(target, key)),
+  });
+};
+
 /** The cached actor of `author` and this instance's identity, for a handler called directly. */
 const signerOf = async (author: Remote) => {
   const identity = parseInstanceIdentity(env);
@@ -767,6 +809,42 @@ describe("two inbox activities that carry one note", () => {
     // and its mention notifies nobody. The Create that follows finds it
     // stored and distributes nothing.
     expect(await notifiedOf(mentioned.headers, "mention", id)).toBe(0);
+  });
+
+  it("keeps the accepted quote when a QuoteRequest stores and accepts it between a Create's read of the quote and its write", async () => {
+    const quoted = await localAccount("inbox-retry-raced-quote@example.com");
+    const posted = await SELF.fetch("https://example.com/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...quoted.headers },
+      body: JSON.stringify({ status: "quote me" }),
+    });
+    const quotedUri = `${quoted.actorUrl}/statuses/${expectContract(ApiStatus, await posted.json()).id}`;
+    const author = await remoteActor("retry-raced-quote");
+    const object = note(author, "retry-raced-quote", {
+      content: "<p>quoting</p>",
+      quote: quotedUri,
+    });
+    const deliver = (await deliverer(author))(object);
+    let requested: number | undefined;
+
+    const created = await deliver(
+      "Create",
+      beforeQuoteInsert(async () => {
+        requested = await author.send({
+          id: `${author.actorUri}/quote_requests/raced`,
+          type: "QuoteRequest",
+          object: quotedUri,
+          instrument: object,
+        });
+      }),
+    );
+
+    const id = (await storedId(object.id)) ?? "";
+    expect(created.isErr() && created.error).toBe(false);
+    expect(requested).toBe(202);
+    expect(await quoteStates(id)).toEqual(["accepted"]);
+    expect(await answersOf(quoted.id)).toEqual(["Accept"]);
+    expect(await owedKinds(id)).toEqual([]);
   });
 
   // A smoke test, not the proof of the race: the test runtime does not run
