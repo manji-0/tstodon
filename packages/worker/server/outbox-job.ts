@@ -88,6 +88,33 @@ const updatedQuestionOf = (payload: unknown, object: unknown): string | undefine
   return typeof id === "string" ? id : undefined;
 };
 
+/** The `type` of a parsed document, or of an embedded object. */
+const typeOf = (value: unknown): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, "type") : undefined;
+
+/**
+ * Whether the activity is about a local collection or its items (an `Add` or
+ * `Remove` of a `featuredCollections` member or of a collection's item, an
+ * `Update` of a `FeaturedCollection`, a `Delete` of a `FeatureAuthorization`),
+ * which Mastodon sends to the owner's reach (`CollectionRawDistributionWorker`,
+ * `AccountRawDistributionWorker`).
+ */
+const isCollectionActivity = (payload: unknown, object: unknown): boolean => {
+  const type = typeOf(payload);
+  if (type === "Add" || type === "Remove") {
+    const target: unknown =
+      typeof payload === "object" && payload !== null ? Reflect.get(payload, "target") : undefined;
+    return (
+      typeof target === "string" &&
+      /\/ap\/users\/[^/]+\/(?:featured_collections|collections\/[^/]+)$/.test(target)
+    );
+  }
+  return (
+    (type === "Update" && typeOf(object) === "FeaturedCollection") ||
+    (type === "Delete" && typeOf(object) === "FeatureAuthorization")
+  );
+};
+
 /** Whether the activity is an `Update` whose object is its own actor. */
 const isActorUpdate = (payload: unknown, object: unknown): boolean => {
   if (
@@ -109,9 +136,9 @@ const isActorUpdate = (payload: unknown, object: unknown): boolean => {
  * or this instance's followers collection, and each remote actor it names.
  * An activity without addressing (a boost) goes to followers.
  * `updatedQuestion` is the poll an `Update(Question)` carries, whose voters
- * and boosters hear it too. `actorUpdate` says the activity is an `Update`
- * of its own actor, which Mastodon's `UpdateDistributionWorker` sends beyond
- * the followers too (`AccountReachFinder`).
+ * and boosters hear it too. `accountReach` says the activity also goes
+ * beyond the followers (`AccountReachFinder`): an `Update` of its own actor,
+ * as Mastodon's `UpdateDistributionWorker` sends it, or a collection's.
  */
 export const outboundAudience = (
   payloadJson: string,
@@ -120,20 +147,20 @@ export const outboundAudience = (
   followers: boolean;
   actorUris: ReadonlyArray<string>;
   updatedQuestion: string | undefined;
-  actorUpdate: boolean;
+  accountReach: boolean;
 }> => {
   const parsed = parseJsonText(payloadJson);
   if (parsed.isErr()) {
-    return { followers: true, actorUris: [], updatedQuestion: undefined, actorUpdate: false };
+    return { followers: true, actorUris: [], updatedQuestion: undefined, accountReach: false };
   }
   const payload = parsed.value;
   const object: unknown =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
   const updatedQuestion = updatedQuestionOf(payload, object);
-  const actorUpdate = isActorUpdate(payload, object);
+  const accountReach = isActorUpdate(payload, object) || isCollectionActivity(payload, object);
   const audience = [...audienceOf(payload), ...audienceOf(object)];
   if (audience.length === 0) {
-    return { followers: true, actorUris: [], updatedQuestion, actorUpdate };
+    return { followers: true, actorUris: [], updatedQuestion, accountReach };
   }
   // `localHost` may carry a port, as the follower filter below compares hosts.
   const isLocal = (uri: string): boolean => {
@@ -153,7 +180,7 @@ export const outboundAudience = (
       ),
     ),
   ];
-  return { followers, actorUris, updatedQuestion, actorUpdate };
+  return { followers, actorUris, updatedQuestion, accountReach };
 };
 
 /** A failed recipient lookup leaves those recipients out; say so in the logs. */
@@ -357,7 +384,7 @@ export const processOutboxJob = async (
       const interactors =
         pollStatusId === undefined ? ok([]) : await listPollInteractorInboxes(env.DB, pollStatusId);
       const reach =
-        audience.actorUpdate && activity.value.account_id !== null
+        audience.accountReach && activity.value.account_id !== null
           ? await listAccountReachInboxes(env.DB, activity.value.account_id)
           : ok([]);
       logExpandLookupFailure(job.activityId, "followers", remoteFollowers);

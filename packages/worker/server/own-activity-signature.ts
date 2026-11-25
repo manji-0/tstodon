@@ -54,6 +54,10 @@ export const ldSigningOf = (activity: ApActivityDocumentJSON): LdSigning => {
           ? "OutsideSecureMode"
           : "Never";
     case "Update":
+      // A collection's goes out as `CollectionRawDistributionWorker` sends it: unsigned.
+      if (activity.object.type === "FeaturedCollection") {
+        return "Never";
+      }
       return activity.object.type === "Note" || activity.object.type === "Question"
         ? distributable(activity.object)
           ? "OutsideSecureMode"

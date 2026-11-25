@@ -1,4 +1,5 @@
 import {
+  Collection,
   InstanceIdentity,
   LocalAccount,
   type LocalNote,
@@ -26,6 +27,7 @@ import {
   quoteAuthorizationDeleteActivity,
 } from "./quote-authorization-document";
 import type { CustomEmoji } from "./emoji";
+import { type CollectionEvent, collectionActivity } from "./collection-federation";
 
 /*
  * One of each activity tstodon signs, built by the builders that send them,
@@ -235,6 +237,42 @@ const stamp = localQuoteAuthorization(
 );
 
 /** Each sample activity by name. */
+/** A collection alice made, featuring herself, as `collectionActivity` sends it. */
+const curated = Collection.parse({
+  kind: "LocalCollection",
+  id: "01J00000000000000000000100",
+  accountId: alice.id,
+  name: "Good people",
+  description: "Follow them",
+  language: "en",
+  sensitive: false,
+  discoverable: true,
+  tagName: "people",
+  createdAt: "2026-11-19T04:00:00.000Z",
+  updatedAt: "2026-11-19T05:00:00.000Z",
+  items: [
+    {
+      id: "01J00000000000000000000101",
+      accountId: alice.id,
+      position: 1,
+      state: "accepted",
+      createdAt: "2026-11-19T04:00:00.000Z",
+    },
+  ],
+})._unsafeUnwrap();
+
+const curatedItem = curated.items[0];
+
+const collectionSample = (event: CollectionEvent): ApActivityDocumentJSON => {
+  const activity = collectionActivity(identity, alice, event, (accountId) =>
+    accountId === alice.id ? actorUri : undefined,
+  );
+  if (activity === undefined) {
+    throw new Error(`no ${event.kind} sample`);
+  }
+  return activity;
+};
+
 export const ownActivitySamples = (): Readonly<Record<string, ApActivityDocumentJSON>> => ({
   createRichNote: noteCreateActivity(identity, alice, richNote),
   createQuestion: noteCreateActivity(identity, alice, question),
@@ -284,4 +322,27 @@ export const ownActivitySamples = (): Readonly<Record<string, ApActivityDocument
     richNote,
   ),
   deleteQuoteAuthorization: quoteAuthorizationDeleteActivity(stamp),
+  addFeaturedCollection: collectionSample({ kind: "Created", collection: curated }),
+  updateFeaturedCollection: collectionSample({ kind: "Updated", collection: curated }),
+  removeFeaturedCollection: collectionSample({ kind: "Deleted", collection: curated }),
+  ...(curatedItem
+    ? {
+        addFeaturedItem: collectionSample({
+          kind: "ItemAdded",
+          collection: curated,
+          item: curatedItem,
+        }),
+        removeFeaturedItem: collectionSample({
+          kind: "ItemRemoved",
+          collection: curated,
+          item: curatedItem,
+        }),
+        deleteFeatureAuthorization: collectionSample({
+          kind: "ItemRevoked",
+          collection: curated,
+          item: curatedItem,
+          featured: alice,
+        }),
+      }
+    : {}),
 });

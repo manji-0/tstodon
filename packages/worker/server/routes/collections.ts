@@ -7,6 +7,7 @@ import {
 import { isHashtagName, Languages, warmSchemas } from "@tstodon/core";
 import {
   Collection,
+  CollectionItem,
   type CollectionFields,
   type CollectionValidationError,
   type InstanceIdentity,
@@ -19,6 +20,7 @@ import { authenticate } from "../auth";
 import { findBlock } from "../block-mute-store";
 import { nowIso } from "../clock";
 import { collectionViewer, mastodonCollection } from "../collection-documents";
+import { federateCollection } from "../collection-federation";
 import { notifyAddedToCollection, notifyCollectionUpdate } from "../collection-notify";
 import {
   countAccountCollections,
@@ -564,6 +566,7 @@ const createCollection = async (c: AnyContext): Promise<Response> => {
       notifyAddedToCollection(c.env, collection, item.id, item.accountId),
     ),
   );
+  await federateCollection(c.env, owner, { kind: "Created", collection });
   return renderCollection(c, identity.value, collection, owner.id);
 };
 
@@ -657,6 +660,7 @@ const changeCollection = async (c: AnyContext, id: string): Promise<Response> =>
   if (Collection.significantlyChanged(before, after.value)) {
     await notifyCollectionUpdate(c.env, after.value);
   }
+  await federateCollection(c.env, user.value, { kind: "Updated", collection: after.value });
   return renderCollection(c, identity.value, after.value, user.value.id);
 };
 
@@ -674,6 +678,7 @@ const destroyCollection = async (c: AnyContext, id: string): Promise<Response> =
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
   }
+  await federateCollection(c.env, user.value, { kind: "Deleted", collection });
   return c.body(null, 200);
 };
 
@@ -732,6 +737,14 @@ const addItem = async (c: AnyContext, collectionId: string): Promise<Response> =
       : jsonRepositoryError(c, inserted.error.message);
   }
   await notifyAddedToCollection(c.env, collection, item.id, item.accountId);
+  const added = CollectionItem.parse({ ...item, position: inserted.value });
+  if (added.isOk()) {
+    await federateCollection(c.env, user.value, {
+      kind: "ItemAdded",
+      collection,
+      item: added.value,
+    });
+  }
   return c.json({
     collection_item: {
       id: item.id,
@@ -773,6 +786,7 @@ const removeItem = async (c: AnyContext, collectionId: string, itemId: string) =
   if (deleted.isErr()) {
     return jsonRepositoryError(c, deleted.error.message);
   }
+  await federateCollection(c.env, user.value, { kind: "ItemRemoved", ...found });
   return c.body(null, 200);
 };
 
@@ -792,6 +806,14 @@ const revokeItem = async (c: AnyContext, collectionId: string, itemId: string) =
   const revoked = await setCollectionItemState(c.env.DB, found.item.id, "revoked", nowIso());
   if (revoked.isErr()) {
     return jsonRepositoryError(c, revoked.error.message);
+  }
+  const owner = await findAccountById(c.env.DB, found.collection.accountId);
+  if (owner.isOk() && owner.value) {
+    await federateCollection(c.env, owner.value, {
+      kind: "ItemRevoked",
+      ...found,
+      featured: user.value,
+    });
   }
   return c.body(null, 200);
 };

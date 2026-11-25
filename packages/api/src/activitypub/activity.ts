@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApActor } from "./actor";
 import { ApUri, withContext } from "./context";
+import { ApCuratedCollection, ApFeatureAuthorization, ApFeaturedItem } from "./curated-collection";
 import { ApHashtag, ApPollVote, ApQuoteAuthorization, ApStatusObject, ApTombstone } from "./note";
 
 /*
@@ -76,9 +77,10 @@ export const ApUpdate = z.object({
   id: ApUri,
   type: z.literal("Update"),
   actor: ApUri,
-  published: z.iso.datetime({ offset: true }),
+  /** Not on a collection's `Update` (`UpdateFeaturedCollectionSerializer`). */
+  published: z.iso.datetime({ offset: true }).optional(),
   to: audience.optional(),
-  object: z.union([ApStatusObject, ApActor]),
+  object: z.union([ApStatusObject, ApActor, ApCuratedCollection]),
 });
 export type ApUpdateJSON = z.infer<typeof ApUpdate>;
 
@@ -92,7 +94,7 @@ export const ApDelete = z.object({
   actor: ApUri,
   to: audience,
   cc: audience.optional(),
-  object: z.union([ApTombstone, ApQuoteAuthorization, ApUri]),
+  object: z.union([ApTombstone, ApQuoteAuthorization, ApFeatureAuthorization, ApUri]),
 });
 export type ApDeleteJSON = z.infer<typeof ApDelete>;
 
@@ -182,11 +184,13 @@ export type ApQuoteRequestJSON = z.infer<typeof ApQuoteRequest>;
  * it without an `id`; tstodon gives it one.
  */
 export const ApAdd = z.object({
-  id: ApUri,
+  /** None on a collection's `Add`, as Mastodon sends it. */
+  id: ApUri.optional(),
   type: z.literal("Add"),
   actor: ApUri,
   target: ApUri,
-  object: z.union([ApUri, ApHashtag]),
+  /** Also a collection added to `featuredCollections`, or an item added to a collection. */
+  object: z.union([ApUri, ApHashtag, ApCuratedCollection, ApFeaturedItem]),
 });
 export type ApAddJSON = z.infer<typeof ApAdd>;
 
@@ -195,7 +199,8 @@ export type ApAddJSON = z.infer<typeof ApAdd>;
  * (`RemoveNoteSerializer`), or a `Hashtag` (`RemoveHashtagSerializer`).
  */
 export const ApRemove = z.object({
-  id: ApUri,
+  /** None on a collection's or an item's `Remove`, as Mastodon sends it. */
+  id: ApUri.optional(),
   type: z.literal("Remove"),
   actor: ApUri,
   target: ApUri,
