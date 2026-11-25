@@ -234,13 +234,14 @@ export type ApiAdminCohortJSON = z.infer<typeof ApiAdminCohort>;
 
 /**
  * `REST::Admin::Trends::Links::PreviewCardProviderSerializer`
- * (`/api/v1/admin/trends/links/publishers`): a site whose links trend.
- * tstodon names a publisher by its domain, so `id` is the domain.
+ * (`/api/v1/admin/trends/links/publishers`): a site whose links trend. The
+ * serializer writes the row's `bigint` id as it is, so `id` is a number, and
+ * `trendable` is `null` until a moderator reviews the provider.
  */
 export const ApiAdminPreviewCardProvider = z.object({
-  id: z.string(),
+  id: z.number().int(),
   domain: z.string(),
-  trendable: z.boolean(),
+  trendable: z.boolean().nullable(),
   reviewed_at: z.string().nullable(),
   requested_review_at: z.string().nullable(),
   requires_review: z.boolean(),

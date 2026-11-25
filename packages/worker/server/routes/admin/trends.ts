@@ -4,23 +4,27 @@ import type { Context } from "hono";
 import {
   jsonAuthError,
   jsonRepositoryError,
+  queryCursor,
   queryLimit,
   queryOffset,
   requireAdmin,
+  rubyToI,
+  setPaginationLinks,
   PageSize,
 } from "../../http";
+import {
+  listPreviewCardProviders,
+  type PreviewCardProviderRow,
+  reviewPreviewCardProvider,
+} from "../../preview-card-provider-store";
 import { mastodonStatus, mastodonStatuses } from "../../local-status-documents";
 import { parseInstanceIdentity } from "../../runtime-config";
 import { findStatusById } from "../../status-store";
 import { listTrendingStatuses, listTrendingTags } from "../../status-discovery-store";
 import { tagDailyHistories, tagDailyHistory } from "../../tag-store";
 import { cardDocument, listCachedLinkCards } from "../../link-card";
-import { fallbackLinkCard, listTrendingLinks, trendingLinkPublishers } from "../../trend-store";
-import {
-  listTrendReviewRecords,
-  listTrendReviews,
-  type TrendState,
-} from "../../trend-review-store";
+import { fallbackLinkCard, listTrendingLinks } from "../../trend-store";
+import { listTrendReviews, type TrendState } from "../../trend-review-store";
 import {
   defaultTagModeration,
   findTagModeration,
@@ -28,7 +32,7 @@ import {
 } from "../../tag-moderation-store";
 import { adminTagDocument } from "./tags";
 import { type ReviewTrendError, reviewTrend } from "../../admin-trends";
-import { Hostname, StatusId } from "@tstodon/domain";
+import { StatusId } from "@tstodon/domain";
 
 const notFound = (c: Context<{ Bindings: Env }>) =>
   c.json({ error: "Record not found", kind: "NotFound" }, 404);
@@ -207,27 +211,19 @@ const reviewStatus = (state: TrendState) => async (c: Context<{ Bindings: Env }>
 export const postV1AdminTrendsStatusesByIdApprove = reviewStatus("Approved");
 export const postV1AdminTrendsStatusesByIdReject = reviewStatus("Rejected");
 
-/**
- * `REST::Admin::Trends::Links::PreviewCardProviderSerializer`: a publisher
- * (named by its host) is trendable unless rejected, as tstodon reviews
- * trends on rejection.
- */
-const publisherDocument = (
-  domain: string,
-  review: Readonly<{ state: TrendState; reviewedAt: string }> | undefined,
-): ApiAdminPreviewCardProviderJSON => ({
-  id: domain,
-  domain,
-  trendable: review?.state !== "Rejected",
-  reviewed_at: review?.reviewedAt ?? null,
-  requested_review_at: null,
-  requires_review: review === undefined,
+/** `REST::Admin::Trends::Links::PreviewCardProviderSerializer`. */
+const publisherDocument = (row: PreviewCardProviderRow): ApiAdminPreviewCardProviderJSON => ({
+  id: row.id,
+  domain: row.domain,
+  trendable: row.trendable === null ? null : row.trendable !== 0,
+  reviewed_at: row.reviewed_at,
+  requested_review_at: row.requested_review_at,
+  requires_review: row.reviewed_at === null,
 });
 
 /**
- * `GET /api/v1/admin/trends/links/publishers`: the publishers of the links
- * trending now, then the reviewed ones that are not, most shared first.
- * Publishers have no row id, so the list pages by `offset`.
+ * `GET /api/v1/admin/trends/links/publishers`: every provider, newest first,
+ * paged by id with a `Link`, as `PreviewCardProvidersController#index`.
  */
 export const getV1AdminTrendsLinksPublishers = async (
   c: Context<{ Bindings: Env }, "/api/v1/admin/trends/links/publishers">,
@@ -236,48 +232,36 @@ export const getV1AdminTrendsLinksPublishers = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const [trending, reviews] = await Promise.all([
-    trendingLinkPublishers(c.env.DB),
-    listTrendReviewRecords(c.env.DB, "Publisher"),
-  ]);
-  if (trending.isErr()) {
-    return jsonRepositoryError(c, trending.error.message);
-  }
-  if (reviews.isErr()) {
-    return jsonRepositoryError(c, reviews.error.message);
-  }
-  const domains = [
-    ...new Set([
-      ...trending.value.map((publisher) => publisher.domain),
-      ...[...reviews.value.keys()].toSorted(),
-    ]),
-  ];
-  const offset = queryOffset(c.req.query("offset"));
   // `Admin::Trends::Links::PreviewCardProvidersController::LIMIT`
   const limit = queryLimit(c, PageSize.admin);
-  return c.json(
-    domains
-      .slice(offset, offset + limit)
-      .map((domain) => publisherDocument(domain, reviews.value.get(domain))),
+  const providers = await listPreviewCardProviders(c.env.DB, queryCursor(c), limit);
+  if (providers.isErr()) {
+    return jsonRepositoryError(c, providers.error.message);
+  }
+  setPaginationLinks(
+    c,
+    providers.value.map((row) => String(row.id)),
+    limit,
   );
+  return c.json(providers.value.map(publisherDocument));
 };
 
-const reviewPublisher = (state: TrendState) => async (c: Context<{ Bindings: Env }>) => {
+const reviewPublisher = (trendable: boolean) => async (c: Context<{ Bindings: Env }>) => {
   const admin = await requireAdmin(c);
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const domain = Hostname.fromInput(c.req.param("id") ?? "") ?? "";
-  const saved = await reviewTrend(c.env.DB, { kind: "Publisher", domain }, state);
-  if (saved.isErr()) {
-    return reviewFailure(c, saved.error);
+  // `PreviewCardProvider.find(params[:id])` casts the id as `String#to_i`.
+  const reviewed = await reviewPreviewCardProvider(
+    c.env.DB,
+    rubyToI(c.req.param("id") ?? ""),
+    trendable,
+  );
+  if (reviewed.isErr()) {
+    return jsonRepositoryError(c, reviewed.error.message);
   }
-  const reviews = await listTrendReviewRecords(c.env.DB, "Publisher");
-  if (reviews.isErr()) {
-    return jsonRepositoryError(c, reviews.error.message);
-  }
-  return c.json(publisherDocument(domain, reviews.value.get(domain)));
+  return reviewed.value ? c.json(publisherDocument(reviewed.value)) : notFound(c);
 };
 
-export const postV1AdminTrendsLinksPublishersByIdApprove = reviewPublisher("Approved");
-export const postV1AdminTrendsLinksPublishersByIdReject = reviewPublisher("Rejected");
+export const postV1AdminTrendsLinksPublishersByIdApprove = reviewPublisher(true);
+export const postV1AdminTrendsLinksPublishersByIdReject = reviewPublisher(false);

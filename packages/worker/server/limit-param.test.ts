@@ -138,13 +138,14 @@ describe("limit_param", () => {
 
   it("pages admin trend publishers by 100, as PreviewCardProvidersController::LIMIT", async () => {
     const headers = await authHeaders("limit-trends-admin@example.com", { admin: true });
-    for (let index = 0; index < 12; index += 1) {
-      const approved = await SELF.fetch(
-        `https://example.com/api/v1/admin/trends/links/publishers/limit-publisher-${index}.example/approve`,
-        { method: "POST", headers },
-      );
-      expect(approved.status).toBe(200);
-    }
+    const now = new Date().toISOString();
+    await env.DB.batch(
+      Array.from({ length: 12 }, (_, index) =>
+        env.DB.prepare(
+          "INSERT INTO preview_card_providers (domain, created_at, updated_at) VALUES (?, ?, ?)",
+        ).bind(`limit-publisher-${index}.example`, now, now),
+      ),
+    );
     const publishers = await page(
       ApiAdminPreviewCardProvider,
       "/api/v1/admin/trends/links/publishers",

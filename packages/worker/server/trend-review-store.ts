@@ -4,10 +4,11 @@ import { z } from "zod";
 import { parseRows, runD1, type RepositoryError } from "./d1";
 
 /**
- * The trend families Mastodon lets a moderator review: tags, links,
- * statuses, and link publishers (`PreviewCardProvider`, named by host).
+ * The trend families Mastodon lets a moderator review: tags, links and
+ * statuses. Link publishers are reviewed on their `preview_card_providers`
+ * row (`server/preview-card-provider-store.ts`).
  */
-export const TrendKinds = ["Tag", "Link", "Status", "Publisher"] as const;
+export const TrendKinds = ["Tag", "Link", "Status"] as const;
 export type TrendKind = (typeof TrendKinds)[number];
 
 const TrendReviewRow = z.object({ target: z.string(), state: z.string() });
@@ -70,32 +71,4 @@ export const setTrendReview = async (
       )
       .bind(kind, target, state, nowIso())
       .run();
-  });
-
-const TrendReviewRecordRow = z.object({
-  target: z.string(),
-  state: z.string(),
-  reviewed_at: z.string(),
-});
-
-export type TrendReviewRecord = Readonly<{ state: TrendState; reviewedAt: string }>;
-
-/** {@link listTrendReviews} with when each decision was made. */
-export const listTrendReviewRecords = async (
-  db: D1Database,
-  kind: TrendKind,
-): Promise<Result<ReadonlyMap<string, TrendReviewRecord>, RepositoryError>> =>
-  runD1(async () => {
-    const { results } = await db
-      .prepare("SELECT target, state, reviewed_at FROM trend_reviews WHERE kind = ?")
-      .bind(kind)
-      .all();
-    return new Map(
-      parseRows(TrendReviewRecordRow, results).flatMap(
-        ({ target, state, reviewed_at }): [string, TrendReviewRecord][] =>
-          state === "Approved" || state === "Rejected"
-            ? [[target, { state, reviewedAt: reviewed_at }]]
-            : [],
-      ),
-    );
   });

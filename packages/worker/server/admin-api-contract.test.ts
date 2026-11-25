@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import {
@@ -231,11 +231,24 @@ describe("admin API contract (@tstodon/api)", () => {
     });
 
     await ok(z.array(ApiAdminAccount), "GET", "/api/v2/admin/accounts?status=active");
-    await ok(z.array(ApiAdminPreviewCardProvider), "GET", "/api/v1/admin/trends/links/publishers");
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO preview_card_providers (domain, requested_review_at, created_at, updated_at)
+       VALUES ('contract-publisher.example', ?1, ?1, ?1)`,
+    )
+      .bind(now)
+      .run();
+    const providers = await ok(
+      z.array(ApiAdminPreviewCardProvider),
+      "GET",
+      "/api/v1/admin/trends/links/publishers",
+    );
+    const provider = providers.find((entry) => entry.domain === "contract-publisher.example");
+    expect(provider?.trendable).toBeNull();
     await ok(
       ApiAdminPreviewCardProvider,
       "POST",
-      "/api/v1/admin/trends/links/publishers/contract-publisher.example/approve",
+      `/api/v1/admin/trends/links/publishers/${provider?.id ?? 0}/approve`,
     );
   });
 });

@@ -31,6 +31,7 @@ import { listLinkStatuses, type TagStatusFilters } from "../status-discovery-sto
 import { paramsCursor, readQueryParams } from "../request-params";
 import { findTrendingLinkUrl } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
+import { rejectedPreviewCardProviderDomains } from "../preview-card-provider-store";
 import { isTagUsable } from "../tag-moderation-store";
 import { filterMutedThreads, mutedThreadStatusIds } from "../status-mute-store";
 import {
@@ -226,7 +227,7 @@ export const getV1TimelinesLink = async (
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
-  const publishers = await rejectedTrendTargets(c.env.DB, "Publisher");
+  const publishers = await rejectedPreviewCardProviderDomains(c.env.DB);
   if (publishers.isErr()) {
     return jsonRepositoryError(c, publishers.error.message);
   }

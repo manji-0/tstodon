@@ -2,7 +2,6 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import {
-  ApiAdminPreviewCardProvider,
   ApiAdminTag,
   ApiHashtag,
   ApiPreviewCard,
@@ -16,9 +15,7 @@ import { authHeaders } from "../test/auth-fixture";
 /**
  * `/api/v1/admin/tags` and what its flags do: an unusable tag's timeline is
  * empty and it cannot be featured; an unusable or unlisted tag leaves
- * search and trends; `trendable: false` keeps it out of trends. Link
- * publishers (`/api/v1/admin/trends/links/publishers`) are reviewed the same
- * way.
+ * search and trends; `trendable: false` keeps it out of trends.
  */
 
 const ADMIN = "admintags-admin@example.com";
@@ -182,46 +179,6 @@ describe("admin tags", () => {
       trendable: false,
       requires_review: false,
     });
-  });
-
-  it("reviews link publishers and keeps a rejected one's links out of trends", async () => {
-    const status = await post("read https://publisher.example/story today");
-    await ok(ApiStatus, "POST", `/api/v1/statuses/${status.id}/favourite`);
-    const publishers = await ok(
-      z.array(ApiAdminPreviewCardProvider),
-      "GET",
-      "/api/v1/admin/trends/links/publishers",
-    );
-    expect(publishers.find((publisher) => publisher.domain === "publisher.example")).toEqual({
-      id: "publisher.example",
-      domain: "publisher.example",
-      trendable: true,
-      reviewed_at: null,
-      requested_review_at: null,
-      requires_review: true,
-    });
-    const linksBefore = await ok(z.array(ApiTrendsLink), "GET", "/api/v1/trends/links?limit=20");
-    expect(linksBefore.map((link) => link.url)).toContain("https://publisher.example/story");
-
-    const rejected = await ok(
-      ApiAdminPreviewCardProvider,
-      "POST",
-      "/api/v1/admin/trends/links/publishers/publisher.example/reject",
-    );
-    expect(rejected).toMatchObject({ trendable: false, requires_review: false });
-    expect(rejected.reviewed_at).not.toBeNull();
-    const linksAfter = await ok(z.array(ApiTrendsLink), "GET", "/api/v1/trends/links?limit=20");
-    expect(linksAfter.map((link) => link.url)).not.toContain("https://publisher.example/story");
-
-    const approved = await ok(
-      ApiAdminPreviewCardProvider,
-      "POST",
-      "/api/v1/admin/trends/links/publishers/publisher.example/approve",
-    );
-    expect(approved.trendable).toBe(true);
-    expect((await call("POST", "/api/v1/admin/trends/links/publishers/%20/approve")).status).toBe(
-      404,
-    );
   });
 
   it("rejects and approves a trending link by its URL", async () => {

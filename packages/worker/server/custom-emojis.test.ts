@@ -2,6 +2,8 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { ApiAdminCustomEmoji, ApiCustomEmoji, ApiStatus } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string): Promise<Record<string, string>> => authHeaders(email);
@@ -33,6 +35,49 @@ const EmojiSchema = z.object({
 });
 
 describe("custom emojis", () => {
+  // `CustomEmoji.listed` is `local.enabled.where(visible_in_picker: true)`.
+  it("leaves an emoji hidden from the picker out of the list, and still renders it", async () => {
+    const email = "emoji-hidden-admin@example.com";
+    const form = new FormData();
+    form.set("shortcode", "hiddenpick");
+    form.set("visible_in_picker", "false");
+    form.set(
+      "image",
+      new File([new Uint8Array([137, 80, 78, 71])], "e.png", { type: "image/png" }),
+    );
+    const uploaded = await json("/api/v1/admin/custom_emojis", {
+      method: "POST",
+      headers: await authHeaders(email, { admin: true }),
+      body: form,
+    });
+    expect(uploaded.status).toBe(200);
+    expect(expectContract(ApiAdminCustomEmoji, uploaded.body).visible_in_picker).toBe(false);
+
+    const response = await SELF.fetch("https://example.com/api/v1/custom_emojis");
+    expect(response.status).toBe(200);
+    const listed = expectContract(z.array(ApiCustomEmoji), await response.json());
+    expect(listed.map((emoji) => emoji.shortcode)).toContain("tstodon");
+    expect(listed.map((emoji) => emoji.shortcode)).not.toContain("hiddenpick");
+    expect(listed.every((emoji) => emoji.visible_in_picker)).toBe(true);
+    // `cache_even_if_authenticated!`
+    expect(response.headers.get("Cache-Control")).toBe(
+      "max-age=300, public, stale-while-revalidate=30, stale-if-error=86400",
+    );
+
+    const status = await json("/api/v1/statuses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await auth(email)) },
+      body: JSON.stringify({ status: "hidden :hiddenpick: here" }),
+    });
+    expect(status.status).toBe(200);
+    expect(
+      expectContract(ApiStatus, status.body).emojis.map((emoji) => [
+        emoji.shortcode,
+        emoji.visible_in_picker,
+      ]),
+    ).toEqual([["hiddenpick", false]]);
+  });
+
   it("lists the configured emojis", async () => {
     const response = await json("/api/v1/custom_emojis");
     expect(response.status).toBe(200);

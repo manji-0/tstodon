@@ -13,6 +13,7 @@ import {
 import { readQueryParams } from "../request-params";
 import { listTrendingLinks } from "../trend-store";
 import { rejectedTrendTargets } from "../trend-review-store";
+import { rejectedPreviewCardProviderDomains } from "../preview-card-provider-store";
 import { untrendableTags } from "../tag-moderation-store";
 import { mastodonStatuses } from "../local-status-documents";
 import { mastodonTag } from "../tag-documents";
@@ -30,7 +31,7 @@ export const getV1TrendsLinks = async (c: Context<{ Bindings: Env }, "/api/v1/tr
   if (rejected.isErr()) {
     return jsonRepositoryError(c, rejected.error.message);
   }
-  const publishers = await rejectedTrendTargets(c.env.DB, "Publisher");
+  const publishers = await rejectedPreviewCardProviderDomains(c.env.DB);
   if (publishers.isErr()) {
     return jsonRepositoryError(c, publishers.error.message);
   }
