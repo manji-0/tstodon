@@ -126,7 +126,13 @@ const targetIdBinds = (targets: ReadonlyArray<StatusTargetValue>): readonly [str
 const SELECT =
   "id, status_id, remote_status_id, quoted_status_id, quoted_remote_status_id, quoted_uri, state, approval_uri, activity_uri, legacy, created_at";
 
-/** Record a quote. */
+/**
+ * Record a quote. A remote note's `Create` and its author's `QuoteRequest`
+ * may both find no quote and both record it. The second writer then keeps
+ * the stored row and its id: a pending row of the same quoted end takes the
+ * second writer's state when that one is decided, and a decided row
+ * (accepted on a `QuoteRequest`, say) is never set back to pending.
+ */
 export const insertStatusQuote = async (
   db: D1Database,
   quote: QuoteValue,
@@ -138,7 +144,14 @@ export const insertStatusQuote = async (
         `INSERT INTO status_quotes (id, status_id, remote_status_id, quoted_status_id,
            quoted_remote_status_id, quoted_uri, state, approval_uri, activity_uri, legacy,
            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(remote_status_id) DO UPDATE SET state = excluded.state,
+           approval_uri = excluded.approval_uri, legacy = excluded.legacy,
+           updated_at = excluded.updated_at
+         WHERE status_quotes.state = 'pending' AND excluded.state <> 'pending'
+           AND status_quotes.quoted_status_id IS excluded.quoted_status_id
+           AND status_quotes.quoted_remote_status_id IS excluded.quoted_remote_status_id
+           AND status_quotes.quoted_uri IS excluded.quoted_uri`,
       )
       .bind(
         quote.id,
