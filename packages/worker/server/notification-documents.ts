@@ -36,6 +36,7 @@ export const mastodonNotifications = async (
     presentedAccountsByIds(
       env,
       identity,
+      viewerId,
       rows.flatMap((row) =>
         row.target_account_id
           ? [row.from_account_id, row.target_account_id]
@@ -51,6 +52,7 @@ export const mastodonNotifications = async (
     reportDocumentsByIds(
       env,
       identity,
+      viewerId,
       rows.flatMap((row) => (row.report_id ? [row.report_id] : [])),
     ),
     findAccountSeveranceEvents(

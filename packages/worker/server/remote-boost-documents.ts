@@ -53,7 +53,7 @@ export const remoteBoostDocuments = async (
   const [localDocuments, remoteDocuments, boosters] = await Promise.all([
     mastodonStatuses(env, identity, [...locals.value.values()], viewerId, boosted),
     mastodonRemoteStatuses(env, identity, [...remotes.value.values()], viewerId, boosted),
-    presentedAccounts(env, identity, [], [...actors.value.values()]),
+    presentedAccounts(env, identity, viewerId, [], [...actors.value.values()]),
   ]);
   if (boosters.isErr()) {
     return err(boosters.error);

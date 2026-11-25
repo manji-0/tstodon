@@ -1,3 +1,5 @@
+import { requestViewerId } from "../../auth";
+import { type FeatureViewer, loadFeatureViewer } from "../../feature-approval";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -159,10 +161,12 @@ const localAccountExtras = async (
 const adminAccountDocument = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The moderator viewing, for `feature_approval.current_user`. */
+  viewerId: string | undefined,
   state: AdminAccountState,
   extras: LocalAccountExtras = NO_EXTRAS,
 ): Promise<ApiAdminAccountJSON> => {
-  const account = await mastodonAccountDocument(env, identity, state.account);
+  const account = await mastodonAccountDocument(env, identity, viewerId, state.account);
   return {
     id: account.id,
     username: account.username,
@@ -223,20 +227,27 @@ const adminRemoteDocument = (
 
 const remoteActorDocument = (
   identity: InstanceIdentity,
+  viewer: FeatureViewer,
   actor: RemoteActorValue,
   flags: RemoteActorAdminFlags,
   emojis: RemoteEmojiCatalog,
 ): ApiAdminAccountJSON =>
-  adminRemoteDocument(mastodonRemoteAccount(identity, actor, emojis), actor.domain, flags);
+  adminRemoteDocument(mastodonRemoteAccount(identity, viewer, actor, emojis), actor.domain, flags);
 
 /** {@link remoteActorDocument} for one actor, its profile's emoji read first. */
 const oneRemoteActorDocument = async (
   db: D1Database,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   actor: RemoteActorValue,
   flags: RemoteActorAdminFlags,
-): Promise<ApiAdminAccountJSON> =>
-  remoteActorDocument(identity, actor, flags, await loadProfileEmojis(db, [actor]));
+): Promise<ApiAdminAccountJSON> => {
+  const [emojis, viewer] = await Promise.all([
+    loadProfileEmojis(db, [actor]),
+    loadFeatureViewer(db, viewerId, [], [actor]),
+  ]);
+  return remoteActorDocument(identity, viewer, actor, flags, emojis);
+};
 
 /**
  * What a report remembers of a remote actor that was purged from the cache:
@@ -292,13 +303,15 @@ const purgedRemoteDocument = (
 export const adminAccountFor = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The moderator viewing, for `feature_approval.current_user`. */
+  viewerId: string | undefined,
   accountId: string,
 ): Promise<ApiAdminAccountJSON | null> => {
   const actorUri = RemoteAccountId.decode(accountId);
   if (actorUri.isOk()) {
     const state = await findAdminRemoteActor(env.DB, actorUri.value);
     return state.isOk() && state.value
-      ? oneRemoteActorDocument(env.DB, identity, state.value.actor, state.value.flags)
+      ? oneRemoteActorDocument(env.DB, identity, viewerId, state.value.actor, state.value.flags)
       : null;
   }
   const state = await findAdminAccount(env.DB, accountId);
@@ -306,7 +319,13 @@ export const adminAccountFor = async (
     return null;
   }
   const extras = await localAccountExtras(env.DB, [state.value.account.id]);
-  return adminAccountDocument(env, identity, state.value, extras.get(state.value.account.id));
+  return adminAccountDocument(
+    env,
+    identity,
+    viewerId,
+    state.value,
+    extras.get(state.value.account.id),
+  );
 };
 
 /**
@@ -317,15 +336,17 @@ export const adminAccountFor = async (
 export const adminPartyFor = async (
   env: Env,
   identity: InstanceIdentity,
+  /** The moderator viewing, for `feature_approval.current_user`. */
+  viewerId: string | undefined,
   party: ReportParty,
   acct: string | null,
 ): Promise<ApiAdminAccountJSON | null> => {
   if (party.kind === "Local") {
-    return adminAccountFor(env, identity, party.accountId);
+    return adminAccountFor(env, identity, viewerId, party.accountId);
   }
   const state = await findAdminRemoteActor(env.DB, party.actorUri);
   if (state.isOk() && state.value) {
-    return oneRemoteActorDocument(env.DB, identity, state.value.actor, state.value.flags);
+    return oneRemoteActorDocument(env.DB, identity, viewerId, state.value.actor, state.value.flags);
   }
   return acct === null ? null : purgedRemoteDocument(identity, party.actorUri, acct);
 };
@@ -344,7 +365,12 @@ export const getV1AdminAccountsById = async (
   if (admin.isErr()) {
     return jsonAuthError(c, admin.error);
   }
-  const document = await adminAccountFor(c.env, identity.value, c.req.param("id") ?? "");
+  const document = await adminAccountFor(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    c.req.param("id") ?? "",
+  );
   return document ? c.json(document) : notFound(c);
 };
 
@@ -355,6 +381,7 @@ export const getV1AdminAccountsById = async (
 const remoteAdminAccounts = async (
   env: Env,
   identity: InstanceIdentity,
+  viewerId: string | undefined,
   filters: Parameters<typeof listAdminRemoteActorUris>[1],
 ): Promise<Result<ApiAdminAccountJSON[], RepositoryError>> => {
   const uris = await listAdminRemoteActorUris(env.DB, filters);
@@ -371,9 +398,10 @@ const remoteAdminAccounts = async (
   if (moderations.isErr()) {
     return err(moderations.error);
   }
-  const [seen, emojis] = await Promise.all([
+  const [seen, emojis, viewer] = await Promise.all([
     remoteActorAdminFlags(env.DB, moderations.value, uris.value),
     loadProfileEmojis(env.DB, [...actors.value.values()]),
+    loadFeatureViewer(env.DB, viewerId, [], [...actors.value.values()]),
   ]);
   if (seen.isErr()) {
     return err(seen.error);
@@ -382,7 +410,15 @@ const remoteAdminAccounts = async (
     uris.value.flatMap((uri) => {
       const actor = actors.value.get(uri);
       return actor
-        ? [remoteActorDocument(identity, actor, seen.value.get(uri) ?? NOT_MODERATED, emojis)]
+        ? [
+            remoteActorDocument(
+              identity,
+              viewer,
+              actor,
+              seen.value.get(uri) ?? NOT_MODERATED,
+              emojis,
+            ),
+          ]
         : [];
     }),
   );
@@ -457,7 +493,16 @@ const adminAccountsResponse = async (
   const limit = queryLimit(c, PageSize.admin);
   const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
   if (filters.origin === "remote") {
-    const remote = await remoteAdminAccounts(c.env, identity.value, { ...filters, limit, offset });
+    const remote = await remoteAdminAccounts(
+      c.env,
+      identity.value,
+      await requestViewerId(c.req.raw, c.env),
+      {
+        ...filters,
+        limit,
+        offset,
+      },
+    );
     return remote.isErr() ? jsonRepositoryError(c, remote.error.message) : c.json(remote.value);
   }
   const accountIds = await accountIdsByIp(c.env.DB, filters.ip);
@@ -486,7 +531,13 @@ const adminAccountsResponse = async (
   const documents: ApiAdminAccountJSON[] = [];
   for (const state of states.value) {
     documents.push(
-      await adminAccountDocument(c.env, identity.value, state, extras.get(state.account.id)),
+      await adminAccountDocument(
+        c.env,
+        identity.value,
+        await requestViewerId(c.req.raw, c.env),
+        state,
+        extras.get(state.account.id),
+      ),
     );
   }
   setPaginationLinks(
@@ -554,7 +605,12 @@ const changeAccount = async (
     if (moderated.isErr()) {
       return jsonRepositoryError(c, moderated.error.message);
     }
-    const document = await adminAccountFor(c.env, identity.value, c.req.param("id") ?? "");
+    const document = await adminAccountFor(
+      c.env,
+      identity.value,
+      await requestViewerId(c.req.raw, c.env),
+      c.req.param("id") ?? "",
+    );
     return document ? c.json(document) : notFound(c);
   }
   const account = await findAccountById(c.env.DB, c.req.param("id") ?? "");
@@ -568,7 +624,12 @@ const changeAccount = async (
   if (changed.isErr()) {
     return jsonRepositoryError(c, changed.error.message);
   }
-  const document = await adminAccountFor(c.env, identity.value, account.value.id);
+  const document = await adminAccountFor(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    account.value.id,
+  );
   return document ? c.json(document) : notFound(c);
 };
 
@@ -623,10 +684,15 @@ export const postV1AdminAccountsByIdReject = async (
   if (!state.value) {
     return notFound(c);
   }
-  const document = await adminAccountDocument(c.env, identity.value, {
-    ...state.value,
-    moderation: { ...state.value.moderation, approval: { kind: "Pending" } },
-  });
+  const document = await adminAccountDocument(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    {
+      ...state.value,
+      moderation: { ...state.value.moderation, approval: { kind: "Pending" } },
+    },
+  );
   const purged = await purgeAccount(c.env, state.value.account.id);
   return purged.isErr() ? jsonRepositoryError(c, purged.error.message) : c.json(document);
 };

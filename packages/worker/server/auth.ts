@@ -96,6 +96,16 @@ const authentications = new WeakMap<
 >();
 
 /**
+ * The account a request is made as, none when it is anonymous or its token
+ * is refused: whom a rendered account's `feature_approval.current_user` is
+ * for. The route has answered a refused token already.
+ */
+export const requestViewerId = async (request: Request, env: Env): Promise<string | undefined> => {
+  const auth = await authenticate(request, env);
+  return auth.isOk() && auth.value.kind === "Account" ? auth.value.account.id : undefined;
+};
+
+/**
  * Who a request acts as, from its `Authorization: Bearer` OAuth token. The
  * token must carry a scope for the request's method and path; suspended and
  * disabled accounts are refused. A request is looked up once.

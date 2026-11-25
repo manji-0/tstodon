@@ -1,3 +1,4 @@
+import { requestViewerId } from "../../auth";
 import { type ApiAdminReportJSON, isReportCategory } from "@tstodon/api";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -69,14 +70,36 @@ const adminReportDocument = async (
     forwarded: report.forwarding.kind === "Forwarded",
     created_at: report.createdAt,
     updated_at: report.updatedAt ?? report.createdAt,
-    account: await adminPartyFor(c.env, identity, report.reporter, report.reporterAcct),
-    target_account: await adminPartyFor(c.env, identity, report.target, report.targetAcct),
+    account: await adminPartyFor(
+      c.env,
+      identity,
+      await requestViewerId(c.req.raw, c.env),
+      report.reporter,
+      report.reporterAcct,
+    ),
+    target_account: await adminPartyFor(
+      c.env,
+      identity,
+      await requestViewerId(c.req.raw, c.env),
+      report.target,
+      report.targetAcct,
+    ),
     assigned_account: report.assignedAccountId
-      ? await adminAccountFor(c.env, identity, report.assignedAccountId)
+      ? await adminAccountFor(
+          c.env,
+          identity,
+          await requestViewerId(c.req.raw, c.env),
+          report.assignedAccountId,
+        )
       : null,
     action_taken_by_account:
       report.resolution.kind === "Resolved"
-        ? await adminAccountFor(c.env, identity, report.resolution.byAccountId)
+        ? await adminAccountFor(
+            c.env,
+            identity,
+            await requestViewerId(c.req.raw, c.env),
+            report.resolution.byAccountId,
+          )
         : null,
     statuses,
     // The configured rules this violation is tied to.

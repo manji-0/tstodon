@@ -11,5 +11,6 @@
 -- @param {String} $11:groupKey?
 -- @param {String} $12:collectionId?
 -- @param {String} $13:collectionItemId?
-INSERT INTO notifications (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id, report_id, severance_event_id, group_key, collection_id, collection_item_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+-- @param {String} $14:remoteCollectionId?
+INSERT INTO notifications (id, account_id, from_account_id, from_actor_uri, kind, status_id, created_at, target_account_id, report_id, severance_event_id, group_key, collection_id, collection_item_id, remote_collection_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)

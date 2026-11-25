@@ -47,7 +47,7 @@ const suggestedAccounts = async (
   const accounts = candidates.value
     .filter((account) => account.id !== user.value.id && !excluded.value.has(account.id))
     .slice(0, limit);
-  const documents = await mastodonAccountDocuments(c.env, identity.value, accounts);
+  const documents = await mastodonAccountDocuments(c.env, identity.value, user.value.id, accounts);
   return accounts.flatMap((account) => {
     const document = documents.get(account.id);
     return document ? [document] : [];

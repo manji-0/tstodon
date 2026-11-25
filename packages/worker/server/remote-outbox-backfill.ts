@@ -1,4 +1,7 @@
-import { synchronizeRemoteCollections } from "./remote-curated-collection";
+import {
+  markRemoteCollectionsSynced,
+  synchronizeRemoteCollections,
+} from "./remote-curated-collection";
 import {
   ActivityId,
   type InstanceIdentity,
@@ -229,8 +232,10 @@ const backfillRemoteOutbox = async (env: Env, job: BackfillRemoteOutbox): Promis
       .flatMap((item) => featuredHashtag(item) ?? []);
     await replaceRemoteFeaturedTags(env.DB, actor.actorUri, tags);
   }
-  // As `ProcessAccountService#check_featured_collections_collection!`.
+  // As `ProcessAccountService#check_featured_collections_collection!`, and
+  // so not again for this document from the hourly cron.
   await synchronizeRemoteCollections(env, identity.value, actor, options);
+  await markRemoteCollectionsSynced(env.DB, [[actor.actorUri, actor.fetchedAt]]);
   return { outcome: "ok", size: outbox?.items.length ?? 0, chained };
 };
 

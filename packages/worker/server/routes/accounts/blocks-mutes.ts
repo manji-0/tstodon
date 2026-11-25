@@ -156,6 +156,7 @@ export const getV1Blocks = async (c: Context<{ Bindings: Env }, "/api/v1/blocks"
   const resolved = await availableAccountDocumentsByIds(
     c.env,
     identity.value,
+    user.value.id,
     rows.value.map((row) => row.accountId),
   );
   if (resolved.isErr()) {
@@ -187,6 +188,7 @@ export const getV1Mutes = async (c: Context<{ Bindings: Env }, "/api/v1/mutes">)
   const resolved = await availableAccountDocumentsByIds(
     c.env,
     identity.value,
+    user.value.id,
     rows.value.map((row) => row.accountId),
   );
   if (resolved.isErr()) {

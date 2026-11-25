@@ -153,20 +153,26 @@ export const getApUsersByIdFeaturedCollections = async (
   return c.json(document, 200, jsonLd);
 };
 
-/** `GET /ap/users/:id/collections/:collection_id`: one of the account's collections. */
-export const getApUsersByIdCollectionsByCollectionId = async (
-  c: Context<{ Bindings: Env }, "/ap/users/:id/collections/:collection_id">,
-) => {
-  const served = await servedOwner(c, c.req.param("id"));
-  if (served instanceof Response) {
-    return served;
-  }
-  const found = await findCollection(c.env.DB, c.req.param("collection_id"));
+/**
+ * `CollectionsController#show` as JSON: a local collection's
+ * `FeaturedCollection`, its owner served as `AccountOwnedConcern` serves it.
+ * `accountId` is the owner the path names, none for `/collections/:id`.
+ */
+const collectionDocument = async (
+  c: AnyContext,
+  accountId: string | undefined,
+  collectionId: string,
+): Promise<Response> => {
+  const found = await findCollection(c.env.DB, collectionId);
   if (found.isErr()) {
     return jsonRepositoryError(c, found.error.message);
   }
-  if (!found.value || found.value.accountId !== served.account.id) {
+  if (!found.value || (accountId !== undefined && found.value.accountId !== accountId)) {
     return notFound(c);
+  }
+  const served = await servedOwner(c, found.value.accountId);
+  if (served instanceof Response) {
+    return served;
   }
   const uris = await actorUris(c, served.identity, [found.value]);
   if (uris instanceof Response) {
@@ -178,6 +184,15 @@ export const getApUsersByIdCollectionsByCollectionId = async (
   };
   return c.json(document, 200, jsonLd);
 };
+
+/** `GET /ap/users/:id/collections/:collection_id`: one of the account's collections. */
+export const getApUsersByIdCollectionsByCollectionId = (
+  c: Context<{ Bindings: Env }, "/ap/users/:id/collections/:collection_id">,
+) => collectionDocument(c, c.req.param("id"), c.req.param("collection_id"));
+
+/** `GET /collections/:id` for an ActivityPub client (`format.json`): the collection's document. */
+export const collectionDocumentById = (c: AnyContext, collectionId: string) =>
+  collectionDocument(c, undefined, collectionId);
 
 /** `GET /ap/users/:id/collection_items/:item_id`: an item of one of the account's collections. */
 export const getApUsersByIdCollectionItemsByItemId = async (

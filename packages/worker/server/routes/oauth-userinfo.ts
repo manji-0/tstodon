@@ -21,7 +21,7 @@ export const getOauthUserinfo = async (c: Context<{ Bindings: Env }, "/oauth/use
   if (user.isErr()) {
     return jsonAuthError(c, user.error);
   }
-  const account = await mastodonAccountDocument(c.env, identity.value, user.value);
+  const account = await mastodonAccountDocument(c.env, identity.value, user.value.id, user.value);
   const userinfo: ApiOAuthUserinfoJSON = {
     iss: `${pageOrigin(c.env, c.req.raw)}/`,
     sub: InstanceIdentity.actorUrl(identity.value, user.value.username),

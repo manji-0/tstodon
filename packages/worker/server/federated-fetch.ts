@@ -12,10 +12,11 @@ import { judgeHostDns, type HostDnsVerdict, type HostResolver } from "./remote-d
 /**
  * Why a federated fetch failed. `VerificationUnavailable` is a server that
  * could not be asked or did not answer; `status` is set when it did answer,
- * with a 5xx, so a caller can tell an error answer from no answer.
+ * with a 5xx, so a caller can tell an error answer from no answer. An
+ * `InvalidSignature` carries the `status` of a 4xx answer.
  */
 export type FederatedFetchError =
-  | Readonly<{ kind: "InvalidSignature" }>
+  | Readonly<{ kind: "InvalidSignature"; status?: number }>
   | Readonly<{ kind: "VerificationUnavailable"; status?: number }>;
 
 /** A WebFinger lookup's failure; `NoSuchAccount` is a 404 or 410, the server's definite "no". */
@@ -354,7 +355,7 @@ const getActivity = async (
       }
       if (!response.ok) {
         await response.body?.cancel();
-        return err({ kind: "InvalidSignature" });
+        return err({ kind: "InvalidSignature", status: response.status });
       }
       return ok(response);
     }

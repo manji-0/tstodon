@@ -7,18 +7,30 @@ import {
   type RemoteActor,
 } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { findAccountById, findAccountByUsername } from "./account-store";
 import { parseLocalActorUsername } from "./activitypub";
 import { refId } from "./activitypub-wire";
 import { suspendedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { featureAuthorizationDocument } from "./collection-documents";
-import { type RepositoryError, toRepositoryError } from "./d1";
-import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
+import { notifyCollectionUpdate } from "./collection-notify";
+import { type RepositoryError, runD1, toRepositoryError } from "./d1";
+import {
+  fetchActivityJson,
+  type FederatedFetchError,
+  type FederatedFetchOptions,
+} from "./federated-fetch";
+import {
+  listRemoteActorsDueCollectionSync as listRemoteActorsDueCollectionSyncSql,
+  markRemoteActorCollectionsSynced as markRemoteActorCollectionsSyncedSql,
+} from "./generated/prisma/sql";
 import { newEntityId } from "./ids";
 import { instanceActorFetchSigner } from "./instance-actor";
 import { queueOutboxJobs } from "./queue-jobs";
 import { resolveRemoteActor } from "./remote-actor-fetch";
+import { getRemoteActorModeration } from "./remote-actor-moderation-store";
+import { findRemoteActorByUri } from "./remote-actor-store";
 import { fetchCollectionPage, firstCollectionPage } from "./remote-collection";
 import {
   acceptRemoteItem,
@@ -33,6 +45,7 @@ import {
   upsertRemoteCollection,
 } from "./remote-curated-collection-store";
 import { federationAllowHosts, parseInstanceIdentity } from "./runtime-config";
+import { queryTyped, runTyped } from "./typed-sql";
 
 const field = (json: unknown, key: string): unknown =>
   typeof json === "object" && json !== null ? Reflect.get(json, key) : undefined;
@@ -121,6 +134,20 @@ const localAuthorizationPath = (
     : undefined;
 };
 
+const TEMPORARY_STATUSES: ReadonlySet<number> = new Set([401, 408, 429]);
+
+/**
+ * Whether a failed fetch is worth trying again, as `raise_on_error:
+ * :temporary` raises: no answer, or an answer `response_error_unsalvageable?`
+ * does not give up on (a 5xx but 501, a 401, a 408 or a 429).
+ */
+const salvageable = (error: FederatedFetchError): boolean =>
+  error.status === undefined
+    ? error.kind === "VerificationUnavailable"
+    : error.status >= 500
+      ? error.status !== 501
+      : TEMPORARY_STATUSES.has(error.status);
+
 /**
  * `fetch_resource(approval_uri, raise_on_error: :temporary)`: this server's
  * own authorization as it serves it, another server's fetched. A document
@@ -160,9 +187,7 @@ const fetchAuthorization = async (
   }
   const fetched = await fetchActivityJson(identity, approvalUri, options);
   if (fetched.isErr()) {
-    return fetched.error.kind === "VerificationUnavailable"
-      ? { kind: "Unavailable" }
-      : { kind: "NotServed" };
+    return salvageable(fetched.error) ? { kind: "Unavailable" } : { kind: "NotServed" };
   }
   return refId(fetched.value) === approvalUri
     ? { kind: "Served", document: fetched.value }
@@ -517,7 +542,19 @@ export const processRemoteCollection = async (
   if (queued.isErr()) {
     return err(queued.error);
   }
-  return findRemoteCollection(env.DB, stored.value.id);
+  const collection = await findRemoteCollection(env.DB, stored.value.id);
+  if (collection.isErr() || collection.value === undefined) {
+    return collection;
+  }
+  // `notify_about_update!`: not for a collection this processing created.
+  const { before } = stored.value;
+  if (before !== undefined && RemoteCollection.significantlyChanged(before, collection.value)) {
+    const notified = await notifyCollectionUpdate(env, collection.value);
+    if (notified.isErr()) {
+      return err(notified.error);
+    }
+  }
+  return collection;
 };
 
 /**
@@ -591,3 +628,85 @@ export const synchronizeRemoteCollections = async (
     }
   }
 };
+
+type SynchronizeRemoteCollections = Extract<OutboxJob, { kind: "SynchronizeRemoteCollections" }>;
+
+/**
+ * `SynchronizeFeaturedCollectionsCollectionWorker`: read a cached actor's
+ * `featuredCollections`, unless it is suspended
+ * (`FetchFeaturedCollectionsCollectionService`).
+ */
+export const synchronizeRemoteCollectionsJob = async (
+  env: Env,
+  job: SynchronizeRemoteCollections,
+): Promise<"ok" | "retry"> => {
+  const identity = parseInstanceIdentity(env);
+  if (identity.isErr()) {
+    return "retry";
+  }
+  const [actor, moderation] = await Promise.all([
+    findRemoteActorByUri(env.DB, job.actorUri),
+    getRemoteActorModeration(env.DB, job.actorUri),
+  ]);
+  if (actor.isErr() || moderation.isErr()) {
+    return "retry";
+  }
+  if (actor.value === undefined || moderation.value.standing.kind === "Suspended") {
+    return "ok";
+  }
+  const options = await jobFetchOptions(env, identity.value);
+  await synchronizeRemoteCollections(env, identity.value, actor.value, options);
+  return "ok";
+};
+
+/** Actors listed per query, and queries per cron run. */
+const DUE_SYNC_PAGE = 50;
+const DUE_SYNC_PAGES = 4;
+
+const DueSyncRow = z.object({ actor_uri: z.string(), fetched_at: z.string() });
+
+/**
+ * Hourly cron path: queue a `SynchronizeRemoteCollections` job for each
+ * remote actor that names a `featuredCollections` and was fetched since it
+ * was last queued, as `ProcessAccountService#check_featured_collections_collection!`
+ * queues one each time it processes the actor. A page is marked once its
+ * jobs are queued; the fetch itself is left to the job.
+ */
+export const queueDueRemoteCollectionSyncs = async (env: Env): Promise<void> => {
+  for (let page = 0; page < DUE_SYNC_PAGES; page += 1) {
+    const listed = await runD1(() =>
+      queryTyped(env.DB, listRemoteActorsDueCollectionSyncSql(DUE_SYNC_PAGE), DueSyncRow),
+    );
+    if (listed.isErr() || listed.value.length === 0) {
+      return;
+    }
+    const jobs = listed.value.map((row) => ({
+      body: {
+        kind: "SynchronizeRemoteCollections",
+        actorUri: row.actor_uri,
+      } as const satisfies OutboxJob,
+    }));
+    try {
+      await env.PULL_QUEUE.sendBatch(jobs);
+    } catch {
+      console.error(JSON.stringify({ kind: "CollectionSyncsNotQueued", actors: jobs.length }));
+      return;
+    }
+    const marked = await markRemoteCollectionsSynced(
+      env.DB,
+      listed.value.map((row) => [row.actor_uri, row.fetched_at]),
+    );
+    if (marked.isErr() || listed.value.length < DUE_SYNC_PAGE) {
+      return;
+    }
+  }
+};
+
+/** Mark each `[actorUri, fetchedAt]` read, while the actor holds that document. */
+export const markRemoteCollectionsSynced = (
+  db: D1Database,
+  synced: ReadonlyArray<readonly [string, string]>,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await runTyped(db, markRemoteActorCollectionsSyncedSql(JSON.stringify(synced)));
+  });

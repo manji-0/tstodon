@@ -1,3 +1,4 @@
+import { requestViewerId } from "../auth";
 import type { Context } from "hono";
 import { ApiGetDirectoryParamsSchema } from "@tstodon/api";
 import { listDirectoryAccounts } from "../account-store";
@@ -23,7 +24,12 @@ export const getV1Directory = async (c: Context<{ Bindings: Env }, "/api/v1/dire
   if (accounts.isErr()) {
     return jsonRepositoryError(c, accounts.error.message);
   }
-  const documents = await mastodonAccountDocuments(c.env, identity.value, accounts.value);
+  const documents = await mastodonAccountDocuments(
+    c.env,
+    identity.value,
+    await requestViewerId(c.req.raw, c.env),
+    accounts.value,
+  );
   return c.json(
     documentsInOrder(
       accounts.value.map((account) => account.id),
