@@ -93,6 +93,13 @@ export default defineConfig({
                 QUERY_COUNT_SQL: process.env.QUERY_COUNT_SQL ?? "",
                 // `QUERY_COUNT_NOISE=<n>` seeds n unrelated statuses first (see the report).
                 QUERY_COUNT_NOISE: process.env.QUERY_COUNT_NOISE ?? "",
+                // `BENCH=1` runs the performance benchmark (`perf.bench.test.ts`,
+                // `pnpm bench`); it is skipped otherwise.
+                BENCH: process.env.BENCH ?? "",
+                BENCH_SCALE: process.env.BENCH_SCALE ?? "",
+                BENCH_RUNS: process.env.BENCH_RUNS ?? "",
+                BENCH_PLAN: process.env.BENCH_PLAN ?? "",
+                BENCH_ANALYZE: process.env.BENCH_ANALYZE ?? "",
               },
             },
           }),

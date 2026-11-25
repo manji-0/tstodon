@@ -36,7 +36,16 @@ export type Tally = {
   workflowCreates: number;
   /** `rows_read rows_written sql` per statement, for `QUERY_COUNT_SQL`. */
   rowsBySql: string[];
+  /** Every statement's full SQL, bound values and rows, for the benchmark's plans. */
+  statementRows: StatementRows[];
 };
+
+export type StatementRows = Readonly<{
+  sql: string;
+  params: ReadonlyArray<unknown>;
+  rowsRead: number;
+  rowsWritten: number;
+}>;
 
 const emptyTally = (): Tally => ({
   statements: 0,
@@ -51,6 +60,7 @@ const emptyTally = (): Tally => ({
   kvWrites: 0,
   workflowCreates: 0,
   rowsBySql: [],
+  statementRows: [],
 });
 
 /** What the patched bindings counted since the last `resetMeter`. */
@@ -110,7 +120,20 @@ const sqlOf = (statement: unknown): string => {
   return typeof text === "string" ? text.replace(/\s+/g, " ").slice(0, 140) : "?";
 };
 
-const countMeta = (tally: Tally, result: unknown, sql = "?"): void => {
+const fullStatement = (statement: unknown): Pick<StatementRows, "sql" | "params"> => {
+  if (typeof statement !== "object" || statement === null) {
+    return { sql: "?", params: [] };
+  }
+  const sql: unknown = Reflect.get(statement, "statement");
+  const params: unknown = Reflect.get(statement, "params");
+  return {
+    sql: typeof sql === "string" ? sql : "?",
+    params: Array.isArray(params) ? params : [],
+  };
+};
+
+const countMeta = (tally: Tally, result: unknown, statement: unknown, prefix = ""): void => {
+  const sql = `${prefix}${sqlOf(statement)}`;
   const meta =
     typeof result === "object" && result !== null ? Reflect.get(result, "meta") : undefined;
   if (typeof meta !== "object" || meta === null) {
@@ -121,6 +144,11 @@ const countMeta = (tally: Tally, result: unknown, sql = "?"): void => {
   tally.rowsRead += typeof read === "number" ? read : 0;
   tally.rowsWritten += typeof written === "number" ? written : 0;
   tally.rowsBySql.push(`${String(read)} ${String(written)} ${sql}`);
+  tally.statementRows.push({
+    ...fullStatement(statement),
+    rowsRead: typeof read === "number" ? read : 0,
+    rowsWritten: typeof written === "number" ? written : 0,
+  });
 };
 
 const track = async <T>(
@@ -207,7 +235,7 @@ export const patchD1 = (): void => {
             1,
             async (tally) => {
               const result: unknown = await Reflect.apply(original, this, args);
-              if (tally) countMeta(tally, result);
+              if (tally) countMeta(tally, result, this);
               return result;
             },
             [sqlOf(this)],
@@ -225,7 +253,7 @@ export const patchD1 = (): void => {
           1,
           async (tally) => {
             const result: unknown = await Reflect.apply(all, this, []);
-            if (tally) countMeta(tally, result);
+            if (tally) countMeta(tally, result, this);
             const rows =
               typeof result === "object" && result !== null ? Reflect.get(result, "results") : [];
             const row: unknown = Array.isArray(rows) ? rows[0] : undefined;
@@ -253,7 +281,7 @@ export const patchD1 = (): void => {
             const results: unknown = await Reflect.apply(original, this, [statements]);
             if (tally && Array.isArray(results)) {
               results.forEach((result: unknown, index) => {
-                countMeta(tally, result, `[batch] ${sqlOf(statements[index])}`);
+                countMeta(tally, result, statements[index], "[batch] ");
               });
             }
             return results;
