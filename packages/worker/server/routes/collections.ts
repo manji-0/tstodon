@@ -4,7 +4,7 @@ import {
   type ApiCollectionJSON,
   ApiUpdateCollectionParamsSchema,
 } from "@tstodon/api";
-import { isHashtagName, Languages, warmSchemas } from "@tstodon/core";
+import { isHashtagName, SupportedLocales, warmSchemas } from "@tstodon/core";
 import {
   Collection,
   CollectionItem,
@@ -83,8 +83,6 @@ type AnyContext = Context<{ Bindings: Env }>;
 const COLLECTIONS_PAGE = { default: 40, max: 100 } as const;
 /** `limit_param(DEFAULT_COLLECTIONS_LIMIT)`, as the `Link` paths and `in_collections` read it. */
 const LINK_PAGE = { default: 40, max: 80 } as const;
-
-const LANGUAGE_CODES: ReadonlySet<string> = new Set(Languages.map(([code]) => code));
 
 /** `deprecate_api '2026-06-10'`: `@` and the date's Unix time. */
 const ALPHA_DEPRECATION = `@${Date.UTC(2026, 5, 10) / 1000}`;
@@ -600,7 +598,7 @@ const createCollection = async (c: AnyContext): Promise<Response> => {
   const errors = Collection.validate(fields, {
     tagUsable: topic.usable,
     liveItemCount: targets.length,
-    knownLanguage: (code) => LANGUAGE_CODES.has(code),
+    knownLanguage: (code) => SupportedLocales.has(code),
     ownerQuota: { count: owned.value, limit: Collection.limit },
   });
   if (errors.length > 0) {
@@ -713,7 +711,7 @@ const changeCollection = async (c: AnyContext, id: string): Promise<Response> =>
   const errors = Collection.validate(fields, {
     tagUsable: topic.usable,
     liveItemCount: before.items.filter(Collection.live).length,
-    knownLanguage: (code) => LANGUAGE_CODES.has(code),
+    knownLanguage: (code) => SupportedLocales.has(code),
     ownerQuota: undefined,
   });
   if (errors.length > 0) {

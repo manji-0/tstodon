@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { OutboxJob } from "@tstodon/domain";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { authHeaders } from "../test/auth-fixture";
 import { type HeldQueue, holdQueue } from "../test/queue-hold";
 import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
@@ -167,5 +168,23 @@ describe("a remote item's authorization fetch", () => {
   });
 });
 
-void SELF;
-void ORIGIN;
+const createCollection = async (email: string, body: Record<string, unknown>) =>
+  SELF.fetch(`${ORIGIN}/api/v1/collections`, {
+    method: "POST",
+    headers: { ...(await authHeaders(email)), "content-type": "application/json" },
+    body: JSON.stringify({ name: "Picks", sensitive: false, discoverable: true, ...body }),
+  });
+
+describe("a collection's language", () => {
+  // `LanguageValidator` reads `SUPPORTED_LOCALES`: ISO 639-1 without `gn`
+  // and `sm`, its regional variants and ISO 639-3.
+  it.each(["en", "zh-TW", "mn-Mong", "tok", "nan-TW"])("takes %s", async (language) => {
+    const response = await createCollection("lang-ok@example.com", { language });
+    expect(response.status).toBe(200);
+  });
+
+  it.each(["gn", "xx", "zh-tw"])("refuses %s", async (language) => {
+    const response = await createCollection("lang-refused@example.com", { language });
+    expect(response.status).toBe(422);
+  });
+});
