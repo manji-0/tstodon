@@ -14,7 +14,11 @@ import { suspendedDomains } from "./admin-domain-block-store";
 import { nowIso } from "./clock";
 import { featureAuthorizationDocument } from "./collection-documents";
 import { type RepositoryError, toRepositoryError } from "./d1";
-import { fetchActivityJson, type FederatedFetchOptions } from "./federated-fetch";
+import {
+  fetchActivityJson,
+  type FederatedFetchError,
+  type FederatedFetchOptions,
+} from "./federated-fetch";
 import { newEntityId } from "./ids";
 import { instanceActorFetchSigner } from "./instance-actor";
 import { queueOutboxJobs } from "./queue-jobs";
@@ -121,6 +125,21 @@ const localAuthorizationPath = (
     : undefined;
 };
 
+const TEMPORARY_STATUSES: ReadonlySet<number> = new Set([401, 408, 429]);
+
+/**
+ * Whether a failed fetch is worth trying again, as `raise_on_error:
+ * :temporary` raises: no answer, or an answer `response_error_unsalvageable?`
+ * does not give up on (a 5xx but 501, a 401, a 408 or a 429).
+ */
+const salvageable = (error: FederatedFetchError): boolean =>
+  error.status === undefined
+    ? error.kind === "VerificationUnavailable"
+    : error.status >= 500
+      ? error.status !== 501
+      : TEMPORARY_STATUSES.has(error.status);
+
+
 /**
  * `fetch_resource(approval_uri, raise_on_error: :temporary)`: this server's
  * own authorization as it serves it, another server's fetched. A document
@@ -160,9 +179,7 @@ const fetchAuthorization = async (
   }
   const fetched = await fetchActivityJson(identity, approvalUri, options);
   if (fetched.isErr()) {
-    return fetched.error.kind === "VerificationUnavailable"
-      ? { kind: "Unavailable" }
-      : { kind: "NotServed" };
+    return salvageable(fetched.error) ? { kind: "Unavailable" } : { kind: "NotServed" };
   }
   return refId(fetched.value) === approvalUri
     ? { kind: "Served", document: fetched.value }
