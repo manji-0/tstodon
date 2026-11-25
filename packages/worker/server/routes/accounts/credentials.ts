@@ -14,6 +14,7 @@ import {
   characterCount,
   noteLength,
   schemaResult,
+  SupportedLocales,
   warmSchemas,
 } from "@tstodon/core";
 import { err, ok, type Result } from "neverthrow";
@@ -177,12 +178,14 @@ const parseSourceDefaults = (
     typeof languageRaw === "string"
       ? languageRaw.trim().length === 0
         ? null
-        : languageRaw.trim().toLowerCase()
+        : languageRaw.trim()
       : undefined;
+  // A code of `SUPPORTED_LOCALES` as written (`zh-TW`), as Mastodon's
+  // `valid_locale?` reads `default_language`.
   if (
     languageValue !== undefined &&
     languageValue !== null &&
-    !/^[a-z]{2,3}(-[a-z0-9]+)?$/.test(languageValue)
+    !SupportedLocales.has(languageValue)
   ) {
     return err("Invalid source[language]");
   }

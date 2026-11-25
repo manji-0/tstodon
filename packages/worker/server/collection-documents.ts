@@ -41,6 +41,22 @@ export const collectionUri = (identity: InstanceIdentity, collection: Collection
 export const collectionUrl = (identity: InstanceIdentity, collection: Collection): string =>
   `${origin(identity)}/collections/${collection.id}`;
 
+/**
+ * The id of this server's collection `uri` names, by its `collection_url`
+ * or its `ap_account_collection_url` (`TagManager#uri_to_local_collection`,
+ * which does not check the account either).
+ */
+export const localCollectionIdOf = (
+  identity: InstanceIdentity,
+  uri: string,
+): string | undefined => {
+  const url = URL.parse(uri);
+  if (url === null || url.origin !== URL.parse(origin(identity))?.origin) {
+    return undefined;
+  }
+  return /^\/(?:ap\/users\/[^/]+\/)?collections\/([^/]+)$/.exec(url.pathname)?.[1];
+};
+
 /** Who reads a collection: the signed-in account and the accounts it blocks. */
 export type CollectionViewer = Readonly<{
   id: string | undefined;
@@ -189,7 +205,7 @@ export const featureAuthorizationUri = (
 /** Rails' `iso8601`: whole seconds. */
 const apTime = (instant: string): string => instant.replace(/\.\d+Z$/, "Z");
 
-const FEATURED_COLLECTION_TERMS = {
+export const FEATURED_COLLECTION_TERMS = {
   FeaturedCollection: "https://w3id.org/fep/7aa9#FeaturedCollection",
   FeaturedItem: "https://w3id.org/fep/7aa9#FeaturedItem",
   FeatureRequest: "https://w3id.org/fep/7aa9#FeatureRequest",
@@ -291,6 +307,64 @@ export const curatedCollectionObject = (
     ),
   };
 };
+
+/**
+ * `ActivityPub::FeaturedCollectionSerializer` of a remote collection, as a
+ * local note that tags it embeds it: its own `uri` and `url`, no summary
+ * (Mastodon keeps a remote collection's as `description_html`, and
+ * serializes `description`), and the accepted items its owner listed.
+ */
+const remoteCollectionObject = (
+  identity: InstanceIdentity,
+  collection: RemoteCollection,
+  actorUriOf: ActorUriOf,
+): ApCuratedCollectionJSON => {
+  const accepted = collection.items.filter((item) => item.state === "accepted");
+  return {
+    id: collection.uri,
+    type: "FeaturedCollection",
+    totalItems: accepted.length,
+    name: collection.name,
+    attributedTo: collection.actorUri,
+    url: collection.url,
+    sensitive: collection.sensitive,
+    discoverable: collection.discoverable,
+    published: apTime(collection.createdAt),
+    updated: apTime(collection.updatedAt),
+    ...(collection.language ? { summaryMap: { [collection.language]: null } } : { summary: null }),
+    topic: collection.tagName === null ? null : hashtagObject(identity, collection.tagName),
+    orderedItems: accepted.flatMap((item) => {
+      const remote = RemoteAccountId.decode(item.accountId);
+      const featuredObject = remote.isOk() ? remote.value : actorUriOf(item.accountId);
+      const featureAuthorization = remote.isOk()
+        ? item.approvalUri
+        : featureAuthorizationUri(identity, item.accountId, item.id);
+      return item.uri === undefined ||
+        featuredObject === undefined ||
+        featureAuthorization === undefined
+        ? []
+        : [
+            {
+              id: item.uri,
+              type: "FeaturedItem" as const,
+              featuredObject,
+              featureAuthorization,
+              published: apTime(item.createdAt),
+            },
+          ];
+    }),
+  };
+};
+
+/** A collection as a note's `FeaturedCollection` tag embeds it, local or remote. */
+export const taggedCollectionObject = (
+  identity: InstanceIdentity,
+  collection: Collection | RemoteCollection,
+  actorUriOf: ActorUriOf,
+): ApCuratedCollectionJSON =>
+  collection.kind === "LocalCollection"
+    ? curatedCollectionObject(identity, collection, actorUriOf)
+    : remoteCollectionObject(identity, collection, actorUriOf);
 
 /**
  * `FeatureAuthorizationsController#show`: `account`'s consent to its accepted

@@ -34,6 +34,7 @@ import { mentionedPost, notifyAccount } from "./notify";
 import { schedulePollEnd } from "./poll-expiry";
 import { insertPoll } from "./poll-store";
 import { startLinkCard } from "./link-card";
+import { linkTaggedCollections } from "./tagged-collections";
 import type { MediaAttribute } from "./status-body-schema";
 import { notifyLocalNoteFollowers } from "./local-note-follower-notifications";
 import { mastodonStatus } from "./local-status-documents";
@@ -278,6 +279,10 @@ export const publishLocalNote = async (
     await schedulePollEnd(env, { kind: "LocalPoll", pollId: poll.value }, expiresAt);
   }
   startLinkCard(env, "Status", note.id, note.text);
+  const linked = await linkTaggedCollections(env, identity, note, "Posted");
+  if (linked.isErr()) {
+    return err(linked.error);
+  }
   const attributes = await mediaAttributeChanges(
     env.DB,
     user.id,

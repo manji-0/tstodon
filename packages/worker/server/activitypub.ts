@@ -1,5 +1,5 @@
 import { extractHashtags } from "@tstodon/core";
-import { featuredCollectionsUri } from "./collection-documents";
+import { FEATURED_COLLECTION_TERMS, featuredCollectionsUri } from "./collection-documents";
 import { tagUrl } from "./tag-documents";
 import {
   InstanceIdentity,
@@ -12,6 +12,7 @@ import {
   ACTIVITY_STREAMS,
   type ApActivityDocumentOf,
   type ApActorDocumentJSON,
+  type ApCuratedCollectionJSON,
   type ApEmojiDocumentJSON,
   type ApEmojiJSON,
   type ApHashtagJSON,
@@ -551,9 +552,15 @@ export const noteDocument = (
      * `Emoji` tags, without which a remote server shows the bare shortcode.
      */
     emojis: ReadonlyArray<CustomEmoji>;
+    /**
+     * The collections the note tags, embedded as `FeaturedCollection` tags.
+     * Required: a receiver reads a note's tagged collections from them.
+     */
+    taggedCollections: ReadonlyArray<ApCuratedCollectionJSON>;
   }>,
 ): ApStatusDocumentJSON => {
-  const { quote, mentions = [], reply, poll, quotePolicy } = extras;
+  const { quote, mentions = [], reply, poll, quotePolicy, taggedCollections } = extras;
+  const tagsCollections = taggedCollections.length > 0;
   const hashtags = extractHashtags(note.text);
   const emojis = emojisInTexts(
     statusEmojiTexts(
@@ -617,8 +624,13 @@ export const noteDocument = (
           },
         }
       : {}),
-    ...(poll || attachments.length > 0 || emojis.length > 0
+    ...(poll || attachments.length > 0 || emojis.length > 0 || tagsCollections
       ? { toot: "http://joinmastodon.org/ns#" }
+      : {}),
+    // An embedded `FeaturedCollection`'s own terms (`discoverable`,
+    // `featured_collections` and `hashtag`), as its serializer adds them.
+    ...(tagsCollections
+      ? { discoverable: "toot:discoverable", ...FEATURED_COLLECTION_TERMS, Hashtag: "as:Hashtag" }
       : {}),
     ...(emojis.length > 0 ? { Emoji: "toot:Emoji" } : {}),
     ...(poll ? { votersCount: "toot:votersCount" } : {}),
@@ -671,6 +683,7 @@ export const noteDocument = (
       })),
       ...hashtags.map((name) => hashtagObject(identity, name)),
       ...emojis.map(emojiTag(identity)),
+      ...taggedCollections,
     ],
     interactionPolicy: { canQuote: { automaticApproval } },
   };

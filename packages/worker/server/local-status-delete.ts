@@ -50,6 +50,7 @@ export const deleteLocalStatus = async (
             media: { attachments: [], authorSensitized: false },
             quotePolicy: await loadNoteQuotePolicy(env.DB, account, status),
             emojis: [],
+            taggedCollections: [],
           }),
         )
       : undefined;

@@ -52,6 +52,7 @@ import { tagUrl } from "./tag-documents";
 import { statusInteractionCountsByIds } from "./status-interaction-store";
 import { findStatusesByIds } from "./status-store";
 import { quotedStatusAccess } from "./quoted-status-access";
+import { taggedCollectionDocuments } from "./tagged-collection-documents";
 
 /** The reply fields of a rendered status, which {@link attachRemoteReplyRefs} fills in. */
 type ReplyRefs = {
@@ -304,18 +305,29 @@ const renderRemoteStatuses = async <Q>(
   const ids = statuses.map((status) => status.id);
   const actorUris = statuses.map((status) => status.actorUri);
   const targets = statuses.map((status) => StatusTarget.remote(status.id));
-  const [cards, tags, mentions, actors, moderations, pollVotes, interactions, relations, quotes] =
-    await Promise.all([
-      listRemoteStatusCards(env.DB, ids),
-      listRemoteStatusTags(env.DB, ids),
-      listShownRemoteStatusMentions(env.DB, ids),
-      findRemoteActorsByUris(env.DB, actorUris),
-      listRemoteActorModerations(env.DB, actorUris),
-      findRemotePollVotes(env.DB, viewerId, statuses),
-      statusInteractionCountsByIds(env.DB, ids, viewerId),
-      quoteViewerRelations(env.DB, viewerId, actorUris),
-      findQuotesByQuoting(env.DB, targets),
-    ]);
+  const [
+    cards,
+    tags,
+    mentions,
+    actors,
+    moderations,
+    pollVotes,
+    interactions,
+    relations,
+    quotes,
+    taggedCollectionsOf,
+  ] = await Promise.all([
+    listRemoteStatusCards(env.DB, ids),
+    listRemoteStatusTags(env.DB, ids),
+    listShownRemoteStatusMentions(env.DB, ids),
+    findRemoteActorsByUris(env.DB, actorUris),
+    listRemoteActorModerations(env.DB, actorUris),
+    findRemotePollVotes(env.DB, viewerId, statuses),
+    statusInteractionCountsByIds(env.DB, ids, viewerId),
+    quoteViewerRelations(env.DB, viewerId, actorUris),
+    findQuotesByQuoting(env.DB, targets),
+    taggedCollectionDocuments(env, identity, viewerId, targets),
+  ]);
   if (actors.isErr()) {
     return err(actors.error);
   }
@@ -385,6 +397,7 @@ const renderRemoteStatuses = async <Q>(
         status.visibility,
         relations.get(status.actorUri),
       ),
+      taggedCollections: taggedCollectionsOf(StatusTarget.remote(status.id)),
     });
     const quote = quotes.value.get(status.id);
     const sensitized = moderations.isOk() && moderations.value.get(status.actorUri)?.sensitized;

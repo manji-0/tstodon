@@ -1,5 +1,6 @@
 import type {
   ApiAccountJSON,
+  ApiCollectionJSON,
   ApiMediaAttachmentJSON,
   ApiMentionJSON,
   ApiOriginalStatusJSON,
@@ -32,6 +33,8 @@ export type RemoteStatusExtras = Readonly<{
   interactions?: StatusInteractionCounts | undefined;
   /** Whether the viewer may quote it; no viewer may when unset, as Mastodon answers an anonymous one. */
   quoteApproval?: QuoteApprovalForViewer | undefined;
+  /** The collections it tags, as the viewer sees them; none when unset. */
+  taggedCollections?: ReadonlyArray<ApiCollectionJSON> | undefined;
 }>;
 
 /**
@@ -92,8 +95,7 @@ export const mastodonRemoteStatus = (
       manual: status.quotePolicy.manual,
       current_user: extras.quoteApproval ?? "denied",
     },
-    // Mastodon 4.7 collections; none are kept here.
-    tagged_collections: [],
+    tagged_collections: [...(extras.taggedCollections ?? [])],
   };
 };
 

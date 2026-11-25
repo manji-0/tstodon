@@ -11,6 +11,7 @@ import { loadNotePoll } from "./poll-store";
 import { loadNoteQuotePolicy } from "./quote-policy-name";
 import { noteQuote } from "./quote-uri";
 import { loadNoteReply } from "./reply-target";
+import { loadNotesTaggedCollections } from "./tagged-collection-documents";
 
 /** A note's object as its `Create` or `Update` carries it, and the status it quotes. */
 export type NoteObject = Readonly<{
@@ -25,7 +26,7 @@ export type NoteObject = Readonly<{
  */
 export type NoteObjectUnreadable = Readonly<{
   kind: "NoteObjectUnreadable";
-  cause: "media" | "quote" | "replies";
+  cause: "media" | "quote" | "replies" | "collections";
 }>;
 
 /**
@@ -56,6 +57,10 @@ export const readNoteObject = async (
   if (replies.isErr()) {
     return err({ kind: "NoteObjectUnreadable", cause: "replies" });
   }
+  const collections = await loadNotesTaggedCollections(env.DB, identity, [note.id]);
+  if (collections.isErr()) {
+    return err({ kind: "NoteObjectUnreadable", cause: "collections" });
+  }
   return ok({
     quote: quote.value,
     object: noteDocument(identity, account, note, {
@@ -67,6 +72,7 @@ export const readNoteObject = async (
       media: media.value,
       quotePolicy: await loadNoteQuotePolicy(env.DB, account, note),
       emojis: await loadCustomEmojis(env, identity.mediaPublicBaseUrl),
+      taggedCollections: collections.value.get(note.id) ?? [],
     }),
   });
 };

@@ -78,6 +78,7 @@ import {
 } from "../../local-status-publish";
 import { checkAttachableMedia, parsePollRequest } from "./create";
 import { startLinkCard } from "../../link-card";
+import { linkTaggedCollections } from "../../tagged-collections";
 import { draftRefusal } from "./status-limits";
 import { visibilityIsPublic } from "../../quote-resolve";
 import { ApiRefusal } from "../api-refusal";
@@ -454,6 +455,10 @@ const editNote = async (
     return err(ApiRefusal.repository(notified.error.message));
   }
   startLinkCard(env, "Status", existing.id, revised.text);
+  const linked = await linkTaggedCollections(env, identity, revised, "Edited");
+  if (linked.isErr()) {
+    return err(ApiRefusal.repository(linked.error.message));
+  }
   const pollApplied = await applyPollRevision(env.DB, existing.id, pollRevision.value);
   if (pollApplied.isErr()) {
     return err(pollApplied.error);

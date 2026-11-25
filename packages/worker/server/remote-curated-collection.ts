@@ -18,8 +18,10 @@ import { notifyCollectionUpdate } from "./collection-notify";
 import { type RepositoryError, runD1, toRepositoryError } from "./d1";
 import {
   fetchActivityJson,
+  fetchActivityResource,
   type FederatedFetchError,
   type FederatedFetchOptions,
+  type FetchedResource,
 } from "./federated-fetch";
 import {
   listRemoteActorsDueCollectionSync as listRemoteActorsDueCollectionSyncSql,
@@ -577,6 +579,72 @@ export const fetchRemoteCollection = async (
     return ok(undefined);
   }
   return processRemoteCollection(env, owner, fetched.value);
+};
+
+/** How a tag or a link names a collection: see `ResolveTaggedCollection`. */
+export type TaggedCollectionLookup = Extract<
+  OutboxJob,
+  { kind: "ResolveTaggedCollection" }
+>["lookup"];
+
+/**
+ * The collection a note's tag or a local post's link names, stored already
+ * or fetched, as `TaggedCollectionResolveWorker` runs
+ * `FetchRemoteFeaturedCollectionService`: the document must name itself
+ * (for a `Url`, a page or a document with another id leads once to the
+ * document it names, as `FetchResourceService` reads it) and be a
+ * `FeaturedCollection`, processed for its `attributedTo` when that actor is
+ * cached. `Unavailable` when its server should be asked again.
+ */
+export const fetchTaggedCollection = async (
+  env: Env,
+  identity: InstanceIdentity,
+  uri: string,
+  lookup: TaggedCollectionLookup,
+): Promise<Result<RemoteCollection | "Unavailable" | undefined, RepositoryError>> => {
+  const options = await jobFetchOptions(env, identity);
+  let target = uri;
+  for (const terminal of lookup === "Uri" ? [true] : [false, true]) {
+    const known = await findRemoteCollectionByUri(env.DB, target);
+    if (known.isErr() || known.value !== undefined) {
+      return known;
+    }
+    const fetched =
+      lookup === "Uri"
+        ? (await fetchActivityJson(identity, target, options)).map((document): FetchedResource => ({
+            kind: "Document",
+            document,
+          }))
+        : await fetchActivityResource(identity, target, options);
+    if (fetched.isErr()) {
+      return ok(salvageable(fetched.error) ? "Unavailable" : undefined);
+    }
+    const resource = fetched.value;
+    if (resource.kind === "None") {
+      return ok(undefined);
+    }
+    const next =
+      resource.kind === "Alternate" ? resource.href : text(field(resource.document, "id"));
+    if (resource.kind === "Document" && next === target) {
+      const owner = text(field(resource.document, "attributedTo"));
+      if (field(resource.document, "type") !== "FeaturedCollection" || owner === undefined) {
+        return ok(undefined);
+      }
+      // Fetching an unknown account should fetch its collections as well.
+      const actor = await findRemoteActorByUri(env.DB, owner);
+      if (actor.isErr()) {
+        return err(actor.error);
+      }
+      return actor.value === undefined
+        ? ok(undefined)
+        : processRemoteCollection(env, actor.value, resource.document);
+    }
+    if (next === undefined || terminal || sameHost(next, identity.publicOrigin)) {
+      return ok(undefined);
+    }
+    target = next;
+  }
+  return ok(undefined);
 };
 
 /**

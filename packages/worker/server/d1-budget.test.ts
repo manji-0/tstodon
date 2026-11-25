@@ -808,6 +808,68 @@ describe("D1 statements do not grow with how many things a request names", () =>
     },
   );
 
+  // `REST::StatusSerializer#tagged_collections`: the tags, the collections
+  // and the viewer's blocks are read once a page, not once a status.
+  it(
+    "renders a page of posts tagging collections in a fixed number of statements",
+    { timeout: 60_000 },
+    async () => {
+      const [reader, owner, featured, one, eight] = await Promise.all(
+        [
+          "budget-tagged-reader",
+          "budget-tagged-owner",
+          "budget-tagged-featured",
+          "budget-tagged-one",
+          "budget-tagged-eight",
+        ].map((name) => signedInAccount(`${name}@example.com`)),
+      );
+      if (!reader || !owner || !featured || !one || !eight) throw new Error("accounts");
+      const [readerToken, ownerToken, oneToken, eightToken] = await Promise.all(
+        [reader, owner, one, eight].map((account) => accessTokenFor(account.id)),
+      );
+      if (!readerToken || !ownerToken || !oneToken || !eightToken) throw new Error("tokens");
+      const CollectionUrl = z.object({ collection: z.object({ url: z.string() }) });
+      const urls: string[] = [];
+      for (let n = 0; n < 8; n += 1) {
+        const created = await post(ownerToken, "/api/v1/collections", {
+          name: `Picks ${n}`,
+          sensitive: false,
+          discoverable: true,
+          account_ids: [featured.id],
+        });
+        urls.push(CollectionUrl.parse(created).collection.url);
+      }
+      await post(oneToken, "/api/v1/statuses", { status: `see ${urls[0]}` });
+      for (const url of urls) {
+        await post(eightToken, "/api/v1/statuses", { status: `see ${url}` });
+      }
+      const statuses = (id: string) =>
+        metered(() =>
+          SELF.fetch(`https://example.com/api/v1/accounts/${id}/statuses?limit=8`, {
+            headers: { Authorization: `Bearer ${readerToken}` },
+          }),
+        );
+      const Tagged = z.array(z.object({ tagged_collections: z.array(z.unknown()) }));
+      const shown = await SELF.fetch(
+        `https://example.com/api/v1/accounts/${eight.id}/statuses?limit=8`,
+        { headers: { Authorization: `Bearer ${readerToken}` } },
+      );
+      expect(
+        Tagged.parse(await shown.json()).map((status) => status.tagged_collections.length),
+      ).toEqual(Array.from({ length: 8 }, () => 1));
+      patchD1();
+      await statuses(one.id);
+      await statuses(eight.id);
+      const few = await statuses(one.id);
+      const many = await statuses(eight.id);
+      expect([few.status, many.status]).toEqual([200, 200]);
+      expect(
+        many.statements,
+        `8 posts tagging 8 collections made ${many.statements} statements, one ${few.statements}`,
+      ).toBe(few.statements);
+    },
+  );
+
   // A remote post's custom emoji are read when it is rendered, as Mastodon's
   // `CustomEmoji.from_text`: one statement a page, a key seek per emoji.
   it(
