@@ -26,6 +26,7 @@ import { processMoveFollowsJob } from "./remote-move";
 import { processBackfillRemoteOutboxJob } from "./remote-outbox-backfill";
 import { processBackfillRemoteThreadJob } from "./remote-thread-backfill";
 import { processResolveRemoteThreadJob } from "./remote-thread-resolve-job";
+import { processFeaturedItemJob, verifyFeaturedItemJob } from "./remote-curated-collection";
 import { indexMissingRemoteTags } from "./remote-status-store";
 import { vacuumMediaAttachments } from "./media-vacuum";
 import { vacuumActivities } from "./activity-vacuum";
@@ -41,6 +42,7 @@ import {
 import { parseInstanceIdentity } from "./runtime-config";
 import { deliverExpandedActivity, startOutboxDeliveryWorkflow } from "./delivery";
 import { processExpandForwardJob } from "./activity-forward";
+import { listCollectionMemberInboxes } from "./collection-store";
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
@@ -88,6 +90,59 @@ const updatedQuestionOf = (payload: unknown, object: unknown): string | undefine
   return typeof id === "string" ? id : undefined;
 };
 
+/** The `type` of a parsed document, or of an embedded object. */
+const typeOf = (value: unknown): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, "type") : undefined;
+
+/**
+ * Whether the activity is about a local collection or its items (an `Add` or
+ * `Remove` of a `featuredCollections` member or of a collection's item, an
+ * `Update` of a `FeaturedCollection`, a `Delete` of a `FeatureAuthorization`),
+ * which Mastodon sends to the owner's reach (`CollectionRawDistributionWorker`,
+ * `AccountRawDistributionWorker`).
+ */
+const isCollectionActivity = (payload: unknown, object: unknown): boolean => {
+  const type = typeOf(payload);
+  if (type === "Add" || type === "Remove") {
+    const target: unknown =
+      typeof payload === "object" && payload !== null ? Reflect.get(payload, "target") : undefined;
+    return (
+      typeof target === "string" &&
+      /\/ap\/users\/[^/]+\/(?:featured_collections|collections\/[^/]+)$/.test(target)
+    );
+  }
+  return (
+    (type === "Update" && typeOf(object) === "FeaturedCollection") ||
+    (type === "Delete" && typeOf(object) === "FeatureAuthorization")
+  );
+};
+
+const LOCAL_COLLECTION_PATH = /\/ap\/users\/[^/]+\/collections\/([^/#]+)$/;
+
+/**
+ * The local collection a collection activity is about, whose remote members
+ * hear it too (`CollectionReachFinder`): an item's target, or the updated
+ * collection. Not a collection removed from `featuredCollections`, which
+ * Mastodon sends to the owner's reach alone.
+ */
+const collectionOf = (payload: unknown, object: unknown): string | undefined => {
+  const named = (value: unknown): string | undefined =>
+    typeof value === "string" ? LOCAL_COLLECTION_PATH.exec(value)?.[1] : undefined;
+  const type = typeOf(payload);
+  if (type === "Add" || type === "Remove") {
+    return named(
+      typeof payload === "object" && payload !== null ? Reflect.get(payload, "target") : undefined,
+    );
+  }
+  if (type === "Update" && typeOf(object) === "FeaturedCollection") {
+    return named(Reflect.get(Object(object), "id"));
+  }
+  if (type === "Delete" && typeOf(object) === "FeatureAuthorization") {
+    return named(Reflect.get(Object(object), "interactingObject"));
+  }
+  return undefined;
+};
+
 /** Whether the activity is an `Update` whose object is its own actor. */
 const isActorUpdate = (payload: unknown, object: unknown): boolean => {
   if (
@@ -109,9 +164,9 @@ const isActorUpdate = (payload: unknown, object: unknown): boolean => {
  * or this instance's followers collection, and each remote actor it names.
  * An activity without addressing (a boost) goes to followers.
  * `updatedQuestion` is the poll an `Update(Question)` carries, whose voters
- * and boosters hear it too. `actorUpdate` says the activity is an `Update`
- * of its own actor, which Mastodon's `UpdateDistributionWorker` sends beyond
- * the followers too (`AccountReachFinder`).
+ * and boosters hear it too. `accountReach` says the activity also goes
+ * beyond the followers (`AccountReachFinder`): an `Update` of its own actor,
+ * as Mastodon's `UpdateDistributionWorker` sends it, or a collection's.
  */
 export const outboundAudience = (
   payloadJson: string,
@@ -120,20 +175,28 @@ export const outboundAudience = (
   followers: boolean;
   actorUris: ReadonlyArray<string>;
   updatedQuestion: string | undefined;
-  actorUpdate: boolean;
+  accountReach: boolean;
+  collectionId: string | undefined;
 }> => {
   const parsed = parseJsonText(payloadJson);
   if (parsed.isErr()) {
-    return { followers: true, actorUris: [], updatedQuestion: undefined, actorUpdate: false };
+    return {
+      followers: true,
+      actorUris: [],
+      updatedQuestion: undefined,
+      accountReach: false,
+      collectionId: undefined,
+    };
   }
   const payload = parsed.value;
   const object: unknown =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
   const updatedQuestion = updatedQuestionOf(payload, object);
-  const actorUpdate = isActorUpdate(payload, object);
+  const accountReach = isActorUpdate(payload, object) || isCollectionActivity(payload, object);
+  const collectionId = collectionOf(payload, object);
   const audience = [...audienceOf(payload), ...audienceOf(object)];
   if (audience.length === 0) {
-    return { followers: true, actorUris: [], updatedQuestion, actorUpdate };
+    return { followers: true, actorUris: [], updatedQuestion, accountReach, collectionId };
   }
   // `localHost` may carry a port, as the follower filter below compares hosts.
   const isLocal = (uri: string): boolean => {
@@ -153,13 +216,13 @@ export const outboundAudience = (
       ),
     ),
   ];
-  return { followers, actorUris, updatedQuestion, actorUpdate };
+  return { followers, actorUris, updatedQuestion, accountReach, collectionId };
 };
 
 /** A failed recipient lookup leaves those recipients out; say so in the logs. */
 const logExpandLookupFailure = (
   activityId: string,
-  lookup: "followers" | "pollInteractors" | "accountReach",
+  lookup: "followers" | "pollInteractors" | "accountReach" | "collectionMembers",
   found: Result<unknown, RepositoryError>,
 ): void => {
   if (found.isErr()) {
@@ -331,6 +394,10 @@ export const processOutboxJob = async (
       return processVerifyProfileLinksJob(env, job);
     case "SynchronizeFollowers":
       return processSynchronizeFollowersJob(env, job);
+    case "ProcessFeaturedItem":
+      return processFeaturedItemJob(env, job);
+    case "VerifyFeaturedItem":
+      return verifyFeaturedItemJob(env, job);
     case "ExpandFollowers": {
       const startedAt = Date.now();
       const activity = await findOutboundActivity(env.DB, job.activityId);
@@ -357,17 +424,23 @@ export const processOutboxJob = async (
       const interactors =
         pollStatusId === undefined ? ok([]) : await listPollInteractorInboxes(env.DB, pollStatusId);
       const reach =
-        audience.actorUpdate && activity.value.account_id !== null
+        audience.accountReach && activity.value.account_id !== null
           ? await listAccountReachInboxes(env.DB, activity.value.account_id)
           : ok([]);
       logExpandLookupFailure(job.activityId, "followers", remoteFollowers);
       logExpandLookupFailure(job.activityId, "pollInteractors", interactors);
+      const members =
+        audience.collectionId === undefined
+          ? ok([])
+          : await listCollectionMemberInboxes(env.DB, audience.collectionId);
       logExpandLookupFailure(job.activityId, "accountReach", reach);
+      logExpandLookupFailure(job.activityId, "collectionMembers", members);
       const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
       const candidateInboxes = [
         ...(remoteFollowers.isOk() ? remoteFollowers.value : []),
         ...(interactors.isOk() ? interactors.value : []),
         ...(reach.isOk() ? reach.value : []),
+        ...(members.isOk() ? members.value : []),
         ...(addressed.isOk() ? [...addressed.value.values()] : []).map(
           (actor) => actor.sharedInboxUri ?? actor.inboxUri,
         ),

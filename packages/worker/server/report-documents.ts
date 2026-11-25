@@ -10,6 +10,7 @@ import { embeddedAccountDocumentsByIds } from "./account-documents";
 import type { RepositoryError } from "./d1";
 import { findRemoteActorsByUris } from "./remote-actor-store";
 import { findRemoteStatusesByIds } from "./remote-status-store";
+import { reportCollectionIds } from "./report-collection-store";
 import { findReportById, ReportParty, type ReportRow } from "./report-store";
 import { findStatusesByIds } from "./status-store";
 
@@ -79,6 +80,13 @@ export const reportDocumentsByIds = async (
     return err(resolved.error);
   }
   const targets = resolved.value;
+  const collections = await reportCollectionIds(
+    env.DB,
+    rows.map((row) => row.id),
+  );
+  if (collections.isErr()) {
+    return err(collections.error);
+  }
   const documents = new Map<string, ApiReportJSON>();
   for (const row of rows) {
     const target = targets.get(ReportParty.accountId(row.target));
@@ -95,6 +103,7 @@ export const reportDocumentsByIds = async (
       forwarded: row.forwarding.kind === "Forwarded",
       created_at: row.createdAt,
       status_ids: [...row.statusIds],
+      collection_ids: [...(collections.value.get(row.id) ?? [])],
       rule_ids: [...row.ruleIds],
       target_account: target,
     });

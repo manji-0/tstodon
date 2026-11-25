@@ -9,7 +9,7 @@ Configured under `cloudflare` in `packages/worker/void.config.ts` (Void's projec
 - `DB` — D1
 - `MEDIA` — R2
 - `OUTBOX_PROCESS_QUEUE` — Queue producer/consumer (`ExpandFollowers` fan-out, `ProcessExpiredPolls` and the other outbox jobs)
-- `PULL_QUEUE` — Queue producer/consumer `tstodon-pull` for fetch work a remote server sets off, kept off the outbox queue: a remote reply's thread job (`ResolveRemoteThread`). Batches of 1, `max_retries` 3, `max_concurrency` 2; it dead-letters to `tstodon-outbox-dlq`, and a requeued job goes to the outbox queue
+- `PULL_QUEUE` — Queue producer/consumer `tstodon-pull` for fetch work a remote server sets off, kept off the outbox queue: a remote reply's thread job (`ResolveRemoteThread`) and a remote collection's item jobs (`ProcessFeaturedItem`, `VerifyFeaturedItem`). Batches of 1, `max_retries` 3, `max_concurrency` 2; it dead-letters to `tstodon-outbox-dlq`, and a requeued job goes to the outbox queue
 - `OUTBOX_DLQ` — producer of `tstodon-outbox-dlq`, the outbox queue's dead-letter queue (see [Outbox dead-letter queue](#outbox-dead-letter-queue))
 - `STREAM_HUB` — Durable Object
 - `RATE_LIMIT_COUNTER` — Durable Object `RateLimitCounter`, the rate-limit counters (see [Rate limits](#rate-limits))
@@ -290,22 +290,22 @@ The Worker throttles requests as Mastodon's Rack::Attack and its per-account `Ra
 
 **Buckets and defaults.** Every window is fixed and aligned to the epoch, as Rack::Attack's are (a 5-minute window ends on a multiple of 300 seconds).
 
-| Bucket             | Counted per    | Requests                                                                              | Default (Mastodon)                                        |
-| ------------------ | -------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `api_ip`           | client address | `/api/*` without a token that authenticates                                           | 300 / 5 min (`throttle_unauthenticated_api`)              |
-| `api_token`        | OAuth token    | `/api/*` with a valid token (an app token counts here only)                           | 300 / 5 min (`throttle_per_token_api`)                    |
-| `api_account`      | account        | `/api/*` with any of the account's tokens                                             | 1500 / 5 min (`throttle_authenticated_api`)               |
-| `media`            | account        | `POST /api/v1/media`, `POST /api/v2/media`                                            | 30 / 30 min (`throttle_api_media`, `RateLimiter` `media`) |
-| `statuses`         | account        | `POST /api/v1/statuses` (scheduled ones too)                                          | 300 / 3 h (`RateLimiter` `statuses`)                      |
-| `reblogs`          | account        | `POST /api/v1/statuses/:id/reblog`                                                    | 300 / 3 h (`RateLimiter` `reblogs`)                       |
-| `follows`          | account        | `POST /api/v1/accounts/:id/follow`                                                    | 400 / 24 h (`RateLimiter` `follows`)                      |
-| `reports`          | account        | `POST /api/v1/reports`                                                                | 400 / 24 h (`RateLimiter` `reports`)                      |
-| `sign_in`          | client address | `GET /auth/sign_in` (where Access provisions a new account), `POST /oauth/authorize`  | 25 / 5 min (`throttle_login_attempts/ip`)                 |
-| `app_registration` | client address | `POST /api/v1/apps`                                                                   | 5 / 10 min (app registrations per address)                |
-| `oauth_token`      | client address | `POST /oauth/token`                                                                   | 25 / 5 min (no Mastodon throttle; as login attempts)      |
-| `federation_fetch` | client address | `GET`/`HEAD` of `/.well-known/*`, `/nodeinfo/*`, `/users/*`, `/emojis/*`, `/actor`    | 1500 / 5 min (Mastodon has none)                          |
-| `inbox_ip`         | client address | `POST /inbox`, `/actor/inbox`, `/users/:username/inbox`, before anything else is read | 1500 / 5 min (Mastodon has none)                          |
-| `inbox_domain`     | sending server | the same deliveries, once their HTTP signature verified                               | 3000 / 5 min (Mastodon has none)                          |
+| Bucket             | Counted per    | Requests                                                                                          | Default (Mastodon)                                        |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `api_ip`           | client address | `/api/*` without a token that authenticates                                                       | 300 / 5 min (`throttle_unauthenticated_api`)              |
+| `api_token`        | OAuth token    | `/api/*` with a valid token (an app token counts here only)                                       | 300 / 5 min (`throttle_per_token_api`)                    |
+| `api_account`      | account        | `/api/*` with any of the account's tokens                                                         | 1500 / 5 min (`throttle_authenticated_api`)               |
+| `media`            | account        | `POST /api/v1/media`, `POST /api/v2/media`                                                        | 30 / 30 min (`throttle_api_media`, `RateLimiter` `media`) |
+| `statuses`         | account        | `POST /api/v1/statuses` (scheduled ones too)                                                      | 300 / 3 h (`RateLimiter` `statuses`)                      |
+| `reblogs`          | account        | `POST /api/v1/statuses/:id/reblog`                                                                | 300 / 3 h (`RateLimiter` `reblogs`)                       |
+| `follows`          | account        | `POST /api/v1/accounts/:id/follow`                                                                | 400 / 24 h (`RateLimiter` `follows`)                      |
+| `reports`          | account        | `POST /api/v1/reports`                                                                            | 400 / 24 h (`RateLimiter` `reports`)                      |
+| `sign_in`          | client address | `GET /auth/sign_in` (where Access provisions a new account), `POST /oauth/authorize`              | 25 / 5 min (`throttle_login_attempts/ip`)                 |
+| `app_registration` | client address | `POST /api/v1/apps`                                                                               | 5 / 10 min (app registrations per address)                |
+| `oauth_token`      | client address | `POST /oauth/token`                                                                               | 25 / 5 min (no Mastodon throttle; as login attempts)      |
+| `federation_fetch` | client address | `GET`/`HEAD` of `/.well-known/*`, `/nodeinfo/*`, `/users/*`, `/ap/users/*`, `/emojis/*`, `/actor` | 1500 / 5 min (Mastodon has none)                          |
+| `inbox_ip`         | client address | `POST /inbox`, `/actor/inbox`, `/users/:username/inbox`, before anything else is read             | 1500 / 5 min (Mastodon has none)                          |
+| `inbox_domain`     | sending server | the same deliveries, once their HTTP signature verified                                           | 3000 / 5 min (Mastodon has none)                          |
 
 An authenticated API request counts against its token and its account, not its address, as in Mastodon; a token that does not authenticate counts as its address. Staff are not exempt (Mastodon does not exempt them either). The action families count attempts, where Mastodon's `RateLimiter` counts the statuses, boosts, follows and reports actually created. The streaming socket (`/api/v1/streaming`), Better Auth's `/api/auth/*`, the web app's pages and media are not counted. `inbox_domain` keys on the host serving the actor whose key verified, after the signature check, so a forged or unsigned delivery naming another server cannot spend that server's budget; `inbox_ip` in front of it bounds what a flood of forged deliveries costs (each needs a body read and an RSA verification, and an unknown key one fetch).
 

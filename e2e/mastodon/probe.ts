@@ -27,6 +27,7 @@ import { followScenarios } from "./probe-follows.js";
 import { searchScenarios } from "./probe-search.js";
 import { signatureScenarios } from "./probe-signatures.js";
 import { threadScenarios } from "./probe-threads.js";
+import { collectionScenarios } from "./probe-collections.js";
 import {
   Account,
   Anything,
@@ -352,6 +353,7 @@ const areas: ReadonlyArray<readonly [name: string, run: (cast: Cast) => Promise<
   ["quotes", quoteScenarios],
   ["move", moveScenarios],
   ["signatures", signatureScenarios],
+  ["collections", collectionScenarios],
   // Last: a domain suspension purges what the other server holds of this one.
   ["domain-blocks", domainBlockScenarios],
 ];

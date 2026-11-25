@@ -5,7 +5,8 @@ import { handleQueue } from "#server/queue-handler";
 
 // Fetch work a remote server sets off, kept off the delivery queue, as
 // Mastodon's `pull` Sidekiq queue: a reply's thread job (`ResolveRemoteThread`)
-// fetches a parent per job, and a forged chain can be 1000 parents long. One
+// fetches a parent per job, and a forged chain can be 1000 parents long; a
+// remote collection's items are a job each (`ProcessFeaturedItem`). One
 // message a batch, so a slow fetch holds up no other job, and two consumers,
 // so two chains go on side by side while the fetches stay few.
 export const maxBatchSize = 1;

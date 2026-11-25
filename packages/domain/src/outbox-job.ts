@@ -516,6 +516,31 @@ const SynchronizeFollowersSchema = z.object({
 });
 
 /**
+ * Process one item of the stored remote collection `collectionId`, as
+ * Mastodon's `ProcessFeaturedItemWorker`: the item's document as the
+ * collection embedded it, or its id to fetch, at `position` in the
+ * collection's order (none for an item added on its own, which goes last).
+ */
+const ProcessFeaturedItemSchema = z.object({
+  kind: z.literal("ProcessFeaturedItem"),
+  collectionId: z.string().min(1),
+  item: z.union([z.string().min(1), z.record(z.string(), z.json())]),
+  position: z.number().int().min(1).optional(),
+});
+
+/**
+ * Check the authorization `approvalUri` of the remote collection item
+ * `itemId` again, as Mastodon's `VerifyFeaturedItemWorker`, after its server
+ * could not be reached `attempt` times.
+ */
+const VerifyFeaturedItemSchema = z.object({
+  kind: z.literal("VerifyFeaturedItem"),
+  itemId: z.string().min(1),
+  approvalUri: z.string().min(1),
+  attempt: z.number().int().min(1),
+});
+
+/**
  * Check the links of an account's profile fields, as Mastodon's
  * `VerifyAccountLinksWorker`: each field from `fromIndex` on whose link waits
  * for a check is marked verified when the linked page links back with
@@ -583,6 +608,8 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   FederatePendingStatusesSchema,
   VerifyProfileLinksSchema,
   SynchronizeFollowersSchema,
+  ProcessFeaturedItemSchema,
+  VerifyFeaturedItemSchema,
 ]);
 
 export type OutboxJob = z.infer<typeof OutboxJobSchema>;

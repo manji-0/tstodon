@@ -9,6 +9,7 @@ import {
   removeRemoteFeaturedTag,
 } from "../remote-featured-tag-store";
 import { persistRemoteObject } from "../remote-status-persist";
+import { receiveCollectionAdd, receiveCollectionRemove } from "./curated-collection";
 import type { InboxHandler, RemoteDelivery } from "./handler";
 
 /**
@@ -39,16 +40,14 @@ const featuredChange = (
  * is its own and on its host, fetched when it is not cached, and becomes its
  * first pin. One fetch at most.
  */
-export const receiveRemoteAdd: InboxHandler<RemoteDelivery<"Add">> = async ({
-  env,
-  identity,
-  signer,
-  activity,
-  received,
-  allowHosts,
-  blockedHosts,
-  fetchSigner,
-}) => {
+export const receiveRemoteAdd: InboxHandler<RemoteDelivery<"Add">> = async (delivery) => {
+  // A collection or its item first (`Add#perform`'s other targets).
+  const collection = await receiveCollectionAdd(delivery);
+  if (collection.isErr() || collection.value) {
+    return collection.map(() => undefined);
+  }
+  const { env, identity, signer, activity, received, allowHosts, blockedHosts, fetchSigner } =
+    delivery;
   const change = featuredChange(signer, received.target, received.object);
   if (change?.kind === "Hashtag") {
     return change.tag ? addRemoteFeaturedTag(env.DB, signer.actorUri, change.tag) : ok(undefined);
@@ -76,12 +75,12 @@ export const receiveRemoteAdd: InboxHandler<RemoteDelivery<"Add">> = async ({
  * A remote actor unpinned a note or stopped featuring a hashtag (Mastodon's
  * `Remove#remove_featured` and `remove_featured_tags`).
  */
-export const receiveRemoteRemove: InboxHandler<RemoteDelivery<"Remove">> = async ({
-  env,
-  signer,
-  activity,
-  received,
-}) => {
+export const receiveRemoteRemove: InboxHandler<RemoteDelivery<"Remove">> = async (delivery) => {
+  const collection = await receiveCollectionRemove(delivery);
+  if (collection.isErr() || collection.value) {
+    return collection.map(() => undefined);
+  }
+  const { env, signer, activity, received } = delivery;
   const change = featuredChange(signer, received.target, received.object);
   if (change?.kind === "Hashtag") {
     return change.tag

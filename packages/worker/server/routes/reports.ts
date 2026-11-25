@@ -11,13 +11,17 @@ import {
   ReportForwarding,
 } from "@tstodon/domain";
 import { forwardReport, forwardReportToDomains, repliedToInboxes } from "../report-forward";
-import type { Result } from "neverthrow";
+import { ok, type Result } from "neverthrow";
 import { findAccountById } from "../account-store";
 import type { RepositoryError } from "../d1";
 import { findRemoteActorByUri } from "../remote-actor-store";
 import { reportDocumentsByIds, reportedStatuses } from "../report-documents";
 import { insertReport, ReportCategorySchema, ReportParty } from "../report-store";
 import { readParams } from "../request-params";
+import { collectionUri } from "../collection-documents";
+import { findCollections } from "../collection-store";
+import { insertReportCollections } from "../report-collection-store";
+import { findRemoteCollections } from "../remote-curated-collection-store";
 
 export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/reports">) => {
   const identity = parseInstanceIdentity(c.env);
@@ -65,6 +69,19 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   if (!target.value) {
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
+  // `ReportService#reported_collection_ids`: the target's own, or 404.
+  const reportedCollections = await targetCollections(
+    c.env.DB,
+    identity.value,
+    target.value,
+    body.value.collection_ids ?? [],
+  );
+  if (reportedCollections.isErr()) {
+    return jsonRepositoryError(c, reportedCollections.error.message);
+  }
+  if (reportedCollections.value === undefined) {
+    return c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
   const party = ReportParty.ofAccountId(body.value.account_id);
   const statuses = await targetStatuses(c.env.DB, party, body.value.status_ids ?? []);
   if (statuses.isErr()) {
@@ -92,6 +109,14 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
   if (report.isErr()) {
     return jsonRepositoryError(c, report.error.message);
   }
+  const named = await insertReportCollections(
+    c.env.DB,
+    report.value.id,
+    reportedCollections.value.map((collection) => collection.id),
+  );
+  if (named.isErr()) {
+    return jsonRepositoryError(c, named.error.message);
+  }
   const targetUri =
     target.value.kind === "Local"
       ? InstanceIdentity.actorUrl(identity.value, target.value.account.username)
@@ -103,6 +128,7 @@ export const postV1Reports = async (c: Context<{ Bindings: Env }, "/api/v1/repor
     statusUris: statuses.value.map(
       (status) => status.objectUri ?? `${targetUri}/statuses/${status.id}`,
     ),
+    collectionUris: reportedCollections.value.map((collection) => collection.uri),
   };
   if (forwardTo !== undefined) {
     const forwarded = await forwardReport(c.env, identity.value, forwarding, forwardTo);
@@ -185,6 +211,43 @@ const findReportTarget = async (
   }
   const actor = await findRemoteActorByUri(db, party.actorUri);
   return actor.map((found) => (found ? { kind: "Remote", actor: found } : undefined));
+};
+
+/**
+ * `@target_account.collections.find(collection_ids)`: the target's own
+ * collections with their URIs, or `undefined` when one is not the target's.
+ */
+const targetCollections = async (
+  db: D1Database,
+  identity: InstanceIdentity,
+  target: ReportTarget,
+  requested: ReadonlyArray<string>,
+): Promise<
+  Result<ReadonlyArray<Readonly<{ id: string; uri: string }>> | undefined, RepositoryError>
+> => {
+  const ids = [...new Set(requested.map(String))];
+  if (ids.length === 0) {
+    return ok([]);
+  }
+  if (target.kind === "Local") {
+    const found = await findCollections(db, ids);
+    return found.map((collections) => {
+      const owned = collections.filter((collection) => collection.accountId === target.account.id);
+      return owned.length === ids.length
+        ? owned.map((collection) => ({
+            id: collection.id,
+            uri: collectionUri(identity, collection),
+          }))
+        : undefined;
+    });
+  }
+  const found = await findRemoteCollections(db, ids);
+  return found.map((collections) => {
+    const owned = collections.filter((collection) => collection.actorUri === target.actor.actorUri);
+    return owned.length === ids.length
+      ? owned.map((collection) => ({ id: collection.id, uri: collection.uri }))
+      : undefined;
+  });
 };
 
 /** A post kept on a report; a remote one carries its ActivityPub id. */

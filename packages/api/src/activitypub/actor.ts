@@ -65,6 +65,12 @@ export const ApActor = z.object({
   featured: ApUri,
   /** The featured hashtags, an {@link ApFeaturedTagsCollection}. */
   featuredTags: ApUri,
+  /** The curated collections, an {@link ApFeaturedCollections} (FEP-7aa9). */
+  featuredCollections: ApUri,
+  /** Who may feature the account in a collection without asking. */
+  interactionPolicy: z.object({
+    canFeature: z.object({ automaticApproval: z.array(ApUri) }),
+  }),
   endpoints: z.object({ sharedInbox: ApUri }),
   url: ApUri,
   manuallyApprovesFollowers: z.boolean(),

@@ -1,6 +1,6 @@
 import { SELF, env } from "cloudflare:test";
 import { expect } from "vite-plus/test";
-import { IsoInstant, RemoteActor } from "@tstodon/domain";
+import { type FeaturePolicy, IsoInstant, RemoteActor } from "@tstodon/domain";
 import { type SignatureScheme, signFetchRequest, signInboxRequest } from "../server/http-signature";
 import { generateAccountKeys } from "../server/keys";
 import { signLdDocument } from "../server/ld-signature";
@@ -78,6 +78,10 @@ export const remoteActor = async (
     note?: string;
     avatarUrl?: string;
     headerUrl?: string;
+    /** Its `interactionPolicy.canFeature`, as `Collection.parseFeaturePolicy` reads it. */
+    featurePolicy?: FeaturePolicy | undefined;
+    /** Its `featuredCollections` (FEP-7aa9). */
+    featuredCollectionsUri?: string;
   }> = {},
 ): Promise<Remote> => {
   const actorUri = `https://${host}${options.path ?? `/users/${username}`}`;
@@ -106,6 +110,10 @@ export const remoteActor = async (
       publishedAt: published?.unwrapOr(null) ?? null,
       profileUrl: options.profileUrl ?? null,
       fields: [...(options.fields ?? [])],
+      ...(options.featurePolicy ? { featurePolicy: options.featurePolicy } : {}),
+      ...(options.featuredCollectionsUri
+        ? { featuredCollectionsUri: options.featuredCollectionsUri }
+        : {}),
     },
     fetchedAt: fetchedAt.value,
     webfingeredAt:
