@@ -78,11 +78,17 @@ Found by the security and interop audit of November 2026, checked against Mastod
 
 Endpoints Mastodon 4.7 serves that tstodon does not, or serves as a stub.
 
-| ID     | Item                                            | Notes                                                                                                                             |
-| ------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| REST-4 | Translation                                     | `POST /api/v1/statuses/:id/translate` and `GET /api/v1/instance/translation_languages` are stubs: there is no translation backend |
-| REST-7 | `email_subscriptions`                           | Not served                                                                                                                        |
-| REST-8 | `POST /api/v1/accounts` and email confirmations | Sign-up is Cloudflare Access only; the API registration and `/api/v1/emails/confirmations` are not served                         |
+None open. The endpoints tstodon leaves out on purpose are under "Not planned (decided)".
+
+## Not planned (decided)
+
+Mastodon features tstodon leaves out on purpose. A row here is a decision, not a gap to close.
+
+| ID     | Item                                            | Decision                                                                                                                                                                                                    |
+| ------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST-4 | Translation                                     | Not implemented. `POST /api/v1/statuses/:id/translate` and `GET /api/v1/instance/translation_languages` stay stubs: tstodon runs no translation backend (Mastodon's DeepL or LibreTranslate, or Workers AI) |
+| REST-8 | `POST /api/v1/accounts` and email confirmations | Not implemented. Sign-up stays with Cloudflare Access alone, so the API registration and `/api/v1/emails/confirmations` are not served                                                                      |
+| REST-7 | `email_subscriptions`                           | Not implemented. Mastodon mails a subscriber a local account's posts; tstodon sends no email, so `email_subscriptions` is not served                                                                        |
 
 ## Performance (open)
 
