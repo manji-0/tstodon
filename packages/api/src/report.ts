@@ -12,6 +12,8 @@ export const ApiReport = z.object({
   forwarded: z.boolean(),
   created_at: z.string(),
   status_ids: z.array(z.string()),
+  /** The reported account's collections it names (Mastodon 4.7). */
+  collection_ids: z.array(z.string()),
   rule_ids: z.array(z.string()).nullable(),
   target_account: ApiAccount,
 });

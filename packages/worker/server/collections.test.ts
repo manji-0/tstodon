@@ -8,6 +8,7 @@ import {
   ApiCredentialAccount,
   ApiNotification,
   ApiNotificationGroupsResult,
+  ApiReport,
 } from "@tstodon/api";
 import { expectContract } from "../test/api-contract";
 import { authHeaders } from "../test/auth-fixture";
@@ -377,5 +378,26 @@ describe("collections (REST-1)", () => {
       body: { name: "Granular", sensitive: false, discoverable: true },
     });
     expect(granular.status).toBe(200);
+  });
+
+  it("reports a collection of the reported account, and no other", async () => {
+    const owner = "coll-reported@example.com";
+    const reporter = "coll-reporter@example.com";
+    const ownerId = await accountId(owner);
+    const collection = await create(owner, { name: "Reported" });
+    const other = await create("coll-not-reported@example.com", { name: "Elsewhere" });
+
+    const refused = await send("POST", "/api/v1/reports", {
+      as: reporter,
+      body: { account_id: ownerId, collection_ids: [other.id] },
+    });
+    expect(refused.status).toBe(404);
+
+    const reported = await send("POST", "/api/v1/reports", {
+      as: reporter,
+      body: { account_id: ownerId, collection_ids: [collection.id] },
+    });
+    expect(reported.status).toBe(200);
+    expect(expectContract(ApiReport, reported.body).collection_ids).toEqual([collection.id]);
   });
 });
