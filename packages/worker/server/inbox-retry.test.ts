@@ -360,7 +360,9 @@ describe("an inbox activity that failed after its row was stored", () => {
     expect(await author.send({ id: `${second.id}/update-2`, type: "Update", object: second })).toBe(
       202,
     );
-    expect(await updatesHeard(booster, id)).toBe(2);
+    // A later edit replaces the booster's notification, as Mastodon's
+    // `LocalNotificationWorker` keeps the latest `update` only.
+    expect(await updatesHeard(booster, id)).toBe(1);
     expect(await owedKinds(id)).toEqual([]);
   });
 

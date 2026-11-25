@@ -7,7 +7,7 @@ import { meter, patchD1, resetMeter, settle } from "../test/meter";
 import { drainHeld, holdQueue, QUEUE_BATCH, QUEUE_INVOCATION_BUDGET } from "../test/queue-hold";
 import { remoteActor } from "../test/remote-actor-fixture";
 import { parseRows } from "./d1";
-import { BOOSTER_PAGE_SIZE } from "./remote-note-booster-updates";
+import { BOOSTER_PAGE_SIZE } from "./note-booster-updates";
 
 /**
  * As Mastodon's `UpdateStatusService`, every local account that boosted a

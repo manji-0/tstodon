@@ -225,6 +225,21 @@ const NotifyRemoteNoteBoostersSchema = z.object({
   ]),
 });
 
+/**
+ * {@link NotifyRemoteNoteBoostersSchema} for a local note: an `update`
+ * notification from the note's author, after its edit or the quoted
+ * author's `Accept` of its quote.
+ */
+const NotifyLocalNoteBoostersSchema = z.object({
+  kind: z.literal("NotifyLocalNoteBoosters"),
+  statusId: StatusId.schema,
+  since: z.iso.datetime(),
+  step: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("Page"), afterAccountId: z.string() }),
+    z.object({ kind: z.literal("Booster"), accountId: z.string().min(1) }),
+  ]),
+});
+
 /** Federate one `Update(Question)` with the poll's current counts (debounced). */
 const DistributePollUpdateSchema = z.object({
   kind: z.literal("DistributePollUpdate"),
@@ -546,6 +561,7 @@ export const OutboxJobSchema = z.discriminatedUnion("kind", [
   NotifyRemoteNoteFollowersSchema,
   NotifyLocalNoteFollowersSchema,
   NotifyRemoteNoteBoostersSchema,
+  NotifyLocalNoteBoostersSchema,
   DistributePollUpdateSchema,
   DeliverPushSchema,
   MoveFollowsSchema,

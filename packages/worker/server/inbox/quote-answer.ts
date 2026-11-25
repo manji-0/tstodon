@@ -14,7 +14,7 @@ import { forwardInboundActivity } from "../activity-forward";
 import { nowIso } from "../clock";
 import { readableRow, type RepositoryError } from "../d1";
 import { announceRemoteQuoteChange } from "../remote-quote-announce";
-import { announceNoteUpdate } from "../local-status-update";
+import { announceNoteUpdate, notifyAboutUpdate } from "../local-status-update";
 import { findQuotesByApprovalUri, saveQuoteState } from "../quote-store";
 import { stampAuthorizes } from "../remote-quote-verify";
 import { findDeliveredRemoteStatusById } from "../remote-status-store";
@@ -72,34 +72,37 @@ const signerQuote = async (
 
 /**
  * Store the quote's new state and tell the quoting author's streams and
- * timelines, as Mastodon's `DistributionWorker`; `federate` also sends the
- * note's `Update`, which then carries the stamp. The `Update` is no edit, as
- * Mastodon's `accept_quote!` sends it with `edited_at` unchanged.
+ * timelines, as Mastodon's `DistributionWorker`. An `Accept` also sends the
+ * note's `Update`, which then carries the stamp, and tells the local accounts
+ * that boosted or quoted the note, as `accept_quote!` distributes the note as an update
+ * with notifications. The `Update` is no edit, as Mastodon's `accept_quote!`
+ * sends it with `edited_at` unchanged.
  */
 const settle = async (
   env: Env,
   identity: InstanceIdentity,
   quoting: SignerQuote,
   quote: QuoteValue,
-  federate: boolean,
+  answer: "Accept" | "Reject",
 ): Promise<Result<void, RepositoryError>> => {
   const saved = await saveQuoteState(env.DB, quote);
   if (saved.isErr()) {
     return err(saved.error);
   }
+  const now = nowIso();
   const announced = await announceNoteUpdate(
     env,
     identity,
     quoting.author,
     quoting.note,
-    nowIso(),
-    federate,
+    now,
+    answer === "Accept",
     "Unedited",
   );
   if (announced.isErr()) {
     console.error(JSON.stringify({ kind: "QuoteAnswerNotAnnounced", quoteId: quote.id }));
   }
-  return ok(undefined);
+  return answer === "Accept" ? notifyAboutUpdate(env, quoting.note, now) : ok(undefined);
 };
 
 const httpsHost = (uri: string): string | undefined => {
@@ -161,13 +164,13 @@ export const receiveQuoteAnswer = async (
     const rejected = Quote.reject(quote);
     return rejected.state.kind === quote.state.kind
       ? ok(undefined)
-      : settle(env, identity, quoting.value, rejected, false);
+      : settle(env, identity, quoting.value, rejected, "Reject");
   }
   const stamp = acceptedStamp(received.result, signer, quoting.value);
   const accepted =
     stamp === undefined ? undefined : Quote.accept(quote, { kind: "Stamp", uri: stamp });
   return accepted?.isOk()
-    ? settle(env, identity, quoting.value, accepted.value, true)
+    ? settle(env, identity, quoting.value, accepted.value, "Accept")
     : ok(undefined);
 };
 
@@ -202,7 +205,7 @@ export const revokeQuoteStamp = async (
       return err(quoting.error);
     }
     if (quoting.value) {
-      const settled = await settle(env, identity, quoting.value, Quote.reject(quote), false);
+      const settled = await settle(env, identity, quoting.value, Quote.reject(quote), "Reject");
       if (settled.isErr()) {
         return err(settled.error);
       }

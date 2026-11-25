@@ -10,7 +10,7 @@ import {
   Conversations,
   eventually,
   follow,
-  mastodonRails,
+  mastodonDeliver,
   notified,
   Notifications,
   post,
@@ -220,20 +220,7 @@ const deliverUntagged = (
     cc: [],
     object: note,
   };
-  // Base64 keeps the JSON out of Ruby's string interpolation (`#{`, `#@`).
-  // `perform` returns without raising on a 4xx (`@unsalvageable`), so the
-  // script checks that the request went through (`@performed`).
-  const base64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
-  mastodonRails(
-    [
-      `json = Base64.strict_decode64("${base64(JSON.stringify(create))}").force_encoding("UTF-8")`,
-      `sender = Account.find_local!(Base64.strict_decode64("${base64(sender.username)}"))`,
-      `inbox = Base64.strict_decode64("${base64(audience.inbox)}")`,
-      "worker = ActivityPub::DeliveryWorker.new",
-      "worker.perform(json, sender.id, inbox, { 'bypass_availability' => true })",
-      'raise "not delivered to #{inbox}" unless worker.instance_variable_get(:@performed)',
-    ].join("\n"),
-  );
+  mastodonDeliver(sender, create, audience.inbox);
   return noteUri;
 };
 
