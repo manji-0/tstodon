@@ -108,6 +108,13 @@ export const newEntityId = (): string => entityIdAt(Date.now());
 export const firstEntityIdAt = (atMs: number): string =>
   formatId(BigInt(Math.max(0, Math.trunc(atMs))) << LOW_BITS);
 
+/** The instant (ms since the epoch) an entity id sorts at, or undefined for a string that is no entity id. */
+export const entityIdInstant = (id: string): number | undefined =>
+  /^\d{1,19}$/.test(id) ? Number(BigInt(id) >> LOW_BITS) : undefined;
+
+/** The id just above `id` in entity id order: `< nextEntityId(id)` is `<= id`. */
+export const nextEntityId = (id: string): string => formatId(BigInt(id) + 1n);
+
 /**
  * The same instant with fresh random low bits: for an id that collided with
  * one another isolate stored at that instant. The collided value counts as

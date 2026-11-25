@@ -20,6 +20,7 @@
     "wrangler:worker": "node scripts/wrangler.mjs",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate --sql",
+    "bench": "node scripts/bench.mjs",
     "e2e:federation": "tsx e2e/federation-smoke.ts",
     "e2e:federation:follow-create": "tsx e2e/federation-follow-create.ts",
     "e2e:federation:interactions": "tsx e2e/federation-interactions.ts",

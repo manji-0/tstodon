@@ -1014,6 +1014,8 @@ model status_quotes {
   @@index([quoted_status_id, state], map: "idx_status_quotes_quoted")
   @@index([quoted_remote_status_id, state], map: "idx_status_quotes_quoted_remote")
   @@index([approval_uri], map: "idx_status_quotes_approval")
+  @@index([status_id], map: "idx_status_quotes_status", where: raw("status_id IS NOT NULL"))
+  @@index([remote_status_id], map: "idx_status_quotes_remote_status", where: raw("remote_status_id IS NOT NULL"))
 }
 
 model status_quote_policies {
@@ -1061,7 +1063,7 @@ model statuses {
 
   @@index([visibility, created_at(sort: Desc)], map: "idx_statuses_visibility_created_at")
   @@index([account_id, created_at(sort: Desc)], map: "idx_statuses_account_created_at")
-  @@index([in_reply_to_uri], map: "idx_statuses_in_reply_to_uri")
+  @@index([in_reply_to_uri], map: "idx_statuses_in_reply_to_uri", where: raw("in_reply_to_uri IS NOT NULL"))
   @@index([account_id, reblog_of_remote_id], map: "idx_statuses_account_reblog_remote")
   @@index([account_id, reblog_of_id], map: "idx_statuses_account_reblog")
   @@index([account_id, id], map: "idx_statuses_account_id")

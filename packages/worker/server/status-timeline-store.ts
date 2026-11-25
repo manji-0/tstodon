@@ -16,6 +16,7 @@ import {
   reblogOfShownAuthorSql,
 } from "./followed-feed";
 import { type IdCursor, idCursorBounds, idCursorFragment, newestFirst } from "./id-cursor";
+import { entityIdInstant, firstEntityIdAt, nextEntityId } from "./ids";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
 /** Authors silenced or suspended by an admin are hidden from public surfaces. */
@@ -104,6 +105,34 @@ export const findFollowedTagHorizon = async (
 
 const HorizonRow = z.object({ horizon: z.string().nullable() });
 
+/**
+ * How far back from its top a home page reads in each step, the last step
+ * down to the cursor's other bound. The query seeks each followed author's
+ * statuses by index and sorts them all before its LIMIT, so over a whole
+ * history it reads every status they wrote (81,671 rows for a page of 20 on
+ * `pnpm bench`'s data). A step reads only its window, and the next one only
+ * what the page still lacks, below it. See
+ * `docs/architecture/d1-heavy-scenarios.md#benchmark`.
+ */
+export const HOME_PAGE_WINDOWS_MS: ReadonlyArray<number | undefined> = [
+  6 * 60 * 60 * 1000,
+  7 * 24 * 60 * 60 * 1000,
+  undefined,
+];
+
+/**
+ * The instant a home page's steps count back from, or undefined for a page
+ * read in one step: a `min_id` page (read oldest first), the one-entry check,
+ * or a `max_id` that is no entity id.
+ */
+const homePageTop = (cursor: StatusCursor): number | undefined => {
+  const { onlyId, before, ascending } = idCursorBounds(cursor);
+  if (onlyId.length > 0 || ascending) {
+    return undefined;
+  }
+  return before.length > 0 ? entityIdInstant(before) : Date.now();
+};
+
 export const listHomeStatuses = async (
   db: D1Database,
   accountId: string,
@@ -112,57 +141,97 @@ export const listHomeStatuses = async (
   horizon: string | undefined = undefined,
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
-    const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
-         ${FEED_SUSPENDED_AUTHORS_SQL}`;
-    const { where, order, binds } = cursorFragment(cursor);
     const now = nowIso();
-    const reblogs = feedLocalReblogsSql(accountId, now);
-    const mentions = feedLocalMentionsSql(accountId, now);
-    const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
-    const replies = feedLocalRepliesSql({ kind: "Home" }, accountId);
-    // The viewer's own statuses always (`deliver_to_self!`). A followed
-    // author's as `filter_from_home` keeps them: a direct or limited note only when it
-    // mentions the viewer (`deliver_to_mentioned_followers!`), a reply only to
-    // whom it keeps one, none from a member of an exclusive list, and the
-    // follow's languages. A followed hashtag's public notes as
-    // `filter_from_tags?`, which has none of those rules.
-    const sql = `SELECT ${statusSelect} FROM statuses
-         WHERE (account_id = ? OR (account_id IN (
-           SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
-         ) AND (visibility NOT IN ('direct', 'limited') OR EXISTS (
-           SELECT 1 FROM status_mentions m WHERE m.status_id = statuses.id AND m.account_id = ?
-         )) ${replies.sql}
-           AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
-           ${FEED_LANGUAGES_SQL}) OR id IN ${tagged.sql})
-         ${suppressed}
-         ${reblogs.sql}
-         ${mentions.sql}
-         ${where} ${order} LIMIT ?`;
-    const { results } = await db
-      .prepare(sql)
-      .bind(
-        accountId,
-        accountId,
-        accountId,
-        ...replies.binds,
-        // Exclusive lists: the viewer.
-        accountId,
-        // `FEED_LANGUAGES_SQL`: the viewer.
-        accountId,
-        ...tagged.binds,
-        // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
-        accountId,
-        accountId,
-        accountId,
-        now,
-        ...reblogs.binds,
-        ...mentions.binds,
-        ...binds,
-        limit,
-      )
-      .all();
-    return hydrateStatusRows(db, results ?? []);
+    const top = homePageTop(cursor);
+    if (top === undefined) {
+      return hydrateStatusRows(
+        db,
+        await homeStatusRows(db, accountId, limit, cursor, horizon, now),
+      );
+    }
+    const { after, before } = idCursorBounds(cursor);
+    const rows: unknown[] = [];
+    let ceiling = before;
+    for (const windowMs of HOME_PAGE_WINDOWS_MS) {
+      const windowFloor = windowMs === undefined ? "" : firstEntityIdAt(top - windowMs);
+      const floor = after > windowFloor ? after : windowFloor;
+      rows.push(
+        ...(await homeStatusRows(
+          db,
+          accountId,
+          limit - rows.length,
+          { maxId: ceiling, sinceId: floor },
+          horizon,
+          now,
+        )),
+      );
+      if (rows.length >= limit || floor === after) {
+        break;
+      }
+      ceiling = nextEntityId(floor);
+    }
+    return hydrateStatusRows(db, rows);
   });
+
+/** The rows of a home page within `cursor`. */
+const homeStatusRows = async (
+  db: D1Database,
+  accountId: string,
+  limit: number,
+  cursor: StatusCursor,
+  horizon: string | undefined,
+  now: string,
+): Promise<unknown[]> => {
+  const suppressed = `AND account_id NOT IN ${SUPPRESSED_ACCOUNT_IDS_SQL}
+       ${FEED_SUSPENDED_AUTHORS_SQL}`;
+  const { where, order, binds } = cursorFragment(cursor);
+  const reblogs = feedLocalReblogsSql(accountId, now);
+  const mentions = feedLocalMentionsSql(accountId, now);
+  const tagged = followedTagNoteIdsSql("Local", accountId, now, cursor, horizon);
+  const replies = feedLocalRepliesSql({ kind: "Home" }, accountId);
+  // The viewer's own statuses always (`deliver_to_self!`). A followed
+  // author's as `filter_from_home` keeps them: a direct or limited note only when it
+  // mentions the viewer (`deliver_to_mentioned_followers!`), a reply only to
+  // whom it keeps one, none from a member of an exclusive list, and the
+  // follow's languages. A followed hashtag's public notes as
+  // `filter_from_tags?`, which has none of those rules.
+  const sql = `SELECT ${statusSelect} FROM statuses
+       WHERE (account_id = ? OR (account_id IN (
+         SELECT target_account_id FROM follows WHERE follower_account_id = ? AND kind = 'Accepted'
+       ) AND (visibility NOT IN ('direct', 'limited') OR EXISTS (
+         SELECT 1 FROM status_mentions m WHERE m.status_id = statuses.id AND m.account_id = ?
+       )) ${replies.sql}
+         AND account_id NOT IN ${EXCLUSIVE_LIST_MEMBER_ACCOUNTS_SQL}
+         ${FEED_LANGUAGES_SQL}) OR id IN ${tagged.sql})
+       ${suppressed}
+       ${reblogs.sql}
+       ${mentions.sql}
+       ${where} ${order} LIMIT ?`;
+  const { results } = await db
+    .prepare(sql)
+    .bind(
+      accountId,
+      accountId,
+      accountId,
+      ...replies.binds,
+      // Exclusive lists: the viewer.
+      accountId,
+      // `FEED_LANGUAGES_SQL`: the viewer.
+      accountId,
+      ...tagged.binds,
+      // `SUPPRESSED_ACCOUNT_IDS_SQL` takes the viewer twice and its clock.
+      accountId,
+      accountId,
+      accountId,
+      now,
+      ...reblogs.binds,
+      ...mentions.binds,
+      ...binds,
+      limit,
+    )
+    .all();
+  return results ?? [];
+};
 
 export type AccountStatusFilters = Readonly<{
   limit: number;
