@@ -9,6 +9,7 @@ import { findRemoteStatusByObjectUri, recordRemoteTombstone } from "../remote-st
 import { answersGone } from "../federated-fetch";
 import { forwardRemoteActivity } from "../activity-forward";
 import type { ActivityOf, InboxHandler, RemoteDelivery } from "./handler";
+import { revokeRemoteFeatureAuthorization } from "./feature-answer";
 import { revokeQuoteStamp } from "./quote-answer";
 
 /** What a remote actor's `Delete` removes on this server. */
@@ -47,6 +48,16 @@ export const receiveRemoteDelete: InboxHandler<RemoteDelivery<"Delete">> = async
   fetchSigner,
 }) => {
   const effect = remoteDeleteEffect(identity, activity);
+  // `Delete#perform`: an authorization the signer gave a local collection.
+  if (effect.kind !== "PurgeActor") {
+    const revoked = await revokeRemoteFeatureAuthorization(env, signer, activity.object);
+    if (revoked.isErr()) {
+      return err(revoked.error);
+    }
+    if (revoked.value) {
+      return ok(undefined);
+    }
+  }
   switch (effect.kind) {
     case "PurgeActor": {
       // A forwarded account `Delete` is not taken on the forwarder's word:

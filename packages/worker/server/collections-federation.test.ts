@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { ApiCollection } from "@tstodon/api";
+import { Collection } from "@tstodon/domain";
 import {
   ApActivityDocument,
   ApActorDocument,
@@ -13,7 +14,9 @@ import {
 } from "@tstodon/api/activitypub";
 import { ACTIVITY_JSON } from "../test/activity-json";
 import { expectContract } from "../test/api-contract";
+import { type Remote, remoteActor } from "../test/remote-actor-fixture";
 import { outboundAudience } from "./outbox-job";
+import { RemoteAccountId } from "./remote-account-id";
 import { authHeaders, signedInAccount } from "../test/auth-fixture";
 
 /**
@@ -135,6 +138,111 @@ describe("a local collection's activities", () => {
       signature: { creator: `${ORIGIN}/users/${member.username}#main-key` },
     });
     expect(rest[3]).toMatchObject({ target: featuredCollections, object: collection.uri });
+  });
+});
+
+/** A remote account whose `canFeature` lets anyone feature it. */
+const featureableRemote = (username: string) => {
+  const host = `${username}.example`;
+  const actorUri = `https://${host}/users/${username}`;
+  return remoteActor(username, host, {
+    featurePolicy: Collection.parseFeaturePolicy({ automaticApproval: [PUBLIC] }, { actorUri }),
+  });
+};
+
+const ItemBody = z.object({
+  collection_item: z.object({ id: z.string(), state: z.string(), account_id: z.string() }),
+});
+
+describe("featuring a remote account", () => {
+  it("asks its server, and follows the Accept, the Reject and the revoke", async () => {
+    const ownerEmail = "fed-coll-asker@example.com";
+    const owner = await signedInAccount(ownerEmail);
+    const accepting = await featureableRemote("feat-accepts");
+    const rejecting = await featureableRemote("feat-rejects");
+    const unasked = await remoteActor("feat-nopolicy", "feat-nopolicy.example");
+    const collection = await createCollection(ownerEmail, { name: "Remote friends" });
+
+    const refused = await SELF.fetch(`${ORIGIN}/api/v1/collections/${collection.id}/items`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(await authHeaders(ownerEmail)) },
+      body: JSON.stringify({ account_id: RemoteAccountId.encode(unasked.actorUri) }),
+    });
+    expect(refused.status).toBe(403);
+
+    const add = async (remote: Remote) =>
+      ItemBody.parse(
+        await (
+          await call("POST", ownerEmail, `/api/v1/collections/${collection.id}/items`, {
+            account_id: RemoteAccountId.encode(remote.actorUri),
+          })
+        ).json(),
+      ).collection_item;
+    const acceptedItem = await add(accepting);
+    const rejectedItem = await add(rejecting);
+    expect(acceptedItem).toMatchObject({
+      state: "pending",
+      account_id: RemoteAccountId.encode(accepting.actorUri),
+    });
+
+    const requests = (await queued(owner.id)).filter(
+      (activity) => activity.type === "FeatureRequest",
+    );
+    expect(requests.map((request) => "object" in request && request.object)).toEqual([
+      accepting.actorUri,
+      rejecting.actorUri,
+    ]);
+    const [request, rejectedRequest] = requests;
+    expect(request).toMatchObject({ instrument: collection.uri });
+    expect(request?.id).toMatch(
+      new RegExp(`^${ORIGIN}/users/${owner.username}/feature_requests/[0-9a-f-]{36}$`),
+    );
+
+    const approval = `https://feat-accepts.example/users/feat-accepts/feature_authorizations/1`;
+    expect(
+      await accepting.send({
+        id: `${accepting.actorUri}#accepts/1`,
+        type: "Accept",
+        object: request?.id,
+        result: approval,
+      }),
+    ).toBe(202);
+    expect(
+      await rejecting.send({
+        id: `${rejecting.actorUri}#rejects/1`,
+        type: "Reject",
+        object: rejectedRequest?.id,
+      }),
+    ).toBe(202);
+
+    const shown = async () =>
+      expectContract(
+        z.object({ collection: ApiCollection }),
+        await (
+          await SELF.fetch(`${ORIGIN}/api/v1/collections/${collection.id}`, {
+            headers: await authHeaders(ownerEmail),
+          })
+        ).json(),
+      ).collection.items;
+    expect(await shown()).toEqual([
+      expect.objectContaining({ id: acceptedItem.id, state: "accepted" }),
+    ]);
+    const added = (await queued(owner.id)).at(-1);
+    expect(added).toMatchObject({
+      type: "Add",
+      target: collection.uri,
+      object: { featuredObject: accepting.actorUri, featureAuthorization: approval },
+    });
+
+    expect(
+      await accepting.send({ id: `${approval}#delete`, type: "Delete", object: approval }),
+    ).toBe(202);
+    expect(await shown()).toEqual([]);
+    expect((await queued(owner.id)).at(-1)).toMatchObject({
+      type: "Remove",
+      object: `${ORIGIN}/ap/users/${owner.id}/collection_items/${acceptedItem.id}`,
+    });
+    expect(rejectedItem.state).toBe("pending");
   });
 });
 

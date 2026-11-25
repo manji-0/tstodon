@@ -57,6 +57,19 @@ export const ApFeatureAuthorization = z.object({
 });
 export type ApFeatureAuthorizationJSON = z.infer<typeof ApFeatureAuthorization>;
 
+/**
+ * A collection owner's ask to feature an account (`ActivityPub::FeatureRequestSerializer`):
+ * the account as `object`, the collection as `instrument`. Mastodon sends it
+ * without an `actor`; the signature names the owner.
+ */
+export const ApFeatureRequest = z.object({
+  id: ApUri,
+  type: z.literal("FeatureRequest"),
+  object: ApUri,
+  instrument: ApUri,
+});
+export type ApFeatureRequestJSON = z.infer<typeof ApFeatureRequest>;
+
 export const ApFeatureAuthorizationDocument = withContext(ApFeatureAuthorization);
 export type ApFeatureAuthorizationDocumentJSON = z.infer<typeof ApFeatureAuthorizationDocument>;
 

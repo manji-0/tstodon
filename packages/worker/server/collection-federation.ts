@@ -18,8 +18,11 @@ import {
   featuredItemContext,
   featuredItemObject,
 } from "./collection-documents";
-import { enqueueLocalActivity } from "./delivery";
+import { err, ok, type Result } from "neverthrow";
+import { enqueueLocalActivity, enqueueTargetedActivity } from "./delivery";
 import { deliveredActivity } from "./own-activity-signature";
+import { RemoteAccountId } from "./remote-account-id";
+import { findRemoteActorByUri } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 
 const PUBLIC = "https://www.w3.org/ns/activitystreams#Public";
@@ -36,6 +39,8 @@ export type CollectionEvent =
   | Readonly<{ kind: "ItemAdded"; collection: Collection; item: CollectionItem }>
   /** `DeleteCollectionItemService` of a local collection. */
   | Readonly<{ kind: "ItemRemoved"; collection: Collection; item: CollectionItem }>
+  /** `FeatureRequestWorker`: ask a remote account's server to feature it. */
+  | Readonly<{ kind: "FeatureRequested"; collection: Collection; item: CollectionItem }>
   /** `RevokeCollectionItemService`: the featured account withdraws its consent. */
   | Readonly<{
       kind: "ItemRevoked";
@@ -103,6 +108,18 @@ export const collectionActivity = (
         target: collectionUri(identity, collection),
         object: collectionItemUri(identity, collection, event.item.id),
       };
+    case "FeatureRequested": {
+      const featured = RemoteAccountId.decode(event.item.accountId);
+      return featured.isOk() && event.item.activityUri !== undefined
+        ? {
+            "@context": [ACTIVITY_STREAMS, { FeatureRequest: FEATURE_REQUEST_TYPE }],
+            id: event.item.activityUri,
+            type: "FeatureRequest",
+            object: featured.value,
+            instrument: collectionUri(identity, collection),
+          }
+        : undefined;
+    }
     case "ItemRevoked": {
       const featured = InstanceIdentity.actorUrl(identity, event.featured.username);
       const authorization = featureAuthorizationUri(identity, event.item.accountId, event.item.id);
@@ -122,6 +139,41 @@ export const collectionActivity = (
     }
     default:
       return event satisfies never;
+  }
+};
+
+const FEATURE_REQUEST_TYPE = "https://w3id.org/fep/7aa9#FeatureRequest";
+
+/**
+ * A `FeatureRequest` goes to the featured account's inbox alone; any other
+ * activity to the owner's reach.
+ */
+const enqueueCollectionActivity = async (
+  env: Env,
+  owner: LocalAccount,
+  event: CollectionEvent,
+  activity: ApActivityDocumentJSON,
+): Promise<Result<void, unknown>> => {
+  switch (event.kind) {
+    case "FeatureRequested": {
+      const actorUri = RemoteAccountId.decode(event.item.accountId);
+      const actor = actorUri.isOk()
+        ? await findRemoteActorByUri(env.DB, actorUri.value)
+        : ok(undefined);
+      if (actor.isErr() || actor.value === undefined) {
+        return err(undefined);
+      }
+      return enqueueTargetedActivity(env, owner, activity.type, activity, actor.value.inboxUri);
+    }
+    case "ItemRevoked":
+      return enqueueLocalActivity(
+        env,
+        owner,
+        activity.type,
+        await deliveredActivity(env, event.featured, activity),
+      );
+    default:
+      return enqueueLocalActivity(env, owner, activity.type, activity);
   }
 };
 
@@ -154,11 +206,7 @@ export const federateCollection = async (
   if (activity === undefined) {
     return;
   }
-  const payload =
-    event.kind === "ItemRevoked"
-      ? await deliveredActivity(env, event.featured, activity)
-      : activity;
-  const enqueued = await enqueueLocalActivity(env, owner, activity.type, payload);
+  const enqueued = await enqueueCollectionActivity(env, owner, event, activity);
   if (enqueued.isErr()) {
     console.error(
       JSON.stringify({

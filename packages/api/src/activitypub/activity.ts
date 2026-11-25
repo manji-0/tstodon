@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { ApActor } from "./actor";
 import { ApUri, withContext } from "./context";
-import { ApCuratedCollection, ApFeatureAuthorization, ApFeaturedItem } from "./curated-collection";
+import {
+  ApCuratedCollection,
+  ApFeatureAuthorization,
+  ApFeaturedItem,
+  ApFeatureRequest,
+} from "./curated-collection";
 import { ApHashtag, ApPollVote, ApQuoteAuthorization, ApStatusObject, ApTombstone } from "./note";
 
 /*
@@ -267,6 +272,7 @@ export const ApActivityDocument = z.discriminatedUnion("type", [
   delivered(ApQuoteRequest),
   delivered(ApAdd),
   delivered(ApRemove),
+  delivered(ApFeatureRequest),
 ]);
 export type ApActivityDocumentJSON = z.infer<typeof ApActivityDocument>;
 

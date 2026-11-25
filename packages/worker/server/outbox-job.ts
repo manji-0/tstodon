@@ -41,6 +41,7 @@ import {
 import { parseInstanceIdentity } from "./runtime-config";
 import { deliverExpandedActivity, startOutboxDeliveryWorkflow } from "./delivery";
 import { processExpandForwardJob } from "./activity-forward";
+import { listCollectionMemberInboxes } from "./collection-store";
 import { parseJsonText } from "./json-column";
 import { parseLocalStatusId } from "./activitypub";
 import { listPollInteractorInboxes } from "./remote-interaction-store";
@@ -115,6 +116,32 @@ const isCollectionActivity = (payload: unknown, object: unknown): boolean => {
   );
 };
 
+const LOCAL_COLLECTION_PATH = /\/ap\/users\/[^/]+\/collections\/([^/#]+)$/;
+
+/**
+ * The local collection a collection activity is about, whose remote members
+ * hear it too (`CollectionReachFinder`): an item's target, or the updated
+ * collection. Not a collection removed from `featuredCollections`, which
+ * Mastodon sends to the owner's reach alone.
+ */
+const collectionOf = (payload: unknown, object: unknown): string | undefined => {
+  const named = (value: unknown): string | undefined =>
+    typeof value === "string" ? LOCAL_COLLECTION_PATH.exec(value)?.[1] : undefined;
+  const type = typeOf(payload);
+  if (type === "Add" || type === "Remove") {
+    return named(
+      typeof payload === "object" && payload !== null ? Reflect.get(payload, "target") : undefined,
+    );
+  }
+  if (type === "Update" && typeOf(object) === "FeaturedCollection") {
+    return named(Reflect.get(Object(object), "id"));
+  }
+  if (type === "Delete" && typeOf(object) === "FeatureAuthorization") {
+    return named(Reflect.get(Object(object), "interactingObject"));
+  }
+  return undefined;
+};
+
 /** Whether the activity is an `Update` whose object is its own actor. */
 const isActorUpdate = (payload: unknown, object: unknown): boolean => {
   if (
@@ -148,19 +175,27 @@ export const outboundAudience = (
   actorUris: ReadonlyArray<string>;
   updatedQuestion: string | undefined;
   accountReach: boolean;
+  collectionId: string | undefined;
 }> => {
   const parsed = parseJsonText(payloadJson);
   if (parsed.isErr()) {
-    return { followers: true, actorUris: [], updatedQuestion: undefined, accountReach: false };
+    return {
+      followers: true,
+      actorUris: [],
+      updatedQuestion: undefined,
+      accountReach: false,
+      collectionId: undefined,
+    };
   }
   const payload = parsed.value;
   const object: unknown =
     typeof payload === "object" && payload !== null ? Reflect.get(payload, "object") : undefined;
   const updatedQuestion = updatedQuestionOf(payload, object);
   const accountReach = isActorUpdate(payload, object) || isCollectionActivity(payload, object);
+  const collectionId = collectionOf(payload, object);
   const audience = [...audienceOf(payload), ...audienceOf(object)];
   if (audience.length === 0) {
-    return { followers: true, actorUris: [], updatedQuestion, accountReach };
+    return { followers: true, actorUris: [], updatedQuestion, accountReach, collectionId };
   }
   // `localHost` may carry a port, as the follower filter below compares hosts.
   const isLocal = (uri: string): boolean => {
@@ -180,13 +215,13 @@ export const outboundAudience = (
       ),
     ),
   ];
-  return { followers, actorUris, updatedQuestion, accountReach };
+  return { followers, actorUris, updatedQuestion, accountReach, collectionId };
 };
 
 /** A failed recipient lookup leaves those recipients out; say so in the logs. */
 const logExpandLookupFailure = (
   activityId: string,
-  lookup: "followers" | "pollInteractors" | "accountReach",
+  lookup: "followers" | "pollInteractors" | "accountReach" | "collectionMembers",
   found: Result<unknown, RepositoryError>,
 ): void => {
   if (found.isErr()) {
@@ -389,12 +424,18 @@ export const processOutboxJob = async (
           : ok([]);
       logExpandLookupFailure(job.activityId, "followers", remoteFollowers);
       logExpandLookupFailure(job.activityId, "pollInteractors", interactors);
+      const members =
+        audience.collectionId === undefined
+          ? ok([])
+          : await listCollectionMemberInboxes(env.DB, audience.collectionId);
       logExpandLookupFailure(job.activityId, "accountReach", reach);
+      logExpandLookupFailure(job.activityId, "collectionMembers", members);
       const addressed = await findRemoteActorsByUris(env.DB, audience.actorUris);
       const candidateInboxes = [
         ...(remoteFollowers.isOk() ? remoteFollowers.value : []),
         ...(interactors.isOk() ? interactors.value : []),
         ...(reach.isOk() ? reach.value : []),
+        ...(members.isOk() ? members.value : []),
         ...(addressed.isOk() ? [...addressed.value.values()] : []).map(
           (actor) => actor.sharedInboxUri ?? actor.inboxUri,
         ),

@@ -81,6 +81,8 @@ export const ldSigningOf = (activity: ApActivityDocumentJSON): LdSigning => {
         ? "OutsideSecureMode"
         : "Never";
     case "QuoteRequest":
+    // `FeatureRequestWorker` serializes it with `signer:`, and `CollectionItem#sign?`.
+    case "FeatureRequest":
       return "OutsideSecureMode";
     default:
       return "Never";

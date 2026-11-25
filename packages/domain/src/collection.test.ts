@@ -98,6 +98,7 @@ describe("Collection", () => {
 
   it("features a discoverable account that is unlocked, followed, or the owner", () => {
     const candidate = {
+      kind: "Local" as const,
       ownerId: "owner",
       targetId: "t",
       targetDiscoverable: true,
@@ -115,5 +116,39 @@ describe("Collection", () => {
       true,
     );
     expect(Collection.featureable({ ...candidate, blockedEitherWay: true })).toBe(false);
+  });
+
+  it("reads a remote canFeature as Mastodon's InteractionPolicyParser does", () => {
+    const actor = {
+      actorUri: "https://remote.example/users/bob",
+      followersUri: "https://remote.example/users/bob/followers",
+      followingUri: "https://remote.example/users/bob/following",
+    };
+    const policy = (canFeature: unknown) => Collection.parseFeaturePolicy(canFeature, actor);
+    const approval = (
+      canFeature: unknown,
+      follows: Readonly<{ ownerFollowsTarget?: boolean; targetFollowsOwner?: boolean }> = {},
+    ) =>
+      Collection.featureApproval({
+        kind: "Remote",
+        policy: policy(canFeature),
+        ownerFollowsTarget: follows.ownerFollowsTarget ?? false,
+        targetFollowsOwner: follows.targetFollowsOwner ?? false,
+        blockedEitherWay: false,
+      });
+    expect(policy(undefined)).toBeUndefined();
+    expect(approval(undefined)).toBe("missing");
+    expect(approval({ automaticApproval: [] })).toBe("missing");
+    expect(approval({ automaticApproval: "as:Public" })).toBe("automatic");
+    expect(approval({ automaticApproval: [actor.followersUri] })).toBe("denied");
+    expect(
+      approval({ automaticApproval: [actor.followersUri] }, { ownerFollowsTarget: true }),
+    ).toBe("automatic");
+    expect(approval({ manualApproval: [actor.followingUri] }, { targetFollowsOwner: true })).toBe(
+      "manual",
+    );
+    expect(approval({ automaticApproval: [actor.actorUri] })).toBe("denied");
+    expect(policy({ automaticApproval: [actor.actorUri] })?.automatic.disabled).toBe(true);
+    expect(approval({ automaticApproval: ["https://elsewhere.example/list"] })).toBe("unknown");
   });
 });

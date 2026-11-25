@@ -9,6 +9,7 @@ import { Collection, type CollectionItem, type InstanceIdentity } from "@tstodon
 import { err, ok, type Result } from "neverthrow";
 import { blockedAccountIds, findCollections, findItemCollectionIds } from "./collection-store";
 import type { RepositoryError } from "./d1";
+import { RemoteAccountId } from "./remote-account-id";
 import { hashtagObject } from "./activitypub";
 import { tagUrl } from "./tag-documents";
 
@@ -209,14 +210,19 @@ export const featuredItemObject = (
   item: CollectionItem,
   actorUriOf: ActorUriOf,
 ): ApFeaturedItemJSON | undefined => {
-  const featuredObject = actorUriOf(item.accountId);
-  return featuredObject === undefined
+  const remote = RemoteAccountId.decode(item.accountId);
+  const featuredObject = remote.isOk() ? remote.value : actorUriOf(item.accountId);
+  // A remote account's authorization is the one its `Accept` named.
+  const featureAuthorization = remote.isOk()
+    ? item.approvalUri
+    : featureAuthorizationUri(identity, item.accountId, item.id);
+  return featuredObject === undefined || featureAuthorization === undefined
     ? undefined
     : {
         id: collectionItemUri(identity, collection, item.id),
         type: "FeaturedItem",
         featuredObject,
-        featureAuthorization: featureAuthorizationUri(identity, item.accountId, item.id),
+        featureAuthorization,
         published: apTime(item.createdAt),
       };
 };

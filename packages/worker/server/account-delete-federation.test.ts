@@ -64,7 +64,7 @@ const queuedActorDeletes = async (actorUri: string) => {
       ...row,
       activity: expectContract(ApActivityDocument, JSON.parse(row.payload_json)),
     }))
-    .filter(({ activity }) => activity.actor === actorUri);
+    .filter(({ activity }) => "actor" in activity && activity.actor === actorUri);
   return Promise.all(
     deletes.map(async (row) => {
       const targets = await env.DB.prepare(

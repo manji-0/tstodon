@@ -1,5 +1,6 @@
 import {
   type AccountHandle,
+  Collection,
   Hostname,
   IsoInstant,
   RemoteActor,
@@ -304,13 +305,28 @@ export const remoteActorFromDocument = (
   if (fetchedAt.isErr()) {
     return err({ kind: "InvalidSignature" });
   }
+  const followersUri = ownCollectionUri(document.value.followers, parsedUri);
+  const followingUri = ownCollectionUri(document.value.following, parsedUri);
+  const canFeature: unknown =
+    typeof document.value.interactionPolicy === "object" &&
+    document.value.interactionPolicy !== null
+      ? Reflect.get(document.value.interactionPolicy, "canFeature")
+      : undefined;
+  const featurePolicy = Collection.parseFeaturePolicy(canFeature, {
+    actorUri: document.value.id,
+    ...(followersUri ? { followersUri } : {}),
+    ...(followingUri ? { followingUri } : {}),
+  });
   const actor = RemoteActor.fromFetched({
     actorUri: document.value.id,
     username: document.value.preferredUsername.toLowerCase(),
     domain,
     inboxUri: document.value.inbox,
     displayName: document.value.name ?? document.value.preferredUsername,
-    profile: actorProfile(document.value.id, document.value),
+    profile: {
+      ...actorProfile(document.value.id, document.value),
+      ...(featurePolicy ? { featurePolicy } : {}),
+    },
     fetchedAt: fetchedAt.value,
     ...(document.value.endpoints?.sharedInbox
       ? { sharedInboxUri: document.value.endpoints.sharedInbox }
@@ -318,8 +334,8 @@ export const remoteActorFromDocument = (
     outboxUri: linkUrl(document.value.outbox) ?? undefined,
     featuredUri: linkUrl(document.value.featured) ?? undefined,
     featuredTagsUri: linkUrl(document.value.featuredTags) ?? undefined,
-    followersUri: ownCollectionUri(document.value.followers, parsedUri),
-    followingUri: ownCollectionUri(document.value.following, parsedUri),
+    followersUri,
+    followingUri,
   });
   const keys = publishedKeys(raw, actorUri);
   if (actor.isErr() || keys.isErr()) {

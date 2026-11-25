@@ -5,6 +5,7 @@ import { CoveredHosts } from "./covered-hosts";
 import { Hostname } from "./hostname";
 import { IsoInstant } from "./iso-instant";
 import { ProfileFieldSchema } from "./profile-field";
+import { FeaturePolicySchema } from "./collection";
 
 /**
  * What a remote actor shows on its profile. `note` is plain text: the actor's
@@ -26,6 +27,8 @@ const RemoteActorProfileSchema = z.object({
    * is the actor's HTML as sent: sanitise it before it is rendered.
    */
   fields: z.array(ProfileFieldSchema),
+  /** Its `interactionPolicy.canFeature`; none when it federates none (`:missing`). */
+  featurePolicy: FeaturePolicySchema.optional(),
 });
 
 export type RemoteActorProfile = z.infer<typeof RemoteActorProfileSchema>;

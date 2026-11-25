@@ -420,5 +420,8 @@ export {
   type CollectionFields,
   type CollectionItemState,
   type CollectionValidationError,
+  type FeatureApproval,
   type FeatureCandidate,
+  type FeaturePolicy,
+  FeaturePolicySchema,
 } from "./collection";

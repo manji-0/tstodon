@@ -1,4 +1,5 @@
 import {
+  AccountId,
   Collection,
   InstanceIdentity,
   LocalAccount,
@@ -28,6 +29,7 @@ import {
 } from "./quote-authorization-document";
 import type { CustomEmoji } from "./emoji";
 import { type CollectionEvent, collectionActivity } from "./collection-federation";
+import { RemoteAccountId } from "./remote-account-id";
 
 /*
  * One of each activity tstodon signs, built by the builders that send them,
@@ -336,6 +338,17 @@ export const ownActivitySamples = (): Readonly<Record<string, ApActivityDocument
           kind: "ItemRemoved",
           collection: curated,
           item: curatedItem,
+        }),
+        featureRequest: collectionSample({
+          kind: "FeatureRequested",
+          collection: curated,
+          item: {
+            ...curatedItem,
+            id: "01J00000000000000000000102",
+            accountId: AccountId.parse(RemoteAccountId.encode(MASTODON_ALICE))._unsafeUnwrap(),
+            state: "pending",
+            activityUri: `${actorUri}/feature_requests/0b6e8e6e-6f4e-4f7a-9a55-6c2f4cf0d4a1`,
+          },
         }),
         deleteFeatureAuthorization: collectionSample({
           kind: "ItemRevoked",

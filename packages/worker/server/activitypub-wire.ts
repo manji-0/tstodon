@@ -116,6 +116,8 @@ export const ActorDocumentSchema = z
     outbox: z.string().min(1).optional(),
     featured: z.string().min(1).optional(),
     featuredTags: z.string().min(1).optional(),
+    /** Who may feature it in a collection (`canFeature`, FEP-7aa9). */
+    interactionPolicy: z.unknown().optional(),
     /** Its `followers` / `following` collections: a URI, an object with an id, or a list of them. */
     followers: z.unknown().optional(),
     following: z.unknown().optional(),

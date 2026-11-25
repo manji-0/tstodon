@@ -11,6 +11,7 @@ import {
   sqlInJsonEach,
 } from "./d1";
 import { recordTagNames } from "./hashtags";
+import { RemoteAccountId } from "./remote-account-id";
 
 const CollectionRow = z.object({
   id: z.string(),
@@ -29,9 +30,12 @@ type CollectionRow = z.infer<typeof CollectionRow>;
 const ItemRow = z.object({
   id: z.string(),
   collection_id: z.string(),
-  account_id: z.string(),
+  account_id: z.string().nullable(),
+  actor_uri: z.string().nullable(),
   position: z.number(),
   state: z.string(),
+  activity_uri: z.string().nullable(),
+  approval_uri: z.string().nullable(),
   created_at: z.string(),
 });
 type ItemRow = z.infer<typeof ItemRow>;
@@ -51,7 +55,8 @@ const withItems = async (
   }
   const { results } = await db
     .prepare(
-      `SELECT id, collection_id, account_id, position, state, created_at FROM collection_items
+      `SELECT id, collection_id, account_id, actor_uri, position, state, activity_uri, approval_uri,
+         created_at FROM collection_items
        WHERE collection_id ${sqlInJsonEach()} ORDER BY position, id`,
     )
     .bind(jsonStringArray(rows.map((row) => row.id)))
@@ -75,10 +80,12 @@ const withItems = async (
       updatedAt: row.updated_at,
       items: (items.get(row.id) ?? []).map((item) => ({
         id: item.id,
-        accountId: item.account_id,
+        accountId: item.account_id ?? RemoteAccountId.encode(item.actor_uri ?? ""),
         position: item.position,
         state: item.state,
         createdAt: item.created_at,
+        ...(item.activity_uri === null ? {} : { activityUri: item.activity_uri }),
+        ...(item.approval_uri === null ? {} : { approvalUri: item.approval_uri }),
       })),
     });
     return parsed.isOk() ? [parsed.value] : [];
@@ -233,6 +240,12 @@ export const countFeaturedInCollections = async (
     return parseRows(CountRow, results)[0]?.count ?? 0;
   });
 
+/** The columns an item's account id fills: a local account, or a remote actor's URI. */
+const accountColumns = (accountId: string): readonly [string | null, string | null] => {
+  const actorUri = RemoteAccountId.decode(accountId);
+  return actorUri.isOk() ? [null, actorUri.value] : [accountId, null];
+};
+
 const insertItemStatement = (
   db: D1Database,
   collectionId: string,
@@ -240,15 +253,17 @@ const insertItemStatement = (
 ): D1PreparedStatement =>
   db
     .prepare(
-      `INSERT INTO collection_items (id, collection_id, account_id, position, state, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO collection_items
+         (id, collection_id, account_id, actor_uri, position, state, activity_uri, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       item.id,
       collectionId,
-      item.accountId,
+      ...accountColumns(item.accountId),
       item.position,
       item.state,
+      item.activityUri ?? null,
       item.createdAt,
       item.createdAt,
     );
@@ -326,18 +341,34 @@ export type InsertItemError = RepositoryError | Readonly<{ kind: "AlreadyFeature
 export const insertCollectionItem = async (
   db: D1Database,
   collectionId: string,
-  item: Readonly<{ id: string; accountId: string; state: CollectionItemState; createdAt: string }>,
+  item: Readonly<{
+    id: string;
+    accountId: string;
+    state: CollectionItemState;
+    createdAt: string;
+    activityUri?: string | undefined;
+  }>,
 ): Promise<Result<number, InsertItemError>> => {
+  const [accountId, actorUri] = accountColumns(item.accountId);
   const written = await runD1(async () =>
     db
       .prepare(
-        `INSERT INTO collection_items (id, collection_id, account_id, position, state, created_at, updated_at)
-         SELECT ?1, ?2, ?3, COALESCE(MAX(position), 0) + 1, ?4, ?5, ?5
+        `INSERT INTO collection_items
+           (id, collection_id, account_id, actor_uri, position, state, activity_uri, created_at, updated_at)
+         SELECT ?1, ?2, ?3, ?4, COALESCE(MAX(position), 0) + 1, ?5, ?6, ?7, ?7
          FROM collection_items WHERE collection_id = ?2
-         ON CONFLICT (collection_id, account_id) DO NOTHING
+         ON CONFLICT DO NOTHING
          RETURNING position`,
       )
-      .bind(item.id, collectionId, item.accountId, item.state, item.createdAt)
+      .bind(
+        item.id,
+        collectionId,
+        accountId,
+        actorUri,
+        item.state,
+        item.activityUri ?? null,
+        item.createdAt,
+      )
       .all(),
   );
   if (written.isErr()) {
@@ -375,6 +406,44 @@ export const findTag = async (
   });
 };
 
+/** How a local owner and a remote account stand, as `feature_policy_for_account` reads it. */
+export type RemoteStanding = Readonly<{
+  ownerFollowsTarget: boolean;
+  targetFollowsOwner: boolean;
+  blockedEitherWay: boolean;
+}>;
+
+export const findRemoteStanding = async (
+  db: D1Database,
+  ownerId: string,
+  actorUri: string,
+): Promise<Result<RemoteStanding, RepositoryError>> =>
+  runD1(async () => {
+    const row = await db
+      .prepare(
+        `SELECT
+           EXISTS (SELECT 1 FROM outbound_follows
+                   WHERE account_id = ?1 AND actor_uri = ?2 AND state = 'Accepted') AS owner_follows,
+           EXISTS (SELECT 1 FROM remote_follows
+                   WHERE target_account_id = ?1 AND remote_actor_uri = ?2
+                     AND follow_kind = 'Accepted') AS target_follows,
+           EXISTS (SELECT 1 FROM blocks WHERE blocker_account_id = ?1 AND target_actor_uri = ?2)
+           OR EXISTS (SELECT 1 FROM remote_blocks WHERE account_id = ?1 AND actor_uri = ?2)
+             AS blocked`,
+      )
+      .bind(ownerId, actorUri)
+      .all();
+    const [standing] = parseRows(
+      z.object({ owner_follows: z.number(), target_follows: z.number(), blocked: z.number() }),
+      row.results,
+    );
+    return {
+      ownerFollowsTarget: standing?.owner_follows === 1,
+      targetFollowsOwner: standing?.target_follows === 1,
+      blockedEitherWay: standing?.blocked === 1,
+    };
+  });
+
 /** Of `accountIds`, the local accounts `viewerId` blocks (`Account#blocking`). */
 export const blockedAccountIds = async (
   db: D1Database,
@@ -386,17 +455,90 @@ export const blockedAccountIds = async (
     : runD1(async () => {
         const { results } = await db
           .prepare(
-            `SELECT target_account_id FROM blocks
-             WHERE blocker_account_id = ? AND target_account_id ${sqlInJsonEach()}`,
+            `SELECT target_account_id, target_actor_uri FROM blocks
+             WHERE blocker_account_id = ?
+               AND (target_account_id ${sqlInJsonEach()} OR target_actor_uri ${sqlInJsonEach()})`,
           )
-          .bind(viewerId, jsonStringArray([...new Set(accountIds)]))
+          .bind(
+            viewerId,
+            jsonStringArray([...new Set(accountIds)]),
+            jsonStringArray(accountIds.flatMap((id) => RemoteAccountId.decode(id).unwrapOr([]))),
+          )
           .all();
         return new Set(
-          parseRows(z.object({ target_account_id: z.string() }), results).map(
-            (row) => row.target_account_id,
-          ),
+          parseRows(
+            z.object({ target_account_id: z.string().nullable(), target_actor_uri: z.string() }),
+            results,
+          ).map((row) => row.target_account_id ?? RemoteAccountId.encode(row.target_actor_uri)),
         );
       });
+
+/**
+ * The local collection holding the item a remote actor's answer names: the
+ * `FeatureRequest` it got (`activity`), or the authorization it gave
+ * (`approval`), as `CollectionItem.local.find_by(…, account_id:)` finds it.
+ */
+export const findRemoteItem = async (
+  db: D1Database,
+  by: Readonly<{ column: "activity" | "approval"; uri: string; actorUri: string }>,
+): Promise<
+  Result<Readonly<{ collection: Collection; itemId: string }> | undefined, RepositoryError>
+> =>
+  runD1(async () => {
+    const column = by.column === "activity" ? "activity_uri" : "approval_uri";
+    const { results } = await db
+      .prepare(
+        `SELECT id, collection_id FROM collection_items WHERE ${column} = ? AND actor_uri = ?`,
+      )
+      .bind(by.uri, by.actorUri)
+      .all();
+    const [row] = parseRows(z.object({ id: z.string(), collection_id: z.string() }), results);
+    if (row === undefined) {
+      return undefined;
+    }
+    const { results: rows } = await db
+      .prepare(`SELECT ${COLLECTION_COLUMNS} FROM collections c WHERE c.id = ?`)
+      .bind(row.collection_id)
+      .all();
+    const [collection] = await withItems(db, parseRows(CollectionRow, rows));
+    return collection && { collection, itemId: row.id };
+  });
+
+/** `update!(approval_uri:, state: :accepted)` of a remote account's item. */
+export const acceptRemoteItem = async (
+  db: D1Database,
+  itemId: string,
+  approvalUri: string,
+  at: string,
+): Promise<Result<void, RepositoryError>> =>
+  runD1(async () => {
+    await db
+      .prepare(
+        "UPDATE collection_items SET state = 'accepted', approval_uri = ?, updated_at = ? WHERE id = ?",
+      )
+      .bind(approvalUri, at, itemId)
+      .run();
+  });
+
+/**
+ * The inboxes of the remote accounts a local collection features, pending or
+ * accepted (`CollectionReachFinder#collection_member_inboxes`).
+ */
+export const listCollectionMemberInboxes = async (
+  db: D1Database,
+  collectionId: string,
+): Promise<Result<ReadonlyArray<string>, RepositoryError>> =>
+  runD1(async () => {
+    const { results } = await db
+      .prepare(
+        `SELECT DISTINCT COALESCE(a.shared_inbox_uri, a.inbox_uri) AS inbox FROM collection_items i
+         JOIN remote_actors a ON a.actor_uri = i.actor_uri
+         WHERE i.collection_id = ? AND i.state IN ('pending', 'accepted')`,
+      )
+      .bind(collectionId)
+      .all();
+    return parseRows(z.object({ inbox: z.string() }), results).map((row) => row.inbox);
+  });
 
 export const setCollectionItemState = async (
   db: D1Database,

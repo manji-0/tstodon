@@ -10,7 +10,9 @@ import {
   CollectionItem,
   type CollectionFields,
   type CollectionValidationError,
-  type InstanceIdentity,
+  InstanceIdentity,
+  type LocalAccount,
+  type RemoteActor,
 } from "@tstodon/domain";
 import type { Context } from "hono";
 import { findAccountById } from "../account-store";
@@ -28,6 +30,7 @@ import {
   deleteCollection,
   deleteCollectionItem,
   findCollection,
+  findRemoteStanding,
   findTag,
   insertCollection,
   insertCollectionItem,
@@ -122,7 +125,7 @@ const optionalViewer = async (
  */
 type FoundAccount =
   | Readonly<{ kind: "Local"; id: string; discoverable: boolean; locked: boolean }>
-  | Readonly<{ kind: "Remote"; id: string }>;
+  | Readonly<{ kind: "Remote"; id: string; actor: RemoteActor }>;
 
 const findAccount = async (
   c: AnyContext,
@@ -152,13 +155,12 @@ const findAccount = async (
   if (remote.isErr()) {
     return jsonRepositoryError(c, remote.error.message);
   }
-  return remote.value ? { kind: "Remote", id } : undefined;
+  return remote.value ? { kind: "Remote", id, actor: remote.value } : undefined;
 };
 
 /**
- * `AccountPolicy#feature?` of `target` by `ownerId`. A remote account is
- * featureable only under a `canFeature` policy it federated; tstodon keeps
- * none, which Mastodon reads as `:missing`, so it is refused.
+ * `AccountPolicy#feature?` of `target` by `ownerId`: a local account's
+ * flags, or the `canFeature` policy a remote account federated.
  */
 const mayFeature = async (
   c: AnyContext,
@@ -166,7 +168,15 @@ const mayFeature = async (
   target: FoundAccount,
 ): Promise<boolean | Response> => {
   if (target.kind === "Remote") {
-    return false;
+    const standing = await findRemoteStanding(c.env.DB, ownerId, target.actor.actorUri);
+    if (standing.isErr()) {
+      return jsonRepositoryError(c, standing.error.message);
+    }
+    return Collection.featureable({
+      kind: "Remote",
+      policy: target.actor.profile.featurePolicy,
+      ...standing.value,
+    });
   }
   const [follow, blocking, blockedBy] = await Promise.all([
     findFollowKind(c.env.DB, ownerId, target.id),
@@ -183,6 +193,7 @@ const mayFeature = async (
     return jsonRepositoryError(c, blockedBy.error.message);
   }
   return Collection.featureable({
+    kind: "Local",
     ownerId,
     targetId: target.id,
     targetDiscoverable: target.discoverable,
@@ -549,8 +560,8 @@ const createCollection = async (c: AnyContext): Promise<Response> => {
       id: newEntityId(),
       accountId: target.id,
       position: index + 1,
-      state: "accepted",
       createdAt: now,
+      ...itemStart(identity.value, owner, target),
     })),
   });
   if (parsed.isErr()) {
@@ -562,11 +573,14 @@ const createCollection = async (c: AnyContext): Promise<Response> => {
     return jsonRepositoryError(c, stored.error.message);
   }
   await Promise.all(
-    collection.items.map((item) =>
-      notifyAddedToCollection(c.env, collection, item.id, item.accountId),
-    ),
+    collection.items
+      .filter((item) => item.state === "accepted")
+      .map((item) => notifyAddedToCollection(c.env, collection, item.id, item.accountId)),
   );
   await federateCollection(c.env, owner, { kind: "Created", collection });
+  for (const item of collection.items.filter((candidate) => candidate.activityUri)) {
+    await federateCollection(c.env, owner, { kind: "FeatureRequested", collection, item });
+  }
   return renderCollection(c, identity.value, collection, owner.id);
 };
 
@@ -689,6 +703,23 @@ export const putV1CollectionsById = (c: Context<{ Bindings: Env }, "/api/v1/coll
 export const deleteV1CollectionsById = (c: Context<{ Bindings: Env }, "/api/v1/collections/:id">) =>
   destroyCollection(c, c.req.param("id"));
 
+/**
+ * A new item's state: a local account is `accepted` at once, a remote one
+ * `pending` on the `FeatureRequest` sent for it, whose id
+ * `CollectionItem#set_activity_uri` makes under the owner's actor.
+ */
+const itemStart = (
+  identity: InstanceIdentity,
+  owner: LocalAccount,
+  target: FoundAccount,
+): Readonly<{ state: "accepted" }> | Readonly<{ state: "pending"; activityUri: string }> =>
+  target.kind === "Local"
+    ? { state: "accepted" }
+    : {
+        state: "pending",
+        activityUri: `${InstanceIdentity.actorUrl(identity, owner.username)}/feature_requests/${crypto.randomUUID()}`,
+      };
+
 /** `POST /api/v1/collections/:id/items`: feature one more account. */
 const addItem = async (c: AnyContext, collectionId: string): Promise<Response> => {
   const user = await requireFunctionalUser(c);
@@ -729,18 +760,29 @@ const addItem = async (c: AnyContext, collectionId: string): Promise<Response> =
     return notAllowed(c);
   }
   const createdAt = nowIso();
-  const item = { id: newEntityId(), accountId: target.id, state: "accepted", createdAt } as const;
+  const identity = parseInstanceIdentity(c.env);
+  if (identity.isErr()) {
+    return c.json(identity.error, 500);
+  }
+  const item = {
+    id: newEntityId(),
+    accountId: target.id,
+    createdAt,
+    ...itemStart(identity.value, user.value, target),
+  };
   const inserted = await insertCollectionItem(c.env.DB, collection.id, item);
   if (inserted.isErr()) {
     return inserted.error.kind === "AlreadyFeatured"
       ? c.json({ error: "Validation failed: Account has already been taken" }, 422)
       : jsonRepositoryError(c, inserted.error.message);
   }
-  await notifyAddedToCollection(c.env, collection, item.id, item.accountId);
   const added = CollectionItem.parse({ ...item, position: inserted.value });
+  if (target.kind === "Local") {
+    await notifyAddedToCollection(c.env, collection, item.id, item.accountId);
+  }
   if (added.isOk()) {
     await federateCollection(c.env, user.value, {
-      kind: "ItemAdded",
+      kind: target.kind === "Local" ? "ItemAdded" : "FeatureRequested",
       collection,
       item: added.value,
     });
