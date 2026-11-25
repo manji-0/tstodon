@@ -188,3 +188,35 @@ describe("a collection's language", () => {
     expect(response.status).toBe(422);
   });
 });
+
+describe("a collection's page", () => {
+  it("is its FeaturedCollection for an ActivityPub client and the web app for a browser", async () => {
+    const created = await createCollection("page-owner@example.com", { name: "Shown" });
+    expect(created.status).toBe(200);
+    const { collection } = z
+      .object({ collection: z.object({ id: z.string(), uri: z.string() }) })
+      .parse(await created.json());
+
+    const document = await SELF.fetch(`${ORIGIN}/collections/${collection.id}`, {
+      headers: { accept: "application/activity+json" },
+    });
+    expect(document.status).toBe(200);
+    expect(document.headers.get("content-type")).toContain("application/activity+json");
+    expect(await document.json()).toMatchObject({
+      id: collection.uri,
+      type: "FeaturedCollection",
+      name: "Shown",
+    });
+
+    const page = await SELF.fetch(`${ORIGIN}/collections/${collection.id}`, {
+      headers: { accept: "text/html" },
+    });
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-type")).toContain("text/html");
+
+    const missing = await SELF.fetch(`${ORIGIN}/collections/none`, {
+      headers: { accept: "application/activity+json" },
+    });
+    expect(missing.status).toBe(404);
+  });
+});

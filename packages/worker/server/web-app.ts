@@ -20,6 +20,7 @@ import {
 } from "./generated/prisma/sql";
 import { sha256Hex } from "./oauth-store";
 import { credentialAccountDocument } from "./routes/accounts/credentials";
+import { collectionDocumentById } from "./routes/collections-activitypub";
 import {
   isLimitedFederation,
   parseInstanceIdentity,
@@ -105,6 +106,9 @@ const prefersJson = (accept: string | undefined): boolean => {
   const decisive = ranked.find(({ type }) => JSON_TYPES.has(type) || HTML_TYPES.has(type));
   return decisive !== undefined && JSON_TYPES.has(decisive.type);
 };
+
+/** A collection's page, at which an ActivityPub client gets the collection's document. */
+const COLLECTION_PATH = /^\/collections\/([^/]+)\/?$/;
 
 /** `/@alice` and `/@alice/123` for an ActivityPub client: the actor and note URLs. */
 const activityPubTarget = (path: string): string | undefined => {
@@ -597,6 +601,10 @@ export const webAppMiddleware = async (c: Context<{ Bindings: Env }>, next: Next
   if (path.startsWith("/@") && prefersJson(accept)) {
     const target = activityPubTarget(path);
     return target ? redirectWithVary(c, target) : next();
+  }
+  const collection = COLLECTION_PATH.exec(path);
+  if (collection?.[1] && prefersJson(accept)) {
+    return collectionDocumentById(c, collection[1]);
   }
   const manifest = webManifest;
   const locale = pickLocale(c.req.header("Accept-Language"), manifest.locales);
