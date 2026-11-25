@@ -15,8 +15,13 @@ import {
   followedTagNoteIdsSql,
   reblogOfShownAuthorSql,
 } from "./followed-feed";
-import { type IdCursor, idCursorBounds, idCursorFragment, newestFirst } from "./id-cursor";
-import { entityIdInstant, firstEntityIdAt, nextEntityId } from "./ids";
+import {
+  type IdCursor,
+  idCursorBounds,
+  idCursorFragment,
+  newestFirst,
+  readPageInWindows,
+} from "./id-cursor";
 import { hydrateStatusRows, statusSelect } from "./status-store";
 
 /** Authors silenced or suspended by an admin are hidden from public surfaces. */
@@ -105,34 +110,7 @@ export const findFollowedTagHorizon = async (
 
 const HorizonRow = z.object({ horizon: z.string().nullable() });
 
-/**
- * How far back from its top a home page reads in each step, the last step
- * down to the cursor's other bound. The query seeks each followed author's
- * statuses by index and sorts them all before its LIMIT, so over a whole
- * history it reads every status they wrote (81,671 rows for a page of 20 on
- * `pnpm bench`'s data). A step reads only its window, and the next one only
- * what the page still lacks, below it. See
- * `docs/architecture/d1-heavy-scenarios.md#benchmark`.
- */
-export const HOME_PAGE_WINDOWS_MS: ReadonlyArray<number | undefined> = [
-  6 * 60 * 60 * 1000,
-  7 * 24 * 60 * 60 * 1000,
-  undefined,
-];
-
-/**
- * The instant a home page's steps count back from, or undefined for a page
- * read in one step: a `min_id` page (read oldest first), the one-entry check,
- * or a `max_id` that is no entity id.
- */
-const homePageTop = (cursor: StatusCursor): number | undefined => {
-  const { onlyId, before, ascending } = idCursorBounds(cursor);
-  if (onlyId.length > 0 || ascending) {
-    return undefined;
-  }
-  return before.length > 0 ? entityIdInstant(before) : Date.now();
-};
-
+/** The viewer's home page of local statuses, read in windows ({@link readPageInWindows}). */
 export const listHomeStatuses = async (
   db: D1Database,
   accountId: string,
@@ -142,34 +120,9 @@ export const listHomeStatuses = async (
 ): Promise<Result<LocalStatusValue[], RepositoryError>> =>
   runD1(async () => {
     const now = nowIso();
-    const top = homePageTop(cursor);
-    if (top === undefined) {
-      return hydrateStatusRows(
-        db,
-        await homeStatusRows(db, accountId, limit, cursor, horizon, now),
-      );
-    }
-    const { after, before } = idCursorBounds(cursor);
-    const rows: unknown[] = [];
-    let ceiling = before;
-    for (const windowMs of HOME_PAGE_WINDOWS_MS) {
-      const windowFloor = windowMs === undefined ? "" : firstEntityIdAt(top - windowMs);
-      const floor = after > windowFloor ? after : windowFloor;
-      rows.push(
-        ...(await homeStatusRows(
-          db,
-          accountId,
-          limit - rows.length,
-          { maxId: ceiling, sinceId: floor },
-          horizon,
-          now,
-        )),
-      );
-      if (rows.length >= limit || floor === after) {
-        break;
-      }
-      ceiling = nextEntityId(floor);
-    }
+    const rows = await readPageInWindows(cursor, limit, (size, window) =>
+      homeStatusRows(db, accountId, size, window, horizon, now),
+    );
     return hydrateStatusRows(db, rows);
   });
 

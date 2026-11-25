@@ -1,3 +1,5 @@
+import { entityIdInstant, firstEntityIdAt, nextEntityId } from "./ids";
+
 /** Mastodon's `max_id` / `since_id` / `min_id` id cursors. */
 export type IdCursor = Readonly<{
   maxId?: string | undefined;
@@ -85,4 +87,55 @@ export const idCursorFragment = (
     order: `ORDER BY ${column} ${ascending ? "ASC" : "DESC"}`,
     binds: bounds.map((bound) => bound.bind),
   };
+};
+
+/**
+ * How far back from its top a followed feed's page (home, a list) reads in
+ * each step, the last step down to the cursor's other bound. Its query seeks
+ * each followed author's statuses by index, so a page read in one step reads
+ * every status they wrote above it (home: 81,671 rows for a page of 20 on
+ * `pnpm bench`'s data) or, with a LIMIT per author, up to a page's worth
+ * from each (a list). A step reads only its window, and the next one only
+ * what the page still lacks, below it. See
+ * `docs/architecture/d1-heavy-scenarios.md#benchmark`.
+ */
+export const FEED_PAGE_WINDOWS_MS: ReadonlyArray<number | undefined> = [
+  6 * 60 * 60 * 1000,
+  7 * 24 * 60 * 60 * 1000,
+  undefined,
+];
+
+/**
+ * The rows `read` gives for a page of `limit` within `cursor`, read back from
+ * the page's top in {@link FEED_PAGE_WINDOWS_MS} steps. A page with no top is
+ * read in one step: a `min_id` page (read oldest first), the one-entry check,
+ * or a `max_id` that is no entity id.
+ */
+export const readPageInWindows = async <Row>(
+  cursor: IdCursor,
+  limit: number,
+  read: (limit: number, cursor: IdCursor) => Promise<ReadonlyArray<Row>>,
+): Promise<Row[]> => {
+  const { onlyId, after, before, ascending } = idCursorBounds(cursor);
+  const top =
+    onlyId.length > 0 || ascending
+      ? undefined
+      : before.length > 0
+        ? entityIdInstant(before)
+        : Date.now();
+  if (top === undefined) {
+    return [...(await read(limit, cursor))];
+  }
+  const rows: Row[] = [];
+  let ceiling = before;
+  for (const windowMs of FEED_PAGE_WINDOWS_MS) {
+    const windowFloor = windowMs === undefined ? "" : firstEntityIdAt(top - windowMs);
+    const floor = after > windowFloor ? after : windowFloor;
+    rows.push(...(await read(limit - rows.length, { maxId: ceiling, sinceId: floor })));
+    if (rows.length >= limit || floor === after) {
+      break;
+    }
+    ceiling = nextEntityId(floor);
+  }
+  return rows;
 };
