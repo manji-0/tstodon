@@ -12,6 +12,14 @@ const person = (name: string): string => `${name}_${Date.now().toString(36).slic
 const status = (page: Page, text: string) =>
   page.locator(".status").filter({ has: page.locator(".status__content", { hasText: text }) });
 
+const savedProfile = (page: Page) =>
+  page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/profile") &&
+      response.request().method() === "PATCH" &&
+      response.ok(),
+  );
+
 test.describe("Mastodon web UI: profile, media, remote accounts", () => {
   test("edits the display name and bio", async ({ page }) => {
     const me = person("editor");
@@ -21,13 +29,19 @@ test.describe("Mastodon web UI: profile, media, remote accounts", () => {
     await page.getByRole("button", { name: "Edit display name" }).click();
     const nameDialog = page.getByRole("dialog");
     await nameDialog.locator("input").fill("Edited In E2E");
+    // The confirmation modal closes on click, before the PATCH answers, so
+    // wait for the response itself before the next step or a navigation.
+    const nameSaved = savedProfile(page);
     await nameDialog.getByRole("button", { name: "Save" }).click();
+    await nameSaved;
     await expect(nameDialog).toBeHidden();
 
     await page.getByRole("button", { name: "Add bio" }).click();
     const bioDialog = page.getByRole("dialog");
     await bioDialog.locator("textarea").fill("A bio written by the browser suite.");
+    const bioSaved = savedProfile(page);
     await bioDialog.getByRole("button", { name: "Save" }).click();
+    await bioSaved;
     await expect(bioDialog).toBeHidden();
 
     // The public profile shows both, from the API rather than the edit page's state.
