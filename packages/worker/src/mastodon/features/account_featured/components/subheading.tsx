@@ -1,7 +1,7 @@
 import type { ComponentPropsWithoutRef } from 'react';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import type { IconProp } from '@/mastodon/components/icon';
 import { Icon } from '@/mastodon/components/icon';

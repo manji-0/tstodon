@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router';
 
 
 import { animated, useSpring } from '@react-spring/web';
@@ -258,7 +258,8 @@ export const NavigationPanel: React.FC<{ multiColumn?: boolean }> = ({
             {!multiColumn && (
               <li>
                 <ColumnLink
-                  to={{ pathname: '/publish', state: { focusTarget: false } }}
+                  to='/publish'
+                  state={{ focusTarget: false }}
                   icon='plus'
                   iconComponent={AddIcon}
                   activeIconComponent={AddIcon}

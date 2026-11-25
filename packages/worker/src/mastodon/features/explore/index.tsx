@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 
 import { defineMessages, useIntl, FormattedMessage } from 'react-intl';
 
-import { NavLink, Switch, Route } from 'react-router-dom';
+import { NavLink, Routes, Route } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 
@@ -53,7 +53,7 @@ const Explore: React.FC<{ multiColumn: boolean }> = ({ multiColumn }) => {
       </div>
 
       <div className='account__section-headline'>
-        <NavLink exact to='/explore'>
+        <NavLink end to='/explore'>
           <FormattedMessage
             tagName='div'
             id='explore.trending_statuses'
@@ -61,7 +61,7 @@ const Explore: React.FC<{ multiColumn: boolean }> = ({ multiColumn }) => {
           />
         </NavLink>
 
-        <NavLink exact to='/explore/tags'>
+        <NavLink end to='/explore/tags'>
           <FormattedMessage
             tagName='div'
             id='explore.trending_tags'
@@ -70,7 +70,7 @@ const Explore: React.FC<{ multiColumn: boolean }> = ({ multiColumn }) => {
         </NavLink>
 
         {signedIn && (
-          <NavLink exact to='/explore/suggestions'>
+          <NavLink end to='/explore/suggestions'>
             <FormattedMessage
               tagName='div'
               id='explore.suggested_follows'
@@ -79,7 +79,7 @@ const Explore: React.FC<{ multiColumn: boolean }> = ({ multiColumn }) => {
           </NavLink>
         )}
 
-        <NavLink exact to='/explore/links'>
+        <NavLink end to='/explore/links'>
           <FormattedMessage
             tagName='div'
             id='explore.trending_links'
@@ -88,14 +88,16 @@ const Explore: React.FC<{ multiColumn: boolean }> = ({ multiColumn }) => {
         </NavLink>
       </div>
 
-      <Switch>
-        <Route path='/explore/tags' component={Tags} />
-        <Route path='/explore/links' component={Links} />
-        <Route path='/explore/suggestions' component={Suggestions} />
-        <Route exact path={['/explore', '/explore/posts']}>
-          <Statuses multiColumn={multiColumn} />
-        </Route>
-      </Switch>
+      <Routes>
+        <Route path='/explore/tags/*' element={<Tags />} />
+        <Route path='/explore/links/*' element={<Links />} />
+        <Route path='/explore/suggestions/*' element={<Suggestions />} />
+        <Route path='/explore' element={<Statuses multiColumn={multiColumn} />} />
+        <Route
+          path='/explore/posts'
+          element={<Statuses multiColumn={multiColumn} />}
+        />
+      </Routes>
 
       <Helmet>
         <title>{intl.formatMessage(messages.title)}</title>

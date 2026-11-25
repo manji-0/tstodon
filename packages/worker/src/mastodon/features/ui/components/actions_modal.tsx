@@ -1,5 +1,5 @@
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { DropdownMenuItemContent } from 'mastodon/components/dropdown_menu';
 import type { MenuItem } from 'mastodon/models/dropdown_menu';

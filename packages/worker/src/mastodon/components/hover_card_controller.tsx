@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 import { HoverCardAccount } from 'mastodon/components/hover_card_account';
 import type { PopoverProps } from 'mastodon/components/popover';

@@ -2,18 +2,25 @@ import type { FC } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import type { NavLinkProps } from 'react-router-dom';
+import type { Location } from 'react-router';
 
 import { useAccount } from '@/mastodon/hooks/useAccount';
 import { useAccountId } from '@/mastodon/hooks/useAccountId';
+import { decodePathname, matchRoute } from '@/mastodon/utils/react_router';
 
 import { TabLink, TabList } from '../tab_list';
 
 import classes from './styles.module.scss';
 
-const isActive: Required<NavLinkProps>['isActive'] = (match, location) =>
-  match?.url === location.pathname ||
-  (!!match?.url && location.pathname.startsWith(`${match.url}/tagged/`));
+const isActivityActive = (to: string) => (location: Location) => {
+  const match = matchRoute(location.pathname, { path: to });
+  const pathname = decodePathname(location.pathname);
+
+  return (
+    match?.url === pathname ||
+    (!!match?.url && pathname.startsWith(`${match.url}/tagged/`))
+  );
+};
 
 export const AccountTabs: FC = () => {
   const accountId = useAccountId();
@@ -30,16 +37,16 @@ export const AccountTabs: FC = () => {
 
   return (
     <TabList>
-      <TabLink isActive={isActive} to={`/@${acct}`}>
+      <TabLink isActive={isActivityActive(`/@${acct}`)} to={`/@${acct}`}>
         <FormattedMessage id='account.activity' defaultMessage='Activity' />
       </TabLink>
       {show_media && (
-        <TabLink exact to={`/@${acct}/media`}>
+        <TabLink end to={`/@${acct}/media`}>
           <FormattedMessage id='account.media' defaultMessage='Media' />
         </TabLink>
       )}
       {show_featured && (
-        <TabLink exact to={`/@${acct}/featured`}>
+        <TabLink end to={`/@${acct}/featured`}>
           <FormattedMessage id='account.featured' defaultMessage='Featured' />
         </TabLink>
       )}

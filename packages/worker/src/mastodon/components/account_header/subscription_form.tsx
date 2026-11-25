@@ -4,7 +4,7 @@ import { FormattedMessage, useIntl, defineMessages } from 'react-intl';
 import type { IntlShape } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { AxiosError } from 'axios';
 

@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import type { RecordOf } from 'immutable';
 
@@ -25,7 +25,7 @@ export type Mention = RecordOf<ApiMentionJSON>;
 export const EmbeddedStatus: React.FC<{ statusId: string }> = ({
   statusId,
 }) => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const clickCoordinatesRef = useRef<[number, number]>(null);
   const dispatch = useAppDispatch();
 
@@ -69,7 +69,7 @@ export const EmbeddedStatus: React.FC<{ statusId: string }> = ({
         const path = `/@${account.acct}/${statusId}`;
 
         if (button === 0 && !(ctrlKey || metaKey)) {
-          history.push(path, { focusTarget: FOCUS_TARGET.POST });
+          void navigate(path, { state: { focusTarget: FOCUS_TARGET.POST } });
         } else if (button === 1 || (button === 0 && (ctrlKey || metaKey))) {
           window.open(path, '_blank', 'noopener');
         }
@@ -77,7 +77,7 @@ export const EmbeddedStatus: React.FC<{ statusId: string }> = ({
 
       clickCoordinatesRef.current = null;
     },
-    [clickCoordinatesRef, statusId, account, history],
+    [clickCoordinatesRef, statusId, account, navigate],
   );
 
   const handleContentWarningClick = useCallback(() => {

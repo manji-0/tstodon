@@ -15,7 +15,7 @@ import {
 } from 'react-intl';
 
 import classNames from 'classnames';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { isFulfilled } from '@reduxjs/toolkit';
 
@@ -99,7 +99,7 @@ export const Search: React.FC<{
   const recent = useAppSelector((state) => state.search.recent);
   const { signedIn } = useIdentity();
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(initialValue ?? '');
   const hasValue = value.length > 0;
@@ -268,13 +268,13 @@ export const Search: React.FC<{
           setValue(search.q);
 
           if (search.type === 'account') {
-            history.push(`/@${search.q}`);
+            void navigate(`/@${search.q}`);
           } else if (search.type === 'hashtag') {
-            history.push(`/tags/${search.q}`);
+            void navigate(`/tags/${search.q}`);
           } else {
             const queryParams = new URLSearchParams({ q: search.q });
             if (search.type) queryParams.set('type', search.type);
-            history.push({
+            void navigate({
               pathname: '/search',
               search: queryParams.toString(),
             });
@@ -287,7 +287,7 @@ export const Search: React.FC<{
           void dispatch(forgetSearchResult(search));
         },
       })),
-    [dispatch, history, recent, unfocus],
+    [dispatch, navigate, recent, unfocus],
   );
 
   const navigableOptions: SearchOption[] = useMemo(
@@ -303,10 +303,10 @@ export const Search: React.FC<{
       void dispatch(clickSearchResult({ q, type }));
       const queryParams = new URLSearchParams({ q });
       if (type) queryParams.set('type', type);
-      history.push({ pathname: '/search', search: queryParams.toString() });
+      void navigate({ pathname: '/search', search: queryParams.toString() });
       unfocus();
     },
-    [dispatch, history, unfocus],
+    [dispatch, navigate, unfocus],
   );
 
   const handleChange = useCallback(
@@ -334,13 +334,13 @@ export const Search: React.FC<{
 
               if (isFulfilled(result)) {
                 if (result.payload.accounts[0]) {
-                  history.push(`/@${result.payload.accounts[0].acct}`);
+                  void navigate(`/@${result.payload.accounts[0].acct}`);
                 } else if (result.payload.statuses[0]) {
-                  history.push(
+                  void navigate(
                     `/@${result.payload.statuses[0].account.acct}/${result.payload.statuses[0].id}`,
                   );
                 } else if (result.payload.collections[0]) {
-                  history.push(
+                  void navigate(
                     getCollectionPath(result.payload.collections[0].id),
                   );
                 }
@@ -367,7 +367,7 @@ export const Search: React.FC<{
             ),
             action: () => {
               const query = trimmedValue.replace(/^#/, '');
-              history.push(`/tags/${query}`);
+              void navigate(`/tags/${query}`);
               void dispatch(clickSearchResult({ q: query, type: 'hashtag' }));
               unfocus();
             },
@@ -388,7 +388,7 @@ export const Search: React.FC<{
             ),
             action: () => {
               const query = trimmedValue.replace(/^@/, '');
-              history.push(`/@${query}`);
+              void navigate(`/@${query}`);
               void dispatch(clickSearchResult({ q: query, type: 'account' }));
               unfocus();
             },
@@ -430,7 +430,7 @@ export const Search: React.FC<{
 
       setQuickActions(newQuickActions);
     },
-    [signedIn, dispatch, unfocus, history, submit],
+    [signedIn, dispatch, unfocus, navigate, submit],
   );
 
   const handleClear = useCallback(() => {

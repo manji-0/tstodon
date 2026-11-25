@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { defineMessages, useIntl, FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { EmojiHTML } from '@/mastodon/components/emoji/html';
 import MoreHorizIcon from '@/material-icons/400-24px/more_horiz.svg?react';

@@ -1,7 +1,7 @@
 import { FormattedMessage } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { Helmet } from '@unhead/react/helmet';
 

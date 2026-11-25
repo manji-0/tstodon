@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { groupBy, minBy } from 'lodash';
 

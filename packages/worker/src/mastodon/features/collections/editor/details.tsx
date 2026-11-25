@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react';
 
 import { FormattedMessage, useIntl } from 'react-intl';
 
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { isFulfilled } from '@reduxjs/toolkit';
 
@@ -46,7 +46,7 @@ import { WizardStepTitle } from './wizard_step_title';
 
 export const CollectionDetails: React.FC = () => {
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
   const {
     id,
     name,
@@ -125,7 +125,7 @@ export const CollectionDetails: React.FC = () => {
         };
 
         void dispatch(updateCollection({ payload })).then(() => {
-          history.goBack();
+          void navigate(-1);
         });
       } else {
         const payload: ApiCreateCollectionPayload = {
@@ -148,9 +148,11 @@ export const CollectionDetails: React.FC = () => {
           }),
         ).then((result) => {
           if (isFulfilled(result)) {
-            history.replace(`/@${currentUserName}/collections`);
-            history.push(getCollectionPath(result.payload.collection.id), {
-              newCollection: true,
+            void navigate(`/@${currentUserName}/collections`, {
+              replace: true,
+            });
+            void navigate(getCollectionPath(result.payload.collection.id), {
+              state: { newCollection: true },
             });
           }
         });
@@ -165,7 +167,7 @@ export const CollectionDetails: React.FC = () => {
       language,
       sensitive,
       dispatch,
-      history,
+      navigate,
       items,
       currentUserName,
     ],

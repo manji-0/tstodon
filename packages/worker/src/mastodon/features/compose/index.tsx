@@ -2,7 +2,7 @@ import { useEffect, useCallback } from 'react';
 
 import { useIntl, defineMessages } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { List as ImmutableList } from 'immutable';
 

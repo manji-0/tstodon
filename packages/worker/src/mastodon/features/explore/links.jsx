@@ -3,7 +3,6 @@ import { PureComponent } from 'react';
 
 import { FormattedMessage } from 'react-intl';
 
-import { withRouter } from 'react-router-dom';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
 import { connect } from 'react-redux';
@@ -11,7 +10,7 @@ import { connect } from 'react-redux';
 import { fetchTrendingLinks } from 'mastodon/actions/trends';
 import { DismissableBanner } from 'mastodon/components/dismissable_banner';
 import { LoadingIndicator } from 'mastodon/components/loading_indicator';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 import { Story } from './components/story';
 
@@ -30,10 +29,10 @@ class Links extends PureComponent {
   };
 
   componentDidMount () {
-    const { dispatch, links, history } = this.props;
+    const { dispatch, links, navigationType } = this.props;
 
     // If we're navigating back to the screen, do not trigger a reload
-    if (history.action === 'POP' && links.size > 0) {
+    if (navigationType === 'POP' && links.size > 0) {
       return;
     }
 

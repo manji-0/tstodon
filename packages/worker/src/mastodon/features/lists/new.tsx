@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect } from 'react';
 
 import { defineMessages, useIntl, FormattedMessage } from 'react-intl';
 
-import { useParams, useHistory, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router';
 
 import { isFulfilled } from '@reduxjs/toolkit';
 
@@ -81,7 +81,7 @@ const MembersLink: React.FC<{
 
 const NewList: React.FC<{ list?: List | null }> = ({ list }) => {
   const dispatch = useAppDispatch();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const {
     id,
@@ -143,14 +143,14 @@ const NewList: React.FC<{ list?: List | null }> = ({ list }) => {
         setSubmitting(false);
 
         if (isFulfilled(result)) {
-          history.replace(`/lists/${result.payload.id}/edit`);
-          history.push(`/lists/${result.payload.id}/members`);
+          void navigate(`/lists/${result.payload.id}/edit`, { replace: true });
+          void navigate(`/lists/${result.payload.id}/members`);
         }
 
         return '';
       });
     }
-  }, [history, dispatch, setSubmitting, id, title, exclusive, repliesPolicy]);
+  }, [navigate, dispatch, setSubmitting, id, title, exclusive, repliesPolicy]);
 
   return (
     <form className='simple_form app-form' onSubmit={handleSubmit}>

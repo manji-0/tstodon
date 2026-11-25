@@ -3,7 +3,7 @@ import type { FC, HTMLAttributes, MouseEventHandler, ReactNode } from 'react';
 import { defineMessage, useIntl } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import type { Account, AccountShapeFull } from '@/mastodon/models/account';
 import { selectAccountStatus } from '@/mastodon/selectors/statuses';

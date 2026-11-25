@@ -1,9 +1,13 @@
 import classNames from 'classnames';
-import { useRouteMatch, NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router';
 
 import { Icon } from 'mastodon/components/icon';
 import type { IconProp } from 'mastodon/components/icon';
-import type { MastodonLocationDescriptor } from 'mastodon/components/router';
+import type {
+  LocationState,
+  MastodonLocationDescriptor,
+} from 'mastodon/components/router';
+import { matchRoute } from 'mastodon/utils/react_router';
 
 export const ColumnLink: React.FC<{
   icon: React.ReactNode;
@@ -13,6 +17,7 @@ export const ColumnLink: React.FC<{
   isActive?: (match: unknown, location: { pathname: string }) => boolean;
   text: string;
   to?: MastodonLocationDescriptor;
+  state?: LocationState;
   href?: string;
   method?: string;
   badge?: React.ReactNode;
@@ -30,11 +35,13 @@ export const ColumnLink: React.FC<{
   method,
   badge,
   transparent,
+  isActive,
   ...other
 }) => {
-  const match = useRouteMatch(
-    (typeof to === 'string' ? to : to?.pathname) ?? '',
-  );
+  const location = useLocation();
+  const match = matchRoute(location.pathname, {
+    path: (typeof to === 'string' ? to : to?.pathname) ?? '',
+  });
   const className = classNames('column-link', {
     'column-link--transparent': transparent,
   });
@@ -71,6 +78,21 @@ export const ColumnLink: React.FC<{
         <span>{text}</span>
         {badgeElement}
       </a>
+    );
+  } else if (to && isActive) {
+    const linkActive = isActive(match, location);
+
+    return (
+      <Link
+        to={to}
+        className={classNames(className, { active: linkActive })}
+        aria-current={linkActive ? 'page' : undefined}
+        {...other}
+      >
+        {active ? activeIconElement : iconElement}
+        <span>{text}</span>
+        {badgeElement}
+      </Link>
     );
   } else if (to) {
     return (

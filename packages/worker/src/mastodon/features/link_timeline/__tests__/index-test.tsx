@@ -1,6 +1,6 @@
 import { IntlProvider } from 'react-intl';
 
-import { MemoryRouter, Route } from 'react-router-dom';
+import { MemoryRouter, Route } from 'react-router';
 
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
@@ -12,6 +12,7 @@ import { expandTimelineSuccess } from 'mastodon/actions/timelines';
 import { rootReducer } from 'mastodon/reducers';
 import type { RootState } from 'mastodon/store';
 import { useAppSelector } from 'mastodon/store';
+import { WrappedSwitch } from 'mastodon/features/ui/util/react_router_helpers';
 
 import LinkTimeline from '../index';
 
@@ -75,9 +76,12 @@ describe('<LinkTimeline />', () => {
     render(
       <MemoryRouter initialEntries={[`/links/${encodeURIComponent(url)}`]}>
         <IntlProvider locale='en' messages={{}}>
-          <Route path='/links/:url'>
-            <LinkTimeline multiColumn={false} />
-          </Route>
+          <WrappedSwitch multiColumn={false}>
+            <Route
+              path='/links/:url'
+              element={<LinkTimeline multiColumn={false} />}
+            />
+          </WrappedSwitch>
         </IntlProvider>
       </MemoryRouter>,
     );

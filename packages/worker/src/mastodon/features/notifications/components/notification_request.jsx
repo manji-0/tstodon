@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 
 import classNames from 'classnames';
-import { Link, useHistory } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 import { useSelector, useDispatch } from 'react-redux';
 
@@ -38,7 +38,7 @@ export const NotificationRequest = ({ id, accountId, notificationsCount, checked
   const dispatch = useDispatch();
   const account = useSelector(state => getAccount(state, accountId));
   const intl = useIntl();
-  const { push: historyPush } = useHistory();
+  const navigate = useNavigate();
 
   const handleDismiss = useCallback(() => {
     dispatch(dismissNotificationRequest({ id }));
@@ -61,8 +61,8 @@ export const NotificationRequest = ({ id, accountId, notificationsCount, checked
   }, [dispatch, account]);
 
   const handleView = useCallback(() => {
-    historyPush(`/notifications/requests/${id}`);
-  }, [historyPush, id]);
+    navigate(`/notifications/requests/${id}`);
+  }, [navigate, id]);
 
   const menu = [
     { text: intl.formatMessage(messages.view), action: handleView },

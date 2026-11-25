@@ -2,7 +2,7 @@ import { useEffect, useCallback, useId } from 'react';
 
 import { FormattedMessage, useIntl, defineMessages } from 'react-intl';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { useOverflowScroll } from '@/mastodon/hooks/useOverflow';
 import ChevronLeftIcon from '@/material-icons/400-24px/chevron_left.svg?react';

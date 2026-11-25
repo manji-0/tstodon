@@ -4,7 +4,6 @@ import { defineMessages } from 'react-intl';
 
 import classNames from 'classnames';
 import { Helmet } from '@unhead/react/helmet';
-import { withRouter } from 'react-router-dom';
 import { difference } from 'lodash';
 
 import ImmutablePropTypes from 'react-immutable-proptypes';
@@ -20,7 +19,7 @@ import { LoadingIndicator } from 'mastodon/components/loading_indicator';
 import { ScrollContainer } from 'mastodon/containers/scroll_container';
 import BundleColumnError from 'mastodon/features/ui/components/bundle_column_error';
 import { identityContextPropShape, withIdentity } from 'mastodon/identity_context';
-import { WithRouterPropTypes } from 'mastodon/utils/react_router';
+import { WithRouterPropTypes, withRouter } from 'mastodon/utils/react_router';
 
 import {
   unblockAccount,
@@ -244,14 +243,16 @@ class Status extends ImmutablePureComponent {
   };
 
   handleDeleteClick = (status, withRedraft = false) => {
-    const { dispatch, history } = this.props;
+    const { dispatch, navigate } = this.props;
 
     const handleDeleteSuccess = () => {
-      history.push('/', {
-        // Preventing the default "scroll to right" on
-        // location change in advanced UI to avoid conflict
-        // with the composer being focused
-        preventMultiColumnAutoScroll: true
+      navigate('/', {
+        state: {
+          // Preventing the default "scroll to right" on
+          // location change in advanced UI to avoid conflict
+          // with the composer being focused
+          preventMultiColumnAutoScroll: true
+        },
       });
     };
 
@@ -443,7 +444,7 @@ class Status extends ImmutablePureComponent {
   };
 
   handleHotkeyOpenProfile = () => {
-    this.props.history.push(`/@${this.props.status.getIn(['account', 'acct'])}`);
+    this.props.navigate(`/@${this.props.status.getIn(['account', 'acct'])}`);
   };
 
   handleHotkeyToggleHidden = () => {

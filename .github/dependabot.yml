@@ -21,15 +21,9 @@ updates:
       # docs/operations/mastodon-web-upstream.md. Each was tried and changes
       # the UI's behaviour; UPSTREAM.md lists the ones tstodon took instead.
       #
-      # react-router 6 and later replace v5's API (Switch, withRouter, the
-      # history object) across the UI; history 5 needs react-router 6.
-      - dependency-name: react-router
-        update-types: [version-update:semver-major]
-      - dependency-name: react-router-dom
-        update-types: [version-update:semver-major]
-      - dependency-name: history
-        update-types: [version-update:semver-major]
-      - dependency-name: "@types/history"
+      # path-to-regexp 1 is react-router 5's path syntax, which the UI's
+      # route table keeps (`/@:acct`); later majors parse paths differently.
+      - dependency-name: path-to-regexp
         update-types: [version-update:semver-major]
       # Immutable 5's types break the UI's typed store models.
       - dependency-name: immutable
