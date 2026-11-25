@@ -1,4 +1,19 @@
 import { Languages } from "@tstodon/core";
+
+/** Ruby's `ASCIIFolding#fold`, then `downcase`, near enough to order names by. */
+const foldedName = (name: string): string =>
+  name.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+
+/**
+ * The default posting language's choices: each language by its native name,
+ * in that name's order (`filterable_languages`, `native_locale_name`).
+ */
+const POSTING_LANGUAGES: ReadonlyArray<readonly [string, string]> = Languages.map(
+  ([code, , nativeName]) => [code, nativeName] as const,
+).sort(([, a], [, b]) => {
+  const [left, right] = [foldedName(a), foldedName(b)];
+  return left < right ? -1 : left > right ? 1 : 0;
+});
 import {
   type InteractionThreshold,
   MIN_AGE_CHOICES,
@@ -360,7 +375,7 @@ ${messageLine(message)}
         )}</select>
         <label for="language">Language</label>
         <select id="language" name="language">${options(
-          [["", "Not set"], ...Languages],
+          [["", "Not set"], ...POSTING_LANGUAGES],
           defaults.language,
         )}</select>
         ${checkbox("sensitive", defaults.sensitive, "Always mark media as sensitive", "Viewers click to see it.")}

@@ -299,7 +299,7 @@ export const initialState = async (
     accounts: {},
     media_attachments: { accept_content_types: [...InstanceLimits.media.supportedMimeTypes] },
     settings: {},
-    languages: Languages.map(([code, name]) => [code, name, name]),
+    languages: Languages.map(([code, name, nativeName]) => [code, name, nativeName]),
     features: [],
     push_subscription: null,
   };
