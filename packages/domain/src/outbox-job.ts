@@ -458,18 +458,27 @@ const HomeEntryAuthorSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * Tell the next page of the author's local followers (those after
- * `afterAccountId`, empty for the first page) about a home timeline entry
- * (a status, a local reblog, or a remote boost) by its id. `update` and
- * `status.update` reach the followers whose home holds the entry; `delete`
- * reaches every follower, since the entry is gone.
+ * Tell the author's local followers about a home timeline entry (a status, a
+ * local reblog, or a remote boost) by its id. `update` and `status.update`
+ * reach the followers whose home holds the entry; `delete` reaches every
+ * follower, since the entry is gone. `List` lists the followers after
+ * `afterAccountId` (empty for the first) once, tells the first page of them,
+ * and queues an `Accounts` job for each other page, and a `List` job for the
+ * followers after the last when the listing was full; `Accounts` tells the
+ * accounts it names.
  */
 const FanOutHomeSchema = z.object({
   kind: z.literal("FanOutHome"),
   event: z.union([z.literal("update"), z.literal("status.update"), z.literal("delete")]),
   entryId: StatusId.schema,
   author: HomeEntryAuthorSchema,
-  afterAccountId: z.string(),
+  step: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("List"), afterAccountId: z.string() }),
+    z.object({
+      kind: z.literal("Accounts"),
+      accountIds: z.array(AccountId.schema).min(1).max(20),
+    }),
+  ]),
 });
 
 /**

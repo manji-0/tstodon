@@ -57,9 +57,9 @@ const quietJobs: ReadonlyArray<
       event: "update",
       entryId: newEntityId(),
       author: { kind: "LocalAccount", accountId: newEntityId() },
-      afterAccountId: "",
+      step: { kind: "List", afterAccountId: "" },
     },
-    step: "",
+    step: "List",
   },
   {
     name: "FanOutPublic",
@@ -153,7 +153,7 @@ describe("paged job metrics", () => {
     const fanOut = job(quietJobs[0]?.value);
     expect(await processOutboxJob(recorded.env, fanOut)).toBe("retry");
     expect(pagePoints(recorded.points).map((point) => point.blobs)).toEqual([
-      ["FanOutHome", "retry", ""],
+      ["FanOutHome", "retry", "List"],
     ]);
   });
 

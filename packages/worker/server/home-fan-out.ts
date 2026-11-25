@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AccountId,
   type InstanceIdentity,
   OutboxJob,
   type OutboxJob as OutboxJobValue,
@@ -15,12 +16,13 @@ import { type JobStart, startJob } from "./inline-job";
 import { findListForAccount } from "./list-store";
 import { type StreamRenderTally, measureJobPage, streamRenderTally } from "./metrics";
 import { parseInstanceIdentity } from "./runtime-config";
+import { queueOutboxJobs } from "./queue-jobs";
 import { publishToAccount, publishToHub } from "./stream-publish";
 import { listHubStreamSubscriptions, streamListeners } from "./stream-subscription-store";
 import { homeTimelineDocuments, listTimelineDocuments } from "./timeline-documents";
 import { queryTyped } from "./typed-sql";
 
-const AccountIdRow = z.object({ account_id: z.string() });
+const AccountIdRow = z.object({ account_id: AccountId.schema });
 
 type FanOutHome = Extract<OutboxJobValue, { kind: "FanOutHome" }>;
 type FanOutRemovedStatuses = Extract<OutboxJobValue, { kind: "FanOutRemovedStatuses" }>;
@@ -35,9 +37,17 @@ type HomeEntryEvent = Pick<FanOutHome, "event" | "entryId">;
  * follower has open a list timeline query. A queue invocation runs up to
  * `maxBatchSize` (5) pages and may make 1,000 statements, so a page of 3
  * keeps a full batch under half of that (`home-fan-out-budget.test.ts`); a
- * page of 20 made 2,811. A full page queues a `FanOutHome` job for the next.
+ * page of 20 made 2,811.
  */
 export const HOME_FAN_OUT_PAGE_SIZE = 3;
+
+/**
+ * Followers one `List` step lists. Listing reads every follower of the
+ * author, whatever the page (about 2,200 rows for `pnpm bench`'s celebrity),
+ * so it is done once for this many and not once per page; 600 is 200 page
+ * jobs, two `sendBatch` calls.
+ */
+export const HOME_FAN_OUT_LIST_SIZE = 600;
 
 /**
  * Tell the author's local followers about a home timeline entry, as
@@ -60,7 +70,11 @@ export const startHomeFanOut = async (
   }>,
   start: JobStart = "Inline",
 ): Promise<void> => {
-  const job = OutboxJob.parse({ kind: "FanOutHome", ...fanOut, afterAccountId: "" });
+  const job = OutboxJob.parse({
+    kind: "FanOutHome",
+    ...fanOut,
+    step: { kind: "List", afterAccountId: "" },
+  });
   if (job.isErr() || job.value.kind !== "FanOutHome") {
     return;
   }
@@ -238,67 +252,88 @@ const announceHomeEntryTallied = async (
 };
 
 /**
- * Tell one page of the author's local followers, and of the local followers
- * of the entry's hashtags, with a `user` or `list` stream open about the
- * entry. Resolves to
- * the followers told and the cursor of the next page (`undefined` when this
- * was the last).
+ * Tell the accounts an `Accounts` step names. A `List` step lists up to
+ * `listSize` of the author's local followers, and of the local followers of
+ * the entry's hashtags, with a `user` or `list` stream open, tells the first
+ * page of them, and hands back the jobs for the rest: an `Accounts` job per
+ * page, and a `List` job after the last follower listed when the listing was
+ * full. Resolves to the followers told and those jobs.
  */
-export const fanOutHomePage = async (
+export const fanOutHomeStep = async (
   env: Env,
   identity: InstanceIdentity,
   job: FanOutHome,
-  pageSize: number = HOME_FAN_OUT_PAGE_SIZE,
-): Promise<Result<Readonly<{ recipients: number; next: string | undefined }>, RepositoryError>> => {
-  const page = await runD1(() =>
+  listSize: number = HOME_FAN_OUT_LIST_SIZE,
+): Promise<Result<Readonly<{ recipients: number; next: FanOutHome[] }>, RepositoryError>> => {
+  if (job.step.kind === "Accounts") {
+    const { accountIds } = job.step;
+    const announced = await announceHomeEntry(env, identity, job, accountIds);
+    return announced.map(() => ({ recipients: accountIds.length, next: [] }));
+  }
+  const { afterAccountId } = job.step;
+  const listed = await runD1(() =>
     queryTyped(
       env.DB,
       listHomeFanOutAccounts(
         job.author.kind === "LocalAccount" ? job.author.accountId : "",
         job.author.kind === "RemoteActor" ? job.author.actorUri : "",
-        job.afterAccountId,
-        pageSize,
+        afterAccountId,
+        listSize,
         job.entryId,
         signedInRecentlySince(env),
       ),
       AccountIdRow,
     ),
   );
-  if (page.isErr()) {
-    return err(page.error);
+  if (listed.isErr()) {
+    return err(listed.error);
   }
-  const accountIds = page.value.map((row) => row.account_id);
-  const announced = await announceHomeEntry(env, identity, job, accountIds);
+  const accountIds = listed.value.map((row) => row.account_id);
+  const first = accountIds.slice(0, HOME_FAN_OUT_PAGE_SIZE);
+  const announced = await announceHomeEntry(env, identity, job, first);
   if (announced.isErr()) {
     return err(announced.error);
   }
-  return ok({
-    recipients: accountIds.length,
-    next: accountIds.length >= pageSize ? accountIds.at(-1) : undefined,
-  });
+  const next: FanOutHome[] = [];
+  for (let at = HOME_FAN_OUT_PAGE_SIZE; at < accountIds.length; at += HOME_FAN_OUT_PAGE_SIZE) {
+    next.push({
+      ...job,
+      step: { kind: "Accounts", accountIds: accountIds.slice(at, at + HOME_FAN_OUT_PAGE_SIZE) },
+    });
+  }
+  const last = accountIds.at(-1);
+  if (accountIds.length >= listSize && last !== undefined) {
+    next.push({ ...job, step: { kind: "List", afterAccountId: last } });
+  }
+  return ok({ recipients: first.length, next });
 };
 
-/** Handle one queued page of a home fan-out, queueing the next when there is one. */
+/**
+ * Handle one queued step of a home fan-out and queue the jobs it hands on.
+ * The first page is told before the rest is queued, so a `List` step that
+ * fails and is retried has queued no page yet.
+ */
 export const processFanOutHomeJob = (env: Env, job: FanOutHome): Promise<"ok" | "retry"> =>
   measureJobPage(env, job.kind, async () => {
+    const step = job.step.kind;
     const identity = parseInstanceIdentity(env);
     if (identity.isErr()) {
-      return { outcome: "retry", size: 0, chained: false };
+      return { outcome: "retry", size: 0, chained: false, step };
     }
-    const page = await fanOutHomePage(env, identity.value, job);
-    if (page.isErr()) {
-      return { outcome: "retry", size: 0, chained: false };
+    const told = await fanOutHomeStep(env, identity.value, job);
+    if (told.isErr()) {
+      return { outcome: "retry", size: 0, chained: false, step };
     }
-    const { recipients, next } = page.value;
-    if (next !== undefined) {
-      try {
-        await env.OUTBOX_PROCESS_QUEUE.send({ ...job, afterAccountId: next });
-      } catch {
-        console.error(JSON.stringify({ kind: "HomeFanOutNotQueued", entryId: job.entryId }));
-        return { outcome: "ok", size: recipients, chained: false };
-      }
+    const { recipients, next } = told.value;
+    if (next.length === 0) {
+      return { outcome: "ok", size: recipients, chained: false, step };
     }
-    return { outcome: "ok", size: recipients, chained: next !== undefined };
+    const queued = await queueOutboxJobs(env, next);
+    if (queued.isErr()) {
+      console.error(JSON.stringify({ kind: "HomeFanOutNotQueued", entryId: job.entryId }));
+      return { outcome: "ok", size: recipients, chained: false, step };
+    }
+    return { outcome: "ok", size: recipients, chained: true, step };
   });
 
 /**
