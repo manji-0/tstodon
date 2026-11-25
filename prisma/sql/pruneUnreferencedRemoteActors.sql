@@ -4,8 +4,8 @@
 -- before $2 that nothing refers to any more: no status of theirs is left,
 -- no local account follows, blocks, mutes, endorses, notes or reported them,
 -- they follow, favourited, boosted or blocked no local account or status,
--- no local status mentions them, no notification comes from them, and an
--- admin has not moderated them. Each NOT EXISTS is one indexed equality;
+-- no local status mentions them, no notification comes from them, no
+-- collection is theirs or features them, and an admin has not moderated them. Each NOT EXISTS is one indexed equality;
 -- deleting cascades only to rows these probes found empty.
 DELETE FROM remote_actors AS a
 WHERE a.actor_uri IN (SELECT value FROM json_each($1))
@@ -26,4 +26,7 @@ WHERE a.actor_uri IN (SELECT value FROM json_each($1))
   AND NOT EXISTS (SELECT 1 FROM remote_actor_moderation m WHERE m.actor_uri = a.actor_uri)
   AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.target_actor_uri = a.actor_uri)
   AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.reporter_actor_uri = a.actor_uri)
+  AND NOT EXISTS (SELECT 1 FROM collection_items i WHERE i.actor_uri = a.actor_uri)
+  AND NOT EXISTS (SELECT 1 FROM remote_collections c WHERE c.actor_uri = a.actor_uri)
+  AND NOT EXISTS (SELECT 1 FROM remote_collection_items i WHERE i.actor_uri = a.actor_uri)
 RETURNING actor_uri

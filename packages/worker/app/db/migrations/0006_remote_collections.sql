@@ -47,3 +47,7 @@ CREATE TABLE remote_collection_items (
 -- `in_collections` and a local account's `added_to_collection`.
 CREATE INDEX idx_remote_collection_items_account
   ON remote_collection_items (account_id, collection_id) WHERE account_id IS NOT NULL;
+
+-- A remote actor's purge cascades here: its items found by `actor_uri`.
+CREATE INDEX idx_remote_collection_items_actor
+  ON remote_collection_items (actor_uri) WHERE actor_uri IS NOT NULL;
