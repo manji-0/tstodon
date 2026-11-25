@@ -1,3 +1,4 @@
+import type { OutboxJob } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import { signedInRecentlySince } from "./account-activity";
 import type { RepositoryError } from "./d1";
@@ -69,3 +70,32 @@ export const purgeRemoteActorAndAnnounce = async (
   }
   return ok(true);
 };
+
+/** Queue the purge of a remote actor its server says is gone; nothing waits on it. */
+export type QueueRemoteActorPurge = (actorUri: string) => Promise<void>;
+
+type PurgeJob = Extract<OutboxJob, { kind: "PurgeRemoteActor" }>;
+
+/**
+ * {@link QueueRemoteActorPurge} on the outbox queue, as Mastodon's
+ * `queue_deletion!` queues an `AccountDeletionWorker`: a purge reads and
+ * writes more than the request or the refresh run that finds the actor gone
+ * can spend. A send the queue refuses is logged, and the next refresh or
+ * lookup that finds the actor gone queues it again.
+ */
+export const queueRemoteActorPurge =
+  (env: Env): QueueRemoteActorPurge =>
+  async (actorUri) => {
+    const job: PurgeJob = { kind: "PurgeRemoteActor", actorUri };
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.send(job);
+    } catch {
+      console.error(JSON.stringify({ kind: "JobNotQueued", jobKind: job.kind }));
+    }
+  };
+
+export const processPurgeRemoteActorJob = async (
+  env: Env,
+  job: PurgeJob,
+): Promise<"ok" | "retry"> =>
+  (await purgeRemoteActorAndAnnounce(env, job.actorUri)).isOk() ? "ok" : "retry";

@@ -49,6 +49,7 @@ import {
 import { mastodonRelationship } from "../../relationship-document";
 import { findRemoteActorByUri, findRemoteActorsByUris } from "../../remote-actor-store";
 import { resolveRemoteActorByHandle } from "../../remote-actor-fetch";
+import { queueRemoteActorPurge } from "../../remote-actor-purge";
 import { isDomainNotAllowed } from "../../federated-fetch";
 import { suspendedDomains } from "../../admin-domain-block-store";
 import { federationAllowHosts } from "../../runtime-config";
@@ -218,6 +219,7 @@ export const getV1AccountsSearch = async (
             allowHosts: await federationAllowHosts(c.env),
             blockedHosts: await suspendedDomains(c.env.DB),
             fetchSigner: instanceActorFetchSigner(c.env.DB, identity.value),
+            queueActorPurge: queueRemoteActorPurge(c.env),
           })
         : // Without `resolve` only the actor cache is consulted.
           (await findKnownAccountHandle(c.env, identity.value, handle)).andThen((ref) =>

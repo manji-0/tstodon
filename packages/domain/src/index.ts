@@ -174,7 +174,7 @@ export type {
 } from "./notification-store";
 export type { FindMutedThreadStatusIds } from "./status-mute-resolver";
 export {
-  FORWARD_MAX_ACCOUNTS,
+  FORWARD_PAGE_ACCOUNTS,
   OutboxJob,
   type DeadOutboxJobSelection,
   type EndingPoll,

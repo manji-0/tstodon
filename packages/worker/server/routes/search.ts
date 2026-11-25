@@ -33,9 +33,8 @@ import {
 } from "../search-url";
 import { mastodonTag } from "../tag-documents";
 import { elapsedMs, writeMetric } from "../metrics";
-import { resolveRemoteActorByHandle } from "../remote-actor-fetch";
+import { type ActorRefreshOptions, resolveRemoteActorByHandle } from "../remote-actor-fetch";
 import { findAccountByUsername } from "../account-store";
-import type { FederatedFetchOptions } from "../federated-fetch";
 import { searchableLocalAccounts, searchableRemoteActors } from "../account-presentation";
 import { parseInstanceIdentity } from "../runtime-config";
 import { searchStatuses } from "../status-timeline-store";
@@ -47,7 +46,7 @@ const resolveSearchHandle = async (
   env: Env,
   identity: InstanceIdentity,
   query: string,
-  options: FederatedFetchOptions,
+  options: ActorRefreshOptions,
 ): Promise<RemoteActor | undefined> => {
   const bare = query.replace(/^@/, "").trim();
   if (!/^[^\s@]+@[^\s@]+$/.test(bare)) {

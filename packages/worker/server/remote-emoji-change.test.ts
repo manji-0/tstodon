@@ -12,6 +12,7 @@ import { webfingerAnswer } from "../test/webfinger-fixture";
 import { unsignedFetch } from "./federated-fetch";
 import { RemoteAccountId } from "./remote-account-id";
 import { refreshRemoteActor } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { parseInstanceIdentity } from "./runtime-config";
 
 // Mastodon v4.7.5 renders a remote post, version, poll or profile with
@@ -308,6 +309,7 @@ describe("a remote custom emoji whose image changes", () => {
         allowHosts: new Set<string>(),
         blockedHosts: CoveredHosts.none,
         fetchSigner: unsignedFetch,
+        queueActorPurge: queueRemoteActorPurge(env),
       });
       expect(refreshed.isOk()).toBe(true);
     } finally {

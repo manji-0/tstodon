@@ -26,6 +26,7 @@ import { generateAccountKeys } from "./keys";
 import { processOutboxJob } from "./outbox-job";
 import { RemoteAccountId } from "./remote-account-id";
 import { refreshRemoteActor } from "./remote-actor-fetch";
+import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { listStaleRemoteActorUris, profileKept, upsertRemoteActor } from "./remote-actor-store";
 import { parseInstanceIdentity } from "./runtime-config";
 import {
@@ -1290,6 +1291,7 @@ describe("what local accounts held of an actor a domain suspension emptied", () 
         allowHosts: new Set<string>(),
         blockedHosts: CoveredHosts.none,
         fetchSigner: unsignedFetch,
+        queueActorPurge: queueRemoteActorPurge(env),
       });
       expect(refreshed.isOk()).toBe(true);
     } finally {

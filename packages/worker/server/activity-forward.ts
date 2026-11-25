@@ -1,15 +1,16 @@
 import {
-  AccountId,
   ActivityId,
-  FORWARD_MAX_ACCOUNTS,
+  FORWARD_PAGE_ACCOUNTS,
   type InstanceIdentity,
   type OutboxJob as OutboxJobValue,
   RemoteActor,
   type RemoteStatus,
   type ThreadStatus,
 } from "@tstodon/domain";
-import { deliverExpandedActivity } from "./delivery";
+import { ok } from "neverthrow";
+import { deliverExpandedActivity, storeExpandedPage } from "./delivery";
 import { suspendedDomains } from "./admin-domain-block-store";
+import { deleteForwardAudience, listForwardAudiencePage } from "./forward-audience-store";
 import { remoteContextsFor } from "./jsonld-remote-contexts";
 import { forwardableBody, forwardsAsRead } from "./ld-signature";
 import { federationAllowHosts } from "./runtime-config";
@@ -18,7 +19,9 @@ import type { OutboxJobOutcome } from "./outbox-job";
 import { findOutboundActivity, insertForwardedActivity } from "./outbox-store";
 import { listAcceptedRemoteFollowerInboxesOf } from "./remote-actor-store";
 import { distributable, remoteActivityForward } from "./status-reach";
-import { statusReachOperations } from "./status-reach-operations";
+import { statusReachOperations, statusTargetOf } from "./status-reach-operations";
+
+type ExpandForwardJob = Extract<OutboxJobValue, { kind: "ExpandForward" }>;
 
 /** An inbound activity about a status, as received. */
 export type ReceivedActivity = Readonly<{ kind: "Create" | "Update" | "Delete"; body: unknown }>;
@@ -73,22 +76,12 @@ export const forwardInboundActivity = async (
   if (typeof forwardOf !== "string") {
     return;
   }
-  const plan = await remoteActivityForward(
-    statusReachOperations(env, identity),
-    status,
-    FORWARD_MAX_ACCOUNTS,
-  );
+  const plan = await remoteActivityForward(statusReachOperations(env, identity), status);
   if (plan.isErr()) {
     logNotForwarded(status, "plan", plan.error.message);
     return;
   }
   if (plan.value === undefined) {
-    return;
-  }
-  const followersOf = plan.value.followersOf
-    .map((id) => AccountId.parse(id))
-    .flatMap((id) => (id.isOk() ? [id.value] : []));
-  if (followersOf.length === 0) {
     return;
   }
   // Checked only once there is someone to forward to; a context the body
@@ -108,6 +101,10 @@ export const forwardInboundActivity = async (
     kind: activity.kind,
     payloadJson: JSON.stringify(body),
     forwardOf,
+    audience: {
+      target: statusTargetOf(status),
+      repliedToAccountId: plan.value.repliedToAccountId,
+    },
   });
   if (inserted.isErr()) {
     logNotForwarded(status, "insert", inserted.error.message);
@@ -127,9 +124,10 @@ export const forwardInboundActivity = async (
     await env.OUTBOX_PROCESS_QUEUE.send({
       kind: "ExpandForward",
       activityId: activityId.value,
-      followersOf,
+      afterAccountId: "",
+      targets: 0,
       exceptInboxes: [RemoteActor.deliveryInbox(sender)],
-    });
+    } satisfies ExpandForwardJob);
   } catch (cause) {
     logNotForwarded(status, "queue", cause instanceof Error ? cause.message : String(cause));
     return;
@@ -138,12 +136,15 @@ export const forwardInboundActivity = async (
 };
 
 /**
- * Deliver a forward to the remote followers of the job's accounts, without
- * the actor's own inbox, as Mastodon's `Forwarder#inboxes`.
+ * Deliver a forward to the remote followers of the next page of its
+ * audience, without the actor's own inbox, as Mastodon's `Forwarder#inboxes`.
+ * A full page stores its targets and queues the next page; the last one
+ * starts the delivery and forgets the audience. Each job reads the
+ * followers of at most `FORWARD_PAGE_ACCOUNTS` accounts.
  */
 export const processExpandForwardJob = async (
   env: Env,
-  job: Extract<OutboxJobValue, { kind: "ExpandForward" }>,
+  job: ExpandForwardJob,
 ): Promise<OutboxJobOutcome> => {
   const startedAt = Date.now();
   const activity = await findOutboundActivity(env.DB, job.activityId);
@@ -153,16 +154,43 @@ export const processExpandForwardJob = async (
   if (!activity.value) {
     return "ok";
   }
-  const inboxes = await listAcceptedRemoteFollowerInboxesOf(env.DB, job.followersOf);
+  const page = await listForwardAudiencePage(
+    env.DB,
+    job.activityId,
+    job.afterAccountId,
+    FORWARD_PAGE_ACCOUNTS,
+  );
+  if (page.isErr()) {
+    return "retry";
+  }
+  const inboxes =
+    page.value.length === 0
+      ? ok([])
+      : await listAcceptedRemoteFollowerInboxesOf(env.DB, page.value);
   if (inboxes.isErr()) {
     return "retry";
   }
   const except = new Set(job.exceptInboxes);
-  await deliverExpandedActivity(
-    env,
-    job.activityId,
-    inboxes.value.filter((inbox) => !except.has(inbox)),
-    startedAt,
-  );
+  const candidates = inboxes.value.filter((inbox) => !except.has(inbox));
+  const last = page.value.at(-1);
+  if (page.value.length === FORWARD_PAGE_ACCOUNTS && last !== undefined) {
+    const stored = await storeExpandedPage(env, job.activityId, candidates);
+    if (stored.isErr()) {
+      return "retry";
+    }
+    const next: ExpandForwardJob = {
+      ...job,
+      afterAccountId: last,
+      targets: job.targets + stored.value,
+    };
+    try {
+      await env.OUTBOX_PROCESS_QUEUE.send(next);
+    } catch {
+      return "retry";
+    }
+    return "ok";
+  }
+  await deliverExpandedActivity(env, job.activityId, candidates, startedAt, job.targets);
+  await deleteForwardAudience(env.DB, job.activityId);
   return "ok";
 };
