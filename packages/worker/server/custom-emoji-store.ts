@@ -11,6 +11,7 @@ import {
   insertCustomEmoji as insertCustomEmojiSql,
   listCustomEmojiRows as listCustomEmojiRowsSql,
   replaceCustomEmojiImage as replaceCustomEmojiImageSql,
+  setCustomEmojiDisabled as setCustomEmojiDisabledSql,
   updateCustomEmojiAttributes as updateCustomEmojiAttributesSql,
 } from "./generated/prisma/sql";
 import { customEmojis as configuredCustomEmojis } from "./runtime-config";
@@ -40,6 +41,7 @@ export const CustomEmojiRowSchema = z.object({
   visible_in_picker: z.number(),
   category: z.string().nullable(),
   updated_at: UpdatedAt,
+  disabled: z.number(),
 });
 
 export type CustomEmojiRow = z.infer<typeof CustomEmojiRowSchema>;
@@ -202,6 +204,23 @@ export const replaceCustomEmojiImage = async (
     }),
   );
 
+/** Disable or enable an emoji, as `disable!` and `enable!`; `false` when there is no such emoji. */
+export const setCustomEmojiDisabled = async (
+  db: D1Database,
+  id: string,
+  disabled: boolean,
+): Promise<Result<boolean, RepositoryError>> =>
+  thenForgetRows(
+    runD1(async () => {
+      const rows = await queryTyped(
+        db,
+        setCustomEmojiDisabledSql(id, disabled ? 1 : 0, nowIso()),
+        IdRow,
+      );
+      return rows.length > 0;
+    }),
+  );
+
 /** Delete a custom emoji, returning its object key so the caller can drop the image. */
 export const deleteCustomEmoji = async (
   db: D1Database,
@@ -216,23 +235,29 @@ export const deleteCustomEmoji = async (
 
 /**
  * Custom emojis for this instance: the `CUSTOM_EMOJIS` var plus admin-managed
- * rows (a row with the same shortcode wins). A DB failure degrades to config.
+ * rows (a row with the same shortcode wins). A disabled row hides its
+ * shortcode, as Mastodon's `CustomEmoji.enabled`: no list, post or document
+ * shows it. A DB failure degrades to config.
  */
 export const loadCustomEmojis = async (
   env: Env,
   mediaPublicBaseUrl: string,
 ): Promise<ReadonlyArray<CustomEmoji>> => {
   const rows = await cachedCustomEmojiRows(env.DB);
-  const byShortcode = new Map<string, CustomEmoji>([
-    ...configuredCustomEmojis(env).map((emoji): [string, CustomEmoji] => [
+  const byShortcode = new Map<string, CustomEmoji>(
+    configuredCustomEmojis(env).map((emoji): [string, CustomEmoji] => [
       emoji.shortcode.toLowerCase(),
       emoji,
     ]),
-    ...(rows.isOk() ? rows.value : []).map((row): [string, CustomEmoji] => [
-      row.shortcode.toLowerCase(),
-      customEmojiFromRow(row, mediaPublicBaseUrl),
-    ]),
-  ]);
+  );
+  for (const row of rows.isOk() ? rows.value : []) {
+    const key = row.shortcode.toLowerCase();
+    if (row.disabled === 0) {
+      byShortcode.set(key, customEmojiFromRow(row, mediaPublicBaseUrl));
+    } else {
+      byShortcode.delete(key);
+    }
+  }
   return [...byShortcode.values()];
 };
 

@@ -2,6 +2,8 @@ import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
+import { ApStatusDocument } from "@tstodon/api/activitypub";
+import { adminBrowser } from "../test/admin-browser";
 import { authHeaders } from "../test/auth-fixture";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
@@ -205,5 +207,81 @@ describe("admin custom emojis", () => {
       headers: await auth("emoji-missing@example.com", true),
     });
     expect(response.status).toBe(404);
+  });
+
+  // Mastodon's `enable` and `disable` batch actions take a local emoji too
+  // (`Form::CustomEmojiBatch`). A disabled one is not `CustomEmoji.listed`,
+  // and `EntityCache#emoji` (`CustomEmoji.enabled`) does not find it, so no
+  // post shows or federates it.
+  it("hides a disabled local emoji from the list, posts and federation until it is enabled", async () => {
+    const email = "emoji-local-off@example.com";
+    const emoji = read(AdminEmojiSchema, (await upload(email, "localoff")).body);
+    const status = read(
+      z.object({ id: z.string(), uri: z.string() }),
+      (
+        await json("/api/v1/statuses", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(await auth(email)) },
+          body: JSON.stringify({ status: "hi :localoff:" }),
+        })
+      ).body,
+    );
+    const shown = async () => {
+      const listed = read(z.array(PublicEmojiSchema), (await json("/api/v1/custom_emojis")).body);
+      const rendered = read(
+        z.object({ emojis: z.array(PublicEmojiSchema) }),
+        (await json(`/api/v1/statuses/${status.id}`, { headers: await auth(email) })).body,
+      );
+      const note = await SELF.fetch(status.uri, {
+        headers: { accept: "application/activity+json" },
+      });
+      expect(note.status).toBe(200);
+      const tags = ApStatusDocument.parse(await note.json()).tag.filter(
+        (tag) => tag.type === "Emoji",
+      );
+      return {
+        listed: listed.some((entry) => entry.shortcode === "localoff"),
+        rendered: rendered.emojis.map((entry) => entry.shortcode),
+        federated: tags.map((tag) => tag.name),
+      };
+    };
+    expect(await shown()).toEqual({
+      listed: true,
+      rendered: ["localoff"],
+      federated: [":localoff:"],
+    });
+
+    const admin = await adminBrowser(`emoji_local_${crypto.randomUUID().slice(0, 8)}`);
+    const act = async (action: "disable" | "enable") => {
+      const response = await admin.fetcher("/admin/custom_emojis", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams([
+          ["do", action],
+          ["id", emoji.id],
+        ]).toString(),
+      });
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe(
+        `/admin/custom_emojis?notice=${action === "disable" ? "emojis_disabled" : "emojis_enabled"}`,
+      );
+    };
+    await act("disable");
+    expect(await shown()).toEqual({ listed: false, rendered: [], federated: [] });
+    const listing = await (await admin.fetcher("/admin/custom_emojis?local=1")).text();
+    expect(listing).toMatch(
+      /<strong>:localoff:<\/strong>\s*<span class="muted">[^<]* · Disabled<\/span>/,
+    );
+    // Its own document stays, as `EmojisController` finds any local emoji.
+    const document = await SELF.fetch(`https://example.com/emojis/${emoji.id}`);
+    expect(document.status).toBe(200);
+    await document.arrayBuffer();
+
+    await act("enable");
+    expect(await shown()).toEqual({
+      listed: true,
+      rendered: ["localoff"],
+      federated: [":localoff:"],
+    });
   });
 });

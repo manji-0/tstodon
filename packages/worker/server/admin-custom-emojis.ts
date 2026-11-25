@@ -1,3 +1,4 @@
+import type { CoveredHosts, InstanceIdentity } from "@tstodon/domain";
 import { err, ok, type Result } from "neverthrow";
 import type { RepositoryError } from "./d1";
 import {
@@ -12,9 +13,11 @@ import {
   replaceCustomEmojiImage,
   updateCustomEmojiAttributes,
 } from "./custom-emoji-store";
-import { CUSTOM_EMOJI_MAX_BYTES } from "./body-limit";
+import { CUSTOM_EMOJI_MAX_BYTES, readBodyBytes } from "./body-limit";
 import { newEntityId } from "./ids";
+import { fetchGuarded } from "./link-card";
 import { humanSize } from "./media-limits";
+import type { RemoteEmojiEntry } from "./remote-custom-emoji-store";
 
 /**
  * What both the admin API (`/api/v1/admin/custom_emojis`) and the admin web
@@ -73,6 +76,52 @@ const rejectEmojiImage = (image: File): EmojiImageRejected | undefined => {
 export const uploadedFile = (value: unknown): File | undefined =>
   typeof File !== "undefined" && value instanceof File && value.size > 0 ? value : undefined;
 
+/** An image an emoji may have: its bytes and its type. */
+type EmojiImage = Readonly<{ bytes: ArrayBuffer | Uint8Array; contentType: string }>;
+
+/** Store `image` in the media bucket under `objectKey`; the stored size. */
+const storeEmojiImage = async (env: Env, objectKey: string, image: EmojiImage): Promise<number> => {
+  const stored = await env.MEDIA.put(objectKey, image.bytes, {
+    httpMetadata: { contentType: image.contentType },
+  });
+  return stored?.size ?? image.bytes.byteLength;
+};
+
+/** Store a new emoji's image and row, with no check of its shortcode. */
+const insertEmoji = async (
+  env: Env,
+  input: Readonly<{
+    shortcode: string;
+    image: EmojiImage;
+    visibleInPicker: boolean;
+    category: string | null;
+  }>,
+): Promise<Result<CustomEmojiRow, RepositoryError>> => {
+  const id = newEntityId();
+  const objectKey = `emoji/${id}`;
+  const size = await storeEmojiImage(env, objectKey, input.image);
+  const inserted = await insertCustomEmoji(env.DB, {
+    id,
+    shortcode: input.shortcode,
+    objectKey,
+    contentType: input.image.contentType,
+    imageFileSize: size,
+    visibleInPicker: input.visibleInPicker,
+    category: input.category,
+  });
+  if (inserted.isErr()) {
+    await deleteEmojiObject(env, objectKey);
+    return err(inserted.error);
+  }
+  const row = await findCustomEmojiRowById(env.DB, id);
+  if (row.isErr()) {
+    return err(row.error);
+  }
+  return row.value
+    ? ok(row.value)
+    : err({ kind: "RepositoryError", message: "emoji missing after insert" });
+};
+
 /** Store a new emoji's image and row. The shortcode is unique across rows and the `CUSTOM_EMOJIS` var. */
 export const uploadCustomEmoji = async (
   env: Env,
@@ -104,31 +153,12 @@ export const uploadCustomEmoji = async (
   if (existing.value || configured.some((emoji) => emoji.shortcode.toLowerCase() === shortcode)) {
     return err({ kind: "ShortcodeTaken" });
   }
-  const id = newEntityId();
-  const objectKey = `emoji/${id}`;
-  const bytes = await input.image.arrayBuffer();
-  const stored = await env.MEDIA.put(objectKey, bytes, {
-    httpMetadata: { contentType },
-  });
-  const inserted = await insertCustomEmoji(env.DB, {
-    id,
+  return insertEmoji(env, {
     shortcode,
-    objectKey,
-    contentType,
-    imageFileSize: stored?.size ?? bytes.byteLength,
+    image: { bytes: await input.image.arrayBuffer(), contentType },
     visibleInPicker: input.visibleInPicker,
     category: input.category,
   });
-  if (inserted.isErr()) {
-    return err(inserted.error);
-  }
-  const row = await findCustomEmojiRowById(env.DB, id);
-  if (row.isErr()) {
-    return err(row.error);
-  }
-  return row.value
-    ? ok(row.value)
-    : err({ kind: "RepositoryError", message: "emoji missing after insert" });
 };
 
 /** Delete an image no row names; one that stays is only unused storage, so a failure is logged. */
@@ -138,6 +168,34 @@ const deleteEmojiObject = async (env: Env, objectKey: string): Promise<void> => 
   } catch {
     console.error(JSON.stringify({ kind: "EmojiImageNotDeleted", objectKey }));
   }
+};
+
+/**
+ * Give `row` the image `image`. A new image goes under a new key, so its URL
+ * changes: Mastodon fetches a remote emoji's image again only when the tag
+ * names another URL (`process_emoji`), and the image is cached for good
+ * wherever it went.
+ */
+const replaceEmojiImage = async (
+  env: Env,
+  row: CustomEmojiRow,
+  image: EmojiImage,
+): Promise<Result<void, RepositoryError>> => {
+  const objectKey = `emoji/${newEntityId()}`;
+  const size = await storeEmojiImage(env, objectKey, image);
+  const replaced = await replaceCustomEmojiImage(
+    env.DB,
+    row.id,
+    objectKey,
+    image.contentType,
+    size,
+  );
+  if (replaced.isErr()) {
+    await deleteEmojiObject(env, objectKey);
+    return err(replaced.error);
+  }
+  await deleteEmojiObject(env, row.object_key);
+  return ok(undefined);
 };
 
 /**
@@ -175,27 +233,13 @@ export const changeCustomEmoji = async (
     }
   }
   if (changes.image && imageType !== undefined) {
-    // A new image goes under a new key, so its URL changes: Mastodon fetches
-    // a remote emoji's image again only when the tag names another URL
-    // (`process_emoji`), and the image is cached for good wherever it went.
-    const contentType = imageType;
-    const objectKey = `emoji/${newEntityId()}`;
-    const bytes = await changes.image.arrayBuffer();
-    const stored = await env.MEDIA.put(objectKey, bytes, {
-      httpMetadata: { contentType },
+    const replaced = await replaceEmojiImage(env, row.value, {
+      bytes: await changes.image.arrayBuffer(),
+      contentType: imageType,
     });
-    const replaced = await replaceCustomEmojiImage(
-      env.DB,
-      id,
-      objectKey,
-      contentType,
-      stored?.size ?? bytes.byteLength,
-    );
     if (replaced.isErr()) {
-      await deleteEmojiObject(env, objectKey);
       return err(replaced.error);
     }
-    await deleteEmojiObject(env, row.value.object_key);
   }
   return findCustomEmojiRowById(env.DB, id);
 };
@@ -214,4 +258,84 @@ export const removeCustomEmoji = async (
   }
   await env.MEDIA.delete(objectKey.value);
   return ok(true);
+};
+
+/** Why a remote emoji's image could not be copied: it could not be fetched, or it is refused. */
+export type CopyEmojiError = Readonly<{ kind: "ImageUnavailable" }> | EmojiImageRejected;
+
+/** The hosts a copy may fetch from, as every federated fetch. */
+export type EmojiFetchOptions = Readonly<{
+  allowHosts?: ReadonlySet<string>;
+  blockedHosts?: CoveredHosts;
+}>;
+
+/** An image fetch: Mastodon's `Request` follows three redirects. */
+const IMAGE_FETCH = { redirects: 3, timeoutMs: 10_000, accept: "image/*" } as const;
+
+/**
+ * Download a remote emoji's image as `remotable_attachment` does, through
+ * the federated fetch's host checks on every hop, refusing a body past
+ * `CustomEmoji::LIMIT` as soon as it is known to be one, or of a type an
+ * emoji may not have.
+ */
+const downloadEmojiImage = async (
+  identity: InstanceIdentity,
+  options: EmojiFetchOptions,
+  imageUrl: string,
+): Promise<Result<EmojiImage, CopyEmojiError>> => {
+  if (!URL.canParse(imageUrl) || !/^https?:/.test(imageUrl)) {
+    return err({ kind: "ImageUnavailable" });
+  }
+  try {
+    const fetched = await fetchGuarded(new URL(imageUrl), identity, options, IMAGE_FETCH);
+    if (fetched.kind !== "Response") {
+      return err({ kind: "ImageUnavailable" });
+    }
+    const { response } = fetched;
+    if (!response.ok) {
+      await response.body?.cancel();
+      return err({ kind: "ImageUnavailable" });
+    }
+    const contentType = emojiImageType(response.headers.get("content-type") ?? "");
+    if (contentType === undefined) {
+      await response.body?.cancel();
+      return err({ kind: "UnsupportedImage" });
+    }
+    const bytes = await readBodyBytes(response, CUSTOM_EMOJI_MAX_BYTES);
+    return bytes.isErr() ? err({ kind: "ImageTooLarge" }) : ok({ bytes: bytes.value, contentType });
+  } catch {
+    return err({ kind: "ImageUnavailable" });
+  }
+};
+
+/**
+ * Copy a remote emoji to a local one, as `CustomEmoji#copy!`: the local emoji
+ * of its shortcode, as written, takes the image and keeps its category,
+ * picker and disabled state (`find_or_initialize_by(domain: nil, shortcode:)`);
+ * when there is none, a new one has no category and shows in the picker.
+ */
+export const copyRemoteCustomEmoji = async (
+  env: Env,
+  identity: InstanceIdentity,
+  options: EmojiFetchOptions,
+  emoji: RemoteEmojiEntry,
+): Promise<Result<void, CopyEmojiError | RepositoryError>> => {
+  const image = await downloadEmojiImage(identity, options, emoji.imageUrl);
+  if (image.isErr()) {
+    return err(image.error);
+  }
+  const existing = await findCustomEmojiRowByShortcode(env.DB, emoji.shortcode);
+  if (existing.isErr()) {
+    return err(existing.error);
+  }
+  if (existing.value) {
+    return replaceEmojiImage(env, existing.value, image.value);
+  }
+  const inserted = await insertEmoji(env, {
+    shortcode: emoji.shortcode,
+    image: image.value,
+    visibleInPicker: true,
+    category: null,
+  });
+  return inserted.map(() => undefined);
 };

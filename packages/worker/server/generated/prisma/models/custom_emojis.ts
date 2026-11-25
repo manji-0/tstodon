@@ -29,11 +29,13 @@ export type AggregateCustom_emojis = {
 export type Custom_emojisAvgAggregateOutputType = {
   visible_in_picker: number | null;
   image_file_size: number | null;
+  disabled: number | null;
 };
 
 export type Custom_emojisSumAggregateOutputType = {
   visible_in_picker: number | null;
   image_file_size: number | null;
+  disabled: number | null;
 };
 
 export type Custom_emojisMinAggregateOutputType = {
@@ -46,6 +48,7 @@ export type Custom_emojisMinAggregateOutputType = {
   created_at: string | null;
   updated_at: string | null;
   image_file_size: number | null;
+  disabled: number | null;
 };
 
 export type Custom_emojisMaxAggregateOutputType = {
@@ -58,6 +61,7 @@ export type Custom_emojisMaxAggregateOutputType = {
   created_at: string | null;
   updated_at: string | null;
   image_file_size: number | null;
+  disabled: number | null;
 };
 
 export type Custom_emojisCountAggregateOutputType = {
@@ -70,17 +74,20 @@ export type Custom_emojisCountAggregateOutputType = {
   created_at: number;
   updated_at: number;
   image_file_size: number;
+  disabled: number;
   _all: number;
 };
 
 export type Custom_emojisAvgAggregateInputType = {
   visible_in_picker?: true;
   image_file_size?: true;
+  disabled?: true;
 };
 
 export type Custom_emojisSumAggregateInputType = {
   visible_in_picker?: true;
   image_file_size?: true;
+  disabled?: true;
 };
 
 export type Custom_emojisMinAggregateInputType = {
@@ -93,6 +100,7 @@ export type Custom_emojisMinAggregateInputType = {
   created_at?: true;
   updated_at?: true;
   image_file_size?: true;
+  disabled?: true;
 };
 
 export type Custom_emojisMaxAggregateInputType = {
@@ -105,6 +113,7 @@ export type Custom_emojisMaxAggregateInputType = {
   created_at?: true;
   updated_at?: true;
   image_file_size?: true;
+  disabled?: true;
 };
 
 export type Custom_emojisCountAggregateInputType = {
@@ -117,6 +126,7 @@ export type Custom_emojisCountAggregateInputType = {
   created_at?: true;
   updated_at?: true;
   image_file_size?: true;
+  disabled?: true;
   _all?: true;
 };
 
@@ -221,6 +231,7 @@ export type Custom_emojisGroupByOutputType = {
   created_at: string;
   updated_at: string;
   image_file_size: number;
+  disabled: number;
   _count: Custom_emojisCountAggregateOutputType | null;
   _avg: Custom_emojisAvgAggregateOutputType | null;
   _sum: Custom_emojisSumAggregateOutputType | null;
@@ -254,6 +265,7 @@ export type custom_emojisWhereInput = {
   created_at?: Prisma.StringFilter<"custom_emojis"> | string;
   updated_at?: Prisma.StringFilter<"custom_emojis"> | string;
   image_file_size?: Prisma.IntFilter<"custom_emojis"> | number;
+  disabled?: Prisma.IntFilter<"custom_emojis"> | number;
 };
 
 export type custom_emojisOrderByWithRelationInput = {
@@ -266,6 +278,7 @@ export type custom_emojisOrderByWithRelationInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type custom_emojisWhereUniqueInput = Prisma.AtLeast<
@@ -282,6 +295,7 @@ export type custom_emojisWhereUniqueInput = Prisma.AtLeast<
     created_at?: Prisma.StringFilter<"custom_emojis"> | string;
     updated_at?: Prisma.StringFilter<"custom_emojis"> | string;
     image_file_size?: Prisma.IntFilter<"custom_emojis"> | number;
+    disabled?: Prisma.IntFilter<"custom_emojis"> | number;
   },
   "id" | "shortcode" | "object_key"
 >;
@@ -296,6 +310,7 @@ export type custom_emojisOrderByWithAggregationInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
   _count?: Prisma.custom_emojisCountOrderByAggregateInput;
   _avg?: Prisma.custom_emojisAvgOrderByAggregateInput;
   _max?: Prisma.custom_emojisMaxOrderByAggregateInput;
@@ -320,6 +335,7 @@ export type custom_emojisScalarWhereWithAggregatesInput = {
   created_at?: Prisma.StringWithAggregatesFilter<"custom_emojis"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"custom_emojis"> | string;
   image_file_size?: Prisma.IntWithAggregatesFilter<"custom_emojis"> | number;
+  disabled?: Prisma.IntWithAggregatesFilter<"custom_emojis"> | number;
 };
 
 export type custom_emojisCreateInput = {
@@ -332,6 +348,7 @@ export type custom_emojisCreateInput = {
   created_at?: string;
   updated_at?: string;
   image_file_size: number;
+  disabled?: number;
 };
 
 export type custom_emojisUncheckedCreateInput = {
@@ -344,6 +361,7 @@ export type custom_emojisUncheckedCreateInput = {
   created_at?: string;
   updated_at?: string;
   image_file_size: number;
+  disabled?: number;
 };
 
 export type custom_emojisUpdateInput = {
@@ -356,6 +374,7 @@ export type custom_emojisUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   image_file_size?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type custom_emojisUncheckedUpdateInput = {
@@ -368,6 +387,7 @@ export type custom_emojisUncheckedUpdateInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   image_file_size?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type custom_emojisCreateManyInput = {
@@ -380,6 +400,7 @@ export type custom_emojisCreateManyInput = {
   created_at?: string;
   updated_at?: string;
   image_file_size: number;
+  disabled?: number;
 };
 
 export type custom_emojisUpdateManyMutationInput = {
@@ -392,6 +413,7 @@ export type custom_emojisUpdateManyMutationInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   image_file_size?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type custom_emojisUncheckedUpdateManyInput = {
@@ -404,6 +426,7 @@ export type custom_emojisUncheckedUpdateManyInput = {
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
   image_file_size?: Prisma.IntFieldUpdateOperationsInput | number;
+  disabled?: Prisma.IntFieldUpdateOperationsInput | number;
 };
 
 export type custom_emojisCountOrderByAggregateInput = {
@@ -416,11 +439,13 @@ export type custom_emojisCountOrderByAggregateInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type custom_emojisAvgOrderByAggregateInput = {
   visible_in_picker?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type custom_emojisMaxOrderByAggregateInput = {
@@ -433,6 +458,7 @@ export type custom_emojisMaxOrderByAggregateInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type custom_emojisMinOrderByAggregateInput = {
@@ -445,11 +471,13 @@ export type custom_emojisMinOrderByAggregateInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type custom_emojisSumOrderByAggregateInput = {
   visible_in_picker?: Prisma.SortOrder;
   image_file_size?: Prisma.SortOrder;
+  disabled?: Prisma.SortOrder;
 };
 
 export type custom_emojisSelect<
@@ -465,6 +493,7 @@ export type custom_emojisSelect<
     created_at?: boolean;
     updated_at?: boolean;
     image_file_size?: boolean;
+    disabled?: boolean;
   },
   ExtArgs["result"]["custom_emojis"]
 >;
@@ -482,6 +511,7 @@ export type custom_emojisSelectCreateManyAndReturn<
     created_at?: boolean;
     updated_at?: boolean;
     image_file_size?: boolean;
+    disabled?: boolean;
   },
   ExtArgs["result"]["custom_emojis"]
 >;
@@ -499,6 +529,7 @@ export type custom_emojisSelectUpdateManyAndReturn<
     created_at?: boolean;
     updated_at?: boolean;
     image_file_size?: boolean;
+    disabled?: boolean;
   },
   ExtArgs["result"]["custom_emojis"]
 >;
@@ -513,6 +544,7 @@ export type custom_emojisSelectScalar = {
   created_at?: boolean;
   updated_at?: boolean;
   image_file_size?: boolean;
+  disabled?: boolean;
 };
 
 export type custom_emojisOmit<
@@ -526,7 +558,8 @@ export type custom_emojisOmit<
   | "category"
   | "created_at"
   | "updated_at"
-  | "image_file_size",
+  | "image_file_size"
+  | "disabled",
   ExtArgs["result"]["custom_emojis"]
 >;
 
@@ -546,6 +579,7 @@ export type $custom_emojisPayload<
       created_at: string;
       updated_at: string;
       image_file_size: number;
+      disabled: number;
     },
     ExtArgs["result"]["custom_emojis"]
   >;
@@ -1125,6 +1159,7 @@ export interface custom_emojisFieldRefs {
   readonly created_at: Prisma.FieldRef<"custom_emojis", "String">;
   readonly updated_at: Prisma.FieldRef<"custom_emojis", "String">;
   readonly image_file_size: Prisma.FieldRef<"custom_emojis", "Int">;
+  readonly disabled: Prisma.FieldRef<"custom_emojis", "Int">;
 }
 
 // Custom InputTypes

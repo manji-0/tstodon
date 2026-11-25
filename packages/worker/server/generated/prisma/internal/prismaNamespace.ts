@@ -7957,6 +7957,7 @@ export const Custom_emojisScalarFieldEnum = {
   created_at: "created_at",
   updated_at: "updated_at",
   image_file_size: "image_file_size",
+  disabled: "disabled",
 } as const;
 
 export type Custom_emojisScalarFieldEnum =

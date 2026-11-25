@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
 import { CoveredHosts } from "@tstodon/domain";
@@ -8,6 +8,7 @@ import { authHeaders, signedInAccount } from "../test/auth-fixture";
 import { signUp } from "../test/passkey-browser";
 import { settle } from "../test/meter";
 import { remoteActor, type Remote } from "../test/remote-actor-fixture";
+import { withHostAddresses } from "../test/host-resolver-fixture";
 import { webfingerAnswer } from "../test/webfinger-fixture";
 import { unsignedFetch } from "./federated-fetch";
 import { RemoteAccountId } from "./remote-account-id";
@@ -687,7 +688,7 @@ describe("the admin's list of remote custom emoji", () => {
     const id = await post(author, "kept", "<p>:kept:</p>", [emojiTag("kept", image)]);
     const { fetcher } = await signUp(`emoji_user_${crypto.randomUUID().slice(0, 8)}`);
 
-    for (const action of ["disable", "enable"]) {
+    for (const action of ["disable", "enable", "copy", "delete"]) {
       const response = await fetcher("/admin/custom_emojis", {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -700,5 +701,194 @@ describe("the admin's list of remote custom emoji", () => {
       await response.arrayBuffer();
     }
     expect(await statusEmojis(id)).toEqual({ kept: image });
+  });
+});
+
+/** Answer GETs of the URLs `images` names with its responses while a test runs; the URLs fetched. */
+const serveImages = (images: Readonly<Record<string, () => Response>>): ReadonlyArray<string> => {
+  const fetched: string[] = [];
+  const original = globalThis.fetch;
+  const spy = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      fetched.push(href);
+      const answer = images[href];
+      return answer === undefined ? original(input, init) : answer();
+    });
+  onTestFinished(() => spy.mockRestore());
+  return fetched;
+};
+
+const imageAnswer =
+  (bytes: ReadonlyArray<number>, type = "image/png") =>
+  () =>
+    new Response(new Uint8Array(bytes), { headers: { "content-type": type } });
+
+/** An admin's batch action on `domain`'s remote emoji `shortcodes`, from the list of its emoji; the notice. */
+const batch = async (action: string, domain: string, shortcodes: ReadonlyArray<string>) => {
+  const admin = await adminBrowser(`emoji_batch_${crypto.randomUUID().slice(0, 8)}`);
+  const response = await admin.fetcher("/admin/custom_emojis", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams([
+      ["do", action],
+      ...shortcodes.map((shortcode): [string, string] => ["emoji", `${domain}/${shortcode}`]),
+      ["remote", "1"],
+      ["by_domain", domain],
+    ]).toString(),
+  });
+  expect(response.status).toBe(303);
+  const location = new URL(response.headers.get("location") ?? "", "https://example.com");
+  expect(location.pathname).toBe("/admin/custom_emojis");
+  expect(location.searchParams.get("by_domain")).toBe(domain);
+  return location.searchParams.get("notice");
+};
+
+const LocalEmojis = z.array(
+  z.object({
+    id: z.string(),
+    shortcode: z.string(),
+    url: z.string(),
+    visible_in_picker: z.boolean(),
+    category: z.string().optional(),
+  }),
+);
+
+const ADMIN_EMAIL = "emoji-copy-admin@example.com";
+
+const localEmojis = async () =>
+  Object.fromEntries(
+    read(
+      LocalEmojis,
+      await get("/api/v1/admin/custom_emojis", await authHeaders(ADMIN_EMAIL, { admin: true })),
+    ).map((emoji) => [emoji.shortcode, emoji]),
+  );
+
+/** The bytes the instance serves at a local emoji's URL. */
+const served = async (url: string): Promise<ReadonlyArray<number>> => {
+  const response = await SELF.fetch(url);
+  expect(response.status).toBe(200);
+  return [...new Uint8Array(await response.arrayBuffer())];
+};
+
+describe("an admin's copy of a remote custom emoji", () => {
+  // `Form::CustomEmojiBatch#copy!` and `CustomEmoji#copy!`: the local emoji of
+  // the same shortcode (`find_or_initialize_by(domain: nil, shortcode:)`)
+  // takes the image; a new one has no category and shows in the picker.
+  it("downloads the image into a local emoji, replacing the image of one of its shortcode", async () => {
+    const host = "emoji-copy.example";
+    const author = await remoteActor("tove", host);
+    const id = await post(author, "copy", "<p>:copyfresh: :copytaken:</p>", [
+      emojiTag("copyfresh", `https://${host}/system/fresh.png`),
+      emojiTag("copytaken", `https://${host}/system/taken.gif`),
+    ]);
+    const form = new FormData();
+    form.set("shortcode", "copytaken");
+    form.set("category", "Kept");
+    form.set("visible_in_picker", "false");
+    form.set("image", new File([new Uint8Array([1])], "old.png", { type: "image/png" }));
+    const uploaded = await SELF.fetch("https://example.com/api/v1/admin/custom_emojis", {
+      method: "POST",
+      headers: await authHeaders(ADMIN_EMAIL, { admin: true }),
+      body: form,
+    });
+    expect(uploaded.status).toBe(200);
+    await uploaded.arrayBuffer();
+    const before = await localEmojis();
+    serveImages({
+      [`https://${host}/system/fresh.png`]: imageAnswer([137, 80, 78, 71, 1]),
+      [`https://${host}/system/taken.gif`]: imageAnswer([71, 73, 70], "image/gif"),
+    });
+
+    expect(await batch("copy", host, ["copyfresh", "copytaken"])).toBe("emojis_copied");
+
+    const after = await localEmojis();
+    expect(after.copyfresh).toMatchObject({ visible_in_picker: true });
+    expect(after.copyfresh?.category).toBeUndefined();
+    expect(await served(after.copyfresh?.url ?? "")).toEqual([137, 80, 78, 71, 1]);
+    expect(after.copytaken).toMatchObject({
+      id: before.copytaken?.id,
+      category: "Kept",
+      visible_in_picker: false,
+    });
+    expect(after.copytaken?.url).not.toBe(before.copytaken?.url);
+    expect(await served(after.copytaken?.url ?? "")).toEqual([71, 73, 70]);
+    const listed = read(
+      z.array(z.object({ shortcode: z.string() })),
+      await get("/api/v1/custom_emojis"),
+    ).map((emoji) => emoji.shortcode);
+    expect(listed).toContain("copyfresh");
+    // The remote emoji stays, and the remote post still shows it.
+    expect(await statusEmojis(id)).toEqual({
+      copyfresh: `https://${host}/system/fresh.png`,
+      copytaken: `https://${host}/system/taken.gif`,
+    });
+  });
+
+  // `CustomEmoji::LIMIT` and `IMAGE_MIME_TYPES`, and the federated fetch's
+  // refusal of a private address.
+  it("copies no image too large, of another type, missing or on a private address", async () => {
+    const host = "emoji-copy-refused.example";
+    const privateHost = "emoji-copy-private.example";
+    const author = await remoteActor("ulla", host);
+    const privateAuthor = await remoteActor("ulf", privateHost);
+    await post(author, "refused", "<p>emoji</p>", [
+      emojiTag("copybig", `https://${host}/system/big.png`),
+      emojiTag("copysvg", `https://${host}/system/vector.svg`),
+      emojiTag("copygone", `https://${host}/system/gone.png`),
+    ]);
+    await post(privateAuthor, "private", "<p>emoji</p>", [
+      emojiTag("copyprivate", `https://${privateHost}/system/private.png`),
+    ]);
+    const fetched = serveImages({
+      [`https://${host}/system/big.png`]: imageAnswer(
+        Array.from({ length: 256 * 1024 + 1 }, () => 0),
+      ),
+      [`https://${host}/system/vector.svg`]: imageAnswer([60, 115, 118, 103], "image/svg+xml"),
+      [`https://${host}/system/gone.png`]: () => new Response("gone", { status: 404 }),
+      [`https://${privateHost}/system/private.png`]: imageAnswer([137, 80, 78, 71]),
+    });
+
+    await withHostAddresses({ [privateHost]: ["10.0.0.1"] }, async () => {
+      expect(await batch("copy", host, ["copybig", "copysvg", "copygone", "copynosuch"])).toBe(
+        "emoji_copy_failed",
+      );
+      expect(await batch("copy", privateHost, ["copyprivate"])).toBe("emoji_copy_failed");
+    });
+
+    const local = Object.keys(await localEmojis());
+    for (const shortcode of ["copybig", "copysvg", "copygone", "copyprivate"]) {
+      expect(local).not.toContain(shortcode);
+    }
+    expect(fetched).not.toContain(`https://${privateHost}/system/private.png`);
+  });
+});
+
+describe("an admin's deletion of a remote custom emoji", () => {
+  // `Form::CustomEmojiBatch#delete!`: the posts and profiles that write it
+  // show its shortcode, until a document that declares it stores it again.
+  it("shows the emoji nowhere until a document declares it again", async () => {
+    const host = "emoji-delete.example";
+    const gone = `https://${host}/system/gone.png`;
+    const kept = `https://${host}/system/kept.png`;
+    const author = await remoteActor("vera", host);
+    const id = await post(author, "delete", "<p>:delgone: :delkept:</p>", [
+      emojiTag("delgone", gone),
+      emojiTag("delkept", kept),
+    ]);
+    await updateProfile(author, "Vera :delgone:", [emojiTag("delgone", gone)]);
+    expect(await accountEmojis(author.actorUri)).toEqual({ delgone: gone });
+
+    expect(await batch("delete", host, ["delgone"])).toBe("emojis_deleted");
+
+    expect(await statusEmojis(id)).toEqual({ delkept: kept });
+    expect(await accountEmojis(author.actorUri)).toEqual({});
+    expect(await domainEmojis(host)).toBe(1);
+
+    await post(author, "again", "<p>:delgone:</p>", [emojiTag("delgone", gone)]);
+    expect(await statusEmojis(id)).toEqual({ delgone: gone, delkept: kept });
+    expect(await accountEmojis(author.actorUri)).toEqual({ delgone: gone });
   });
 });
