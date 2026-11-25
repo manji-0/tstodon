@@ -5,6 +5,7 @@ import { writeMetric } from "./metrics";
 import { hasExpiredPollWork } from "./poll-expiry";
 import { hasDueScheduledStatuses } from "./scheduled-status-publish";
 import { processOutboxJob } from "./outbox-job";
+import { recordTrendingPreviewCardProviders } from "./preview-card-provider-store";
 import { hasSeveranceNotices } from "./severance-notices";
 import { claimSuspendedActorContentPurge } from "./suspended-actor-content";
 import { hasDueStatusFederations } from "./pending-status-federation";
@@ -51,6 +52,15 @@ const sweepAbandonedOwed = async (env: Env): Promise<void> => {
     );
   } else if (abandoned.value.created + abandoned.value.edited > 0) {
     console.warn(JSON.stringify({ kind: "RemoteStatusOwedAbandoned", ...abandoned.value }));
+  }
+};
+
+const recordTrendingProviders = async (env: Env): Promise<void> => {
+  const recorded = await recordTrendingPreviewCardProviders(env.DB);
+  if (recorded.isErr()) {
+    console.error(
+      JSON.stringify({ kind: "PreviewCardProvidersFailed", message: recorded.error.message }),
+    );
   }
 };
 
@@ -163,6 +173,9 @@ export const handleScheduled = (
           // Give up the late work of remote notes that no redelivery finished
           // within a week; one indexed delete.
           sweepAbandonedOwed(env),
+          // Write a provider for each host whose links trend and has none, as
+          // Mastodon's six-hourly `Trends::ReviewNotificationsScheduler`.
+          recordTrendingProviders(env),
         ],
   ).then(() => {
     writeMetric(env, "cron", [1], [controller.cron, "scheduled"]);
