@@ -80,8 +80,8 @@ If the browser loops between Access and the instance: `CF_ACCESS_AUD` or `CF_ACC
 
 ### Sign-in and the first admin
 
-- [ ] Open `$O/` in a browser, sign in through Access. `/auth/sign_in` shows who Access signed in and the account was created (registrations open), or pending (approval), or nothing (closed: that is expected only if you created no account on purpose).
-- [ ] The first admin: either `ADMIN_USERNAMES` named the username before its first sign-in, or `CF_ACCESS_ADMIN_GROUPS` matches a group the JWT carries. Check:
+- [ ] Open `$O/` in a browser, sign in through Access. `/auth/sign_in` shows who Access signed in and the account was created. In single-user mode (the default) the first sign-in creates the owner's account and later new emails get nothing ([Single-user mode](../reference/configuration.md#single-user-mode)). On a multi-user instance (`SINGLE_USER_MODE=false`) the account is created (registrations open), or pending (approval), or nothing (closed: that is expected only if you created no account on purpose).
+- [ ] The first admin: in single-user mode, the owner. On a multi-user instance, either `ADMIN_USERNAMES` named the username before its first sign-in, or `CF_ACCESS_ADMIN_GROUPS` matches a group the JWT carries. Check:
 
   ```sh
   wrangler d1 execute tstodon --remote --command \

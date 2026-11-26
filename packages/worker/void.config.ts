@@ -60,6 +60,9 @@ const production: VoidConfig["cloudflare"] = {
     REGISTRATION_APPROVAL: "false",
     POLL_UPDATE_DELAY_SECONDS: "180",
     USER_ACTIVE_DAYS: "7",
+    // One person's instance: the first sign-up is its admin, then sign-up
+    // closes. "false" is a multi-user instance under REGISTRATIONS_OPEN.
+    SINGLE_USER_MODE: "true",
     REGISTRATIONS_OPEN: "true",
     ADMIN_USERNAMES: "",
     CUSTOM_EMOJIS: '[{"shortcode":"tstodon","url":"https://media.example.com/emoji/tstodon.png"}]',

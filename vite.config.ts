@@ -77,6 +77,9 @@ export default defineConfig({
                 CF_ACCESS_TEAM_DOMAIN: LOCAL_ACCESS_TEAM_DOMAIN,
                 CF_ACCESS_AUD: LOCAL_ACCESS_AUD,
                 CF_ACCESS_JWKS_JSON: LOCAL_ACCESS_JWKS_JSON,
+                // Tests sign up many local accounts; single-user mode has its
+                // own tests (`single-user-mode.test.ts`) through `envWith`.
+                SINGLE_USER_MODE: "false",
                 // Leave CF_ACCESS_ADMIN_GROUPS unset. A non-empty list is the
                 // role on every Access login, which would undo a role a test
                 // sets on the user row.

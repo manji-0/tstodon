@@ -9,11 +9,12 @@ import {
   ApiWebSettings,
   type ApiWebSettingsJSON,
 } from "@tstodon/api";
-import type { ApiWrapstodonJSON } from "@tstodon/api";
+import type { ApiAccountJSON, ApiWrapstodonJSON } from "@tstodon/api";
 import {
   annualReportCampaign,
   FediRole,
   type FediRole as FediRoleValue,
+  type InstanceIdentity,
   type LocalAccount,
 } from "@tstodon/domain";
 import { type Appearance, DEFAULT_APPEARANCE, findAppearance, themeColorMetas } from "./appearance";
@@ -32,6 +33,7 @@ import {
   isLimitedFederation,
   parseInstanceIdentity,
   registrationsOpen,
+  singleUserMode,
   termsOfService,
 } from "./runtime-config";
 import { queryTyped, runTypedBatch } from "./typed-sql";
@@ -44,7 +46,8 @@ import { WEB_APP_ID, webAccessTokenId } from "./web-token";
 import { findEmbeddableStatusOf, oembedDiscoveryUrl } from "./status-embed";
 import { annualReportState, findAnnualReport } from "./annual-report-store";
 import { annualReportsDocument } from "./annual-report-documents";
-import { findAccountByUsername } from "./account-store";
+import { findAccountByUsername, findOwnerAccountId } from "./account-store";
+import { availableAccountDocumentsByIds } from "./account-documents";
 import { type WebEntry, type WebManifest, webManifest } from "./web-manifest";
 import {
   contentSecurityPolicy,
@@ -271,6 +274,27 @@ const viewerWrapstodon = async (
 };
 
 /**
+ * Single-user mode's owner with its account document (Mastodon's
+ * `state_params[:owner]`): the web UI sends a signed-out `/` to its profile.
+ */
+const singleUserOwner = async (
+  env: Env,
+  identity: InstanceIdentity,
+  viewerId: string | undefined,
+): Promise<Readonly<{ id: string; account: ApiAccountJSON }> | undefined> => {
+  if (!singleUserMode(env)) {
+    return undefined;
+  }
+  const id = await findOwnerAccountId(env.DB);
+  if (id.isErr() || id.value === undefined) {
+    return undefined;
+  }
+  const documents = await availableAccountDocumentsByIds(env, identity, viewerId, [id.value]);
+  const account = documents.isOk() ? documents.value.get(id.value) : undefined;
+  return account ? { id: id.value, account } : undefined;
+};
+
+/**
  * Mastodon's `InitialStateSerializer`, for this server's settings. Where
  * Mastodon reads a setting tstodon does not have, the value is Mastodon's
  * default; `admin` is the site contact account, which tstodon does not
@@ -289,6 +313,9 @@ export const initialState = async (
     request.url,
     request.headers.get("X-Forwarded-Proto") ?? undefined,
   );
+  const owner = identity.isOk()
+    ? await singleUserOwner(env, identity.value, viewer?.account.id)
+    : undefined;
   const meta: ApiInitialStateMetaJSON = {
     access_token: viewer?.token ?? null,
     activity_api_enabled: true,
@@ -301,7 +328,7 @@ export const initialState = async (
     registrations_open: registrationsOpen(env),
     repository: "manji-0/tstodon",
     search_enabled: true,
-    single_user_mode: false,
+    single_user_mode: singleUserMode(env),
     source_url: identity.isOk() ? identity.value.sourceUrl : "",
     sso_redirect: null,
     status_page_url: null,
@@ -319,11 +346,12 @@ export const initialState = async (
     display_media: "default",
     reduce_motion: false,
     use_blurhash: true,
+    ...(owner ? { owner: owner.id } : {}),
   };
   const state: ApiInitialStateJSON = {
     meta,
     compose: {},
-    accounts: {},
+    accounts: owner ? { [owner.id]: owner.account } : {},
     media_attachments: { accept_content_types: [...InstanceLimits.media.supportedMimeTypes] },
     settings: {},
     languages: Languages.map(([code, name, nativeName]) => [code, name, nativeName]),
@@ -367,7 +395,7 @@ export const initialState = async (
       default_language: account.source.language ?? locale,
       default_quote_policy: account.source.quote_policy,
     },
-    accounts: { [me]: account, ...(moved ? { [moved.id]: moved } : {}) },
+    accounts: { ...state.accounts, [me]: account, ...(moved ? { [moved.id]: moved } : {}) },
     settings,
     // The session's subscription, so the UI keeps it instead of subscribing again.
     push_subscription: push.isOk() && push.value ? subscriptionDocument(env, push.value) : null,

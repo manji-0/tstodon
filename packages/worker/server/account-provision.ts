@@ -15,7 +15,7 @@ import { nowInstant } from "./clock";
 import { runD1, type RepositoryError } from "./d1";
 import { generateAccountKeys } from "./keys";
 import { newEntityId } from "./ids";
-import { findAccountByUsername, insertAccount } from "./account-store";
+import { findAccountByUsername, insertAccount, insertFirstAccount } from "./account-store";
 import { setAccountAuthUser } from "./generated/prisma/sql";
 import { registrationApprovalRequired } from "./runtime-config";
 import { runTyped } from "./typed-sql";
@@ -28,7 +28,9 @@ export type ProvisionError =
   | Readonly<{ kind: "InvalidUsername" }>
   | Readonly<{ kind: "UsernameTaken" }>
   /** A sign-up block refuses the new account without touching existing ones. */
-  | Readonly<{ kind: "RegistrationBlocked" }>;
+  | Readonly<{ kind: "RegistrationBlocked" }>
+  /** Single-user mode: another sign-up became the owner first. */
+  | Readonly<{ kind: "OwnerExists" }>;
 
 /** A sign-up username: valid characters, within the length cap. */
 export const signupUsername = (raw: string): Result<Username, ProvisionError> => {
@@ -51,6 +53,8 @@ export const provisionLocalAccount = async (
     authUserId: string;
     /** With `REGISTRATION_APPROVAL` a brand-new account waits for an admin. */
     pending: boolean;
+    /** Single-user mode's owner: inserted only while no local account exists. */
+    firstOnly?: boolean;
   }>,
 ): Promise<Result<LocalAccount, ProvisionError>> => {
   const username = signupUsername(input.username);
@@ -84,7 +88,12 @@ export const provisionLocalAccount = async (
     keys,
   );
   const account = LocalAccount.provision(registering, nowInstant());
-  const inserted = await insertAccount(db, account);
+  const inserted = input.firstOnly
+    ? await insertFirstAccount(db, account)
+    : (await insertAccount(db, account)).map(() => true);
+  if (inserted.isOk() && !inserted.value) {
+    return err({ kind: "OwnerExists" });
+  }
   if (inserted.isErr()) {
     // The unique index settles a race between two sign-ups for one name.
     const raced = await findAccountByUsername(db, username.value);

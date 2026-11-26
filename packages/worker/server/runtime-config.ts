@@ -280,14 +280,39 @@ export const registrationApprovalRequired = (
   return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 };
 
+/** On unless set to a false value, so an unset var keeps the default. */
+const onUnlessFalse = (raw: string | undefined): boolean =>
+  !["0", "false", "no", "off"].includes((raw ?? "").trim().toLowerCase());
+
+type RegistrationVars = Readonly<{ SINGLE_USER_MODE?: string; REGISTRATIONS_OPEN?: string }>;
+
 /**
- * `REGISTRATIONS_OPEN`: whether `/auth/sign_up` creates accounts. On unless
- * set to a false value.
+ * `SINGLE_USER_MODE`, Mastodon's variable of that name: the instance is one
+ * person's. On unless set to a false value.
  */
-export const registrationsOpen = (env: Readonly<{ REGISTRATIONS_OPEN?: string }>): boolean => {
-  const raw = (env.REGISTRATIONS_OPEN ?? "").trim().toLowerCase();
-  return !["0", "false", "no", "off"].includes(raw);
+export const singleUserMode = (env: Readonly<{ SINGLE_USER_MODE?: string }>): boolean =>
+  onUnlessFalse(env.SINGLE_USER_MODE);
+
+/**
+ * Who a new Access email may become. `OwnerOnly` is single-user mode, which
+ * overrides `REGISTRATIONS_OPEN`: the first local account is created (Mastodon
+ * makes it with `tootctl`; tstodon has only the sign-in door) and no other.
+ */
+export type SignUpPolicy = "Open" | "Closed" | "OwnerOnly";
+
+export const signUpPolicy = (env: RegistrationVars): SignUpPolicy => {
+  if (singleUserMode(env)) {
+    return "OwnerOnly";
+  }
+  return onUnlessFalse(env.REGISTRATIONS_OPEN) ? "Open" : "Closed";
 };
+
+/**
+ * Whether registrations are open, as the instance, nodeinfo and the web UI
+ * report it: Mastodon's `registrations_mode != 'none' && !single_user_mode`,
+ * false in single-user mode even before the owner exists.
+ */
+export const registrationsOpen = (env: RegistrationVars): boolean => signUpPolicy(env) === "Open";
 
 export const parseInstanceIdentity = (env: Env): Result<InstanceIdentity, ValidationError> =>
   parseEnv(env).andThen((vars) => {

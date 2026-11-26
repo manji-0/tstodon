@@ -52,6 +52,37 @@ export const failingQuoteReads = <T>(id: string | undefined, run: () => Promise<
   );
 
 /**
+ * Run `before` just before the first single D1 `run` whose SQL `matches`,
+ * while `run` runs: another request acting between a read and the write
+ * that relies on it.
+ */
+export const beforeStatement = async <T>(
+  matches: (sql: string) => boolean,
+  before: () => Promise<unknown>,
+  run: () => Promise<T>,
+): Promise<T> => {
+  const prototype: object = Object.getPrototypeOf(env.DB.prepare("SELECT 1"));
+  const original: unknown = Reflect.get(prototype, "run");
+  if (typeof original !== "function") {
+    throw new Error("D1 statements have no run");
+  }
+  let pending = true;
+  Reflect.set(prototype, "run", async function (this: object, ...args: unknown[]) {
+    const sql: unknown = Reflect.get(this, "statement");
+    if (pending && typeof sql === "string" && matches(sql)) {
+      pending = false;
+      await before();
+    }
+    return Reflect.apply(original, this, args);
+  });
+  try {
+    return await run();
+  } finally {
+    Reflect.set(prototype, "run", original);
+  }
+};
+
+/**
  * Run `before` just before the first `env.DB` batch whose statements
  * `matches` picks, while `run` runs: what another request does between a
  * read and the batch that acts on it.

@@ -10,7 +10,7 @@ import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { findLocalAccountModeration } from "./account-moderation-store";
 import { provisionLocalAccount, signupUsername, type ProvisionError } from "./account-provision";
-import { findAccountByEmail } from "./account-store";
+import { countAccounts, findAccountByEmail } from "./account-store";
 import {
   accessAdminGroups,
   accessAssertion,
@@ -24,7 +24,7 @@ import { ipSignUpDecision } from "./ip-access";
 import { parseRows, runD1, type RepositoryError } from "./d1";
 import { setAccountAuthUser } from "./generated/prisma/sql";
 import { sha256Hex } from "./oauth-store";
-import { registrationApprovalRequired, registrationsOpen } from "./runtime-config";
+import { registrationApprovalRequired, signUpPolicy } from "./runtime-config";
 import { roleFromAuthUser } from "./auth";
 import { runTyped } from "./typed-sql";
 
@@ -211,6 +211,7 @@ const ensureUser = async (
   identity: AccessIdentity,
   account: LocalAccount | undefined,
   username: string,
+  owner = false,
 ): Promise<Result<UserLink, RepositoryError>> => {
   const email = Sensitive.of(identity.email).reveal();
   if (account) {
@@ -226,7 +227,7 @@ const ensureUser = async (
     id: crypto.randomUUID(),
     username,
     email,
-    role: createRole(env, identity, username),
+    role: owner ? "admin" : createRole(env, identity, username),
     now: Date.now(),
   });
   if (inserted.isErr()) {
@@ -410,8 +411,23 @@ const accountForIdentity = async (
   if (existing.value) {
     return ok({ account: existing.value, userCreated: false });
   }
-  if (!provision || !registrationsOpen(env)) {
+  const policy = signUpPolicy(env);
+  if (!provision || policy === "Closed") {
     return err({ kind: "NoAccount" });
+  }
+  // Single-user mode: only the first account, which owns the instance. It is
+  // admin and never held for approval, since no admin exists to approve it.
+  // This count only skips the work for a later sign-in; the account insert
+  // itself refuses a second owner (`firstOnly`).
+  const owner = policy === "OwnerOnly";
+  if (owner) {
+    const accounts = await countAccounts(env.DB);
+    if (accounts.isErr()) {
+      return err(accounts.error);
+    }
+    if (accounts.value > 0) {
+      return err({ kind: "NoAccount" });
+    }
   }
   // IP blocks: `sign_up_block` refuses the account, `sign_up_requires_approval`
   // holds it for an admin even when registrations are open to all.
@@ -419,7 +435,8 @@ const accountForIdentity = async (
   if (ipDecision.kind === "Blocked") {
     return err({ kind: "NoAccount" });
   }
-  const pending = registrationApprovalRequired(env) || ipDecision.kind === "RequiresApproval";
+  const pending =
+    !owner && (registrationApprovalRequired(env) || ipDecision.kind === "RequiresApproval");
   const base = Username.deriveFromEmail(identity.email, false);
   const suffixed = Username.deriveFromEmail(identity.email, true);
   const preferred = base.isOk() ? base.value : undefined;
@@ -429,7 +446,7 @@ const accountForIdentity = async (
   if (username.isErr()) {
     return err({ kind: "NoAccount" });
   }
-  const user = await ensureUser(env, identity, undefined, username.value);
+  const user = await ensureUser(env, identity, undefined, username.value, owner);
   if (user.isErr()) {
     return err(user.error);
   }
@@ -438,6 +455,7 @@ const accountForIdentity = async (
     email: Sensitive.of(identity.email),
     authUserId: user.value.id,
     pending,
+    firstOnly: owner,
   });
   if (created.isErr()) {
     let failure: ProvisionError = created.error;
@@ -449,6 +467,7 @@ const accountForIdentity = async (
           email: Sensitive.of(identity.email),
           authUserId: user.value.id,
           pending,
+          firstOnly: owner,
         });
         if (retried.isOk()) {
           await recordSignUpIp(env.DB, retried.value.id, request);
@@ -466,7 +485,8 @@ const accountForIdentity = async (
     if (
       failure.kind === "RegistrationBlocked" ||
       failure.kind === "UsernameTaken" ||
-      failure.kind === "InvalidUsername"
+      failure.kind === "InvalidUsername" ||
+      failure.kind === "OwnerExists"
     ) {
       return err({ kind: "NoAccount" });
     }

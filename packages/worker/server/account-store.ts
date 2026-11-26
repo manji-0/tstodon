@@ -228,34 +228,81 @@ export const countSearchAccounts = async (
     return Number(rows[0]?.count ?? 0);
   });
 
+/** What an insert binds, in `insertAccount`'s column order. */
+const insertValues = (account: LocalAccount) =>
+  [
+    account.id,
+    account.username,
+    account.accessEmail.reveal(),
+    account.displayName,
+    account.locked ? 1 : 0,
+    visibilitySql(account.defaultPostVisibility),
+    quotePolicySql(account.defaultQuotePolicy),
+    account.publicKeyPem,
+    account.privateKeyJwk.reveal(),
+    account.createdAt,
+    account.createdAt,
+    "",
+  ] as const;
+
 export const insertAccount = async (
   db: D1Database,
   account: LocalAccount,
 ): Promise<Result<void, RepositoryError>> =>
   runD1(async () => {
-    await runTyped(
-      db,
-      insertAccountSql(
-        account.id,
-        account.username,
-        account.accessEmail.reveal(),
-        account.displayName,
-        account.locked ? 1 : 0,
-        visibilitySql(account.defaultPostVisibility),
-        quotePolicySql(account.defaultQuotePolicy),
-        account.publicKeyPem,
-        account.privateKeyJwk.reveal(),
-        account.createdAt,
-        account.createdAt,
-        "",
-      ),
-    );
+    await runTyped(db, insertAccountSql(...insertValues(account)));
+  });
+
+/**
+ * Insert `account` only while no local account exists: single-user mode's
+ * owner. The check is part of the insert, so of two first sign-ins only one
+ * gets a row. False when another account was already there.
+ */
+export const insertFirstAccount = async (
+  db: D1Database,
+  account: LocalAccount,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const result = await db
+      .prepare(
+        `INSERT INTO accounts (
+           id, username, access_email, display_name, locked,
+           default_post_visibility, default_quote_policy,
+           public_key_pem, private_key_jwk, created_at, updated_at, bio_text
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM accounts)`,
+      )
+      .bind(...insertValues(account))
+      .run();
+    return result.meta.changes === 1;
   });
 
 export const countAccounts = async (db: D1Database): Promise<Result<number, RepositoryError>> =>
   runD1(async () => {
     const rows = await queryTyped(db, countAccountsSql(), CountRow);
     return Number(rows[0]?.count ?? 0);
+  });
+
+/**
+ * Single-user mode's owner: the first local account not suspended, as
+ * Mastodon's `Account.local.without_suspended.without_internal.first`.
+ */
+export const findOwnerAccountId = async (
+  db: D1Database,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const result = await db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         WHERE NOT EXISTS (
+           SELECT 1 FROM account_moderation m
+           WHERE m.account_id = a.id AND m.moderation = 'Suspended'
+         )
+         ORDER BY a.created_at, a.id LIMIT 1`,
+      )
+      .all();
+    return parseRows(IdRow, result.results)[0]?.id;
   });
 
 export const listDirectoryAccounts = async (

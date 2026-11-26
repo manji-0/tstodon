@@ -179,7 +179,7 @@ variable "access_application_name" {
 
 variable "access_allow_everyone" {
   type        = bool
-  description = "Let anyone who signs in with an allowed identity provider through Access (open registrations; REGISTRATIONS_OPEN / REGISTRATION_APPROVAL still apply)."
+  description = "Let anyone who signs in with an allowed identity provider through Access. For a multi-user instance (SINGLE_USER_MODE=false) with open registrations; REGISTRATIONS_OPEN / REGISTRATION_APPROVAL still apply. Leave it off in single-user mode."
   default     = false
 }
 

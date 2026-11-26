@@ -26,8 +26,10 @@ media_hostname = "media.example.com"
 
 # --- Cloudflare Access (needs a Zero Trust organization) ---
 create_access = false
-# access_allow_everyone        = false
+# Single-user (the Worker's default): only the owner's address.
 # access_allowed_emails        = ["you@example.com"]
+# Multi-user (SINGLE_USER_MODE=false) with open registrations:
+# access_allow_everyone        = false
 # access_allowed_email_domains = ["example.com"]
 # access_allowed_idps          = [] # identity provider ids; one = no picker
 # access_session_duration      = "24h"

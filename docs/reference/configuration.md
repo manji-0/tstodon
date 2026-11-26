@@ -168,7 +168,8 @@ API requests authenticate with `Authorization: Bearer <access token>` (streaming
 | `CF_ACCESS_JWKS_JSON`    | Access public JWKS, as JSON. When empty, `CF_ACCESS_JWKS_URL` is used, and when that is empty the keys are fetched from `<team>/cdn-cgi/access/certs`. Only RSA keys are used                                                                                                  |
 | `CF_ACCESS_JWKS_URL`     | Optional URL of the Access public JWKS, used when `CF_ACCESS_JWKS_JSON` is empty. Fetched keys are kept per isolate for 10 minutes; a token with an unknown `kid` refetches them at most once per 30 s, and a fetch that fails or takes over 5 s leaves the request signed out |
 | `CF_ACCESS_ADMIN_GROUPS` | Comma-separated Access group names. When non-empty, every Access login sets admin if the JWT groups intersect this list and clears admin if they do not. When empty or unset, login does not change an existing role                                                           |
-| `REGISTRATIONS_OPEN`     | Whether a new Access email gets an account (default on; `false` leaves that person signed out). Reported as `registrations.enabled`                                                                                                                                            |
+| `SINGLE_USER_MODE`       | One person's instance, Mastodon's `SINGLE_USER_MODE` (default on; `false` makes it multi-user). See [Single-user mode](#single-user-mode)                                                                                                                                      |
+| `REGISTRATIONS_OPEN`     | Multi-user only: whether a new Access email gets an account (default on; `false` leaves that person signed out). Reported as `registrations.enabled`. Single-user mode ignores it                                                                                              |
 | `REGISTRATION_APPROVAL`  | New accounts wait for admin approval (see [Instance vars](#instance-vars))                                                                                                                                                                                                     |
 | `ADMIN_USERNAMES`        | Comma-separated usernames granted the Better Auth role `admin` only when that user row is first created. A later login does not grant it again                                                                                                                                 |
 
@@ -179,7 +180,7 @@ pnpm wrangler:worker d1 execute tstodon --remote --command \
   "UPDATE \"user\" SET role = 'admin' WHERE id = (SELECT auth_user_id FROM accounts WHERE username = 'alice')"
 ```
 
-Admins suspend accounts on the admin accounts page (`/admin/accounts`). `app/auth.ts` closes every Better Auth endpoint except `/get-session` and `/sign-out`, the admin plugin's `/api/auth/admin/*` included: those routes are not a login and are not how passkeys are registered. Access already verified the email. A new login creates the account when registrations are open; a closed registration, a registration block, or a username this server cannot derive leaves the person signed out, with no account. Approval-required accounts stay pending. One local session exists per Access subject. `DELETE /auth/sign_out` deletes that session; the next request that still carries the Access JWT signs in again. Ending the login is Access logout (`/cdn-cgi/access/logout`).
+Admins suspend accounts on the admin accounts page (`/admin/accounts`). `app/auth.ts` closes every Better Auth endpoint except `/get-session` and `/sign-out`, the admin plugin's `/api/auth/admin/*` included: those routes are not a login and are not how passkeys are registered. Access already verified the email. A new login creates the account when registrations are open (in single-user mode, only the first account); a closed registration, a registration block, or a username this server cannot derive leaves the person signed out, with no account. Approval-required accounts stay pending. One local session exists per Access subject. `DELETE /auth/sign_out` deletes that session; the next request that still carries the Access JWT signs in again. Ending the login is Access logout (`/cdn-cgi/access/logout`).
 
 `signedInAt` is the Access JWT `iat`. Access can re-issue an app token from a still-valid org session, so that time is not always a fresh human sign-in. Moving an account, ending a session, and revoking an app therefore need a short Access session lifetime if a fresh sign-in is required.
 
@@ -190,6 +191,21 @@ The first `pnpm run deploy` creates `BETTER_AUTH_SECRET`. To set or rotate it yo
 ```sh
 openssl rand -base64 32 | pnpm -C packages/worker exec void secret put BETTER_AUTH_SECRET
 ```
+
+### Single-user mode
+
+<!-- derived-from #authentication -->
+
+`SINGLE_USER_MODE` is on unless it is set to `false`, `0`, `no` or `off`, and it is on when the var is missing. It follows Mastodon's variable of the same name:
+
+- Registrations are reported closed: `registrations` on `/api/v1/instance`, `registrations.enabled` on `/api/v2/instance`, `openRegistrations` in nodeinfo, and the web UI's `meta.registrations_open`. Mastodon reports them closed even before the account exists, and so does tstodon.
+- The first Access login on an instance with no local account creates the owner's account. Mastodon creates that account with `tootctl`; tstodon has only the sign-in door. The owner's Better Auth user gets the `admin` role, and the account is never held for approval (`REGISTRATION_APPROVAL` and a `sign_up_requires_approval` IP block do not apply to it), because no admin exists yet to approve it. A `sign_up_block` IP block still refuses it. A non-empty `CF_ACCESS_ADMIN_GROUPS` still sets or clears the role on every later login, so leave it empty or put the owner in one of its groups.
+- Every later new Access email gets no account and stays signed out, whatever `REGISTRATIONS_OPEN` says. Existing accounts sign in as before.
+- The web UI's initial state has `meta.single_user_mode: true` and `meta.owner`, the first local account that is not suspended, with that account in `accounts`. The web UI then sends a signed-out visitor at `/` to the owner's profile, as Mastodon's does.
+
+As in Mastodon, the public timelines, trends, the directory, and streaming do not change. The owner's account is inserted only while no local account exists, in the same statement, so of two first sign-ins that race, one becomes the owner and the other gets no account. Still let only your own identity through the Access policy (`access_allowed_emails`, not `access_allow_everyone`): otherwise anyone who signs in first on a fresh instance becomes its owner.
+
+To run a multi-user instance, set `SINGLE_USER_MODE` to `"false"` under `cloudflare.vars` in `packages/worker/void.config.ts` and deploy. `REGISTRATIONS_OPEN`, `REGISTRATION_APPROVAL`, and the Access policy then decide who gets an account, and `ADMIN_USERNAMES` or `CF_ACCESS_ADMIN_GROUPS` makes the admins. Switching an instance that already has more than one account to single-user mode closes sign-up and keeps every account. The owner is then the oldest account that is not suspended.
 
 ### Streaming tokens
 
