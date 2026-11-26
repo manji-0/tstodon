@@ -1,4 +1,13 @@
-import { DAY, HOUR, MINUTE, relativeTimeParts, SECOND } from './time';
+import { createIntl } from 'react-intl';
+
+import {
+  DAY,
+  HOUR,
+  MINUTE,
+  SECOND,
+  relativeTimeParts,
+  formatTime,
+} from './time';
 
 describe('relativeTimeParts', () => {
   const now = Date.now();
@@ -36,3 +45,38 @@ describe('relativeTimeParts', () => {
     expect(relativeTimeParts(now + input, now)).toMatchObject(expected);
   });
 });
+
+// A day-only value (`2026-08-20`) parses as midnight UTC, so it names the
+// same day in every time zone only when compared in UTC.
+describe.each(['UTC', 'America/Los_Angeles', 'Asia/Tokyo'])(
+  'formatTime with day-only timestamps in %s',
+  (timeZone) => {
+    const intl = createIntl({ locale: 'en' });
+
+    const now = Date.parse('2026-08-20T22:56:00Z');
+
+    const previousTimeZone = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = timeZone;
+    });
+
+    afterAll(() => {
+      if (previousTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTimeZone;
+      }
+    });
+
+    test.each([
+      ['2026-08-20', 'today'],
+      ['2026-08-19', '1 day ago'],
+      ['2026-08-17', '3 days ago'],
+    ])('should format the day-only value %s as "%s"', (date, expected) => {
+      expect(
+        formatTime({ timestamp: Date.parse(date), intl, now, noTime: true }),
+      ).toBe(expected);
+    });
+  },
+);

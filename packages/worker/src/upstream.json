@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/mastodon/mastodon.git",
-  "tag": "v4.7.5",
-  "commit": "24cd1c875a1ac393e587421726394d5692ff5496",
+  "tag": "v4.7.6",
+  "commit": "a593c9420d2ff4664d448a9cb71bf8ed4ff0c29a",
   "imported": {
     "app/javascript": "packages/worker/src",
     "config/vite": "packages/worker/config/vite",

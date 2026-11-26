@@ -73,7 +73,11 @@ class ServerBanner extends PureComponent {
           <div className='server-banner__meta__column'>
             <h4><FormattedMessage id='server_banner.administered_by' defaultMessage='Administered by:' /></h4>
 
-            <Account id={server.item?.contact.account?.id} size={36} minimal />
+            {server.item?.contact.account?.id ? (
+              <Account id={server.item.contact.account.id} size={36} minimal />
+            ) : (
+              <Skeleton width='10ch' />
+            )}
           </div>
 
           <div className='server-banner__meta__column'>
