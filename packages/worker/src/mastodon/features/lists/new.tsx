@@ -117,40 +117,47 @@ const NewList: React.FC<{ list?: List | null }> = ({ list }) => {
     [setRepliesPolicy],
   );
 
-  const handleSubmit = useCallback(() => {
-    setSubmitting(true);
+  const handleSubmit: React.SubmitEventHandler = useCallback(
+    (e) => {
+      e.preventDefault();
 
-    if (id) {
-      void dispatch(
-        updateList({
-          id,
-          title,
-          exclusive,
-          replies_policy: repliesPolicy,
-        }),
-      ).then(() => {
-        setSubmitting(false);
-        return '';
-      });
-    } else {
-      void dispatch(
-        createList({
-          title,
-          exclusive,
-          replies_policy: repliesPolicy,
-        }),
-      ).then((result) => {
-        setSubmitting(false);
+      setSubmitting(true);
 
-        if (isFulfilled(result)) {
-          void navigate(`/lists/${result.payload.id}/edit`, { replace: true });
-          void navigate(`/lists/${result.payload.id}/members`);
-        }
+      if (id) {
+        void dispatch(
+          updateList({
+            id,
+            title,
+            exclusive,
+            replies_policy: repliesPolicy,
+          }),
+        ).then(() => {
+          setSubmitting(false);
+          return '';
+        });
+      } else {
+        void dispatch(
+          createList({
+            title,
+            exclusive,
+            replies_policy: repliesPolicy,
+          }),
+        ).then((result) => {
+          setSubmitting(false);
 
-        return '';
-      });
-    }
-  }, [navigate, dispatch, setSubmitting, id, title, exclusive, repliesPolicy]);
+          if (isFulfilled(result)) {
+            void navigate(`/lists/${result.payload.id}/edit`, {
+              replace: true,
+            });
+            void navigate(`/lists/${result.payload.id}/members`);
+          }
+
+          return '';
+        });
+      }
+    },
+    [navigate, dispatch, setSubmitting, id, title, exclusive, repliesPolicy],
+  );
 
   return (
     <form className='simple_form app-form' onSubmit={handleSubmit}>

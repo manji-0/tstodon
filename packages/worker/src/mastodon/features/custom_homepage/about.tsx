@@ -24,7 +24,7 @@ export const About = () => {
     (state) => state.server.extendedDescription,
   );
 
-  const accountId = server.item?.contact.account?.id ?? '';
+  const accountId = server.item?.contact.account?.id;
   const isLoading = extendedDescription.isLoading;
   const hasContent = (extendedDescription.item?.content.length ?? 0) > 0;
   const content = extendedDescription.item?.content ?? '';
@@ -42,7 +42,11 @@ export const About = () => {
             defaultMessage='Administered by'
           />
         </h2>
-        <Account id={accountId} size={36} minimal />
+        {accountId ? (
+          <Account id={accountId} size={36} minimal />
+        ) : (
+          <Skeleton width='10ch' />
+        )}
       </div>
 
       <div className={classes.block}>
