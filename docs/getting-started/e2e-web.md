@@ -30,7 +30,7 @@ The browser origin is `http://localhost:8793`, the host `INSTANCE_DOMAIN` names.
 - The UI runs in English (`locale: "en-US"`) so the selectors can use its labels ("What's on your mind?", "Post", "Favorite", …).
 - A scenario fails on any uncaught page error or 5xx from `/api/*`, as well as on its own assertions.
 
-The scenarios share one server and database and run one at a time; each uses fresh usernames. The admin scenarios are the exception: they sign up as `modadmin`, `modadmin2`, and `modadmin3`, which `ADMIN_USERNAMES` in `e2e/web.wrangler.jsonc` makes admins.
+The scenarios share one server and database and run one at a time; each uses fresh usernames. The admin scenarios are the exception: they sign up as `modadmin`, `modadmin2`, and `modadmin3`, which `ADMIN_USERNAMES` in `e2e/web.wrangler.jsonc` makes admins. That config sets `SINGLE_USER_MODE` to `false`, as every e2e harness config does, since the scenarios sign up several people.
 
 ## CI
 

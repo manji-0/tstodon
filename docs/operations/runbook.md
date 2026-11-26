@@ -586,7 +586,7 @@ Starting points; tune them to your traffic. Cloudflare Notifications covers some
 ### Spam account wave
 
 1. Access is the first gate: tighten the Access application's policy (allowed email domains, an identity provider with its own sign-up controls) to stop new sign-ins entirely.
-2. Close or gate registrations: `REGISTRATIONS_OPEN=false` (new Access emails get no account) or `REGISTRATION_APPROVAL=true` (new accounts wait in `/admin/accounts` as pending). Change them in `wrangler.jsonc` and deploy.
+2. Close or gate registrations: `REGISTRATIONS_OPEN=false` (new Access emails get no account), `REGISTRATION_APPROVAL=true` (new accounts wait in `/admin/accounts` as pending), or `SINGLE_USER_MODE=true` (no new account at all; see [Single-user mode](../reference/configuration.md#single-user-mode)). Change them under `cloudflare.vars` in `packages/worker/void.config.ts` and deploy.
 3. Block where they come from: IP blocks with `sign_up_block` or `sign_up_requires_approval`; email domain blocks (`/admin/email_domain_blocks`, `POST /api/v1/admin/email_domain_blocks`); canonical email blocks for one mailbox and its respellings (`/api/v1/admin/canonical_email_blocks`).
 4. Remove the accounts: suspend on `/admin/accounts/:id`, or `POST /api/v1/admin/accounts/:id/action` with `type=suspend` (token with `admin:write`). Recent sign-ups:
 

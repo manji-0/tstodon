@@ -258,6 +258,27 @@ export const countAccounts = async (db: D1Database): Promise<Result<number, Repo
     return Number(rows[0]?.count ?? 0);
   });
 
+/**
+ * Single-user mode's owner: the first local account not suspended, as
+ * Mastodon's `Account.local.without_suspended.without_internal.first`.
+ */
+export const findOwnerAccountId = async (
+  db: D1Database,
+): Promise<Result<string | undefined, RepositoryError>> =>
+  runD1(async () => {
+    const result = await db
+      .prepare(
+        `SELECT a.id FROM accounts a
+         WHERE NOT EXISTS (
+           SELECT 1 FROM account_moderation m
+           WHERE m.account_id = a.id AND m.moderation = 'Suspended'
+         )
+         ORDER BY a.created_at, a.id LIMIT 1`,
+      )
+      .all();
+    return parseRows(IdRow, result.results)[0]?.id;
+  });
+
 export const listDirectoryAccounts = async (
   db: D1Database,
   input: Readonly<{ order: "new" | "active"; limit: number; offset: number }>,

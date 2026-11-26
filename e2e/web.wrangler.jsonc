@@ -28,6 +28,8 @@
     "run_worker_first": true,
   },
   "vars": {
+    // The harness signs up several local accounts.
+    "SINGLE_USER_MODE": "false",
     "INSTANCE_DOMAIN": "localhost:8793",
     "INSTANCE_PUBLIC_ORIGIN": "http://localhost:8793",
     "FEDERATION_ALLOW_HOSTS": "localhost,127.0.0.1",
