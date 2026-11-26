@@ -203,7 +203,7 @@ openssl rand -base64 32 | pnpm -C packages/worker exec void secret put BETTER_AU
 - Every later new Access email gets no account and stays signed out, whatever `REGISTRATIONS_OPEN` says. Existing accounts sign in as before.
 - The web UI's initial state has `meta.single_user_mode: true` and `meta.owner`, the first local account that is not suspended, with that account in `accounts`. The web UI then sends a signed-out visitor at `/` to the owner's profile, as Mastodon's does.
 
-As in Mastodon, the public timelines, trends, the directory, and streaming do not change. Two sign-ins that both arrive before the first account exists could both create an account, so let only your own identity through the Access policy (`access_allowed_emails`, not `access_allow_everyone`).
+As in Mastodon, the public timelines, trends, the directory, and streaming do not change. The owner's account is inserted only while no local account exists, in the same statement, so of two first sign-ins that race, one becomes the owner and the other gets no account. Still let only your own identity through the Access policy (`access_allowed_emails`, not `access_allow_everyone`): otherwise anyone who signs in first on a fresh instance becomes its owner.
 
 To run a multi-user instance, set `SINGLE_USER_MODE` to `"false"` under `cloudflare.vars` in `packages/worker/void.config.ts` and deploy. `REGISTRATIONS_OPEN`, `REGISTRATION_APPROVAL`, and the Access policy then decide who gets an account, and `ADMIN_USERNAMES` or `CF_ACCESS_ADMIN_GROUPS` makes the admins. Switching an instance that already has more than one account to single-user mode closes sign-up and keeps every account. The owner is then the oldest account that is not suspended.
 

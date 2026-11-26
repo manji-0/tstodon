@@ -417,6 +417,8 @@ const accountForIdentity = async (
   }
   // Single-user mode: only the first account, which owns the instance. It is
   // admin and never held for approval, since no admin exists to approve it.
+  // This count only skips the work for a later sign-in; the account insert
+  // itself refuses a second owner (`firstOnly`).
   const owner = policy === "OwnerOnly";
   if (owner) {
     const accounts = await countAccounts(env.DB);
@@ -453,6 +455,7 @@ const accountForIdentity = async (
     email: Sensitive.of(identity.email),
     authUserId: user.value.id,
     pending,
+    firstOnly: owner,
   });
   if (created.isErr()) {
     let failure: ProvisionError = created.error;
@@ -464,6 +467,7 @@ const accountForIdentity = async (
           email: Sensitive.of(identity.email),
           authUserId: user.value.id,
           pending,
+          firstOnly: owner,
         });
         if (retried.isOk()) {
           await recordSignUpIp(env.DB, retried.value.id, request);
@@ -481,7 +485,8 @@ const accountForIdentity = async (
     if (
       failure.kind === "RegistrationBlocked" ||
       failure.kind === "UsernameTaken" ||
-      failure.kind === "InvalidUsername"
+      failure.kind === "InvalidUsername" ||
+      failure.kind === "OwnerExists"
     ) {
       return err({ kind: "NoAccount" });
     }
