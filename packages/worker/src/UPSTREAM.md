@@ -5,10 +5,12 @@ This directory is Mastodon's web frontend (upstream's `app/javascript`: the Reac
 | | |
 | --- | --- |
 | Repository | <https://github.com/mastodon/mastodon> |
-| Tag | `v4.7.5` |
-| Commit | `24cd1c875a1ac393e587421726394d5692ff5496` |
+| Tag | `v4.7.6` |
+| Commit | `a593c9420d2ff4664d448a9cb71bf8ed4ff0c29a` |
 
 `upstream.json` holds the same values and the path mapping below; `packages/worker/web-build.ts` reads it. Keep the two in step.
+
+The move from v4.7.5 to v4.7.6 changed only the recorded tag and commit: v4.7.6 changes none of the imported or ported paths (`git diff v4.7.5 v4.7.6` over them, `package.json` and `yarn.lock` is empty), nor the views and serializers that render the initial state.
 
 ## Path mapping
 
