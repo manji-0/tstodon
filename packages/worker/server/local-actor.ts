@@ -12,7 +12,7 @@ import { loadCustomEmojis } from "./custom-emoji-store";
 import { emojisInTexts, profileEmojiTexts } from "./emoji";
 import { enqueueLocalActivity, type EnqueueLocalActivityError } from "./delivery";
 import { newEntityId } from "./ids";
-import { knownFieldMentions } from "./mention-resolve";
+import { knownMentions } from "./mention-resolve";
 
 /**
  * The actor document of a local account as it stands now: its profile (bio,
@@ -51,7 +51,7 @@ export const localActorDocument = async (
           kind: "Shown",
           profile: profile.value,
           emojis: emojisInTexts(profileEmojiTexts(account.displayName, profile.value), emojis),
-          fieldMentions: await knownFieldMentions(
+          fieldMentions: await knownMentions(
             env.DB,
             identity,
             profile.value.fields.map((field) => field.value),

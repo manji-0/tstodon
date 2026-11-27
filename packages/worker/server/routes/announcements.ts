@@ -1,4 +1,6 @@
 import type { ApiAnnouncementJSON } from "@tstodon/api";
+import { extractHashtags } from "@tstodon/core/post-text";
+import type { InstanceIdentity } from "@tstodon/domain";
 import type { Context } from "hono";
 import { err, ok, type Result } from "neverthrow";
 import {
@@ -17,7 +19,10 @@ import {
 } from "../announcement-store";
 import { type CustomEmoji, customEmojiJson, emojisInTexts } from "../emoji";
 import { loadCustomEmojis } from "../custom-emoji-store";
+import { formatPostText, mentionedAccounts } from "../html";
 import { jsonAuthError, jsonRepositoryError, requireUser } from "../http";
+import { type KnownMention, knownMentions } from "../mention-resolve";
+import { tagUrl } from "../tag-documents";
 import {
   activeAnnouncements,
   type Announcement,
@@ -25,16 +30,27 @@ import {
   parseInstanceIdentity,
 } from "../runtime-config";
 
+/**
+ * `REST::AnnouncementSerializer`. Text renders as Mastodon's `linkify(text)`:
+ * its URLs, hashtags and the mentions of accounts in `known` are links, and
+ * those accounts and hashtags are the announcement's `mentions` and `tags`.
+ * HTML is served as it is, with none.
+ */
 const announcementDocument = (
+  identity: InstanceIdentity,
   announcement: Announcement,
   read: boolean,
   reactions: ReadonlyMap<string, AnnouncementReactionState>,
   emojis: ReadonlyArray<CustomEmoji>,
+  known: ReadonlyArray<KnownMention>,
 ): ApiAnnouncementJSON => {
   const names = [...new Set([...announcement.reactions, ...reactions.keys()])];
+  const { body } = announcement;
+  const source = body.kind === "Text" ? body.text : body.html;
+  const mentions = body.kind === "Text" ? mentionedAccounts(body.text, identity, known) : [];
   return {
     id: announcement.id,
-    content: announcement.content,
+    content: body.kind === "Text" ? formatPostText(body.text, { identity, mentions }) : body.html,
     starts_at: announcement.startsAt,
     ends_at: announcement.endsAt,
     all_day: announcement.allDay,
@@ -47,10 +63,13 @@ const announcementDocument = (
       new Date(0).toISOString(),
     updated_at: announcement.updatedAt,
     read,
-    mentions: [],
+    mentions: mentions.map(({ id, username, url, acct }) => ({ id, username, url, acct })),
     statuses: [],
-    tags: [],
-    emojis: emojisInTexts([announcement.content], emojis).map(customEmojiJson),
+    tags:
+      body.kind === "Text"
+        ? extractHashtags(body.text).map((name) => ({ name, url: tagUrl(identity, name) }))
+        : [],
+    emojis: emojisInTexts([source], emojis).map(customEmojiJson),
     reactions: names.map((name) => {
       const state = reactions.get(name);
       return { name, count: state?.count ?? 0, me: state?.me ?? false };
@@ -111,15 +130,24 @@ export const getV1Announcements = async (
   if (reactions.isErr()) {
     return jsonRepositoryError(c, reactions.error.message);
   }
-  const emojis = await loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl);
+  const [emojis, known] = await Promise.all([
+    loadCustomEmojis(c.env, identity.value.mediaPublicBaseUrl),
+    knownMentions(
+      c.env.DB,
+      identity.value,
+      active.value.flatMap(({ body }) => (body.kind === "Text" ? [body.text] : [])),
+    ),
+  ]);
   const empty = new Map<string, AnnouncementReactionState>();
   return c.json(
     active.value.map((announcement) =>
       announcementDocument(
+        identity.value,
         announcement,
         dismissed.value.has(announcement.id),
         reactions.value.get(announcement.id) ?? empty,
         emojis,
+        known,
       ),
     ),
   );

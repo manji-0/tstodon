@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 import {
+  type AnnouncementInput,
   type AnnouncementRow,
   findAnnouncementRowById,
   insertAnnouncement,
@@ -14,7 +15,7 @@ import type { RepositoryError } from "./d1";
  * `undefined` is unchanged on an edit; `null` clears it.
  */
 export type AnnouncementDraft = Readonly<{
-  /** Plain text, shown as one paragraph. */
+  /** Plain text, rendered as Mastodon renders an announcement's text. */
   text?: string | undefined;
   /** HTML; wins over `text` when it is not blank. */
   content?: string | undefined;
@@ -45,12 +46,15 @@ export const ANNOUNCEMENT_ERRORS = {
 const escapeText = (text: string): string =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const announcementContent = (draft: AnnouncementDraft): string | undefined => {
+type AnnouncementSource = Pick<AnnouncementInput, "content" | "text">;
+
+const announcementSource = (draft: AnnouncementDraft): AnnouncementSource | undefined => {
   if (typeof draft.content === "string" && draft.content.trim().length > 0) {
-    return draft.content;
+    return { content: draft.content, text: null };
   }
   if (typeof draft.text === "string") {
-    return `<p>${escapeText(draft.text.trim())}</p>`;
+    const text = draft.text.trim();
+    return { content: `<p>${escapeText(text)}</p>`, text };
   }
   return undefined;
 };
@@ -89,8 +93,8 @@ export const createAnnouncement = async (
   draft: AnnouncementDraft,
   options: Readonly<{ publish: boolean }> = { publish: true },
 ): Promise<Result<AnnouncementRow, AnnouncementError>> => {
-  const content = announcementContent(draft);
-  if (content === undefined) {
+  const source = announcementSource(draft);
+  if (source === undefined) {
     return err({ kind: "TextRequired" });
   }
   const startsAt = dateField(draft.startsAt, null);
@@ -103,7 +107,7 @@ export const createAnnouncement = async (
     return err({ kind: "InvalidSchedule" });
   }
   const created = await insertAnnouncement(db, {
-    content,
+    ...source,
     startsAt,
     endsAt,
     allDay: draft.allDay ?? false,
@@ -145,7 +149,10 @@ export const changeAnnouncement = async (
     return err({ kind: "InvalidSchedule" });
   }
   const updated = await updateAnnouncement(db, id, {
-    content: announcementContent(draft) ?? existing.value.content,
+    ...(announcementSource(draft) ?? {
+      content: existing.value.content,
+      text: existing.value.text,
+    }),
     startsAt,
     endsAt,
     allDay: draft.allDay ?? existing.value.all_day !== 0,

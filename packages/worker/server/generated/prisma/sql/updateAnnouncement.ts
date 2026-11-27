@@ -12,9 +12,10 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param allDay
  * @param publishedAt
  * @param now
+ * @param text
  */
 export const updateAnnouncement = $runtime.makeTypedQueryFactory(
-  "UPDATE announcements\nSET content = $2, starts_at = $3, ends_at = $4, all_day = $5, published_at = $6, updated_at = $7\nWHERE id = $1\nRETURNING id",
+  "UPDATE announcements\nSET content = $2, starts_at = $3, ends_at = $4, all_day = $5, published_at = $6, updated_at = $7,\ntext = $8\nWHERE id = $1\nRETURNING id",
 ) as (
   id: string,
   content: string,
@@ -23,6 +24,7 @@ export const updateAnnouncement = $runtime.makeTypedQueryFactory(
   allDay: number,
   publishedAt: string | null,
   now: string,
+  text: string | null,
 ) => $runtime.TypedSql<updateAnnouncement.Parameters, updateAnnouncement.Result>;
 
 export namespace updateAnnouncement {
@@ -34,6 +36,7 @@ export namespace updateAnnouncement {
     allDay: number,
     publishedAt: string | null,
     now: string,
+    text: string | null,
   ];
   export type Result = {
     id: string | null;

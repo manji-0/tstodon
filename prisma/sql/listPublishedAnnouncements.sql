@@ -1,5 +1,5 @@
 -- @param {String} $1:now
-SELECT id, content, starts_at, ends_at, all_day, published_at, created_at, updated_at
+SELECT id, content, text, starts_at, ends_at, all_day, published_at, created_at, updated_at
 FROM announcements
 WHERE published_at IS NOT NULL
   AND published_at <= $1

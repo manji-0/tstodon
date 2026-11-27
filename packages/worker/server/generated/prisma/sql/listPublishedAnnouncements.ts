@@ -8,7 +8,7 @@ import * as $runtime from "@prisma/client/runtime/wasm-compiler-edge";
  * @param now
  */
 export const listPublishedAnnouncements = $runtime.makeTypedQueryFactory(
-  "SELECT id, content, starts_at, ends_at, all_day, published_at, created_at, updated_at\nFROM announcements\nWHERE published_at IS NOT NULL\nAND published_at <= $1\nAND (starts_at IS NULL OR starts_at <= $1)\nAND (ends_at IS NULL OR ends_at > $1)\nORDER BY published_at DESC, id DESC",
+  "SELECT id, content, text, starts_at, ends_at, all_day, published_at, created_at, updated_at\nFROM announcements\nWHERE published_at IS NOT NULL\nAND published_at <= $1\nAND (starts_at IS NULL OR starts_at <= $1)\nAND (ends_at IS NULL OR ends_at > $1)\nORDER BY published_at DESC, id DESC",
 ) as (
   now: string,
 ) => $runtime.TypedSql<listPublishedAnnouncements.Parameters, listPublishedAnnouncements.Result>;
@@ -18,6 +18,7 @@ export namespace listPublishedAnnouncements {
   export type Result = {
     id: string | null;
     content: string;
+    text: string | null;
     starts_at: string | null;
     ends_at: string | null;
     all_day: number;

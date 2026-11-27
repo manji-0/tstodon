@@ -7502,6 +7502,7 @@ export const AnnouncementsScalarFieldEnum = {
   published_at: "published_at",
   created_at: "created_at",
   updated_at: "updated_at",
+  text: "text",
 } as const;
 
 export type AnnouncementsScalarFieldEnum =
