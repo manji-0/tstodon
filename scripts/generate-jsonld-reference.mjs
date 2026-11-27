@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { jsonldContextsModule } from "./jsonld-contexts-module.mjs";
 
 const path = (relative) => fileURLToPath(new URL(relative, import.meta.url));
-const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.5";
+const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.6";
 
 const AS = "https://www.w3.org/ns/activitystreams";
 const PUBLIC = `${AS}#Public`;
@@ -171,6 +171,48 @@ const documents = {
       to: [PUBLIC],
     },
     to: [PUBLIC],
+  },
+  // An actor `Update` with `featuredCollections`, which v4.7.6 defines.
+  updateActor: {
+    "@context": [
+      AS,
+      "https://w3id.org/security/v1",
+      {
+        manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
+        toot: "http://joinmastodon.org/ns#",
+        featured: { "@id": "toot:featured", "@type": "@id" },
+        discoverable: "toot:discoverable",
+        gts: "https://gotosocial.org/ns#",
+        interactionPolicy: { "@id": "gts:interactionPolicy", "@type": "@id" },
+        canFeature: { "@id": "https://w3id.org/fep/7aa9#canFeature", "@type": "@id" },
+        automaticApproval: { "@id": "gts:automaticApproval", "@type": "@id" },
+        featuredCollections: {
+          "@id": "https://w3id.org/fep/7aa9#featuredCollections",
+          "@type": "@id",
+        },
+      },
+    ],
+    id: `${alice}#updates/1763510400`,
+    type: "Update",
+    actor: alice,
+    to: [PUBLIC],
+    object: {
+      id: alice,
+      type: "Person",
+      preferredUsername: "alice",
+      inbox: `${alice}/inbox`,
+      outbox: `${alice}/outbox`,
+      featured: `${alice}/collections/featured`,
+      featuredCollections: "https://mastodon.example/ap/users/1/featured_collections",
+      manuallyApprovesFollowers: false,
+      discoverable: true,
+      interactionPolicy: { canFeature: { automaticApproval: PUBLIC } },
+      publicKey: {
+        id: `${alice}#main-key`,
+        owner: alice,
+        publicKeyPem: "-----BEGIN PUBLIC KEY-----\nKEY\n-----END PUBLIC KEY-----\n",
+      },
+    },
   },
 };
 

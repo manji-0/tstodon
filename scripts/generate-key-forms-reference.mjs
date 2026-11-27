@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const path = (relative) => fileURLToPath(new URL(relative, import.meta.url));
-const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.5";
+const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.6";
 
 const AS = "https://www.w3.org/ns/activitystreams";
 const DATA_INTEGRITY = "https://w3id.org/security/data-integrity/v1";

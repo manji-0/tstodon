@@ -1,4 +1,4 @@
-/** Sweep area FED-20: collections (FEP-7aa9) between tstodon and Mastodon v4.7.5. */
+/** Sweep area FED-20: collections (FEP-7aa9) between tstodon and Mastodon v4.7.6. */
 import { z } from "zod";
 import { A, signUp, type E2eUser } from "../lib.js";
 import {

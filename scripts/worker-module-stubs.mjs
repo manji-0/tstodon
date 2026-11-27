@@ -20,6 +20,7 @@ const manifest = {
   remoteInteractionHelper: entry,
   embed: entry,
   share: entry,
+  wrapstodon: entry,
   locales: [],
 };
 

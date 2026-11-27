@@ -3,7 +3,7 @@
 name: tstodon-mastodon-interop
 
 x-mastodon: &mastodon
-  image: ghcr.io/mastodon/mastodon:${MASTODON_VERSION:-v4.7.5}
+  image: ghcr.io/mastodon/mastodon:${MASTODON_VERSION:-v4.7.6}
   env_file:
     - mastodon.env
     - .state/secrets.env

@@ -14,7 +14,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const path = (relative) => fileURLToPath(new URL(relative, import.meta.url));
-const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.5";
+const image = process.env.MASTODON_IMAGE ?? "ghcr.io/mastodon/mastodon:v4.7.6";
 const params = ';created=1618884473;keyid="test-key-rsa"';
 
 /** RFC 9421 B.2's test-request, with the fields section 2.1 uses. */

@@ -83,6 +83,7 @@ const ACTOR_CONTEXT_TERMS = {
   canQuote: { "@id": "gts:canQuote", "@type": "@id" },
   automaticApproval: { "@id": "gts:automaticApproval", "@type": "@id" },
   manualApproval: { "@id": "gts:manualApproval", "@type": "@id" },
+  featuredCollections: { "@id": "https://w3id.org/fep/7aa9#featuredCollections", "@type": "@id" },
 } as const;
 
 /**
