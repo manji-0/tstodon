@@ -244,7 +244,7 @@ describe("upload routes and their refusals", () => {
     );
   });
 
-  it("accepts a media update with a thumbnail over 1 MB", async () => {
+  it("reads a media update with a thumbnail over 1 MB", async () => {
     const headers = await authHeaders("body-limit-thumbnail@example.com");
     const upload = new FormData();
     upload.append("file", new File([PNG_40X30], "a.png", { type: "image/png" }));
@@ -263,7 +263,12 @@ describe("upload routes and their refusals", () => {
       headers,
       body: update,
     });
-    expect(updated.status).toBe(200);
+    // Past the body limit, the route reads the thumbnail and refuses it for an image.
+    expect(updated.status).toBe(422);
+    expect(await updated.json()).toEqual({
+      error: "Validation failed: Thumbnail must be blank",
+      kind: "ValidationError",
+    });
   });
 
   it("answers an oversized HTML form with an HTML page", async () => {
