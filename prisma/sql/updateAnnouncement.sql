@@ -5,7 +5,9 @@
 -- @param {Int} $5:allDay
 -- @param {String} $6:publishedAt?
 -- @param {String} $7:now
+-- @param {String} $8:text?
 UPDATE announcements
-SET content = $2, starts_at = $3, ends_at = $4, all_day = $5, published_at = $6, updated_at = $7
+SET content = $2, starts_at = $3, ends_at = $4, all_day = $5, published_at = $6, updated_at = $7,
+  text = $8
 WHERE id = $1
 RETURNING id

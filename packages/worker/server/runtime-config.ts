@@ -123,9 +123,18 @@ const announcementSchema = z.object({
     .optional(),
 });
 
+/**
+ * What an announcement says: HTML served as it is (the `ANNOUNCEMENTS` var,
+ * the admin API's `content`), or text an admin wrote, which each read renders
+ * as Mastodon renders an announcement's `text`.
+ */
+export type AnnouncementBody =
+  | Readonly<{ kind: "Html"; html: string }>
+  | Readonly<{ kind: "Text"; text: string }>;
+
 export type Announcement = Readonly<{
   id: string;
-  content: string;
+  body: AnnouncementBody;
   startsAt: string | null;
   endsAt: string | null;
   allDay: boolean;
@@ -145,7 +154,7 @@ export const announcements = (env: Env): ReadonlyArray<Announcement> =>
 export const parseAnnouncements = (raw: string): ReadonlyArray<Announcement> =>
   parseJsonArray(z.array(announcementSchema), raw).map((entry) => ({
     id: entry.id,
-    content: entry.content,
+    body: { kind: "Html", html: entry.content },
     startsAt: entry.starts_at ?? null,
     endsAt: entry.ends_at ?? null,
     allDay: entry.all_day ?? false,

@@ -11,6 +11,7 @@ import {
   findMediaById as findMediaByIdSql,
   insertMedia as insertMediaSql,
   updateMediaMetadata as updateMediaMetadataSql,
+  updateMediaThumbnail as updateMediaThumbnailSql,
 } from "./generated/prisma/sql";
 
 const IdRow = z.object({ id: z.string() });
@@ -31,20 +32,35 @@ export const MediaRowSchema = z.object({
   preview_width: z.number().int().nullable(),
   preview_height: z.number().int().nullable(),
   blurhash: z.string().min(1).nullable(),
+  thumbnail_content_type: z.string().min(1).nullable(),
 });
 
 export type MediaRow = z.infer<typeof MediaRowSchema>;
 
+/** A preview stored next to an original: its key, type, dimensions and stored byte size. */
+export type StoredPreview = Readonly<{
+  objectKey: string;
+  contentType: string;
+  dimensions: ImageDimensions;
+  size: number;
+}>;
+
 /**
  * What an image upload stores beside the original: its dimensions, the
- * preview's key, dimensions and stored byte size (absent when storing the
- * preview failed), and the blurhash.
+ * preview (absent when storing it failed), and the blurhash.
  */
 export type StoredImage = Readonly<{
   original: ImageDimensions;
-  preview: Readonly<{ objectKey: string; dimensions: ImageDimensions; size: number }> | undefined;
+  preview: StoredPreview | undefined;
   blurhash: string | null;
 }>;
+
+/**
+ * A video's custom thumbnail, Mastodon's `thumbnail` attachment: the image
+ * as stored at the `small` size, and its blurhash. It takes the place of the
+ * row's preview.
+ */
+export type StoredThumbnail = StoredPreview & Readonly<{ blurhash: string | null }>;
 
 /** Mastodon's `focus` value: `"x,y"` with each component in [-1, 1]. */
 export const parseMediaFocus = (raw: string): Readonly<{ x: number; y: number }> | undefined => {
@@ -69,19 +85,22 @@ export const insertMedia = async (
     description: string | null;
     focus: Readonly<{ x: number; y: number }> | null;
     image: StoredImage | null;
+    thumbnail: StoredThumbnail | null;
   },
 ): Promise<Result<MediaRow, RepositoryError>> =>
   runD1(async () => {
     const createdAt = nowIso();
     const focusX = input.focus?.x ?? null;
     const focusY = input.focus?.y ?? null;
+    const preview = input.thumbnail ?? input.image?.preview;
     const image = {
       width: input.image?.original.width ?? null,
       height: input.image?.original.height ?? null,
-      preview_object_key: input.image?.preview?.objectKey ?? null,
-      preview_width: input.image?.preview?.dimensions.width ?? null,
-      preview_height: input.image?.preview?.dimensions.height ?? null,
-      blurhash: input.image?.blurhash ?? null,
+      preview_object_key: preview?.objectKey ?? null,
+      preview_width: preview?.dimensions.width ?? null,
+      preview_height: preview?.dimensions.height ?? null,
+      blurhash: (input.thumbnail ?? input.image)?.blurhash ?? null,
+      thumbnail_content_type: input.thumbnail?.contentType ?? null,
     };
     // Prisma 7 exposes TypedSQL writes through $queryRawTyped (no $executeRawTyped yet).
     await runTyped(
@@ -102,7 +121,8 @@ export const insertMedia = async (
         image.preview_height,
         image.blurhash,
         input.fileSize,
-        input.image?.preview?.size ?? null,
+        preview?.size ?? null,
+        image.thumbnail_content_type,
       ),
     );
     return {
@@ -141,7 +161,7 @@ export const findMediaByIds = async (
     db
       .prepare(
         `SELECT id, account_id, status_id, object_key, content_type, created_at, description, focus_x, focus_y,
-           width, height, preview_object_key, preview_width, preview_height, blurhash
+           width, height, preview_object_key, preview_width, preview_height, blurhash, thumbnail_content_type
          FROM media_attachments WHERE id ${sqlInJsonEach()}`,
       )
       .bind(jsonStringArray(unique))
@@ -195,6 +215,33 @@ export const updateMediaMetadata = async (
         input.description,
         input.focusX,
         input.focusY,
+      ),
+      IdRow,
+    );
+    return rows.length > 0;
+  });
+
+/**
+ * Set (or, with `null`, clear) the custom thumbnail of one of the account's
+ * media rows that no status holds. False when there is no such row.
+ */
+export const updateMediaThumbnail = async (
+  db: D1Database,
+  input: Readonly<{ id: string; accountId: string; thumbnail: StoredThumbnail | null }>,
+): Promise<Result<boolean, RepositoryError>> =>
+  runD1(async () => {
+    const { thumbnail } = input;
+    const rows = await queryTyped(
+      db,
+      updateMediaThumbnailSql(
+        input.id,
+        input.accountId,
+        thumbnail?.objectKey ?? null,
+        thumbnail?.dimensions.width ?? null,
+        thumbnail?.dimensions.height ?? null,
+        thumbnail?.size ?? null,
+        thumbnail?.blurhash ?? null,
+        thumbnail?.contentType ?? null,
       ),
       IdRow,
     );

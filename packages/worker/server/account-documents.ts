@@ -35,7 +35,7 @@ import {
 } from "./account-profile-store";
 import { loadCustomEmojis } from "./custom-emoji-store";
 import { formatFieldValue, type PostMention, shortenedLink, textToHtml } from "./html";
-import { knownFieldMentions } from "./mention-resolve";
+import { knownMentions } from "./mention-resolve";
 import { mediaUrl } from "./media-document";
 import { quotePolicyName } from "./quote-policy-name";
 import {
@@ -327,7 +327,7 @@ export const mastodonAccount = (
   /** The instance's custom emojis; the account's are those its profile writes. */
   instanceEmojis: ReadonlyArray<CustomEmoji> = [],
   profile: AccountProfile = EMPTY_ACCOUNT_PROFILE,
-  /** The accounts the fields mention that this server has ({@link knownFieldMentions}). */
+  /** The accounts the fields mention that this server has ({@link knownMentions}). */
   fieldMentions: ReadonlyArray<PostMention> = [],
 ): ApiAccountJSON => {
   const emojis = emojisInTexts(profileEmojiTexts(account.displayName, profile), instanceEmojis);
@@ -439,7 +439,7 @@ export const mastodonAccountDocument = async (
   ]);
   const profile = profileResult.isOk() ? profileResult.value : EMPTY_ACCOUNT_PROFILE;
   const [fieldMentions, viewer] = await Promise.all([
-    knownFieldMentions(env.DB, identity, fieldValues([profile])),
+    knownMentions(env.DB, identity, fieldValues([profile])),
     loadFeatureViewer(env.DB, viewerId, [{ account, discoverable: profile.discoverable }], []),
   ]);
   const document = mastodonAccount(
@@ -488,7 +488,7 @@ export const mastodonAccountDocuments = async (
   const profileOf = (account: LocalAccount): AccountProfile =>
     (profiles.isOk() ? profiles.value.get(account.id) : undefined) ?? EMPTY_ACCOUNT_PROFILE;
   const [fieldMentions, viewer] = await Promise.all([
-    knownFieldMentions(
+    knownMentions(
       env.DB,
       identity,
       fieldValues(profiles.isOk() ? [...profiles.value.values()] : []),

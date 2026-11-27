@@ -88,3 +88,35 @@ test("the standalone composer at /share suggests the server's custom emoji", asy
     }),
   ).toBeVisible();
 });
+
+test("a link in an announcement shows in the brand colour", async ({ page }) => {
+  const url = `https://example.org/notes/${Date.now().toString(36)}`;
+  await signUp(page, "modadmin");
+  await page.goto("/admin/announcements");
+  await page.getByLabel("Text").fill(`Release notes: ${url}`);
+  await page.getByRole("button", { name: "Create announcement" }).click();
+  await expect(page.getByText("Announcement created.")).toBeVisible();
+
+  await page.goto("/home");
+  await page.getByRole("button", { name: "Show announcements" }).click();
+  const link = page.locator(`.announcements__content a[href="${url}"]`);
+  await expect(link).toHaveCount(1);
+  // Upstream coloured these links as the text around them (`--color-text-primary`).
+  const colours = await link.evaluate((element) => {
+    const probe = (variable: string) => {
+      const span = document.createElement("span");
+      span.style.color = `var(${variable})`;
+      element.parentElement?.append(span);
+      const colour = getComputedStyle(span).color;
+      span.remove();
+      return colour;
+    };
+    return {
+      link: getComputedStyle(element).color,
+      brand: probe("--color-text-brand"),
+      text: probe("--color-text-primary"),
+    };
+  });
+  expect(colours.brand).not.toBe(colours.text);
+  expect(colours.link).toBe(colours.brand);
+});

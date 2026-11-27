@@ -7502,6 +7502,7 @@ export const AnnouncementsScalarFieldEnum = {
   published_at: "published_at",
   created_at: "created_at",
   updated_at: "updated_at",
+  text: "text",
 } as const;
 
 export type AnnouncementsScalarFieldEnum =
@@ -8015,6 +8016,7 @@ export const Media_attachmentsScalarFieldEnum = {
   blurhash: "blurhash",
   file_size: "file_size",
   preview_file_size: "preview_file_size",
+  thumbnail_content_type: "thumbnail_content_type",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =

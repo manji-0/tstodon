@@ -65,7 +65,7 @@ const announcementResponse = (
 
 const adminAnnouncementDocument = (row: AnnouncementRow): ApiAdminAnnouncementJSON => ({
   id: row.id,
-  text: row.content,
+  text: row.text ?? row.content,
   content: row.content,
   starts_at: row.starts_at,
   ends_at: row.ends_at,
