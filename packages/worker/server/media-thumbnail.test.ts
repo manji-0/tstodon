@@ -48,6 +48,11 @@ const putThumbnail = async (email: string, id: string, thumbnail: File) =>
 /** The R2 key under the media base URL. */
 const objectKeyOf = (url: string): string => new URL(url).pathname.replace(/^\//, "");
 
+/** The `meta.small` size of an attachment, whatever its type. */
+const smallOf = (meta: unknown) =>
+  z.object({ small: z.object({ width: z.number(), height: z.number() }).optional() }).parse(meta)
+    .small;
+
 const stored = async (url: string): Promise<string | undefined> => {
   const object = await env.MEDIA.get(objectKeyOf(url));
   await object?.arrayBuffer();
@@ -62,7 +67,7 @@ describe("custom thumbnails of video", () => {
     const media = expectContract(ApiMediaAttachment, response.body);
     expect(media.type).toBe("video");
     expect(media.preview_url).not.toBe(media.url);
-    const small = media.meta?.small;
+    const small = smallOf(media.meta);
     expect((small?.width ?? 0) * (small?.height ?? 0)).toBeLessThanOrEqual(230_400);
     expect(small?.height).toBe(415);
     expect(media.blurhash).not.toBeNull();
@@ -85,7 +90,7 @@ describe("custom thumbnails of video", () => {
     const second = await putThumbnail(email, created.id, png());
     expect(second.status).toBe(200);
     const withSecond = expectContract(ApiMediaAttachment, second.body);
-    expect(withSecond.meta?.small).toMatchObject({ width: 40, height: 30 });
+    expect(smallOf(withSecond.meta)).toMatchObject({ width: 40, height: 30 });
     expect(await stored(withFirst.preview_url ?? "")).toBeUndefined();
     expect(await stored(withSecond.preview_url ?? "")).toMatch(/^image\//);
 
