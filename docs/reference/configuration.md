@@ -61,6 +61,8 @@ On a JPEG, PNG, WebP or AVIF upload, the Worker uses the `IMAGES` binding (Worke
 
 Without the binding, or when Images fails (for example, when Images is not enabled on the account, or the file is not a readable image), the upload still succeeds as before: `meta` has no sizes, `preview_url` is the original's URL, and `blurhash` is `null`; the Worker logs `MediaImageNotProcessed`. GIF and video uploads are never processed. Locally and in tests, Miniflare serves the binding with `sharp`. Each image upload makes two `info` calls and two transformations; see Cloudflare's Images pricing for what the binding bills.
 
+A video takes a custom thumbnail, as in Mastodon: the `thumbnail` file of `POST /api/v2/media` (and `/api/v1/media`) or of `PUT /api/v1/media/:id` while no post holds the attachment, a JPEG, PNG, GIF or WebP up to 16 MB (HEIC, HEIF and AVIF are refused, as on Mastodon's `main`). It goes through the same processing as an image's preview and takes the preview's place: the REST `preview_url`, `meta.small` and `blurhash` are the thumbnail's, and the federated `Document` names it as its `icon`. A new thumbnail replaces the old one, whose object is deleted, `thumbnail: null` (JSON) removes it, and deleting the attachment deletes it. An image refuses one (`Thumbnail must be blank`), and a thumbnail Images cannot process answers 500 with Mastodon's `Error processing thumbnail for uploaded media`. Unlike Mastodon, the `thumbnail` of an edit's `media_attributes` is ignored.
+
 ### Media metadata
 
 <!-- derived-from #image-processing -->

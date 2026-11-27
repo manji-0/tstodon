@@ -130,6 +130,7 @@ const media = {
       blurhash: "UABCDEFGHIJ00000000000000000",
       focalPoint: [0.25, -0.5] as const,
       dimensions: { width: 640, height: 480 },
+      thumbnail: undefined,
     },
     {
       mediaType: "video/mp4",
@@ -138,6 +139,7 @@ const media = {
       blurhash: null,
       focalPoint: [0, 1] as const,
       dimensions: undefined,
+      thumbnail: undefined,
     },
   ],
   authorSensitized: false,

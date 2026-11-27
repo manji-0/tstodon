@@ -1,13 +1,14 @@
 import { z } from "zod";
-import { ApEmoji } from "./actor";
+import { ApEmoji, ApImage } from "./actor";
 import { ApUri, withContext } from "./context";
 import { ApCuratedCollection } from "./curated-collection";
 import { ApHashtag } from "./hashtag";
 
 /**
  * A media attachment, as Mastodon's `NoteSerializer` federates it: its
- * description as `name`, the blurhash, a focal point when one is set, and the
- * original's dimensions when they were read.
+ * description as `name`, the blurhash, a focal point when one is set, the
+ * original's dimensions when they were read, and a video's custom thumbnail
+ * as `icon`.
  */
 export const ApDocument = z.object({
   type: z.literal("Document"),
@@ -18,6 +19,7 @@ export const ApDocument = z.object({
   focalPoint: z.tuple([z.number(), z.number()]).optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
+  icon: ApImage.optional(),
 });
 export type ApDocumentJSON = z.infer<typeof ApDocument>;
 

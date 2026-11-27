@@ -69,6 +69,7 @@ export type Media_attachmentsMinAggregateOutputType = {
   blurhash: string | null;
   file_size: number | null;
   preview_file_size: number | null;
+  thumbnail_content_type: string | null;
 };
 
 export type Media_attachmentsMaxAggregateOutputType = {
@@ -90,6 +91,7 @@ export type Media_attachmentsMaxAggregateOutputType = {
   blurhash: string | null;
   file_size: number | null;
   preview_file_size: number | null;
+  thumbnail_content_type: string | null;
 };
 
 export type Media_attachmentsCountAggregateOutputType = {
@@ -111,6 +113,7 @@ export type Media_attachmentsCountAggregateOutputType = {
   blurhash: number;
   file_size: number;
   preview_file_size: number;
+  thumbnail_content_type: number;
   _all: number;
 };
 
@@ -157,6 +160,7 @@ export type Media_attachmentsMinAggregateInputType = {
   blurhash?: true;
   file_size?: true;
   preview_file_size?: true;
+  thumbnail_content_type?: true;
 };
 
 export type Media_attachmentsMaxAggregateInputType = {
@@ -178,6 +182,7 @@ export type Media_attachmentsMaxAggregateInputType = {
   blurhash?: true;
   file_size?: true;
   preview_file_size?: true;
+  thumbnail_content_type?: true;
 };
 
 export type Media_attachmentsCountAggregateInputType = {
@@ -199,6 +204,7 @@ export type Media_attachmentsCountAggregateInputType = {
   blurhash?: true;
   file_size?: true;
   preview_file_size?: true;
+  thumbnail_content_type?: true;
   _all?: true;
 };
 
@@ -312,6 +318,7 @@ export type Media_attachmentsGroupByOutputType = {
   blurhash: string | null;
   file_size: number;
   preview_file_size: number | null;
+  thumbnail_content_type: string | null;
   _count: Media_attachmentsCountAggregateOutputType | null;
   _avg: Media_attachmentsAvgAggregateOutputType | null;
   _sum: Media_attachmentsSumAggregateOutputType | null;
@@ -354,6 +361,7 @@ export type media_attachmentsWhereInput = {
   blurhash?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
   file_size?: Prisma.IntFilter<"media_attachments"> | number;
   preview_file_size?: Prisma.IntNullableFilter<"media_attachments"> | number | null;
+  thumbnail_content_type?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
   statuses?: Prisma.XOR<
     Prisma.StatusesNullableScalarRelationFilter,
     Prisma.statusesWhereInput
@@ -380,6 +388,7 @@ export type media_attachmentsOrderByWithRelationInput = {
   blurhash?: Prisma.SortOrderInput | Prisma.SortOrder;
   file_size?: Prisma.SortOrder;
   preview_file_size?: Prisma.SortOrderInput | Prisma.SortOrder;
+  thumbnail_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
   statuses?: Prisma.statusesOrderByWithRelationInput;
   accounts?: Prisma.accountsOrderByWithRelationInput;
 };
@@ -407,6 +416,7 @@ export type media_attachmentsWhereUniqueInput = Prisma.AtLeast<
     blurhash?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
     file_size?: Prisma.IntFilter<"media_attachments"> | number;
     preview_file_size?: Prisma.IntNullableFilter<"media_attachments"> | number | null;
+    thumbnail_content_type?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
     statuses?: Prisma.XOR<
       Prisma.StatusesNullableScalarRelationFilter,
       Prisma.statusesWhereInput
@@ -435,6 +445,7 @@ export type media_attachmentsOrderByWithAggregationInput = {
   blurhash?: Prisma.SortOrderInput | Prisma.SortOrder;
   file_size?: Prisma.SortOrder;
   preview_file_size?: Prisma.SortOrderInput | Prisma.SortOrder;
+  thumbnail_content_type?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.media_attachmentsCountOrderByAggregateInput;
   _avg?: Prisma.media_attachmentsAvgOrderByAggregateInput;
   _max?: Prisma.media_attachmentsMaxOrderByAggregateInput;
@@ -471,6 +482,10 @@ export type media_attachmentsScalarWhereWithAggregatesInput = {
   blurhash?: Prisma.StringNullableWithAggregatesFilter<"media_attachments"> | string | null;
   file_size?: Prisma.IntWithAggregatesFilter<"media_attachments"> | number;
   preview_file_size?: Prisma.IntNullableWithAggregatesFilter<"media_attachments"> | number | null;
+  thumbnail_content_type?:
+    | Prisma.StringNullableWithAggregatesFilter<"media_attachments">
+    | string
+    | null;
 };
 
 export type media_attachmentsCreateInput = {
@@ -490,6 +505,7 @@ export type media_attachmentsCreateInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
   statuses?: Prisma.statusesCreateNestedOneWithoutMedia_attachmentsInput;
   accounts: Prisma.accountsCreateNestedOneWithoutMedia_attachmentsInput;
 };
@@ -513,6 +529,7 @@ export type media_attachmentsUncheckedCreateInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
 };
 
 export type media_attachmentsUpdateInput = {
@@ -532,6 +549,7 @@ export type media_attachmentsUpdateInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   statuses?: Prisma.statusesUpdateOneWithoutMedia_attachmentsNestedInput;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutMedia_attachmentsNestedInput;
 };
@@ -555,6 +573,7 @@ export type media_attachmentsUncheckedUpdateInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type media_attachmentsCreateManyInput = {
@@ -576,6 +595,7 @@ export type media_attachmentsCreateManyInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
 };
 
 export type media_attachmentsUpdateManyMutationInput = {
@@ -595,6 +615,7 @@ export type media_attachmentsUpdateManyMutationInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type media_attachmentsUncheckedUpdateManyInput = {
@@ -616,6 +637,7 @@ export type media_attachmentsUncheckedUpdateManyInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type Media_attachmentsListRelationFilter = {
@@ -647,6 +669,7 @@ export type media_attachmentsCountOrderByAggregateInput = {
   blurhash?: Prisma.SortOrder;
   file_size?: Prisma.SortOrder;
   preview_file_size?: Prisma.SortOrder;
+  thumbnail_content_type?: Prisma.SortOrder;
 };
 
 export type media_attachmentsAvgOrderByAggregateInput = {
@@ -680,6 +703,7 @@ export type media_attachmentsMaxOrderByAggregateInput = {
   blurhash?: Prisma.SortOrder;
   file_size?: Prisma.SortOrder;
   preview_file_size?: Prisma.SortOrder;
+  thumbnail_content_type?: Prisma.SortOrder;
 };
 
 export type media_attachmentsMinOrderByAggregateInput = {
@@ -701,6 +725,7 @@ export type media_attachmentsMinOrderByAggregateInput = {
   blurhash?: Prisma.SortOrder;
   file_size?: Prisma.SortOrder;
   preview_file_size?: Prisma.SortOrder;
+  thumbnail_content_type?: Prisma.SortOrder;
 };
 
 export type media_attachmentsSumOrderByAggregateInput = {
@@ -928,6 +953,7 @@ export type media_attachmentsCreateWithoutAccountsInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
   statuses?: Prisma.statusesCreateNestedOneWithoutMedia_attachmentsInput;
 };
 
@@ -949,6 +975,7 @@ export type media_attachmentsUncheckedCreateWithoutAccountsInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
 };
 
 export type media_attachmentsCreateOrConnectWithoutAccountsInput = {
@@ -1015,6 +1042,7 @@ export type media_attachmentsScalarWhereInput = {
   blurhash?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
   file_size?: Prisma.IntFilter<"media_attachments"> | number;
   preview_file_size?: Prisma.IntNullableFilter<"media_attachments"> | number | null;
+  thumbnail_content_type?: Prisma.StringNullableFilter<"media_attachments"> | string | null;
 };
 
 export type media_attachmentsCreateWithoutStatusesInput = {
@@ -1034,6 +1062,7 @@ export type media_attachmentsCreateWithoutStatusesInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
   accounts: Prisma.accountsCreateNestedOneWithoutMedia_attachmentsInput;
 };
 
@@ -1055,6 +1084,7 @@ export type media_attachmentsUncheckedCreateWithoutStatusesInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
 };
 
 export type media_attachmentsCreateOrConnectWithoutStatusesInput = {
@@ -1117,6 +1147,7 @@ export type media_attachmentsCreateManyAccountsInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
 };
 
 export type media_attachmentsUpdateWithoutAccountsInput = {
@@ -1136,6 +1167,7 @@ export type media_attachmentsUpdateWithoutAccountsInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   statuses?: Prisma.statusesUpdateOneWithoutMedia_attachmentsNestedInput;
 };
 
@@ -1157,6 +1189,7 @@ export type media_attachmentsUncheckedUpdateWithoutAccountsInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type media_attachmentsUncheckedUpdateManyWithoutAccountsInput = {
@@ -1177,6 +1210,7 @@ export type media_attachmentsUncheckedUpdateManyWithoutAccountsInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type media_attachmentsCreateManyStatusesInput = {
@@ -1197,6 +1231,7 @@ export type media_attachmentsCreateManyStatusesInput = {
   blurhash?: string | null;
   file_size: number;
   preview_file_size?: number | null;
+  thumbnail_content_type?: string | null;
 };
 
 export type media_attachmentsUpdateWithoutStatusesInput = {
@@ -1216,6 +1251,7 @@ export type media_attachmentsUpdateWithoutStatusesInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   accounts?: Prisma.accountsUpdateOneRequiredWithoutMedia_attachmentsNestedInput;
 };
 
@@ -1237,6 +1273,7 @@ export type media_attachmentsUncheckedUpdateWithoutStatusesInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type media_attachmentsUncheckedUpdateManyWithoutStatusesInput = {
@@ -1257,6 +1294,7 @@ export type media_attachmentsUncheckedUpdateManyWithoutStatusesInput = {
   blurhash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   file_size?: Prisma.IntFieldUpdateOperationsInput | number;
   preview_file_size?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+  thumbnail_content_type?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type media_attachmentsSelect<
@@ -1281,6 +1319,7 @@ export type media_attachmentsSelect<
     blurhash?: boolean;
     file_size?: boolean;
     preview_file_size?: boolean;
+    thumbnail_content_type?: boolean;
     statuses?: boolean | Prisma.media_attachments$statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -1309,6 +1348,7 @@ export type media_attachmentsSelectCreateManyAndReturn<
     blurhash?: boolean;
     file_size?: boolean;
     preview_file_size?: boolean;
+    thumbnail_content_type?: boolean;
     statuses?: boolean | Prisma.media_attachments$statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -1337,6 +1377,7 @@ export type media_attachmentsSelectUpdateManyAndReturn<
     blurhash?: boolean;
     file_size?: boolean;
     preview_file_size?: boolean;
+    thumbnail_content_type?: boolean;
     statuses?: boolean | Prisma.media_attachments$statusesArgs<ExtArgs>;
     accounts?: boolean | Prisma.accountsDefaultArgs<ExtArgs>;
   },
@@ -1362,6 +1403,7 @@ export type media_attachmentsSelectScalar = {
   blurhash?: boolean;
   file_size?: boolean;
   preview_file_size?: boolean;
+  thumbnail_content_type?: boolean;
 };
 
 export type media_attachmentsOmit<
@@ -1384,7 +1426,8 @@ export type media_attachmentsOmit<
   | "preview_height"
   | "blurhash"
   | "file_size"
-  | "preview_file_size",
+  | "preview_file_size"
+  | "thumbnail_content_type",
   ExtArgs["result"]["media_attachments"]
 >;
 export type media_attachmentsInclude<
@@ -1434,6 +1477,7 @@ export type $media_attachmentsPayload<
       blurhash: string | null;
       file_size: number;
       preview_file_size: number | null;
+      thumbnail_content_type: string | null;
     },
     ExtArgs["result"]["media_attachments"]
   >;
@@ -2051,6 +2095,7 @@ export interface media_attachmentsFieldRefs {
   readonly blurhash: Prisma.FieldRef<"media_attachments", "String">;
   readonly file_size: Prisma.FieldRef<"media_attachments", "Int">;
   readonly preview_file_size: Prisma.FieldRef<"media_attachments", "Int">;
+  readonly thumbnail_content_type: Prisma.FieldRef<"media_attachments", "String">;
 }
 
 // Custom InputTypes

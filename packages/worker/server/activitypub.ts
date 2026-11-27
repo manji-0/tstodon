@@ -468,8 +468,9 @@ export type NoteMention = Readonly<{ href: string; name: string }>;
 
 /**
  * A media attachment as Mastodon federates it, a `Document`: its type, public
- * URL, description as `name`, blurhash, focal point when one is set, and the
- * original's `width` / `height` when the upload read them.
+ * URL, description as `name`, blurhash, focal point when one is set, the
+ * original's `width` / `height` when the upload read them, and its custom
+ * thumbnail, an `Image` `icon`.
  */
 export type NoteAttachment = Readonly<{
   mediaType: string;
@@ -478,6 +479,7 @@ export type NoteAttachment = Readonly<{
   blurhash: string | null;
   focalPoint: readonly [number, number] | undefined;
   dimensions: Readonly<{ width: number; height: number }> | undefined;
+  thumbnail: Readonly<{ mediaType: string; url: string }> | undefined;
 }>;
 
 /**
@@ -675,6 +677,7 @@ export const noteDocument = (
       ...(media.dimensions
         ? { width: media.dimensions.width, height: media.dimensions.height }
         : {}),
+      ...(media.thumbnail ? { icon: { type: "Image" as const, ...media.thumbnail } } : {}),
     })),
     tag: [
       ...mentions.map((mention) => ({

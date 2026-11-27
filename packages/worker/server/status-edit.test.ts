@@ -231,6 +231,7 @@ describe("an edit that changes nothing", () => {
       contentType: "image/png",
       description: null,
       focus: null,
+      thumbnail: null,
       image: { original: { width: 40, height: 30 }, preview: undefined, blurhash: null },
     });
     expect(inserted.isOk()).toBe(true);

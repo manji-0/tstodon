@@ -730,6 +730,7 @@ export const Media_attachmentsScalarFieldEnum = {
   blurhash: "blurhash",
   file_size: "file_size",
   preview_file_size: "preview_file_size",
+  thumbnail_content_type: "thumbnail_content_type",
 } as const;
 
 export type Media_attachmentsScalarFieldEnum =
