@@ -7,9 +7,19 @@ import {
   deleteMedia,
   findMediaById,
   insertMedia,
+  type MediaRow,
   parseMediaFocus,
+  type StoredThumbnail,
   updateMediaMetadata,
+  updateMediaThumbnail,
 } from "../media-store";
+import { deleteMediaObjects } from "../media-objects";
+import {
+  jsonThumbnailError,
+  storeThumbnail,
+  thumbnailAllowed,
+  type ThumbnailError,
+} from "../media-thumbnail";
 import { newAttachmentObjectKey, parseMediaObjectKey } from "../media-keys";
 import { emojiImageType } from "../admin-custom-emojis";
 import { notFound } from "../not-found";
@@ -22,11 +32,16 @@ import { mediaDescriptionFits } from "../status-body-schema";
 import { findStatusById } from "../status-store";
 import { canViewStatus } from "../visibility-guard";
 import type { Context } from "hono";
-import type { z } from "zod";
+import { z } from "zod";
 import { ApiUpdateMediaParamsSchema, ApiUploadMediaParamsSchema } from "@tstodon/api";
 import { parseBodyParams, readOptionalParams } from "../request-params";
 
 const CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/** A `thumbnail` param: a file, or `null` to remove the one there is. */
+const thumbnailParam = z.instanceof(File).nullish();
+const UpdateMediaParamsSchema = ApiUpdateMediaParamsSchema.extend({ thumbnail: thumbnailParam });
+const UploadMediaParamsSchema = ApiUploadMediaParamsSchema.extend({ thumbnail: thumbnailParam });
 
 /**
  * What a request sets: `undefined` keeps the stored value, and a blank
@@ -40,7 +55,7 @@ type MediaMetadataEdit = Readonly<{
 type MediaMetadataError = Readonly<{ kind: "InvalidFocus" } | { kind: "DescriptionTooLong" }>;
 
 const parseMediaMetadata = (
-  body: z.output<typeof ApiUpdateMediaParamsSchema>,
+  body: z.output<typeof UpdateMediaParamsSchema>,
 ): Result<MediaMetadataEdit, MediaMetadataError> => {
   // A blank focus field is no focus at all, as some clients send it empty.
   const focusText = body.focus == null || body.focus.trim() === "" ? undefined : body.focus;
@@ -84,7 +99,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     return c.json({ error: "file is required", kind: "ValidationError" }, 400);
   }
   // An upload's `description` and `focus` are the fields `PUT /api/v1/media/:id` takes.
-  const fields = parseBodyParams(ApiUploadMediaParamsSchema, body);
+  const fields = parseBodyParams(UploadMediaParamsSchema, body);
   if (fields.isErr()) {
     return jsonValidationError(c);
   }
@@ -129,6 +144,16 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     );
   }
   const bytes = scrubbed.value;
+  const thumbnailFile = fields.value.thumbnail;
+  if (thumbnailFile && !thumbnailAllowed(contentType)) {
+    return jsonThumbnailError(c, { kind: "ThumbnailNotAllowed" });
+  }
+  const thumbnail = thumbnailFile
+    ? await storeThumbnail(c.env, user.value.id, thumbnailFile)
+    : ok<StoredThumbnail | null, ThumbnailError>(null);
+  if (thumbnail.isErr()) {
+    return jsonThumbnailError(c, thumbnail.error);
+  }
   const id = newEntityId();
   const objectKey = newAttachmentObjectKey(user.value.id);
   const stored = await c.env.MEDIA.put(objectKey, bytes, {
@@ -151,6 +176,7 @@ const uploadMedia = async (c: Context<{ Bindings: Env }>) => {
     description: metadata.value.description ?? null,
     focus: metadata.value.focus ?? null,
     image,
+    thumbnail: thumbnail.value,
   });
   if (row.isErr()) {
     return jsonRepositoryError(c, row.error.message);
@@ -318,13 +344,17 @@ export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
   }
 
   // The web UI sends JSON; other clients send a form.
-  const body = await readOptionalParams(c, ApiUpdateMediaParamsSchema);
+  const body = await readOptionalParams(c, UpdateMediaParamsSchema);
   if (body.isErr()) {
     return jsonValidationError(c);
   }
   const metadata = parseMediaMetadata(body.value);
   if (metadata.isErr()) {
     return jsonMediaMetadataError(c, metadata.error);
+  }
+  const replaced = await replaceThumbnail(c, row.value, body.value.thumbnail);
+  if (replaced !== undefined) {
+    return replaced;
   }
   const { description, focus } = metadata.value;
   const updated = await updateMediaMetadata(c.env.DB, {
@@ -345,6 +375,50 @@ export const putV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/medi
     return c.json({ error: "Record not found", kind: "NotFound" }, 404);
   }
   return c.json(mastodonMedia(identity.value, latest.value));
+};
+
+/**
+ * `PUT /api/v1/media/:id`'s `thumbnail`, as Mastodon assigns it: a file
+ * replaces the attachment's thumbnail and `null` removes it; the old one's
+ * object is deleted once the row no longer names it. Only audio and video
+ * take one. The error response, or `undefined` to go on.
+ */
+const replaceThumbnail = async (
+  c: Context<{ Bindings: Env }>,
+  row: MediaRow,
+  file: File | null | undefined,
+): Promise<Response | undefined> => {
+  if (file === undefined || (file === null && row.thumbnail_content_type === null)) {
+    return undefined;
+  }
+  if (file !== null && !thumbnailAllowed(row.content_type)) {
+    return jsonThumbnailError(c, { kind: "ThumbnailNotAllowed" });
+  }
+  const thumbnail =
+    file === null
+      ? ok<StoredThumbnail | null, ThumbnailError>(null)
+      : await storeThumbnail(c.env, row.account_id, file);
+  if (thumbnail.isErr()) {
+    return jsonThumbnailError(c, thumbnail.error);
+  }
+  const stored = thumbnail.value;
+  const updated = await updateMediaThumbnail(c.env.DB, {
+    id: row.id,
+    accountId: row.account_id,
+    thumbnail: stored,
+  });
+  if (updated.isErr() || !updated.value) {
+    if (stored) {
+      await deleteMediaObjects(c.env, [stored.objectKey], { mediaId: row.id });
+    }
+    return updated.isErr()
+      ? jsonRepositoryError(c, updated.error.message)
+      : c.json({ error: "Record not found", kind: "NotFound" }, 404);
+  }
+  if (row.preview_object_key !== null) {
+    await deleteMediaObjects(c.env, [row.preview_object_key], { mediaId: row.id });
+  }
+  return undefined;
 };
 
 export const deleteV1MediaById = async (c: Context<{ Bindings: Env }, "/api/v1/media/:id">) => {

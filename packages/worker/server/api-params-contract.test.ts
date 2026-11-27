@@ -872,7 +872,7 @@ describe("REST request params: statuses, media and compose search (web UI compos
     expect(await mediaAnswer(email, keptMedia.id)).toBe(200);
   });
 
-  it("media: v2 and v1 uploads take description and focus; a thumbnail is read and ignored", async () => {
+  it("media: v2 and v1 uploads take description and focus; an image refuses a thumbnail", async () => {
     const email = "params-compose-media@example.com";
     await credentials(email);
     const fields: FormEntries = [
@@ -890,19 +890,22 @@ describe("REST request params: statuses, media and compose search (web UI compos
     const thumbnailForm = new FormData();
     thumbnailForm.set("thumbnail", new File([PNG_40X30], "t.png", { type: "image/png" }));
     thumbnailForm.set("description", "with a thumbnail");
-    const withThumbnail = accepted(
+    const withThumbnail = await SELF.fetch(`https://example.com/api/v1/media/${v2.id}`, {
+      method: "PUT",
+      headers: await authHeaders(email),
+      body: thumbnailForm,
+    });
+    expect(withThumbnail.status).toBe(422);
+    expect(await withThumbnail.json()).toEqual({
+      error: "Validation failed: Thumbnail must be blank",
+      kind: "ValidationError",
+    });
+    const unchanged = accepted(
       ApiMediaAttachment,
-      await answer(
-        await SELF.fetch(`https://example.com/api/v1/media/${v2.id}`, {
-          method: "PUT",
-          headers: await authHeaders(email),
-          body: thumbnailForm,
-        }),
-      ),
-      "PUT /api/v1/media/:id (thumbnail)",
+      await sendGet(email, `/api/v1/media/${v2.id}`),
+      "GET /api/v1/media/:id",
     );
-    expect(withThumbnail.description).toBe("with a thumbnail");
-    expect(withThumbnail.preview_url).toBe(v2.preview_url);
+    expect(unchanged.description).toBe("a gradient");
   });
 
   it("compose suggestions: account and hashtag search read string booleans and numbers", async () => {

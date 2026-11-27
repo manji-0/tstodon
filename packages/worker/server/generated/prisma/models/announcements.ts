@@ -43,6 +43,7 @@ export type AnnouncementsMinAggregateOutputType = {
   published_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  text: string | null;
 };
 
 export type AnnouncementsMaxAggregateOutputType = {
@@ -54,6 +55,7 @@ export type AnnouncementsMaxAggregateOutputType = {
   published_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  text: string | null;
 };
 
 export type AnnouncementsCountAggregateOutputType = {
@@ -65,6 +67,7 @@ export type AnnouncementsCountAggregateOutputType = {
   published_at: number;
   created_at: number;
   updated_at: number;
+  text: number;
   _all: number;
 };
 
@@ -85,6 +88,7 @@ export type AnnouncementsMinAggregateInputType = {
   published_at?: true;
   created_at?: true;
   updated_at?: true;
+  text?: true;
 };
 
 export type AnnouncementsMaxAggregateInputType = {
@@ -96,6 +100,7 @@ export type AnnouncementsMaxAggregateInputType = {
   published_at?: true;
   created_at?: true;
   updated_at?: true;
+  text?: true;
 };
 
 export type AnnouncementsCountAggregateInputType = {
@@ -107,6 +112,7 @@ export type AnnouncementsCountAggregateInputType = {
   published_at?: true;
   created_at?: true;
   updated_at?: true;
+  text?: true;
   _all?: true;
 };
 
@@ -210,6 +216,7 @@ export type AnnouncementsGroupByOutputType = {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  text: string | null;
   _count: AnnouncementsCountAggregateOutputType | null;
   _avg: AnnouncementsAvgAggregateOutputType | null;
   _sum: AnnouncementsSumAggregateOutputType | null;
@@ -242,6 +249,7 @@ export type announcementsWhereInput = {
   published_at?: Prisma.StringNullableFilter<"announcements"> | string | null;
   created_at?: Prisma.StringFilter<"announcements"> | string;
   updated_at?: Prisma.StringFilter<"announcements"> | string;
+  text?: Prisma.StringNullableFilter<"announcements"> | string | null;
 };
 
 export type announcementsOrderByWithRelationInput = {
@@ -253,6 +261,7 @@ export type announcementsOrderByWithRelationInput = {
   published_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  text?: Prisma.SortOrderInput | Prisma.SortOrder;
 };
 
 export type announcementsWhereUniqueInput = Prisma.AtLeast<
@@ -268,6 +277,7 @@ export type announcementsWhereUniqueInput = Prisma.AtLeast<
     published_at?: Prisma.StringNullableFilter<"announcements"> | string | null;
     created_at?: Prisma.StringFilter<"announcements"> | string;
     updated_at?: Prisma.StringFilter<"announcements"> | string;
+    text?: Prisma.StringNullableFilter<"announcements"> | string | null;
   },
   "id"
 >;
@@ -281,6 +291,7 @@ export type announcementsOrderByWithAggregationInput = {
   published_at?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  text?: Prisma.SortOrderInput | Prisma.SortOrder;
   _count?: Prisma.announcementsCountOrderByAggregateInput;
   _avg?: Prisma.announcementsAvgOrderByAggregateInput;
   _max?: Prisma.announcementsMaxOrderByAggregateInput;
@@ -304,6 +315,7 @@ export type announcementsScalarWhereWithAggregatesInput = {
   published_at?: Prisma.StringNullableWithAggregatesFilter<"announcements"> | string | null;
   created_at?: Prisma.StringWithAggregatesFilter<"announcements"> | string;
   updated_at?: Prisma.StringWithAggregatesFilter<"announcements"> | string;
+  text?: Prisma.StringNullableWithAggregatesFilter<"announcements"> | string | null;
 };
 
 export type announcementsCreateInput = {
@@ -315,6 +327,7 @@ export type announcementsCreateInput = {
   published_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  text?: string | null;
 };
 
 export type announcementsUncheckedCreateInput = {
@@ -326,6 +339,7 @@ export type announcementsUncheckedCreateInput = {
   published_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  text?: string | null;
 };
 
 export type announcementsUpdateInput = {
@@ -337,6 +351,7 @@ export type announcementsUpdateInput = {
   published_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  text?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type announcementsUncheckedUpdateInput = {
@@ -348,6 +363,7 @@ export type announcementsUncheckedUpdateInput = {
   published_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  text?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type announcementsCreateManyInput = {
@@ -359,6 +375,7 @@ export type announcementsCreateManyInput = {
   published_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  text?: string | null;
 };
 
 export type announcementsUpdateManyMutationInput = {
@@ -370,6 +387,7 @@ export type announcementsUpdateManyMutationInput = {
   published_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  text?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type announcementsUncheckedUpdateManyInput = {
@@ -381,6 +399,7 @@ export type announcementsUncheckedUpdateManyInput = {
   published_at?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.StringFieldUpdateOperationsInput | string;
   updated_at?: Prisma.StringFieldUpdateOperationsInput | string;
+  text?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
 };
 
 export type announcementsCountOrderByAggregateInput = {
@@ -392,6 +411,7 @@ export type announcementsCountOrderByAggregateInput = {
   published_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  text?: Prisma.SortOrder;
 };
 
 export type announcementsAvgOrderByAggregateInput = {
@@ -407,6 +427,7 @@ export type announcementsMaxOrderByAggregateInput = {
   published_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  text?: Prisma.SortOrder;
 };
 
 export type announcementsMinOrderByAggregateInput = {
@@ -418,6 +439,7 @@ export type announcementsMinOrderByAggregateInput = {
   published_at?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
+  text?: Prisma.SortOrder;
 };
 
 export type announcementsSumOrderByAggregateInput = {
@@ -436,6 +458,7 @@ export type announcementsSelect<
     published_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
+    text?: boolean;
   },
   ExtArgs["result"]["announcements"]
 >;
@@ -452,6 +475,7 @@ export type announcementsSelectCreateManyAndReturn<
     published_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
+    text?: boolean;
   },
   ExtArgs["result"]["announcements"]
 >;
@@ -468,6 +492,7 @@ export type announcementsSelectUpdateManyAndReturn<
     published_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
+    text?: boolean;
   },
   ExtArgs["result"]["announcements"]
 >;
@@ -481,6 +506,7 @@ export type announcementsSelectScalar = {
   published_at?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
+  text?: boolean;
 };
 
 export type announcementsOmit<
@@ -493,7 +519,8 @@ export type announcementsOmit<
   | "all_day"
   | "published_at"
   | "created_at"
-  | "updated_at",
+  | "updated_at"
+  | "text",
   ExtArgs["result"]["announcements"]
 >;
 
@@ -512,6 +539,7 @@ export type $announcementsPayload<
       published_at: string | null;
       created_at: string;
       updated_at: string;
+      text: string | null;
     },
     ExtArgs["result"]["announcements"]
   >;
@@ -1090,6 +1118,7 @@ export interface announcementsFieldRefs {
   readonly published_at: Prisma.FieldRef<"announcements", "String">;
   readonly created_at: Prisma.FieldRef<"announcements", "String">;
   readonly updated_at: Prisma.FieldRef<"announcements", "String">;
+  readonly text: Prisma.FieldRef<"announcements", "String">;
 }
 
 // Custom InputTypes

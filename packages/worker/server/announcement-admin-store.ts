@@ -20,6 +20,7 @@ const IdRow = z.object({ id: z.string() });
 export const AnnouncementRowSchema = z.object({
   id: z.string().min(1),
   content: z.string(),
+  text: z.string().nullable(),
   starts_at: z.string().nullable(),
   ends_at: z.string().nullable(),
   all_day: z.number(),
@@ -31,7 +32,10 @@ export const AnnouncementRowSchema = z.object({
 export type AnnouncementRow = z.infer<typeof AnnouncementRowSchema>;
 
 export type AnnouncementInput = Readonly<{
+  /** HTML: the text as one escaped paragraph when `text` is set. */
   content: string;
+  /** The text an admin wrote, which the public document renders; `null` serves `content`. */
+  text: string | null;
   startsAt: string | null;
   endsAt: string | null;
   allDay: boolean;
@@ -41,7 +45,7 @@ export type AnnouncementInput = Readonly<{
 /** Adapt a stored row to the shape the public announcement document builder uses. */
 export const announcementFromRow = (row: AnnouncementRow): Announcement => ({
   id: row.id,
-  content: row.content,
+  body: row.text === null ? { kind: "Html", html: row.content } : { kind: "Text", text: row.text },
   startsAt: row.starts_at,
   endsAt: row.ends_at,
   allDay: row.all_day !== 0,
@@ -87,6 +91,7 @@ export const insertAnnouncement = async (
         input.allDay ? 1 : 0,
         input.publishedAt,
         nowIso(),
+        input.text,
       ),
     );
   });
@@ -112,6 +117,7 @@ export const updateAnnouncement = async (
         input.allDay ? 1 : 0,
         input.publishedAt,
         nowIso(),
+        input.text,
       ),
       IdRow,
     );

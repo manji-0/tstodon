@@ -14,10 +14,11 @@
 -- @param {String} $14:blurhash?
 -- @param {Int} $15:fileSize
 -- @param {Int} $16:previewFileSize?
+-- @param {String} $17:thumbnailContentType?
 INSERT INTO media_attachments (
   id, account_id, object_key, content_type, created_at, description, focus_x, focus_y,
   width, height, preview_object_key, preview_width, preview_height, blurhash,
-  file_size, preview_file_size
+  file_size, preview_file_size, thumbnail_content_type
 )
 -- The sizes are those of the stored original and preview.
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)

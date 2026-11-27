@@ -12,6 +12,7 @@ import { queueRemoteActorPurge } from "./remote-actor-purge";
 import { findRemoteActorsByHandles, findRemoteActorsByUris } from "./remote-actor-store";
 import { allowListAdmits, federationAllowHosts } from "./runtime-config";
 import { instanceActorFetchSigner } from "./instance-actor";
+import { RemoteAccountId } from "./remote-account-id";
 
 const MAX_MENTION_LOOKUPS = 20;
 
@@ -126,16 +127,22 @@ export const mentionLinks = (
 ];
 
 /**
- * What `formatFieldValue` links the mentions of profile field values to: the
- * local accounts they name, and the remote actors cached under the handle
- * as written, as Mastodon's `EntityCache#mention` finds an account for a
- * field. Nothing is fetched, and a failed read links none.
+ * An account this server has, as a written mention finds it: what the
+ * formatters link it to, and its REST `Mention` id and `acct`.
  */
-export const knownFieldMentions = async (
+export type KnownMention = PostMention & Readonly<{ id: string; acct: string }>;
+
+/**
+ * The accounts the mentions in `values` name that this server has: the local
+ * accounts, and the remote actors cached under the handle as written, as
+ * Mastodon's `EntityCache#mention` finds an account for a profile field or an
+ * announcement. Nothing is fetched, and a failed read links none.
+ */
+export const knownMentions = async (
   db: D1Database,
   identity: InstanceIdentity,
   values: ReadonlyArray<string>,
-): Promise<ReadonlyArray<PostMention>> => {
+): Promise<ReadonlyArray<KnownMention>> => {
   const [locals, remotes] = await Promise.all([
     findAccountsByUsernames(
       db,
@@ -148,13 +155,17 @@ export const knownFieldMentions = async (
   ]);
   return [
     ...(locals.isOk() ? locals.value : []).map((account) => ({
+      id: account.id,
       username: account.username,
       domain: null,
+      acct: account.username,
       url: InstanceIdentity.profileUrl(identity, account.username),
     })),
     ...(remotes.isOk() ? remotes.value : []).map((actor) => ({
+      id: RemoteAccountId.encode(actor.actorUri),
       username: actor.username,
       domain: actor.domain,
+      acct: `${actor.username}@${actor.domain}`,
       url: RemoteActor.profileUrl(actor),
     })),
   ];

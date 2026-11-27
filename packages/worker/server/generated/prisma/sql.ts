@@ -1024,6 +1024,8 @@ export * from "./sql/updateLocalNote";
 
 export * from "./sql/updateMediaMetadata";
 
+export * from "./sql/updateMediaThumbnail";
+
 export * from "./sql/updateOutboundFollowOptions";
 
 export * from "./sql/updateOutboxFanout";

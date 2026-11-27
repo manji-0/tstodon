@@ -41,7 +41,7 @@ import {
 
 const entryOf = (row: AnnouncementRow): AnnouncementEntry => ({
   id: row.id,
-  text: htmlToText(row.content),
+  text: row.text ?? htmlToText(row.content),
   startsAt: row.starts_at,
   endsAt: row.ends_at,
   allDay: row.all_day !== 0,

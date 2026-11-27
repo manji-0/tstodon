@@ -22,6 +22,13 @@ const noteAttachments = (
             name: row.description,
             blurhash: row.blurhash,
             dimensions: mediaOriginalDimensions(row),
+            thumbnail:
+              row.thumbnail_content_type !== null && row.preview_object_key !== null
+                ? {
+                    mediaType: row.thumbnail_content_type,
+                    url: mediaUrl(identity, row.preview_object_key),
+                  }
+                : undefined,
             focalPoint:
               row.focus_x !== null && row.focus_y !== null
                 ? ([row.focus_x, row.focus_y] as const)

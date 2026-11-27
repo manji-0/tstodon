@@ -53,9 +53,15 @@ const seedMedia = async (accountId: string, ageDays = 0): Promise<SeededMedia> =
     contentType: "image/png",
     description: null,
     focus: null,
+    thumbnail: null,
     image: {
       original: { width: 40, height: 30 },
-      preview: { objectKey: previewKey, dimensions: { width: 40, height: 30 }, size: 2 },
+      preview: {
+        objectKey: previewKey,
+        contentType: "image/webp",
+        dimensions: { width: 40, height: 30 },
+        size: 2,
+      },
       blurhash: null,
     },
   });

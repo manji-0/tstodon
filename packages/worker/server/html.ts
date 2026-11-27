@@ -49,6 +49,45 @@ const writtenMention = (entity: Extract<PostEntity, { kind: "Mention" }>): strin
   escapeHtml(`@${entity.username}${entity.domain === undefined ? "" : `@${entity.domain}`}`);
 
 /**
+ * The account in `known` a written mention names, as Mastodon's
+ * `EntityCache#mention` finds one: by username and domain, a mention without
+ * a domain or with this instance's naming a local account.
+ */
+const knownAccountOf = <T extends PostMention>(
+  entity: Extract<PostEntity, { kind: "Mention" }>,
+  identity: InstanceIdentity,
+  known: ReadonlyArray<T>,
+): T | undefined => {
+  const domain =
+    entity.domain === undefined || sameText(entity.domain, identity.domain) ? null : entity.domain;
+  return known.find(
+    (mention) =>
+      sameText(mention.username, entity.username) &&
+      (mention.domain === null || domain === null
+        ? mention.domain === domain
+        : sameText(mention.domain, domain)),
+  );
+};
+
+/**
+ * The accounts in `known` that `text` mentions, each once, in the order the
+ * text first names them, as Mastodon's `Account.from_text`.
+ */
+export const mentionedAccounts = <T extends PostMention>(
+  text: string,
+  identity: InstanceIdentity,
+  known: ReadonlyArray<T>,
+): ReadonlyArray<T> => [
+  ...new Set(
+    extractEntities(text).flatMap((entity) => {
+      const account =
+        entity.kind === "Mention" ? knownAccountOf(entity, identity, known) : undefined;
+      return account === undefined ? [] : [account];
+    }),
+  ),
+];
+
+/**
  * A local profile field's value as Mastodon renders it in the REST account
  * and the actor document (`account_field_value_format`): one line, its URLs
  * links with `rel="me"`, so a server that checks the link finds it, its
@@ -71,17 +110,7 @@ export const formatFieldValue = (
     } else if (entity.kind === "Hashtag") {
       html += hashtagLink(identity, entity.name);
     } else {
-      const domain =
-        entity.domain === undefined || sameText(entity.domain, identity.domain)
-          ? null
-          : entity.domain;
-      const account = known.find(
-        (mention) =>
-          sameText(mention.username, entity.username) &&
-          (mention.domain === null || domain === null
-            ? mention.domain === domain
-            : sameText(mention.domain, domain)),
-      );
+      const account = knownAccountOf(entity, identity, known);
       html +=
         account === undefined
           ? writtenMention(entity)

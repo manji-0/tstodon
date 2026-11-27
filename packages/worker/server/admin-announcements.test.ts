@@ -2,7 +2,11 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { schemaResult } from "@tstodon/core";
-import { authHeaders } from "../test/auth-fixture";
+import { ApiAnnouncement } from "@tstodon/api";
+import { expectContract } from "../test/api-contract";
+import { authHeaders, signedInAccount } from "../test/auth-fixture";
+import { remoteActor } from "../test/remote-actor-fixture";
+import { RemoteAccountId } from "./remote-account-id";
 
 const auth = (email: string, admin = false): Promise<Record<string, string>> =>
   authHeaders(email, { admin });
@@ -141,6 +145,47 @@ describe("admin announcements", () => {
       (entry) => entry.id === announcement.id,
     );
     expect(mine?.read).toBe(true);
+  });
+
+  it("renders an announcement's text as Mastodon's linkify, with its mentions and tags", async () => {
+    const local = await signedInAccount("ann-mentioned@example.com");
+    const remote = await remoteActor("annremote", "ann-remote.example");
+    const created = await create("ann-linker@example.com", {
+      text: `Read https://example.org/docs <now> #Maintenance\n\nAsk @${local.username}, @annremote@ann-remote.example or @nobody`,
+    });
+    const id = read(AdminAnnouncementSchema, created.body).id;
+
+    const response = await json("/api/v1/announcements", {
+      headers: await auth("ann-link-reader@example.com"),
+    });
+    const announcement = expectContract(z.array(ApiAnnouncement), response.body).find(
+      (entry) => entry.id === id,
+    );
+
+    const hCard = (url: string, name: string) =>
+      `<span class="h-card" translate="no"><a href="${url}" class="u-url mention">@<span>${name}</span></a></span>`;
+    expect(announcement?.content).toBe(
+      '<p>Read <a href="https://example.org/docs" target="_blank" rel="nofollow noopener" translate="no"><span class="invisible">https://</span><span class="">example.org/docs</span><span class="invisible"></span></a> &lt;now&gt; ' +
+        '<a href="https://example.com/tags/maintenance" class="mention hashtag" rel="tag">#<span>Maintenance</span></a></p>' +
+        `<p>Ask ${hCard(`https://example.com/@${local.username}`, local.username)}, ${hCard(remote.actorUri, "annremote")} or @nobody</p>`,
+    );
+    expect(announcement?.mentions).toEqual([
+      {
+        id: local.id,
+        username: local.username,
+        url: `https://example.com/@${local.username}`,
+        acct: local.username,
+      },
+      {
+        id: RemoteAccountId.encode(remote.actorUri),
+        username: "annremote",
+        url: remote.actorUri,
+        acct: "annremote@ann-remote.example",
+      },
+    ]);
+    expect(announcement?.tags).toEqual([
+      { name: "maintenance", url: "https://example.com/tags/maintenance" },
+    ]);
   });
 
   it("validates the payload", async () => {

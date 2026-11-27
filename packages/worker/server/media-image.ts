@@ -167,7 +167,12 @@ export const processUploadedImage = async (
     preview:
       storedSize === undefined
         ? undefined
-        : { objectKey, dimensions: analysis.preview.dimensions, size: storedSize },
+        : {
+            objectKey,
+            contentType: analysis.preview.contentType,
+            dimensions: analysis.preview.dimensions,
+            size: storedSize,
+          },
     blurhash: analysis.blurhash,
   };
 };
