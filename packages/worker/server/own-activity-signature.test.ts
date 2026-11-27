@@ -38,10 +38,7 @@ const mastodon = (name: string) => {
 
 const samples = ownActivitySamples();
 
-/** The samples with an actor, whose `featuredCollections` Mastodon 4.7.5 leaves undefined. */
-const UNCOVERED_ACTOR_TERMS: ReadonlySet<string> = new Set(["updateActor", "updateSuspendedActor"]);
-
-describe("the activities tstodon signs, as Mastodon v4.7.5 reads them", () => {
+describe("the activities tstodon signs, as Mastodon v4.7.6 reads them", () => {
   it("are the documents the fixture was made from", () => {
     // A builder changed: run scripts/generate-jsonld-reference.mjs again.
     expect(JSON.parse(JSON.stringify(samples))).toEqual(OWN_ACTIVITIES);
@@ -76,12 +73,6 @@ describe("the activities tstodon signs, as Mastodon v4.7.5 reads them", () => {
     );
     const read = readLdSignature(signed._unsafeUnwrap(), now)._unsafeUnwrap();
     const bytes = await ldSignedBytes(read);
-    if (UNCOVERED_ACTOR_TERMS.has(name)) {
-      // As Mastodon's actor, it carries `featuredCollections`, a term no context
-      // defines: the signature does not cover it, and the check refuses it.
-      expect(bytes._unsafeUnwrapErr()).toEqual({ kind: "AmbiguousJsonLd" });
-      return;
-    }
     expect(bytes.isOk() && (await verifyLdSignature(read, bytes.value, keys.publicKeyPem))).toBe(
       true,
     );

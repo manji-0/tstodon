@@ -108,7 +108,7 @@ const expectAmbiguous = async (
 };
 
 describe("Mastodon's signatures", () => {
-  it.each(["create", "update", "delete", "question"])(
+  it.each(["create", "update", "delete", "question", "updateActor"])(
     "verifies %s as Mastodon signed it",
     async (name) => {
       const document = mastodonSigned(name);
@@ -119,7 +119,7 @@ describe("Mastodon's signatures", () => {
     },
   );
 
-  it.each(["create", "update", "delete", "question"])(
+  it.each(["create", "update", "delete", "question", "updateActor"])(
     "verifies %s as Mastodon forwards it, compacted and patched",
     async (name) => {
       const forwarded = MASTODON_FORWARDED[name];

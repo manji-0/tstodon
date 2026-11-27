@@ -4,7 +4,7 @@
 <!-- constrained-by ../../docs/getting-started/e2e-federation-portless.md -->
 <!-- constrained-by ../../docs/reference/configuration.md#limited-federation -->
 
-This harness runs one real Mastodon (v4.7.5) next to a local tstodon Worker and federates them over HTTPS. The other federation suites pair tstodon with tstodon, so they cannot catch a disagreement with Mastodon itself. CI runs it ([One command, and CI](#one-command-and-ci)).
+This harness runs one real Mastodon (v4.7.6) next to a local tstodon Worker and federates them over HTTPS. The other federation suites pair tstodon with tstodon, so they cannot catch a disagreement with Mastodon itself. CI runs it ([One command, and CI](#one-command-and-ci)).
 
 ## What runs
 

@@ -75,7 +75,7 @@ The loopback pair speaks plain HTTP. To sign and verify through `https://a.tstod
 
 ### A real Mastodon
 
-The suites above pair tstodon with tstodon. [Interop e2e against a real Mastodon](../../e2e/mastodon/README.md) runs Mastodon v4.7.5 in Docker next to one local Worker, over HTTPS, with `pnpm e2e:mastodon` (follow and a post each way) and `pnpm e2e:mastodon:probe` (a sweep of the other interactions). `e2e/mastodon/ci.sh` does a whole run in one command, and CI calls it (`.github/workflows/e2e-mastodon.yml`).
+The suites above pair tstodon with tstodon. [Interop e2e against a real Mastodon](../../e2e/mastodon/README.md) runs Mastodon v4.7.6 in Docker next to one local Worker, over HTTPS, with `pnpm e2e:mastodon` (follow and a post each way) and `pnpm e2e:mastodon:probe` (a sweep of the other interactions). `e2e/mastodon/ci.sh` does a whole run in one command, and CI calls it (`.github/workflows/e2e-mastodon.yml`).
 
 ### Not covered locally
 
