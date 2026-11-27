@@ -65,6 +65,10 @@ describe('<AltTextModal />', () => {
 
     const uploadInput = container.querySelector('#upload-modal__thumbnail');
     expect(uploadInput).not.toBeNull();
+    // The types the server takes for a thumbnail: no HEIC, HEIF or AVIF.
+    expect(uploadInput?.getAttribute('accept')).toBe(
+      'image/jpeg,image/png,image/gif,image/webp',
+    );
   });
 
   it('hides thumbnail upload button when video is attached', () => {
